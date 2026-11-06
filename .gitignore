@@ -12,6 +12,7 @@ agent/cache/
 agent/predict/
 agent/sessions/
 agent/terminal-sessions/
+agent/custom-session-files/
 
 # Secrets and credentials
 auth*.json
