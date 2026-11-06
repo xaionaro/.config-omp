@@ -1,0 +1,25 @@
+# Runtime state and generated artifacts (not configuration)
+install-id
+run/
+logs/
+cache/
+natives/
+agent/*.db
+agent/*.db-shm
+agent/*.db-wal
+agent/last-changelog-version
+agent/cache/
+agent/predict/
+agent/sessions/
+agent/terminal-sessions/
+
+# Secrets and credentials
+auth*.json
+agent/auth*.json
+*.env
+.env
+.env.*
+*.key
+*.pem
+*.token
+*.secret
