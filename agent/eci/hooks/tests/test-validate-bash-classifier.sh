@@ -3282,7 +3282,7 @@ jq -e --arg target "$proof_root/t00-session/eci_active" '
 # shell indirection, redirects, and proof-state writes remain covered below.
 run_subagent_matrix_parallel allowed explorer-project-reads \
   "sed -n '1p' AGENTS.md" \
-  "sed -n '1p' skills/explore-critique-implement/SKILL.md" \
+  "sed -n '1p' ../skills/explore-critique-implement/SKILL.md" \
   "printenv PATH" \
   "rg --files -g '*.md' ." \
   "find . -maxdepth 1 -type f -print"
@@ -3301,7 +3301,7 @@ run_subagent_matrix_parallel allowed worker-current-control-reads \
 # instruction paths that are missing, outside configured roots, or escape
 # through a symlink fail with their exact path-ownership reason.
 run_subagent_matrix_parallel allowed worker-instruction-reads \
-  "wc -l $ROOT/AGENTS.md $ROOT/skills/explore-critique-implement/SKILL.md $ROOT/skills/writing-status-reports/SKILL.md $ROOT/skills/harness-tuning/SKILL.md" \
+  "wc -l $ROOT/AGENTS.md $ROOT/../skills/explore-critique-implement/SKILL.md $ROOT/skills/writing-status-reports/SKILL.md $ROOT/skills/harness-tuning/SKILL.md" \
   "wc -l $subagent_eci_home/AGENTS.md $subagent_eci_home/AGENTS.md $subagent_eci_home/skills/test/SKILL.md" \
   "rg -n worker $subagent_eci_home/skills/test" \
   "git log --format=%H -- skills/writing-status-reports/SKILL.md AGENTS.md"

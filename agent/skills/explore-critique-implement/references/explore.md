@@ -29,7 +29,7 @@ For each option return `{what, why, where it applies, cost, tradeoffs}` and dist
 
 For a new capability/invariant or substantive responsibility change, include a concise source-backed ownership argument in each material option. Identify who owns its meaning, required information, enforcement, and lifecycle; these owners may differ. Trace relevant contracts and representative consumers. Compare extending an existing abstraction, changing the boundary, and an adapter where viable. Explain the chosen placement, what callers must know, and any duplicated policy. Give one concrete counterexample that would falsify the placement. Neither the deepest layer nor the existing abstraction is automatically correct; valid adapters and split ownership remain options.
 
-Apply [clean system and repair](../../../../eci-binding-contract.md#clean-system-and-repair). For applicable resources, identify the maintained source and owner, effective configuration precedence, selected executable and installation owner, and service manager, instance, and data. Trace actual consumers. Compare reuse or repair against any proposed new authority; explain necessary copies and their lifecycle.
+Apply [clean system and repair](../../../eci-binding-contract.md#clean-system-and-repair). For applicable resources, identify the maintained source and owner, effective configuration precedence, selected executable and installation owner, and service manager, instance, and data. Trace actual consumers. Compare reuse or repair against any proposed new authority; explain necessary copies and their lifecycle.
 
 Include owner changes needed to meet or prove the requested outcome within its bounded scope. Exclude unrelated cleanup.
 

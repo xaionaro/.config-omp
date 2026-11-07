@@ -25,7 +25,7 @@ Keep current project/task facts in `project-understanding.yaml` and current fore
 
 Err on exhaustive useful detail for current state. Do not omit a detail because it seems obvious from transcript, local state, prior agent memory, or project familiarity. Equally, do not retain a detail because it was true earlier. Exhaustive on current state; zero on superseded state.
 
-For ECI, record stage `normal` as a context fact. Track main and fast progress under the same task: owners, provisional evidence, current ECI decision, and needed adaptation. [ECI fast path](../explore-critique-implement/references/fast-path.md) defines their relationship; these are paths, not separate stages or automatic lanes. Reconcile missing or stale metadata alongside safe work; records never grant permission.
+For ECI, record stage `normal` as a context fact. Track main and fast progress under the same task: owners, provisional evidence, current ECI decision, and needed adaptation. [ECI fast path](../../../skills/explore-critique-implement/references/fast-path.md) defines their relationship; these are paths, not separate stages or automatic lanes. Reconcile missing or stale metadata alongside safe work; records never grant permission.
 
 For material ECI work, keep `exact user source → faithful requested outcome →
 bounded scope` as readable context. A repair stays in its lane when it is
@@ -34,7 +34,7 @@ post-ECI observation or follow-up, never current lane, assignment, code change,
 review, deadline, forecast, or proof program. Reconcile missing or stale
 lineage alongside known work; do not block it.
 
-Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
+Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../../../skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
 
 Ground each progress item in `high_level_log.jsonl` and `latest-status-report.yaml` in a
 named or linked user-stated requirement. Explain how the change advances or

@@ -43,7 +43,7 @@ Progress reports changed state and completed outcomes, not files read, commands 
 - Preserve parent/child work: use a tree, or include `Task ID` and `Parent ID` columns; do not flatten children into peer lanes.
 - If task IDs exist, make them hierarchical, e.g. `1`, `1.3`, `1.3.2`, and sort children under their parent.
 - In material ECI status, show `exact user source → faithful requested outcome → bounded scope` in readable form. Do not broaden the outcome through a generic paraphrase or relabel a reason, discovery, or inferred safeguard as a user requirement.
-- Keep a repair in its lane when it is needed to meet or prove that outcome. Put a discovered concern serving an unadmitted separate outcome under Risks as an observation or follow-up suggestion, not as a lane, assignment, code change, review, deadline, forecast, or proof program. Report admitted child Jobs with their stable parent chain, current owners, and distinct outcome evidence under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure).
+- Keep a repair in its lane when it is needed to meet or prove that outcome. Put a discovered concern serving an unadmitted separate outcome under Risks as an observation or follow-up suggestion, not as a lane, assignment, code change, review, deadline, forecast, or proof program. Report admitted child Jobs with their stable parent chain, current owners, and distinct outcome evidence under the [recursive Job contract](../../../skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure).
 - When requirement context is missing or stale, write `lineage unavailable—reconcile` beside the lane and continue the status report and safe bounded work. Do not invent a registry or turn missing context into a blocker.
 - Known in-scope work remains in scope while lineage is reconciled; do not infer a new outcome from a missing record.
 - Workflow activity is overhead, not progress.
@@ -214,7 +214,7 @@ When work is flat and has no task IDs, omit `Task ID` and `Parent ID`. Keep `Lan
 For ECI, record `Stage: normal`. Show main and fast progress under the same task,
 with each owner, provisional evidence, current ECI decision, and adaptation.
 These are paths, not separate stages or automatic lanes; apply [ECI fast
-path](../explore-critique-implement/references/fast-path.md) for their relationship.
+path](../../../skills/explore-critique-implement/references/fast-path.md) for their relationship.
 Missing, stale, or unknown stage metadata is reported and reconciled
 without pausing harmless work. Stage records never authorize work or change
 the implementation/test/production status meanings below.
