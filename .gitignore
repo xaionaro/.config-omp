@@ -14,7 +14,12 @@ agent/sessions/
 agent/terminal-sessions/
 agent/custom-session-files/
 agent/blobs/
-agent/eci/bin/
+# Built executables and their receipts in agent/eci/bin stay ignored. The negated
+# entries are tracked codex-style on-demand wrappers or scripts, not prebuilt binaries.
+agent/eci/bin/*
+!agent/eci/bin/owned-command
+!agent/eci/bin/status-report
+!agent/eci/bin/eci-runtime-sync
 
 # Secrets and credentials
 auth*.json

@@ -2,22 +2,25 @@
 
 Shared ECI Linux command-family supervisor, maintained at
 `~/.omp/agent/eci/tools/owned-command` independently of application checkouts.
-`agent/eci/hooks/build-native-binaries.sh` builds it with the pinned Go 1.26
-toolchain (`GOPROXY=off GOTOOLCHAIN=local`) into
-`~/.omp/agent/eci/bin/owned-command` and writes a sha256 receipt beside it.
-Manual build: `GOWORK=off go build -o owned-command .`. The binary is invoked
-directly; it acquires its own containment. Generated executables stay outside Git.
+The installed `~/.omp/agent/eci/bin/owned-command` wrapper builds this canonical
+module into an external cache and forwards arguments and status. Manual build:
+`GOWORK=off go build -o owned-command .`. The binary is invoked directly; it
+acquires its own containment. Generated executables stay outside Git.
 
-For repeated or timed phases, the caller may keep the built executable path and
-invoke it directly with its own arguments and environment:
+For repeated or timed phases, prepare once before starting their budgets:
 
 ```sh
-guard="$HOME/.omp/agent/eci/bin/owned-command"
+guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable)
 "$guard" -deadline 3s -receipt receipt.json -- command args...
 ```
 
-Rebuild with the build script after source changes; a retained executable path is
-not rechecked against source at execution time.
+Resolution accepts no other arguments, performs the same native build/cache
+validation, and prints one absolute immutable executable path without running it.
+Build diagnostics go to stderr; paths with CR/LF cannot use this line protocol.
+Direct execution inherits its own caller's environment, cwd, arguments and streams.
+Resolve again to select changed source/toolchain settings; retain the selected
+cache version while callers use it. Ordinary wrapper invocations still recheck
+source before each execution.
 
 ```sh
 owned-command -deadline 3s -receipt receipt.json -- command args...

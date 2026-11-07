@@ -3,7 +3,6 @@
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # eci-command-plan and eci-hook-helper are executed through lib/eci-native-binary.sh, which verifies each receipt before running it; eci-safe-import is allowlisted there but has no launcher caller in this tree.
 # eci-worker-git is built and installed with a receipt, but it is NOT run through that launcher. The skill runs it directly, so its receipt is informational and is not verified at runtime.
-# owned-command is built from agent/eci/tools/owned-command and receipted like eci-worker-git; the skill runs it directly, so its receipt is informational.
 set -euo pipefail
 
 : "${HOME:?HOME must be set}"
@@ -19,10 +18,10 @@ chmod 0755 -- "$bin_dir"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
-names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git owned-command eci-active)
+names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git eci-active)
 for name in "${names[@]}"; do
   case "$name" in
-    owned-command|eci-active) module="$hook_dir/../tools/$name" ;;
+    eci-active) module="$hook_dir/../tools/$name" ;;
     *) module="$hook_dir/lib/$name-go" ;;
   esac
   [ -f "$module/go.mod" ] || { echo "build-native-binaries: missing Go module $module" >&2; exit 1; }

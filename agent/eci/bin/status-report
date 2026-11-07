@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+module_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../tools/status-report" && pwd)"
+args=("$@")
+if [[ ${args[0]:-} == validate || ${args[0]:-} == render ]]; then
+	for ((i = 1; i < ${#args[@]}; i++)); do
+		if [[ ${args[i]} == --session-dir ]]; then
+			((i += 1))
+			if ((i < ${#args[@]})) && [[ ${args[i]} != /* ]]; then
+				args[i]="$PWD/${args[i]}"
+			fi
+		elif [[ ${args[i]} != -* && ${args[i]} != /* ]]; then
+			args[i]="$PWD/${args[i]}"
+		fi
+	done
+elif [[ ${args[0]:-} == refresh && -n ${args[1]:-} && ${args[1]} != /* ]]; then
+	args[1]="$PWD/${args[1]}"
+fi
+cd "$module_dir"
+exec go run . "${args[@]}"
