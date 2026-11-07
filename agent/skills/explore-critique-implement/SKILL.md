@@ -76,8 +76,7 @@ At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the p
 | --- | --- |
 | `max` | Solution design, meaning the design-winner decision (Step 2 / design selection), not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
-| `default` | Implementation; routine work; producer E2E. |
-| `default` | Explorers; Step 1 exploration. |
+| `default` | Implementation; routine work; producer E2E; explorers, including Step 1 exploration. |
 
 Choose the spawn path from the `task` tool description:
 
