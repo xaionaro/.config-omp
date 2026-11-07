@@ -1,9 +1,12 @@
-# Coverage units pinned to codex commit 575bb81. Columns: codex_path, behavior ("-" for a whole file).
+# Coverage units pinned to codex commit 575bb81. Columns: codex_path, behavior ("-" for a whole file or wrapper).
 # Files: git -C ~/.codex ls-tree -r --name-only 575bb81, keeping every file under skills/ and hooks/
 # and every *.md, *.txt, *.yaml, *.yml, *.toml file elsewhere.
-# Behaviors: the build, refresh, and install steps of bin/status-report, bin/owned-command, bin/eci-active,
-# and bin/eci-runtime-sync, read from their source at 575bb81.
+# Wrappers: all ten bin/ files. bin/status-report, bin/owned-command, bin/eci-active, and bin/eci-runtime-sync have
+# one unit per build, refresh, or install step; the other six are whole-wrapper units.
 CODEX.md	-
+bin/codex-lane-status-reminder	-
+bin/codex-ollama-responses-bridge	-
+bin/context7-mcp	-
 bin/eci-active	install-peer
 bin/eci-active	install-planner
 bin/eci-active	install-runtime
@@ -11,14 +14,17 @@ bin/eci-active	on-demand-build-helpers
 bin/eci-active	refresh-after-append
 bin/eci-active	refresh-status
 bin/eci-active	requirement-helper-run
+bin/eci-active-dispatch	-
 bin/eci-runtime-sync	build-planner-pair
 bin/eci-runtime-sync	install-peer-surface
 bin/eci-runtime-sync	install-runtime-surface
 bin/eci-runtime-sync	publish-planner-pair
 bin/eci-runtime-sync	refresh-planner-peer
 bin/eci-runtime-sync	refresh-planner-receipt
+bin/git-dirty-watchdog	-
 bin/owned-command	on-demand-build
 bin/owned-command	resolve-executable
+bin/skip-stop	-
 bin/status-report	on-demand-build
 bin/status-report	path-anchor
 bin/status-report	refresh-call

@@ -24,6 +24,7 @@ Measured with `run-isolated.sh run.sh`, one run each:
 | File | Reason |
 | --- | --- |
 | `test-eci-runtime-sync.sh` | Tests `bin/eci-runtime-sync` and `hooks/lib/eci-runtime-sync.sh`. Both exist in source 575bb81 only; neither exists in omp `agent/eci` HEAD. Porting would mean implementing that tool, which is outside this port. The file is 683 lines with 73 `runtime-sync` references. `run.sh` does not invoke it. |
+| `bin/skip-stop` (wrapper, not a test) | Codex stop-hook bypass marker tool. The Codex stop gate is retired, so omp has no counterpart. Recorded per Job AUDIT decision 1; the codex coverage manifest cites this row. |
 
 ## Renames
 

@@ -3,7 +3,7 @@ package main
 import "slices"
 
 // ReasonCode names a recorded decision for a unit that has no omp counterpart. Only the codes in recordedReasons are
-// accepted, so a unit whose disposition was never recorded fails the check.
+// accepted, so a reason code outside the vocabulary fails the check.
 type ReasonCode string
 
 // Recorded reason codes. Each code is one decision made during the port; the evidence column of the manifest row
@@ -31,13 +31,23 @@ const (
 	ReasonOtherProviderToolMap ReasonCode = "other-provider-tool-map"
 	// ReasonCodexWrapperUnported marks documentation of a Codex wrapper that omp does not port.
 	ReasonCodexWrapperUnported ReasonCode = "codex-wrapper-unported"
-	// ReasonBehaviorNotPorted marks a build, refresh, or install behavior of a Codex bin wrapper that omp does not
-	// reproduce; the evidence names the omp caller or the omp decision.
-	ReasonBehaviorNotPorted ReasonCode = "behavior-not-ported"
+	// ReasonCodexOnlyLaneReminder marks the Codex-only lane reminder wrapper, which omp does not port.
+	ReasonCodexOnlyLaneReminder ReasonCode = "codex-only-lane-reminder"
+	// ReasonCodexOnlyModelBridge marks the Codex-only model bridge wrapper, which omp does not port.
+	ReasonCodexOnlyModelBridge ReasonCode = "codex-only-model-bridge"
+	// ReasonCodexPathDispatcher marks the Codex PATH dispatcher wrapper, which omp does not port.
+	ReasonCodexPathDispatcher ReasonCode = "codex-path-dispatcher"
+	// ReasonObsolete marks a wrapper the Codex source itself calls obsolete.
+	ReasonObsolete ReasonCode = "obsolete"
+	// ReasonStopGateRetired marks the stop-gate wrapper of a retired stop gate; TEST-DISPOSITION.md records it.
+	ReasonStopGateRetired ReasonCode = "stop-gate-retired"
+	// ReasonNoPeerProviderRoot marks a peer-sync behavior that the Codex-free port does not reproduce, because omp has no
+	// peer provider root.
+	ReasonNoPeerProviderRoot ReasonCode = "no-peer-provider-root"
 )
 
 // recordedReasons lists every reason code the checker accepts. "unrecorded" is deliberately absent: a unit with no
-// recorded disposition must fail visibly instead of passing as reason-coded.
+// recorded disposition is in the unrecorded state, which fails the check.
 var recordedReasons = []ReasonCode{
 	ReasonCodexLedger,
 	ReasonConfigMoved,
@@ -50,12 +60,17 @@ var recordedReasons = []ReasonCode{
 	ReasonPythonUnrunnable,
 	ReasonOtherProviderToolMap,
 	ReasonCodexWrapperUnported,
-	ReasonBehaviorNotPorted,
+	ReasonCodexOnlyLaneReminder,
+	ReasonCodexOnlyModelBridge,
+	ReasonCodexPathDispatcher,
+	ReasonObsolete,
+	ReasonStopGateRetired,
+	ReasonNoPeerProviderRoot,
 }
 
 // recorded reports whether the code is one of the recorded reason codes.
 //
-// Example: ReasonCode("unrecorded").recorded() is false, and ReasonBehaviorNotPorted.recorded() is true.
+// Example: ReasonCode("unrecorded").recorded() is false, and ReasonObsolete.recorded() is true.
 func (code ReasonCode) recorded() bool {
 	return slices.Contains(recordedReasons, code)
 }
