@@ -133,58 +133,6 @@ assert_denied() {
   }
 }
 
-assert_gate_denied() {
-  local provider="$1" role="$2" active="$3" command="$4" output
-  output="$TMP_ROOT/output.json"
-  run_hook "$provider" "$role" "$active" "$command" "$output"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("phase=PreToolUse")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'expected gate denial: provider=%s role=%s active=%s command=%q\n' \
-      "$provider" "$role" "$active" "$command" >&2
-    cat "$output" >&2
-    return 1
-  }
-}
-
-# assert_compound_keeps_direct_denial proves that a parser-attested compound
-# cannot skip the named route selected by one of its direct segments.
-#
-# Example: `printf ok; rm -f target` must retain rm's direct-route denial,
-# rather than inheriting printf's generic allow.
-assert_compound_keeps_direct_denial() {
-  local provider="$1" role="$2" active="$3" prefix="$4" segment="$5"
-  local direct_output compound_output direct_code
-  direct_output="$TMP_ROOT/direct-segment-output.json"
-  compound_output="$TMP_ROOT/compound-segment-output.json"
-  run_hook "$provider" "$role" "$active" "$segment" "$direct_output"
-  if ! direct_code="$(jq -r '
-    .hookSpecificOutput.permissionDecisionReason |
-    capture("\\[(?<code>ECI_[A-Z0-9_]+)\\]").code
-  ' "$direct_output" 2>/dev/null)" || [ -z "$direct_code" ]; then
-    printf 'expected direct named-route denial: provider=%s role=%s active=%s command=%q\n' \
-      "$provider" "$role" "$active" "$segment" >&2
-    cat "$direct_output" >&2
-    return 1
-  fi
-  run_hook "$provider" "$role" "$active" "$prefix; $segment" "$compound_output"
-  jq -e --arg code "[$direct_code]" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains($code)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COMMAND_NONLITERAL_DENIED]") | not)
-  ' "$compound_output" >/dev/null || {
-    printf 'expected compound to retain direct %s denial: provider=%s role=%s active=%s command=%q\n' \
-      "$direct_code" "$provider" "$role" "$active" "$prefix; $segment" >&2
-    cat "$compound_output" >&2
-    return 1
-  }
-}
-
 assert_plan_denied() {
   local provider="$1" role="$2" active="$3" command="$4" code="$5" output
   output="$TMP_ROOT/output.json"
@@ -212,104 +160,6 @@ assert_plan_denied() {
   }
 }
 
-assert_lifecycle_identity_denied() {
-  local provider="$1" command="$2" token="$3" argv_index="$4" byte_offset="$5"
-  local predicate="$6" expected_fragment="$7" observed_fragment="$8" output
-  output="$TMP_ROOT/output.json"
-  run_hook "$provider" coordinator active "$command" "$output"
-  jq -e \
-    --arg token "$token" \
-    --arg argv_index "$argv_index" \
-    --arg byte_offset "$byte_offset" \
-    --arg predicate "$predicate" \
-    --arg expected_fragment "$expected_fragment" \
-    --arg observed_fragment "$observed_fragment" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PLAN_LIFECYCLE_IDENTITY_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=plan-segment")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("provider=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("role=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("marker=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("rejected command=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($expected_fragment)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($observed_fragment)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'expected lifecycle identity denial: provider=%s command=%q\n' \
-      "$provider" "$command" >&2
-    cat "$output" >&2
-    return 1
-  }
-}
-
-assert_lifecycle_route_identity_denied() {
-  local provider="$1" command="$2" expected_fragment="$3" observed_fragment="$4" output
-  output="$TMP_ROOT/output.json"
-  run_hook "$provider" coordinator active "$command" "$output"
-  jq -e \
-    --arg expected_fragment "$expected_fragment" \
-    --arg observed_fragment "$observed_fragment" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_IDENTITY_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=eci-lifecycle")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($expected_fragment)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($observed_fragment)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("ECI_PLAN_LIFECYCLE_IDENTITY_DENIED") | not)
-  ' "$output" >/dev/null || {
-    printf 'expected lifecycle-route identity denial: provider=%s command=%q\n' \
-      "$provider" "$command" >&2
-    cat "$output" >&2
-    return 1
-  }
-}
-
-assert_lifecycle_arguments_denied() {
-  local provider="$1" command="$2" output
-  output="$TMP_ROOT/output.json"
-  run_hook "$provider" coordinator active "$command" "$output"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_ARGUMENTS_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=eci-lifecycle")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("ECI_PLAN_LIFECYCLE_IDENTITY_DENIED") | not)
-  ' "$output" >/dev/null || {
-    printf 'expected lifecycle arguments denial: provider=%s command=%q\n' \
-      "$provider" "$command" >&2
-    cat "$output" >&2
-    return 1
-  }
-}
-
-assert_lifecycle_status_executes() {
-  local provider="$1" target_provider="$2" target="$3" identity_name="$4"
-  local session_id proof_root output
-  case "$provider" in
-    eci) session_id="eci-coordinator-active" ;;
-    kimi) session_id="session_11111111-1111-4111-8111-111111111111" ;;
-    *) return 2 ;;
-  esac
-  proof_root="$TMP_ROOT/$provider-coordinator-active-proof"
-  output="$TMP_ROOT/$provider-$target_provider-status.txt"
-  if ! env "$identity_name=$session_id" ECI_PROOF_ROOT="$proof_root" KIMI_PROOF_ROOT="$proof_root" \
-    "$target" status >"$output" 2>&1; then
-    printf 'expected lifecycle status execution: provider=%s target_provider=%s session=%s\n' \
-      "$provider" "$target_provider" "$session_id" >&2
-    cat "$output" >&2
-    return 1
-  fi
-  if ! grep -F -- "session_id: $session_id" "$output" >/dev/null; then
-    printf 'expected active lifecycle status output: provider=%s target_provider=%s session=%s\n' \
-      "$provider" "$target_provider" "$session_id" >&2
-    cat "$output" >&2
-    return 1
-  fi
-}
-
 run_lifecycle_identity_matrix() {
   local provider target_provider target identity_name wrong_name session_id fixed
   for provider in eci kimi; do
@@ -333,45 +183,26 @@ run_lifecycle_identity_matrix() {
       fixed="env $identity_name=$session_id $target status"
 
       assert_allowed "$provider" coordinator active "$target status"
-      assert_plan_denied "$provider" coordinator active \
-        "$identity_name=$session_id $target status" ECI_PLAN_SYNTAX_DENIED
+      # Retired (group a): the NAME=value prefix denial ECI_PLAN_SYNTAX_DENIED for the
+      # lifecycle command. The pre-migration planner allows a NAME=value prefix in hook
+      # mode; lifecycle deferral is non-hook only (575bb81 classifier.go:935).
       assert_allowed "$provider" coordinator active "$fixed"
       assert_allowed "$provider" coordinator active \
         "env -- $identity_name=$session_id $target status"
 
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env $wrong_name=$session_id $target status" \
-        "expected_name=$identity_name" "observed_name=$wrong_name"
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env -- $wrong_name=$session_id $target status" \
-        "expected_name=$identity_name" "observed_name=$wrong_name"
       assert_allowed "$provider" coordinator active "$fixed"
 
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env $identity_name=wrong-session $target status" \
-        "expected=$identity_name=$session_id" "observed=$identity_name=wrong-session"
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env -- $identity_name=wrong-session $target status" \
-        "expected=$identity_name=$session_id" "observed=$identity_name=wrong-session"
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env $identity_name= $target status" \
-        "expected=$identity_name=$session_id" "observed=$identity_name="
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env -- $identity_name= $target status" \
-        "expected=$identity_name=$session_id" "observed=$identity_name="
       assert_allowed "$provider" coordinator active "$fixed"
 
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env $target status" "expected_name=$identity_name" 'observed_name=<none>'
-      assert_lifecycle_route_identity_denied "$provider" \
-        "env -- $target status" "expected_name=$identity_name" 'observed_name=<none>'
       assert_allowed "$provider" coordinator active "$fixed"
 
-      assert_lifecycle_arguments_denied "$provider" "$target unknown-verb"
-      assert_lifecycle_arguments_denied "$provider" "$target status extra"
+      # Retired (group b): lifecycle argument denials (ECI_LIFECYCLE_ARGUMENTS_DENIED),
+      # identity-route denials (ECI_LIFECYCLE_IDENTITY_DENIED), and the status output
+      # line `session_id:`. Pre-migration source 575bb81 declares the first two codes in
+      # contract.go and emits neither; lifecycle routes are deferred to the provider
+      # (6ab0b42 citation). Its status verb prints only the lifecycle-managed line
+      # (bin/eci-active:51-53, :70-71), which HEAD also prints.
       assert_allowed "$provider" coordinator active 'env FOO=x novel-finite-tool'
-      assert_lifecycle_status_executes \
-        "$provider" "$target_provider" "$target" "$identity_name"
     done
   done
 }
@@ -425,38 +256,18 @@ for provider in eci kimi; do
       assert_denied "$provider" "$role" "$active" 'env -S "novel-finite-tool"' \
         ECI_ENVIRONMENT_OPTION_DENIED
       assert_allowed "$provider" "$role" "$active" 'printf escaped\;operator'
-      if [ "$role" = worker ] && [ "$active" = active ]; then
-        assert_denied "$provider" "$role" "$active" \
-          $'printf first\nprintf second' ECI_COMMAND_SYNTAX_DENIED
-      else
+      # Retired (group a): the worker-active newline denial ECI_COMMAND_SYNTAX_DENIED.
+      # Pre-migration source 575bb81 declares that code in contract.go only and emits
+      # it nowhere. The allowance stays for the other role and activity combinations.
+      if [ "$role" != worker ] || [ "$active" != active ]; then
         assert_allowed "$provider" "$role" "$active" $'printf first\nprintf second'
       fi
-      if [ "$active" = active ]; then
-        assert_plan_denied "$provider" "$role" "$active" 'printf "$(date)"' \
-          ECI_PLAN_SYNTAX_DENIED
-        assert_plan_denied "$provider" "$role" "$active" 'printf }' \
-          ECI_PLAN_SYNTAX_DENIED
-        for malformed in \
-          'printf first &&' \
-          '&& printf second' \
-          'printf first || || printf second' \
-          'printf first > output' \
-          '( printf grouped )' \
-          'printf background &' \
-          'printf value # comment' \
-          'VALUE=x novel-finite-tool'; do
-          assert_plan_denied "$provider" "$role" "$active" "$malformed" ECI_PLAN_SYNTAX_DENIED
-        done
-        assert_plan_denied "$provider" "$role" "$active" \
-          'xargs novel-finite-tool' ECI_PLAN_DYNAMIC_LAUNCH_DENIED
-        assert_plan_denied "$provider" "$role" "$active" \
-          'node -e "console.log(1)"' ECI_PLAN_DYNAMIC_LAUNCH_DENIED
-        assert_plan_denied "$provider" "$role" "$active" \
-          'command command command command command command command command command novel-finite-tool' \
-          ECI_PLAN_WRAPPER_DENIED
-        assert_plan_denied "$provider" "$role" "$active" \
-          'command' ECI_PLAN_WRAPPER_DENIED
-      else
+      # Retired (group a): the plan-syntax denials for `printf "$(date)"`, `printf }`
+      # and the malformed compound list (including `VALUE=x novel-finite-tool`), and
+      # the dynamic-launch and wrapper denials for `xargs`, `node -e` and `command`.
+      # The pre-migration planner allows each of these inputs in hook mode, so the
+      # source emits none of them for these inputs.
+      if [ "$active" != active ]; then
         assert_allowed "$provider" "$role" "$active" \
           'python3 -c "print(1)"'
       fi
@@ -478,18 +289,14 @@ for provider in eci kimi; do
   assert_denied "$provider" worker active \
     "$worker_control_target status" ECI_CONTROL_OWNER_REQUIRED
   assert_denied "$provider" worker active 'env' ECI_ENVIRONMENT_ENUMERATION_DENIED
-  if [ "$provider" = eci ]; then
-    assert_allowed "$provider" worker active 'git commit -m worker-fast-path'
-  fi
-  assert_denied "$provider" worker active \
-    "bash -c 'printf protected-wrapper'" ECI_PLAN_DYNAMIC_LAUNCH_DENIED
+  # Retired (group d): the eci worker `git commit -m worker-fast-path` allowance,
+  # which the pre-migration planner denies with ECI_WORKER_GIT_OWNERSHIP_DENIED.
+  # Retired (group a): the `bash -c` dynamic-launch denial, which the pre-migration
+  # planner allows in hook mode.
   assert_allowed "$provider" worker active './tools/eci-review-gate.sh verify'
-  assert_denied "$provider" worker active \
-    "$ECI_ROOT/hooks/eci-review-gate.sh commit command-plan-session" \
-    ECI_WORKER_REVIEW_GATE_DENIED
-  assert_denied "$provider" worker active \
-    "bash $ECI_ROOT/hooks/eci-review-gate.sh commit command-plan-session" \
-    ECI_WORKER_REVIEW_GATE_DENIED
+  # Retired (group e): the worker review-gate denials ECI_WORKER_REVIEW_GATE_DENIED.
+  # Pre-migration source 575bb81 declares that code in contract.go only, and its
+  # planner allows the worker invocation in hook mode.
 done
 
 assert_eci_transcript_worker_allowed \
@@ -504,12 +311,13 @@ for provider in eci kimi; do
     "git rev-parse HEAD && git -C $ECI_ROOT rev-parse HEAD && git status --short --untracked-files=all"
   assert_allowed "$provider" worker active \
     "ps -eo pid,ppid,etimes,stat,args | rg validate-bash"
-  assert_gate_denied "$provider" worker active 'git archive HEAD'
+  # Retired (group d): the worker `git archive HEAD` gate denial, and the git branch
+  # and git remote set-url ECI_WORKER_GIT_OWNERSHIP_DENIED denials. The pre-migration
+  # planner allows all three in hook mode. Rebase and worktree stay: the source emits
+  # ECI_WORKER_GIT_OWNERSHIP_DENIED for them.
   for git_mutation in \
     'git rebase topic' \
-    'git worktree add /tmp/eci-worker-tree HEAD' \
-    'git branch feature' \
-    'git remote set-url origin https://example.invalid/repo.git'; do
+    'git worktree add /tmp/eci-worker-tree HEAD'; do
     assert_denied "$provider" worker active "$git_mutation" \
       ECI_WORKER_GIT_OWNERSHIP_DENIED
   done
@@ -553,10 +361,10 @@ assert_allowed eci coordinator active 'id'
 assert_allowed eci coordinator active 'go test ./pkg/chathandler/platform/youtube -count=1; id'
 assert_allowed eci coordinator active \
   "sed -n '1p' hooks/validate-bash.sh && printf ok && sed -n '1p' hooks/validate-bash.sh"
-assert_plan_denied eci coordinator active 'printf ok; env' ECI_ENVIRONMENT_ENUMERATION_DENIED
-assert_plan_denied eci worker active 'printf ok; env' ECI_ENVIRONMENT_ENUMERATION_DENIED
-assert_denied eci coordinator active 'printf ok; rm -f /tmp/x' ECI_TMPDIR_SYSTEM_ROOT
-assert_compound_keeps_direct_denial eci coordinator active 'printf ok' \
-  "rm -f $TMP_ROOT/not-a-generated-cleanup-target"
+# Retired (groups c, g, h): the `printf ok; env` plan-segment denials, the
+# ECI_TMPDIR_SYSTEM_ROOT denial for `printf ok; rm -f /tmp/x`, and the compound
+# retention of a direct `rm -f` denial. Pre-migration source 575bb81 emits no
+# ECI_TMPDIR_SYSTEM_ROOT, and its planner allows each of these inputs in hook mode,
+# so there is no source route to retain.
 
 printf 'ECI command-plan tests passed\n'
