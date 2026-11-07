@@ -215,8 +215,7 @@ func repositoryAllowStatus(args []string) error {
 		return nil
 	}
 	if err := repoRecordValid(sid, cwd, "", false); err != nil {
-		fmt.Println("ECI additional repository inactive")
-		return nil
+		return exitError{code: 1, msg: "ECI additional repository state is invalid: " + path}
 	}
 	lines, err := readSmallRecord(path)
 	if err != nil {
