@@ -175,6 +175,21 @@ assert_marker_deny() {
   }
 }
 
+# A non-zero child validator while an ECI marker is active cannot classify the
+# edit, so the dispatcher must deny it with ECI_EDIT_GATE_FAILED.
+assert_gate_failed_deny() {
+  local label="$1" output="$2"
+
+  jq -e '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_EDIT_GATE_FAILED]"))
+  ' "$output" >/dev/null || {
+    printf 'expected %s to fail closed with ECI_EDIT_GATE_FAILED while a marker is active:\n' "$label" >&2
+    cat "$output" >&2
+    return 1
+  }
+}
+
 normal_input="$TMP_ROOT/normal.json"
 jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "$repo/normal.c" \
   '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"updated"}}' \
@@ -219,19 +234,21 @@ jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg patch "$policy_pat
 policy_patch_output="$(run_dispatch policy-patch "$policy_patch_input")"
 assert_empty_output policy-patch "$policy_patch_output"
 
-# Child-health failures are advisory for an ordinary repository target.  The
-# dispatcher must not convert either malformed JSON, a non-zero validator, or
-# unavailable ownership information into a user-facing denial.
+# Child-health failures are advisory for an ordinary repository target: malformed
+# JSON and unavailable ownership information must not become a user-facing denial.
+# A non-zero child while an ECI marker is active fails closed instead (the
+# gate_failed branch of pretooluse-edit-dispatch.sh; agent/AGENTS.md, Hooks:
+# PreToolUse fails closed in omp).
 malformed_normal_output="$(run_dispatch malformed-normal "$normal_input" '' malformed)"
 assert_empty_output malformed-normal "$malformed_normal_output"
 failed_normal_output="$(run_dispatch failed-normal "$normal_input" '' fail)"
-assert_empty_output failed-normal "$failed_normal_output"
+assert_gate_failed_deny failed-normal "$failed_normal_output"
 unknown_normal_output="$(run_dispatch unknown-normal "$normal_input" '' ownership-unknown)"
 assert_empty_output unknown-normal "$unknown_normal_output"
 malformed_patch_output="$(run_dispatch malformed-patch "$normal_patch_input" '' malformed)"
 assert_empty_output malformed-patch "$malformed_patch_output"
 failed_patch_output="$(run_dispatch failed-patch "$normal_patch_input" '' fail)"
-assert_empty_output failed-patch "$failed_patch_output"
+assert_gate_failed_deny failed-patch "$failed_patch_output"
 
 # The full copied dispatcher must also remain non-blocking for a coordinator
 # ordinary repository edit.  Before the ATE gate fix this reproduces its
