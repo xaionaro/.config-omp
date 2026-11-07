@@ -13,6 +13,7 @@ import (
 
 const (
 	envSessionID = "ECI_SESSION_ID"
+	envThreadID  = "ECI_THREAD_ID"
 	envProofRoot = "ECI_PROOF_ROOT"
 )
 
@@ -86,14 +87,24 @@ func proofRootSafe() error {
 
 func validSessionID(s string) bool { return sessionIDPattern.MatchString(s) }
 
+// sessionIdentity returns the variable that names the session and its value: ECI_SESSION_ID when it is
+// non-empty, otherwise ECI_THREAD_ID, the same selection hooks/eci-review-gate.sh:191 makes. A non-empty
+// ECI_SESSION_ID is used even when it is invalid, so the fallback never masks an invalid explicit value.
+func sessionIdentity() (string, string) {
+	if sid := os.Getenv(envSessionID); sid != "" {
+		return envSessionID, sid
+	}
+	return envThreadID, os.Getenv(envThreadID)
+}
+
 // currentSession reads the explicit session identity from the environment.
 func currentSession() (string, error) {
-	sid := os.Getenv(envSessionID)
+	name, sid := sessionIdentity()
 	if sid == "" {
-		return "", exitError{code: 1, msg: "ECI coordination requires an explicit ECI_SESSION_ID."}
+		return "", exitError{code: 1, msg: "ECI coordination requires an explicit ECI_SESSION_ID or ECI_THREAD_ID."}
 	}
 	if !validSessionID(sid) {
-		return "", exitError{code: 1, msg: "Invalid ECI_SESSION_ID; use only letters, digits, '_' or '-'."}
+		return "", exitError{code: 1, msg: "Invalid " + name + "; use only letters, digits, '_' or '-'."}
 	}
 	return sid, nil
 }

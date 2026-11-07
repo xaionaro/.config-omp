@@ -307,9 +307,9 @@ func aggregateReview(args []string) error {
 	if !aggregateRepoIDRe.MatchString(repoID) {
 		return exitError{code: 1, msg: "aggregate-review requires a bounded aggregate repository ID."}
 	}
-	sid := os.Getenv(envSessionID)
+	_, sid := sessionIdentity()
 	if !validSessionID(sid) {
-		return exitError{code: 1, msg: "aggregate-review requires an explicit current ECI_SESSION_ID."}
+		return exitError{code: 1, msg: "aggregate-review requires an explicit current ECI_SESSION_ID or ECI_THREAD_ID."}
 	}
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {

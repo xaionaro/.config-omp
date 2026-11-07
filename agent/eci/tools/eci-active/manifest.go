@@ -18,9 +18,9 @@ func manifestWrite(args []string) error {
 	if len(args) != 2 {
 		return usageError()
 	}
-	sid := os.Getenv(envSessionID)
+	_, sid := sessionIdentity()
 	if !validSessionID(sid) {
-		return exitError{code: 1, msg: "manifest-write requires an explicit current ECI_SESSION_ID."}
+		return exitError{code: 1, msg: "manifest-write requires an explicit current ECI_SESSION_ID or ECI_THREAD_ID."}
 	}
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {

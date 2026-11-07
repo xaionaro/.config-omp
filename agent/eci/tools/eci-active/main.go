@@ -146,7 +146,8 @@ func usage(w io.Writer) {
   %[1]s sync-runtime
   %[1]s status
 
-Set ECI_SESSION_ID to target a session. Lifecycle commands are retired; the native goal owns continuation and the
+Set ECI_SESSION_ID, or ECI_THREAD_ID when ECI_SESSION_ID is
+unset, to target a session. Lifecycle commands are retired; the native goal owns continuation and the
 Supervisor owns ECI lifecycle. Coordination uses explicit session identity
 and the current working directory.
 Marker-dependent coordination mutators are deferred until their hooks migrate.

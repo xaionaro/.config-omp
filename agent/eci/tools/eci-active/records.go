@@ -180,7 +180,7 @@ func repoContext() (string, string, error) {
 		return "", "", err
 	}
 	if filepath.Base(dir) != sid {
-		return "", "", fmt.Errorf("session directory does not match ECI_SESSION_ID")
+		return "", "", fmt.Errorf("repository-allow resolved a different session than the current identity.")
 	}
 	cwd, err := currentCwd()
 	if err != nil {
