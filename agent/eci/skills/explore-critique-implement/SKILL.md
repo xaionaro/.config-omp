@@ -55,6 +55,23 @@ Use the shortest faithful real path that proves the original criteria and checks
 
 Every early, Fast, Producer-final, and independent-final E2E report records `started_at_utc` and `finished_at_utc` (RFC 3339 UTC), `elapsed_monotonic_seconds`, command, scope/coverage, tested revision, and environment identity sufficient for comparison (runner/host class, OS/architecture, relevant tool/runtime versions, and test-service/data configuration). Redact secrets. Compare duration only for matching commands and scope/coverage in materially equivalent environments; do not rerun solely to collect timing. A comparable material regression beyond ordinary variance triggers the Fast Owner Producer or a bounded Helper to profile and optimize E2E duration in parallel while main-path ECI continues. Preserve assertions, coverage, real-path evidence, and the independent final E2E.
 
+## Spawn skill routing
+
+Before the first spawn, map the task to required skills and read each matched skill before spawning. Apply this to every brief, including read-only explorer briefs.
+
+| Task type | Required skills |
+| --- | --- |
+| Code: write, modify, review, diffs, PRs | `coding-common` plus language skills (`coding-go`, `coding-python`) |
+| Prompt, skill, AGENTS.md, or contract text | `harness-tuning` |
+| Explore | Matching rows of the trigger table in `~/.omp/agent/eci-binding-contract.md:213-227` |
+
+Every brief includes:
+
+- `Skills:` names the matched skills, or `none, <reason>`.
+- Routing lines: one per trigger row in `~/.omp/agent/eci-binding-contract.md:213-227`. Use `match: <skill>` (naming the triggering files or task kind) or `no match: <reason>` (citing what it was judged against).
+
+The Supervisor fills the Routing lines. Independent review of the filled lines is advisory only.
+
 ## Model selection
 
 At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and pass both `model` and `reasoning_effort` explicitly with `fork_turns: "none"`. Keep existing launch settings and reusable owners. If a new activity needs another profile, assign a correctly configured helper. Keep independent reviewer assignments self-contained and blind to producer findings. If a requested model or selector is unavailable, record the limitation and continue with the available provider. Treat the file as a routing reference; do not assume native auto-loading or effective-model telemetry. Profile selection does not change role authority or reviewer independence.
