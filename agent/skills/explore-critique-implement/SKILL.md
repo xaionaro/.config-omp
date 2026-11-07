@@ -61,12 +61,12 @@ Before any Worker spawn, apply the spawn rule in [Initial admission](references/
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
+Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Orchestrator (current Job owner dispatching the spawn) fills one Routing line per unit:
 
 - `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
 - A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
-- The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The Supervisor derives it from the Routing lines.
+- The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The Orchestrator derives it from the Routing lines.
 
 ## Model selection
 
@@ -74,9 +74,10 @@ At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the p
 
 | Profile | Activities |
 | --- | --- |
-| `max` | Solution design; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
+| `max` | Solution design, meaning the design-winner decision (Step 2 / design selection), not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E. |
+| `default` | Explorers; Step 1 exploration. |
 
 Choose the spawn path from the `task` tool description:
 

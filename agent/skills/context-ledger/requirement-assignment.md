@@ -25,7 +25,7 @@ Classify the input under [Project requirements](../../eci-binding-contract.md#pr
 "$HOME/.omp/agent/eci/bin/eci-active" requirement-assignment --request /absolute/path/request.json
 ```
 
-4. Forward the exact returned `{target,message}` through native `write agent://<id>` or `collaboration.send_message`. The prepared message contains the authoritative saved requirements followed by visibly separate operational instructions. Do not rewrite its requirement portion. Maintain the current status report in the same turn under [Update Points](SKILL.md#update-points); record actual delivery separately when material. Preparation is not delivery.
+4. Forward the exact returned `{target,message}` through native `write agent://<id>`. The prepared message contains the authoritative saved requirements followed by visibly separate operational instructions. Do not rewrite its requirement portion. Maintain the current status report in the same turn under [Update Points](SKILL.md#update-points); record actual delivery separately when material. Preparation is not delivery.
 
 The operation applies exact native edits to a same-directory temporary file under the existing mutation lock, validates the affected IDs against the assigned outcome, then publishes and reads back the canonical snapshot. It projects every requirement and scope linked to that outcome, including unchanged source, acceptance, evidence and unknown domain fields. Other named record links are followed too; missing or unsupported chain content fails explicitly instead of disappearing. The ledger’s unrelated bytes, comments, order, multiline text and mode remain intact. Faithful reuse does not rewrite the snapshot.
 
