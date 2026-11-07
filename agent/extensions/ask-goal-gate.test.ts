@@ -48,6 +48,14 @@ function overlay(status: string) {
   return { getState: () => ({ goal: { status } }), set: async () => ({}) };
 }
 
+function blockReasonOf(result: unknown): string {
+  if (typeof result !== "object" || result === null || !("reason" in result)) {
+    throw new Error("expected a block result");
+  }
+  if (typeof result.reason !== "string") throw new Error("block reason is not a string");
+  return result.reason;
+}
+
 describe("ask goal gate", () => {
   test("blocks ask when goal is active", () => {
     const { fire } = setup();
@@ -274,5 +282,32 @@ describe("ask goal gate", () => {
     };
     await modes.set({ mode: "goal", action: "pause" });
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
+  });
+
+  test("blocked ask result tells the model to follow loaded skills and end its turn", () => {
+    const { fire } = setup();
+    fire("goal_updated", goalUpdated(true, "active"), main());
+    const reason = blockReasonOf(fire("tool_call", askCall, main()));
+    assert.ok(reason.includes("follow the loaded skills"));
+    assert.ok(reason.includes("end your turn"));
+  });
+
+  test("a throwing ctx.agent in goal_updated keeps ask blocked until a clean update", () => {
+    const { fire } = setup();
+    fire("goal_updated", goalUpdated(true, "active"), main());
+    const agentThrows = {
+      get agent(): never {
+        throw new Error("boom");
+      },
+      sessionManager: { getSessionId: () => currentId },
+      sessionModes: undefined,
+    };
+    assert.doesNotThrow(() => fire("goal_updated", goalUpdated(false, "complete"), agentThrows));
+    assert.deepEqual(fire("tool_call", askCall, main()), {
+      block: true,
+      reason: GOAL_UNREADABLE_REASON,
+    });
+    fire("goal_updated", goalUpdated(false, "complete"), main());
+    assert.equal(fire("tool_call", askCall, main()), undefined);
   });
 });

@@ -50,6 +50,10 @@ export default function askGoalGate(pi: ExtensionAPI): void {
     let id: string | undefined;
     try {
       id = sessionIdOf(ctx);
+      // Decision: if the kind read throws, the catch marks this session unreadable, so
+      // its ask stays blocked until a clean goal_updated from that session. A subagent
+      // never reaches a clean update, so its ask stays blocked too; ask is absent in
+      // subagents, so the effect is nil.
       if (ctx.agent.kind !== "main") return;
       if (event.state?.enabled === true) engagedSessions.add(id);
       else engagedSessions.delete(id);
