@@ -39,7 +39,7 @@ func maintainPlanner(args []string) error {
 	if len(args) != 1 {
 		return usageError()
 	}
-	root, err := canonicalOmpEciRoot()
+	root, err := canonicalEciRoot()
 	if err != nil {
 		return err
 	}
@@ -309,9 +309,9 @@ func syncPlannerPeer(runtimeRoot, kimi string, built map[string]string, receipt 
 	return nil
 }
 
-// canonicalOmpEciRoot requires the running binary to be the canonical ECI home under HOME. The planner sources
+// canonicalEciRoot requires the running binary to be the canonical ECI home under HOME. The planner sources
 // are read from this root, so a binary run from elsewhere refuses rather than building a foreign tree.
-func canonicalOmpEciRoot() (string, error) {
+func canonicalEciRoot() (string, error) {
 	want, err := filepath.EvalSymlinks(filepath.Join(homeDir(), ".omp", "agent", "eci"))
 	if err != nil {
 		return "", exitError{code: 1, msg: "[ECI_RUNTIME_SOURCE_MISMATCH] canonical ECI home is not available under HOME; no state was changed."}

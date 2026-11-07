@@ -47,7 +47,7 @@ func syncRuntime(args []string) error {
 	if len(args) != 1 {
 		return usageError()
 	}
-	source, err := canonicalOmpEciRoot()
+	source, err := canonicalEciRoot()
 	if err != nil {
 		return err
 	}
