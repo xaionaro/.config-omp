@@ -609,3 +609,46 @@ func TestPlannerApplyIgnoredHangupDoesNotAbort(t *testing.T) {
 		t.Errorf("transactions left: %v", left)
 	}
 }
+
+// TestPlannerApplyInterruptKillsBuildGroup interrupts a build whose go command leaves a child in the build's process
+// group. Cancelling the build must kill the whole group, so the child returns promptly with the build-phase message.
+// If only the go command were killed, the child would keep the group alive, and the child would return only after the
+// bounded group wait, past the deadline.
+func TestPlannerApplyInterruptKillsBuildGroup(t *testing.T) {
+	fx := newPlannerFixture(t)
+	before := fx.seedPreviousPair(t)
+	dir := t.TempDir()
+	pgidFile := filepath.Join(dir, "pgid")
+	t.Cleanup(func() {
+		// Kill the group the wrapper recorded, so no sleeper outlives the test.
+		if b, err := os.ReadFile(pgidFile); err == nil {
+			var pgid int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pgid); err == nil && pgid > 0 {
+				syscall.Kill(-pgid, syscall.SIGKILL)
+			}
+		}
+	})
+	// The wrapper stands in for the go command. It starts a sleeper in the build's process group, records the group
+	// id, and execs the real go command, so the group outlives the go process unless it is killed.
+	wrapper := filepath.Join(dir, "go")
+	writeTestFile(t, wrapper, "#!/bin/sh\nsleep 30 &\necho $$ > \"$ECI_TEST_PGID_FILE\"\nexec \"$ECI_TEST_REAL_GO\" \"$@\"\n", 0o755)
+	wrapped := fx
+	wrapped.goTool = wrapper
+	result := filepath.Join(dir, "outcome")
+	child := plannerStartChild(t, wrapped, "TestPlannerApplyBuildHelper", result,
+		"ECI_TEST_REAL_GO="+fx.goTool, "ECI_TEST_PGID_FILE="+pgidFile)
+	if err := child.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := plannerWaitChild(t, child, 3*time.Second); err != nil {
+		t.Errorf("child exit after SIGTERM: %v", err)
+	}
+	outcome, err := os.ReadFile(result)
+	if err != nil || !strings.Contains(string(outcome), "during the build of ") {
+		t.Errorf("child outcome = %q, %v; want an interruption during the build of a module", outcome, err)
+	}
+	if left := fx.transactions(t); len(left) != 0 {
+		t.Errorf("transactions left: %v", left)
+	}
+	fx.assertPair(t, before)
+}
