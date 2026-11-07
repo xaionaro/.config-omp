@@ -84,7 +84,7 @@ EOF
 (cd -- "$base/src" && env CGO_ENABLED=0 GOTOOLCHAIN=local go build -buildvcs=false -o "$fixtures/native" .)
 (cd -- "$base/src" && env GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 GOTOOLCHAIN=local go build -buildvcs=false -o "$fixtures/macho-arm64" .)
 (cd -- "$base/src" && env GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 GOTOOLCHAIN=local go build -buildvcs=false -o "$fixtures/macho-amd64" .)
-chmod 0755 -- "$fixtures/native" "$fixtures/macho-arm64" "$fixtures/macho-amd64"
+chmod -- 0755 "$fixtures/native" "$fixtures/macho-arm64" "$fixtures/macho-amd64"
 if [ "$host_goarch" = arm64 ]; then other_arch_macho="$fixtures/macho-amd64"; else other_arch_macho="$fixtures/macho-arm64"; fi
 
 if [ "$host_os" = Linux ]; then
@@ -106,7 +106,7 @@ write_receipt() {  # write_receipt <binary> <receipt name>
 install_binary() {  # install_binary <source> installs eci-hook-helper with a matching receipt
   rm -f -- "$bin/eci-hook-helper" "$bin/eci-hook-helper.sha256"
   cp -- "$1" "$bin/eci-hook-helper"
-  chmod 0755 -- "$bin/eci-hook-helper"
+  chmod -- 0755 "$bin/eci-hook-helper"
   write_receipt "$bin/eci-hook-helper" eci-hook-helper
 }
 reset_bin() {
@@ -161,14 +161,14 @@ if [ "$full_loader" = 1 ]; then
   reset_bin; install_binary "$fixtures/native"
   expect_accept native-binary
 
-  reset_bin; install_binary "$fixtures/native"; chmod 0775 -- "$bin/eci-hook-helper"
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0775 "$bin/eci-hook-helper"
   expect_deny group-writable-binary 'is group- or other-writable'
-  reset_bin; install_binary "$fixtures/native"; chmod 0757 -- "$bin/eci-hook-helper"
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0757 "$bin/eci-hook-helper"
   expect_deny other-writable-binary 'is group- or other-writable'
-  reset_bin; install_binary "$fixtures/native"; chmod 0770 -- "$home/.omp/agent/eci"
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0770 "$home/.omp/agent/eci"
   expect_deny group-writable-ancestor 'bin directory or an ancestor is not owned by the current user or root, or is group/other-writable'
-  chmod 0755 -- "$home/.omp/agent/eci"
-  reset_bin; install_binary "$fixtures/native"; chmod 0644 -- "$bin/eci-hook-helper"
+  chmod -- 0755 "$home/.omp/agent/eci"
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0644 "$bin/eci-hook-helper"
   expect_deny non-executable 'is not executable'
   reset_bin; install_binary "$fixtures/native"
   printf '%064d  eci-hook-helper\n' 0 >"$bin/eci-hook-helper.sha256"
@@ -184,11 +184,11 @@ if [ "$full_loader" = 1 ]; then
   expect_deny symlink-binary 'is missing or a symlink'
   reset_bin
   expect_deny missing-binary 'is missing or a symlink'
-  reset_bin; printf '#!/bin/sh\nexit 0\n' >"$bin/eci-hook-helper"; chmod 0755 -- "$bin/eci-hook-helper"
+  reset_bin; printf '#!/bin/sh\nexit 0\n' >"$bin/eci-hook-helper"; chmod -- 0755 "$bin/eci-hook-helper"
   write_receipt "$bin/eci-hook-helper" eci-hook-helper
   expect_deny script "$format_reason"
   reset_bin; { printf '\312\376\272\276'; tail -c +5 -- "$fixtures/native"; } >"$bin/eci-hook-helper"
-  chmod 0755 -- "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
+  chmod -- 0755 "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
   expect_deny fat-magic "$format_reason"
   if [ "$host_os" = Linux ]; then
     reset_bin; cp -- "$fixtures/native" "$bin/eci-hook-helper"
@@ -197,7 +197,7 @@ if [ "$full_loader" = 1 ]; then
     else
       patch_bytes "$bin/eci-hook-helper" 18 '\076\000'
     fi
-    chmod 0755 -- "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
+    chmod -- 0755 "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
     expect_deny elf-machine-patched-with-receipt "$format_reason"
   else
     reset_bin; cp -- "$fixtures/native" "$bin/eci-hook-helper"
@@ -206,7 +206,7 @@ if [ "$full_loader" = 1 ]; then
     else
       patch_bytes "$bin/eci-hook-helper" 4 '\014\000\000\001'
     fi
-    chmod 0755 -- "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
+    chmod -- 0755 "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
     expect_deny macho-cputype-patched-with-receipt "$format_reason"
   fi
 else
@@ -242,7 +242,7 @@ else
   printf 'DENY %s\n' "$ECI_RUNTIME_DENY_REASON"
 fi
 EOF
-    chmod 0755 -- "$root/opt/eci/driver.sh"
+    chmod -- 0755 "$root/opt/eci/driver.sh"
     run_chroot() {  # run_chroot <mode: control|foreign>
       unshare -rm sh -c '
         set -e
@@ -259,7 +259,7 @@ EOF
       ' sh "$root" "$1" "$foreign" 2>&1 || true
     }
     cp -- "$fixtures/native" "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
-    chmod 0755 -- "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
+    chmod -- 0755 "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
     write_receipt "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper" eci-hook-helper
     control_out="$(run_chroot control)"
     case "$control_out" in
@@ -332,10 +332,10 @@ forced_native() {  # forced_native <label> <host cputype> <0|1> <path>
   [ "$rc" -eq "$want" ] || fail "forced darwin is_native $label returned $rc, expected $want"
   pass "is_native forced darwin $label: $want"
 }
-cp -- "$fixtures/native" "$nat/native"; chmod 0755 -- "$nat/native"
-printf '#!/bin/sh\nexit 0\n' >"$nat/script"; chmod 0755 -- "$nat/script"
+cp -- "$fixtures/native" "$nat/native"; chmod -- 0755 "$nat/native"
+printf '#!/bin/sh\nexit 0\n' >"$nat/script"; chmod -- 0755 "$nat/script"
 ln -s -- "$nat/native" "$nat/link"
-cp -- "$fixtures/native" "$nat/nonexec"; chmod 0644 -- "$nat/nonexec"
+cp -- "$fixtures/native" "$nat/nonexec"; chmod -- 0644 "$nat/nonexec"
 if [ "$host_os" = Linux ]; then
   expect_native linux-elf-native 0 "$nat/native"
   cp -- "$fixtures/native" "$nat/elf-machine"
@@ -344,11 +344,11 @@ if [ "$host_os" = Linux ]; then
   else
     patch_bytes "$nat/elf-machine" 18 '\076\000'
   fi
-  chmod 0755 -- "$nat/elf-machine"
+  chmod -- 0755 "$nat/elf-machine"
   expect_native linux-elf-machine-patched 1 "$nat/elf-machine"
 else
   expect_native darwin-macho-native 0 "$nat/native"
-  cp -- "$other_arch_macho" "$nat/other-arch"; chmod 0755 -- "$nat/other-arch"
+  cp -- "$other_arch_macho" "$nat/other-arch"; chmod -- 0755 "$nat/other-arch"
   expect_native darwin-other-arch 1 "$nat/other-arch"
 fi
 expect_native script 1 "$nat/script"
@@ -357,8 +357,8 @@ expect_native non-executable 1 "$nat/nonexec"
 expect_native missing 1 "$nat/missing"
 
 if [ "$host_goarch" = arm64 ]; then host_cpu='0c 00 00 01'; else host_cpu='07 00 00 01'; fi
-cp -- "$fixtures/macho-arm64" "$nat/forced-arm64"; chmod 0755 -- "$nat/forced-arm64"
-cp -- "$fixtures/macho-amd64" "$nat/forced-amd64"; chmod 0755 -- "$nat/forced-amd64"
+cp -- "$fixtures/macho-arm64" "$nat/forced-arm64"; chmod -- 0755 "$nat/forced-arm64"
+cp -- "$fixtures/macho-amd64" "$nat/forced-amd64"; chmod -- 0755 "$nat/forced-amd64"
 forced_native forced-arm64-host-arm64 '0c 00 00 01' 0 "$nat/forced-arm64"
 forced_native forced-amd64-host-arm64 '0c 00 00 01' 1 "$nat/forced-amd64"
 forced_native forced-amd64-host-amd64 '07 00 00 01' 0 "$nat/forced-amd64"
@@ -368,7 +368,7 @@ forced_native forced-symlink '0c 00 00 01' 1 "$nat/link"
 forced_native forced-nonexec '0c 00 00 01' 1 "$nat/nonexec"
 forced_native forced-missing '0c 00 00 01' 1 "$nat/missing"
 cp -- "$fixtures/macho-arm64" "$nat/fat"; { printf '\312\376\272\276'; tail -c +5 -- "$fixtures/macho-arm64"; } >"$nat/fat"
-chmod 0755 -- "$nat/fat"
+chmod -- 0755 "$nat/fat"
 forced_native forced-fat '0c 00 00 01' 1 "$nat/fat"
 
 # Mach-O header test: portable (no descriptor, no BSD-only stat), so it runs under bash 3.2.
@@ -437,7 +437,7 @@ fi
 if command -v shasum >/dev/null 2>&1; then
   dr="$base/darwin-receipt"
   mkdir -p -- "$dr"
-  cp -- "$fixtures/native" "$dr/eci-hook-helper"; chmod 0755 -- "$dr/eci-hook-helper"
+  cp -- "$fixtures/native" "$dr/eci-hook-helper"; chmod -- 0755 "$dr/eci-hook-helper"
   dr_copy="$dr/eci-hook-helper"
   dr_receipt="$dr/eci-hook-helper.sha256"
   dr_digest="$(shasum -a 256 -- "$dr_copy" | cut -d ' ' -f 1)"
@@ -608,7 +608,7 @@ else
   printf '%s %s %s %s %s\n' "$dev" "$ino" "$uid" "$perms" "$type"
 fi
 STAND
-chmod 0755 -- "$dstand/bin/stat"
+chmod -- 0755 "$dstand/bin/stat"
 cat >"$dstand/child.sh" <<'CHILD'
 #!/bin/bash
 # Child for the darwin cases: source the loader, force the Darwin route and the arm64 CPU type, open,
@@ -628,7 +628,7 @@ else
   printf 'OPEN rc=1 reason=%s\n' "$ECI_RUNTIME_DENY_REASON"
 fi
 CHILD
-chmod 0755 -- "$dstand/child.sh"
+chmod -- 0755 "$dstand/child.sh"
 child_out=''
 child_st=0
 child_field() {  # child_field <key>: the value of the child's "<key>=" line
@@ -649,7 +649,7 @@ fresh_tmp() {  # fresh_tmp <name>: a new private TMPDIR, printed
   local d="$dstand/tmp-$1"
   rm -rf -- "$d"
   mkdir -p -- "$d"
-  chmod 0700 -- "$d"
+  chmod -- 0700 "$d"
   printf '%s\n' "$d"
 }
 darwin_accept_check() {  # darwin_accept_check <label> <tmpdir> <what>: accept, copy 0500, dir 0700, closed
@@ -706,13 +706,13 @@ if [ "$host_os" = Linux ]; then
   darwin_deny_check darwin-copy-rename-swap "$ctmp" 'resolves outside the verified bin directory'
   install_binary "$fixtures/macho-arm64"
   ctmp="$(fresh_tmp sticky)"
-  chmod 1777 -- "$ctmp"
+  chmod -- 1777 "$ctmp"
   real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
   darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0
   darwin_accept_check darwin-temp-root-sticky-accept "$ctmp" 'TMPDIR is a real 1777 directory (sticky bit read through %Mp), owner faked to root; accepted, copy under it, close removes it'
   install_binary "$fixtures/macho-arm64"
   ctmp="$(fresh_tmp root-777)"
-  chmod 0777 -- "$ctmp"
+  chmod -- 0777 "$ctmp"
   real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
   darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0
   darwin_deny_check darwin-temp-root-777-denied "$ctmp" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
@@ -723,7 +723,7 @@ install_binary "$fixtures/macho-arm64"
 temp777="$dstand/tmp-777"
 rm -rf -- "$temp777"
 mkdir -p -- "$temp777"
-chmod 0777 -- "$temp777"
+chmod -- 0777 "$temp777"
 darwin_child "$temp777"
 darwin_deny_check darwin-temp-777-not-sticky-denied "$temp777" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
 
@@ -748,7 +748,7 @@ eci_runtime_close_verified
 if [ -n "$second_dir" ] && [ -e "$second_dir" ]; then printf 'SECOND_DIR_AFTER_CLOSE=left\n'; else printf 'SECOND_DIR_AFTER_CLOSE=gone\n'; fi
 printf 'CLOSED\n'
 REOPEN
-chmod 0755 -- "$dstand/reopen.sh"
+chmod -- 0755 "$dstand/reopen.sh"
 reopen_child_run() {  # reopen_child_run <tmpdir> [VAR=value ...]: runs reopen.sh; sets child_out and child_st
   local ctmp="$1" prefix=''
   shift 1
@@ -784,7 +784,7 @@ if [ "$host_os" = Linux ]; then
   tbase="$base/table"
   mkdir -p -- "$tbase/scratch"
   tbin="$tbase/eci-hook-helper"
-  cp -- "$fixtures/native" "$tbin"; chmod 0755 -- "$tbin"
+  cp -- "$fixtures/native" "$tbin"; chmod -- 0755 "$tbin"
   treal="$(cd -P -- "$tbase" && pwd -P)"
   trecpt="$treal/eci-hook-helper.sha256"
   tdigest="$(digest_of "$tbin")"
