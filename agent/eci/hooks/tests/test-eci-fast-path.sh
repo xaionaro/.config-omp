@@ -72,14 +72,15 @@ env -u ECI_ROLE HOME="$home" ECI_PROOF_ROOT="$inactive_overflow_edit_root" \
   bash "$ECI_ROOT/hooks/eci-active-gate.sh" <"$inactive_overflow_edit_input" >"$tmp/inactive-overflow-edit.out"
 [ ! -s "$tmp/inactive-overflow-edit.out" ]
 
-# A malformed callback must likewise remain inactive when the bounded scan
-# sees only unrelated entries.  The overflow sentinel is a scan limitation,
-# not an active owner and must not fabricate an identity denial.
+# A malformed callback has no valid session id, so the bounded scan cannot be
+# scoped to a session.  The broad scan counts any candidate, overflow included,
+# as active, so the malformed callback is denied rather than allowed.
+# Session-scoped capacity applies only when the callback names a valid session.
 malformed_overflow_edit_input="$tmp/malformed-overflow-edit.json"
 jq -n --arg cwd "$ROOT" \
   '{session_id:123,cwd:$cwd,tool_name:"Edit",tool_input:{file_path:"inactive-overflow-file.txt"}}' \
   >"$malformed_overflow_edit_input"
 env -u ECI_ROLE HOME="$home" ECI_PROOF_ROOT="$inactive_overflow_edit_root" \
   bash "$ECI_ROOT/hooks/eci-active-gate.sh" <"$malformed_overflow_edit_input" >"$tmp/malformed-overflow-edit.out"
-[ ! -s "$tmp/malformed-overflow-edit.out" ]
+jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_IDENTITY_MALFORMED]"))' "$tmp/malformed-overflow-edit.out" >/dev/null
 printf 'edit marker overflow assertions: PASS\n'
