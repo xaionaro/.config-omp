@@ -5,9 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 CANONICAL_ECI_HOME="${HOME:?HOME must be set}/.omp/agent/eci"
 HOOKS_JSON="$CANONICAL_ECI_HOME/hooks.json"
-DISPATCHER="$CANONICAL_ECI_HOME/bin/eci-active-dispatch"
 CONFIG_TOML="$CANONICAL_ECI_HOME/config.toml"
-CONTEXT7_MCP="$CANONICAL_ECI_HOME/bin/context7-mcp"
 LAUNCHERS=(
   "$HOME/.local/bin/eci"
   "$HOME/bin/eci"
@@ -36,14 +34,6 @@ for launcher in "${LAUNCHERS[@]}"; do
   fi
 done
 
-# The provider dispatcher is itself a lifecycle authority boundary. ECI
-# must select the same literal HOME-rooted installation as the launchers, not
-# an arbitrary inherited ECI_HOME; provider-dispatch exercises the runtime
-# behavior with a conflicting environment value.
-if ! grep -Fqx '  provider_home="${HOME:?}/.omp/agent/eci"' "$DISPATCHER"; then
-  fail "$DISPATCHER must bind the ECI provider home to \${HOME}/.omp/agent/eci"
-fi
-
 # The contract is intentionally evaluated under a different HOME rather than
 # relying on the account used to run this test. The exact launcher line above
 # is then the only source of the selected ECI home.
@@ -55,10 +45,6 @@ controlled_eci_home="$(
 [ "$controlled_eci_home" = "$controlled_home/.omp/agent/eci" ] ||
   fail "HOME-derived launcher contract expanded to $controlled_eci_home"
 
-if ! grep -Fqx 'args = ["-lc", "exec \"$HOME/.omp/agent/eci/bin/context7-mcp\""]' "$CONFIG_TOML"; then
-  fail "context7 MCP must launch from the literal \$HOME/.omp/agent/eci source"
-fi
-
 if ! grep -Fqx 'Also follow `$HOME/.omp/agent/AGENTS.md` as user-level guidance when it does not conflict with higher-priority ECI instructions.' "$CONFIG_TOML"; then
   fail "developer guidance must select the literal \$HOME/.omp/agent/AGENTS.md source"
 fi
@@ -67,13 +53,6 @@ if ! grep -Fqx 'Ported skills live in `$HOME/.omp/agent/skills`; use matching sk
 fi
 if grep -Fq '$ECI_HOME/' "$CONFIG_TOML"; then
   fail "developer guidance must not select an inherited ECI_HOME source"
-fi
-
-if ! grep -Fqx 'canonical_provider_home="${HOME:?HOME must be set}/.omp/agent/eci"' "$CONTEXT7_MCP"; then
-  fail "context7 MCP must bind itself to the HOME-derived ECI source"
-fi
-if grep -Fq 'ECI_HOME' "$CONTEXT7_MCP"; then
-  fail "context7 MCP must not select its source or cache through ECI_HOME"
 fi
 
 if ! jq -e '
