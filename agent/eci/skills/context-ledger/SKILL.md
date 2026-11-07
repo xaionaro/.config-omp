@@ -54,9 +54,9 @@ For ECI/ATE, these records live at:
 ```text
 $HOME/.agent/context/sessions/$SESSION_ID/project-understanding.yaml   # the ledger
 $HOME/.agent/context/sessions/$SESSION_ID/high_level_log.jsonl          # the log
-${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/forecasts.yaml                # current forecasts, when applicable
-${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/latest-status-report.yaml    # the report
-${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/forecast-target-history.tsv # target history
+$HOME/.agent/context/sessions/$SESSION_ID/forecasts.yaml                # current forecasts, when applicable
+$HOME/.agent/context/sessions/$SESSION_ID/latest-status-report.yaml    # the report
+$HOME/.agent/context/sessions/$SESSION_ID/forecast-target-history.tsv # target history
 ```
 
 Do not store any of these files in the project/repo. Keep the canonical filenames above; session-snapshot pruning ignores directories younger than 30 days.
