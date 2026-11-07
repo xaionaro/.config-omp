@@ -22,7 +22,7 @@ mkdir -p -- "$RUNTIME_ROOT/bin"
 # Build the disposable runtime from its copied sources. Clean archives contain
 # neither ignored executables nor optional planner provenance.
 source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
-PATH="/usr/lib/go-1.26/bin:$PATH" eci_runtime_build_missing "$RUNTIME_ROOT" \
+PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
   eci-command-gate-mode eci-command-plan eci-safe-import eci-worker-git
 source_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
 if cmp -s -- <(head -n 9 -- "$RUNTIME_ROOT/hooks/validate-bash.sh") <(cat <<'BRIDGE'
