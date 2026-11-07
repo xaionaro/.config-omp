@@ -2388,8 +2388,8 @@ assert_concurrency_section_placement() {
 
 assert_go_preference() {
   require_text "$ATE" 'concrete failure diagnosis uses debugging-discipline first.'
-  require_text "$ROOT/AGENTS.md" '- Use Go, not Python, for new code, scripts, helpers, and tooling. Do not port existing Python solely to apply this preference.'
-  require_text "$ROOT/AGENTS.md" '| Debugging/test failures/unexpected behavior/performance/build failures | `debugging-discipline` |'
+  require_text "$ROOT/../eci-binding-contract.md" '- Use Go, not Python, for new code, scripts, helpers, and tooling. Do not port existing Python solely to apply this preference.'
+  require_text "$ROOT/../eci-binding-contract.md" '| Debugging/test failures/unexpected behavior/performance/build failures | `debugging-discipline` |'
 }
 
 assert_status_lane_stage_contract() {
