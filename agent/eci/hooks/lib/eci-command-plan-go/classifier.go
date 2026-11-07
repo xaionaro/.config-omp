@@ -4637,9 +4637,12 @@ func inspectProofPathOwnershipExact(
 			}
 			if controlPath != "" {
 				if isCanonicalWorkerHandoffPath(controlPath, request.ActiveMarkers) &&
-					filepath.Base(controlPath) != "high_level_log.jsonl" {
-					// TODO: preserve foreign handoff inode ownership when provider
-					// callbacks inspect an ordinary hardlink's pathname only.
+					filepath.Base(controlPath) != "high_level_log.jsonl" &&
+					(lexical == controlPath || (resolveErr == nil && resolved == controlPath)) {
+					// The destination is the canonical handoff inode by its own
+					// pathname; the provider owns that exact file.  An alias
+					// with a different pathname that shares the inode falls
+					// through to the concrete control-target denial below.
 					deferToProvider = true
 					continue
 				}
