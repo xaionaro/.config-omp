@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import askGoalGate, { GOAL_BLOCK_REASON, GOAL_UNREADABLE_REASON } from "./ask-goal-gate.ts";
+import askGoalGate, { GOAL_BLOCK_REASON, GOAL_UNREADABLE_REASON } from "../extensions/ask-goal-gate.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
