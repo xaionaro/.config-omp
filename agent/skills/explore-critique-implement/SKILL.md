@@ -57,7 +57,7 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 ## Spawn skill routing
 
-Before the first Worker spawn for a new root package, complete the Job record and Orchestrator publication in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain).
+Before any Worker spawn, apply the spawn rule in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain) to the Job, root or child.
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
