@@ -196,6 +196,110 @@ func TestMetadataRejectsOversizeWithoutFinalNewline(t *testing.T) {
 	}
 }
 
+func TestMetadataParse(t *testing.T) {
+	const withParent = `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"thr-1"}}}}}`
+	const nullParent = `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"other":1}}}}}`
+	const emptySpawn = `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{}}}}}`
+	const payloadFirst = `{"payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"p"}}}},"type":"session_meta"}`
+	const notSession = `{"type":"event","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"x"}}}}}`
+	const noSubagent = `{"type":"session_meta","payload":{"source":"cli"}}`
+
+	cases := []struct {
+		name   string
+		in     string
+		want   *string
+		isNone bool
+		isErr  bool
+	}{
+		{name: "parent", in: withParent, want: strPtr("thr-1")},
+		{name: "null parent", in: nullParent},
+		{name: "empty thread_spawn object", in: emptySpawn, isErr: true},
+		{name: "payload before type", in: payloadFirst, want: strPtr("p")},
+		{name: "non session_meta", in: notSession, isNone: true},
+		{name: "non-object source", in: noSubagent, isErr: true},
+		{name: "empty object", in: `{}`, isErr: true},
+		{name: "truncated", in: `{"type":"session_meta","payload":{`, isErr: true},
+		{name: "bad escape in skipped string", in: `{"type":"x","k":"\q"}`, isErr: true},
+		{name: "NaN in skipped value", in: `{"type":"x","k":NaN}`, isErr: true},
+	}
+	for _, tc := range cases {
+		meta, err := parseThreadSpawnMetadata([]byte(tc.in))
+		if tc.isErr {
+			if err == nil {
+				t.Fatalf("%s: want error", tc.name)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: unexpected error %v", tc.name, err)
+		}
+		if tc.isNone {
+			if meta != nil {
+				t.Fatalf("%s: want None", tc.name)
+			}
+			continue
+		}
+		if meta == nil {
+			t.Fatalf("%s: want metadata, got None", tc.name)
+		}
+		switch {
+		case tc.want == nil && meta.parentThreadID != nil:
+			t.Fatalf("%s: want null parent", tc.name)
+		case tc.want != nil && (meta.parentThreadID == nil || *meta.parentThreadID != *tc.want):
+			t.Fatalf("%s: wrong parent", tc.name)
+		}
+	}
+}
+
+func TestMetadataModeOutput(t *testing.T) {
+	sessions := t.TempDir()
+	path := filepath.Join(sessions, "m.jsonl")
+	line := `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"thr-9"}}}}}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, out := runMode(t, []string{"hook-transcript-thread-spawn-metadata", sessions},
+		`{"transcript_path":"`+path+`"}`)
+	if status != 0 || out != `{"parent_thread_id":"thr-9"}` {
+		t.Fatalf("metadata: status=%d out=%q", status, out)
+	}
+}
+
+func TestThreadSpawnParentIDInsideBound(t *testing.T) {
+	const head = `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"thr-in"}}}},"padding":"`
+	const tail = `"}}`
+	history := `{"padding":"` + strings.Repeat("h", 1<<20) + `"}` + "\n"
+	for _, padding := range []int{4000, inputBudget - len(head) - len(tail) - 1} {
+		record := head + strings.Repeat("p", padding) + tail + "\n"
+		path := filepath.Join(t.TempDir(), "m.jsonl")
+		if err := os.WriteFile(path, []byte(record+history), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		status, out := runMode(t, []string{"hook-transcript-thread-spawn-metadata", filepath.Dir(path)},
+			`{"transcript_path":"`+path+`"}`)
+		if status != 0 || out != `{"parent_thread_id":"thr-in"}` {
+			t.Fatalf("padding %d: status=%d out=%q", padding, status, out)
+		}
+	}
+}
+
+func TestThreadSpawnRejectsOversizeWithoutFinalNewline(t *testing.T) {
+	const head = `{"type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"thr-big"}}}},"padding":"`
+	const tail = `"}`
+	record := head + strings.Repeat("p", 1<<20) + tail
+	path := filepath.Join(t.TempDir(), "big.jsonl")
+	if err := os.WriteFile(path, []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, out := runMode(t, []string{"hook-transcript-thread-spawn-metadata", filepath.Dir(path)},
+		`{"transcript_path":"`+path+`"}`)
+	if status != 2 || out != "" {
+		t.Fatalf("oversize without newline: status=%d out=%q", status, out)
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
 func TestTranscriptStatus(t *testing.T) {
 	sessions := t.TempDir()
 	write := func(rel, content string) string {

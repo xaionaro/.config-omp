@@ -5,6 +5,8 @@
 //
 //	stdin                                   echo bounded, valid stdin
 //	hook-transcript-first-record <root>     first JSON record of the transcript named by stdin
+//	hook-transcript-thread-spawn-metadata <root>
+//	                                        parent_thread_id of the transcript named by stdin
 //	hook-transcript-status <root>           main, subagent, or unknown for the transcript named by stdin
 //	security-reminder                       opt-in advisory for an edit tool event on stdin
 //	reviewer-filter <corpus> <extra> <threshold>
@@ -40,6 +42,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return status
 		}
 		return transcriptFirstRecord(args[1], path, stdout)
+	case len(args) == 2 && args[0] == "hook-transcript-thread-spawn-metadata":
+		path, status := hookTranscriptPath(stdin)
+		if status != statusOK {
+			return status
+		}
+		return transcriptThreadSpawnMetadata(args[1], path, stdout)
 	case len(args) == 2 && args[0] == "hook-transcript-status":
 		path, status := hookTranscriptPath(stdin)
 		if status != statusOK {
