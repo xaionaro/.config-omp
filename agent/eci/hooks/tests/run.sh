@@ -929,6 +929,15 @@ OMP_PARENT_HEADER_LINE='{"type":"session","version":3,"id":"bbbb-child","cwd":"/
 OMP_MESSAGE_LINE='{"type":"message","message":{"role":"user","content":"hello"}}'
 OMP_INIT_LINE='{"type":"session_init","customType":"session_init","data":{}}'
 
+# An omp subagent transcript sits at depth three under the omp sessions root and declares a
+# string parentSession, the header that classifies it as a subagent (hook_context.go:311-322;
+# eci-proof-state.sh:2416-2421). A depth-one codex-style transcript is classified as main.
+write_omp_subagent_transcript() {
+  local path="$1"
+  mkdir -p "$(dirname "$path")" || return 1
+  printf '%s\n' "$OMP_PARENT_HEADER_LINE" "$OMP_MESSAGE_LINE" >"$path"
+}
+
 test_omp_status_main_title_first_depth_two() {
   local path
   path="$(omp_root)/-proj-/main.jsonl"
@@ -1950,8 +1959,8 @@ test_validate_direct_and_apply_block_subagent_ledger_paths() {
   proof_root="$(fresh_proof_root direct-subagent-ledger)"
   ledger_dir="$TMP_ROOT/home/.agent/context/sessions/t00-session"
   mkdir -p "$ledger_dir" || return 1
-  transcript="$(subagent_transcript_path)"
-  write_subagent_transcript "$transcript" || return 1
+  transcript="$(omp_root)/-proj-/parent/child.jsonl"
+  write_omp_subagent_transcript "$transcript" || return 1
 
   while IFS= read -r ledger; do
     for tool in Edit Write MultiEdit NotebookEdit; do
