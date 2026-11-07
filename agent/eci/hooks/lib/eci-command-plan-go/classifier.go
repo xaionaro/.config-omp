@@ -26,7 +26,7 @@ const (
 	maxWrapperDepth             = 8
 	maxReachableStates          = 128
 	maxProofAnchors             = 128
-	timeoutProbeTimeout         = 150 * time.Millisecond
+	timeoutProbeTimeout         = 5 * time.Second
 	timeoutProbeWaitDelay       = 25 * time.Millisecond
 	timeoutProbeChild           = "/usr/bin/printf"
 	timeoutProbeAcknowledgement = "eci-timeout-child-launch-v1"
