@@ -53,9 +53,9 @@ Workers explicitly deliver progress and final reports before returning. Preserve
 
 ## Job hold and tool errors
 
-- The published Orchestrator holds its Job until the Supervisor closes it or tears it down. A report, a candidate ready for approval, or a stand-by does not release the Job. After reporting, it waits idle as the still-published owner; the Supervisor or a Worker revives it with `write agent://<id>`. See [Counts and ownership](#counts-and-ownership).
-- On a tool error while its Job is open (for example `wait` returns `Operation aborted` or times out), it reads `proc://` to check its Workers and re-issues the wait on those still running. A tool error is never a stopping point; waits stay bounded per [Active Job compliance](#active-job-compliance).
-- It never ends its turn with an open Job because of a tool error, or with work unreported. Before any turn end, it reports Job state, remaining work, and running Workers to the Supervisor and names itself as still holding the Job. See [Authority and reporting](#authority-and-reporting).
+- The published Orchestrator holds its Job until the Job closes under the closure predicate or the Supervisor tears it down. A report, an outcome ready for acceptance, or a stand-by does not release the Job. See [Counts and ownership](#counts-and-ownership).
+- While any of its Workers runs, it keeps a bounded wait on them. On a tool error (for example `wait` returns `Operation aborted`), it reads `proc://` as documented recovery to check its Workers and re-issues the bounded wait on those still running; a wait timeout triggers any due roster review, then the next wait. A tool error or timeout never ends its turn. Wait bounds follow [Active Job compliance](#active-job-compliance).
+- It ends a turn with its Job open only when none of its Workers runs and it has sent any unreported Job state and remaining work to its parent owner (the Supervisor for a root Job). It then waits idle as the still-published owner; the Supervisor, its parent owner, or a Worker revives it with `write agent://<id>`. See [Authority and reporting](#authority-and-reporting).
 
 ## Active Job compliance
 
