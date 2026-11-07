@@ -2,7 +2,7 @@
 // hook factories. Not discovered as a factory (lives outside pre/ and post/).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 /** Structural subset of omp's ExtensionContext used by the factories. */
 export interface EciSessionContext {
@@ -24,7 +24,11 @@ export interface HookRun {
 	stderr: string;
 }
 
-export const eciHooksDir = (): string => join(process.env.HOME ?? homedir(), ".omp", "agent", "eci", "hooks");
+export const eciHooksDir = (): string => {
+	const home = process.env.HOME;
+	const base = home && isAbsolute(home) ? home : homedir();
+	return join(base, ".omp", "agent", "eci", "hooks");
+};
 
 const TIMEOUT_EXIT = 124;
 const KILL_EXIT = 137;
