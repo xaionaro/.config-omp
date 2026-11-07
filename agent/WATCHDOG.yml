@@ -1,7 +1,7 @@
-# ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and disabled: entry enabled: false)
+# ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
 #   Result: 840 (band 702-858).
-# Entry `enabled: false` is per-advisor and disabled as requested; global `advisor.enabled` (default and `/advisor on` need) gates it independently [OPEN].
+# Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
 # scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
@@ -23,7 +23,7 @@
 #  - whether a three-read budget is enough
 advisors:
   - name: RulesAdvisor
-    enabled: false
+    enabled: true
     model: anthropic/claude-haiku-5-5:max
     tools: [read, grep, glob]
     reviewMode: turn
