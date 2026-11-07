@@ -50,7 +50,7 @@ eci_runtime_elf_matches_host() {
   case "${candidate[7]}" in 00|03) ;; *) return 1 ;; esac
 }
 
-# Path-based host check used by runtime sync (codex 575bb81:6-25); the descriptor loader below does not use it.
+# Path-based host check used by runtime sync (pre-migration source 575bb81:6-25); the descriptor loader below does not use it.
 eci_runtime_binary_is_native() {
   local path="$1" candidate_header host_header index
   local -a candidate=() host=()
