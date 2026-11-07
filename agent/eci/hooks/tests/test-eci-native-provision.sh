@@ -49,7 +49,7 @@ else
 fi
 base="$(mktemp -d -- "${base_parent%/}/eci-native-provision.XXXXXX")"
 base="$(cd -P -- "$base" && pwd -P)"
-trap 'chmod -R u+rwx -- "$base" 2>/dev/null || true; rm -rf -- "$base"' EXIT
+trap '[ ! -s "$base/linger.pid" ] || kill "$(cat -- "$base/linger.pid")" 2>/dev/null || true; chmod -R u+rwx -- "$base" 2>/dev/null || true; rm -rf -- "$base"' EXIT
 
 home="$base/home"
 eci="$home/.omp/agent/eci"
