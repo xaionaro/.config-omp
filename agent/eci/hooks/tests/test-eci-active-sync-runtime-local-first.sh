@@ -11,12 +11,13 @@ trap 'rm -rf -- "$TEST_ROOT"' EXIT HUP INT TERM
 TEST_HOME="$TEST_ROOT/home"
 SOURCE_ECI="$TEST_HOME/.omp/agent/eci"
 TARGET_ECI="$TEST_ROOT/deployed/.omp/agent/eci"
-SOURCE_ECI="$SOURCE_ECI/bin/eci-active"
+ECI_ACTIVE="$SOURCE_ECI/bin/eci-active"
 OUTPUT="$TEST_ROOT/sync-runtime-output"
 
-mkdir -p -- "$TEST_HOME/tmp" "$SOURCE_ECI" "$TEST_ROOT/deployed"
+mkdir -p -- "$TEST_HOME/tmp" "$SOURCE_ECI" "$TEST_ROOT/deployed/.omp/agent"
 cp -a -- "$ROOT/bin" "$SOURCE_ECI/"
 cp -a -- "$ROOT/hooks" "$SOURCE_ECI/"
+cp -a -- "$ROOT/tools" "$SOURCE_ECI/"
 cp -- "$ROOT/hooks.json" "$SOURCE_ECI/hooks.json"
 cp -a -- "$SOURCE_ECI" "$TARGET_ECI"
 
@@ -28,7 +29,7 @@ rm -f -- "$SOURCE_ECI/.eci-runtime-sync-manifest" \
 
 if ! env -u KIMI_CODE_HOME \
   HOME="$TEST_HOME" ECI_RUNTIME_ROOTS="$TARGET_ECI" \
-  "$SOURCE_ECI" sync-runtime >"$OUTPUT" 2>&1; then
+  "$ECI_ACTIVE" sync-runtime >"$OUTPUT" 2>&1; then
   printf 'sync-runtime should succeed when the Kimi peer is unavailable:\n' >&2
   cat -- "$OUTPUT" >&2
   exit 1
