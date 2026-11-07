@@ -57,20 +57,14 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 ## Spawn skill routing
 
-Before the first spawn, map the task to required skills and read each matched skill before spawning. Apply this to every brief, including read-only explorer briefs.
-
-| Task type | Required skills |
-| --- | --- |
-| Code: write, modify, review, diffs, PRs | `coding-common` plus language skills (`coding-go`, `coding-python`) |
-| Prompt, skill, AGENTS.md, or contract text | `harness-tuning` |
-| Explore | Matching rows of the trigger table in `~/.omp/agent/eci-binding-contract.md:213-227` |
+The trigger table in `~/.omp/agent/eci-binding-contract.md` (lines 213-226) is the single authority for skill routing. Before every spawn, including read-only explorer briefs and follow-up briefs to a reused agent, match the task against that table and read each matched skill before spawning. Code tasks match the code, debugging, and test rows; Go and Python skills apply only through their conditional rows.
 
 Every brief includes:
 
-- `Skills:` names the matched skills, or `none, <reason>`.
-- Routing lines: one per trigger row in `~/.omp/agent/eci-binding-contract.md:213-227`. Use `match: <skill>` (naming the triggering files or task kind) or `no match: <reason>` (citing what it was judged against).
+- One Routing line per trigger row, every time: `match: <skill>` (naming the triggering files or task kind) or `no match: <reason>` (citing what it was judged against).
+- `Skills:` lists exactly the `match:` entries from the Routing lines, or `none, <reason>` when there are none. Derive it from the Routing lines; do not write it independently.
 
-The Supervisor fills the Routing lines. Independent review of the filled lines is advisory only.
+Fill the Routing lines before spawning. Treat independent review of them as advisory.
 
 ## Model selection
 
