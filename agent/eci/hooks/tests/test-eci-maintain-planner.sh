@@ -24,6 +24,11 @@ BASELINE_RECEIPT="$TMP_ROOT/full-runtime-receipt"
 
 mkdir -p -- "$HOME_ROOT/tmp" "$FIXTURE_HOME/bin" \
   "$KIMI_HOME/bin" "$PROOF_ROOT/$SESSION_ID"
+MAIN_TRANSCRIPT="$HOME_ROOT/.omp/agent/sessions/maintain-planner/main.jsonl"
+mkdir -p -- "$(dirname -- "$MAIN_TRANSCRIPT")"
+printf '%s\n' \
+  "{\"type\":\"session\",\"version\":3,\"id\":\"$SESSION_ID\",\"cwd\":\"$FIXTURE_HOME\"}" \
+  '{"type":"message","role":"user","content":"maintain planner"}' >"$MAIN_TRANSCRIPT"
 ln -s -- "$HOME_ROOT" "$HOME_ALIAS"
 cp -- "$ROOT/bin/eci-active" "$FIXTURE_HOME/bin/eci-active"
 cp -- "$ROOT/bin/eci-active" "$KIMI_HOME/bin/eci-active"
@@ -119,17 +124,17 @@ mkdir -p -- "$HOME_ROOT/tmp/eci-runtime/eci"
 snapshot_full_runtime_receipt
 
 run_hook() {
-  run_hook_with_eci_home "$1" "$FIXTURE_HOME"
+  run_hook_with_eci_home "$1" "$FIXTURE_HOME" "${2-}"
 }
 
 run_hook_with_eci_home() {
-  run_hook_with_home "$1" "$HOME_ROOT" "$2"
+  run_hook_with_home "$1" "$HOME_ROOT" "$2" "${3-}"
 }
 
 run_hook_with_home() {
-  local command="$1" selected_home="$2" selected_eci_home="$3" output="$TMP_ROOT/hook-output-$RANDOM"
-  jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$command" \
-    '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}' |
+  local command="$1" selected_home="$2" selected_eci_home="$3" transcript="${4-}" output="$TMP_ROOT/hook-output-$RANDOM"
+  jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$command" --arg transcript "$transcript" \
+    '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)' |
     HOME="$selected_home" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$selected_eci_home" KIMI_CODE_HOME="$KIMI_HOME" \
       ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
       bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$output"
@@ -137,7 +142,7 @@ run_hook_with_home() {
 }
 
 exact_command='$HOME/.omp/agent/eci/bin/eci-active maintain-planner'
-exact_output="$(run_hook "$exact_command")"
+exact_output="$(run_hook "$exact_command" "$MAIN_TRANSCRIPT")"
 [ ! -e "$PLANNER_SENTINEL" ] || {
   printf '%s\n' 'exact maintenance route invoked the stale planner' >&2
   exit 1
@@ -152,7 +157,7 @@ exact_output="$(run_hook "$exact_command")"
 # as the same lifecycle form. It must receive the same receipt-bound bootstrap
 # route rather than falling through to the broken planner.
 quoted_exact_command='"$HOME/.omp/agent/eci/bin/eci-active" maintain-planner'
-quoted_exact_output="$(run_hook "$quoted_exact_command")"
+quoted_exact_output="$(run_hook "$quoted_exact_command" "$MAIN_TRANSCRIPT")"
 [ ! -e "$PLANNER_SENTINEL" ] || {
   printf '%s\n' 'quoted exact maintenance route invoked the stale planner' >&2
   exit 1
@@ -163,7 +168,7 @@ quoted_exact_output="$(run_hook "$quoted_exact_command")"
 # environment variable into lifecycle authority.
 alternate_eci="$TMP_ROOT/alternate-eci"
 mkdir -p -- "$alternate_eci"
-alternate_home_output="$(run_hook_with_eci_home "$exact_command" "$alternate_eci")"
+alternate_home_output="$(run_hook_with_eci_home "$exact_command" "$alternate_eci" "$MAIN_TRANSCRIPT")"
 [ ! -e "$PLANNER_SENTINEL" ] || {
   printf '%s\n' 'HOME-bound maintenance route invoked the stale planner under alternate ECI_HOME' >&2
   exit 1
@@ -177,7 +182,7 @@ alternate_home_output="$(run_hook_with_eci_home "$exact_command" "$alternate_eci
 # A parent alias of HOME must not turn the exact lexical `$HOME/.omp/agent/eci`
 # lifecycle spelling into an unbound runtime root.  The receipt and all
 # source files remain in the same physical provider directory.
-aliased_home_output="$(run_hook_with_home "$exact_command" "$HOME_ALIAS" "$alternate_eci")"
+aliased_home_output="$(run_hook_with_home "$exact_command" "$HOME_ALIAS" "$alternate_eci" "$MAIN_TRANSCRIPT")"
 [ ! -e "$PLANNER_SENTINEL" ] || {
   printf '%s\n' 'HOME-parent alias maintenance route invoked the stale planner' >&2
   exit 1
@@ -200,7 +205,7 @@ snapshot_full_runtime_receipt
 assert_maintenance_target_admitted() {
   local target_command="$1" target_output
 
-  target_output="$(run_hook "$target_command")"
+  target_output="$(run_hook "$target_command" "$MAIN_TRANSCRIPT")"
   [ ! -s "$target_output" ] || {
     printf 'equivalent maintenance target was not admitted: %s\n' "$target_command" >&2
     cat -- "$target_output" >&2
@@ -215,11 +220,17 @@ assert_maintenance_target_admitted '~/.omp/agent/eci/bin/eci-active maintain-pla
 assert_maintenance_target_admitted "$FIXTURE_HOME/bin/eci-active maintain-planner"
 
 kimi_target_output="$(run_hook '"$HOME/.kimi-code/bin/eci-active" maintain-planner')"
+# ECI_LIFECYCLE_TARGET_DENIED is retired (not produced at HEAD or by source
+# 575bb81; see test-validate-bash-classifier.sh:376-378). Assert the denial the
+# hook actually produces for a foreign lifecycle target: a worker-role deny on
+# the coordinator-owned lifecycle control predicate, with no token pin.
 jq -e '
   .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_TARGET_DENIED]"))
+  (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control")) and
+  (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-lifecycle-control")) and
+  (.hookSpecificOutput.permissionDecisionReason | contains("role=worker"))
 ' "$kimi_target_output" >/dev/null || {
-  printf '%s\n' 'different Kimi lifecycle target was not rejected by resolved target identity:' >&2
+  printf '%s\n' 'different Kimi lifecycle target was not denied as worker lifecycle control:' >&2
   cat -- "$kimi_target_output" >&2
   exit 1
 }
@@ -227,7 +238,7 @@ jq -e '
 assert_receipt_drift_admitted() {
   local label="$1" command="$2" output
 
-  output="$(run_hook "$command")"
+  output="$(run_hook "$command" "$MAIN_TRANSCRIPT")"
   [ ! -s "$output" ] || {
     printf 'runtime receipt drift blocked planner maintenance: %s\n' "$label" >&2
     cat -- "$output" >&2
@@ -243,7 +254,7 @@ zero_digest='0000000000000000000000000000000000000000000000000000000000000000'
 
 # The producer-shaped full manifest is accepted by both exact spellings.
 restore_full_runtime_receipt
-valid_full_output="$(run_hook "$exact_command")"
+valid_full_output="$(run_hook "$exact_command" "$MAIN_TRANSCRIPT")"
 [ ! -s "$valid_full_output" ] || {
   printf '%s\n' 'full runtime receipt denied exact planner maintenance:' >&2
   cat -- "$valid_full_output" >&2
@@ -268,7 +279,7 @@ assert_receipt_drift_admitted 'world-writable runtime root' "$exact_command"
 chmod "$fixture_root_mode" -- "$FIXTURE_HOME"
 restore_full_runtime_receipt
 chmod g+w -- "$FIXTURE_HOME/bin" "$FIXTURE_HOME/hooks"
-group_writable_dirs_output="$(run_hook "$quoted_exact_command")"
+group_writable_dirs_output="$(run_hook "$quoted_exact_command" "$MAIN_TRANSCRIPT")"
 [ ! -s "$group_writable_dirs_output" ] || {
   printf '%s\n' 'group-writable managed directories unexpectedly denied maintenance:' >&2
   cat -- "$group_writable_dirs_output" >&2
@@ -372,7 +383,7 @@ restore_full_runtime_receipt
 
 # A resolved same-target lifecycle executable reaches its own CLI for argument
 # validation. The hook owns callback binding, not a second verb/argv grammar.
-extra_output="$(run_hook "$FIXTURE_HOME/bin/eci-active maintain-planner extra")"
+extra_output="$(run_hook "$FIXTURE_HOME/bin/eci-active maintain-planner extra" "$MAIN_TRANSCRIPT")"
 [ ! -s "$extra_output" ] || {
   printf '%s\n' 'same-target lifecycle extra argument was denied by the hook instead of reaching the CLI:' >&2
   cat -- "$extra_output" >&2
