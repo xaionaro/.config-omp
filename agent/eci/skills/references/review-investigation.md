@@ -1,0 +1,17 @@
+# Review investigation
+
+Actively investigate undesirable consequences of the code or design within the assigned review scope, including consequences of behavior working as intended. Brainstorm plausible hypotheses, investigate them against current sources and representative uses, and verify consequential claims with suitable checks. Use confirmed, refuted, and unresolved results to guide continued review. Pursue promising leads according to their plausible impact and uncertainty; passing tests or producing a hypothesis list does not discharge this responsibility. Support the verdict with decisive evidence and disclose material uncertainty. Report supported findings through the existing review contract; reviewers investigate and report, writers repair.
+
+## Interface boundary evidence
+
+For a change introducing or redistributing an interface or responsibility, trace representative consumer actions to relevant existing entry points and owners, including differently named surfaces in dependency repositories. Search from the capability and consumer calls, not only the proposed names. Compare user-facing cohesion separately from runtime or transport ownership. In the existing design selection or architecture conclusion, state the inspected consumer-to-owner paths, compare reuse or extension with the proposed placement, and give the source-backed reason for that placement or its unresolved uncertainty. Contribution scope bounds findings and edits, not contextual reads. Distinct audiences, deployments or lifecycles may justify separate surfaces; preserve explicitly narrow or staged work. Multiple artifacts or similar names alone do not establish duplicated authority.
+
+## Policy failure investigations
+
+When investigating why instructions or reviews allowed a defect, derive the failure class and acceptance criteria from the original directive, applicable policies, and actual decisions. Identify existing violated requirements before proposing new rules: connect each load-bearing source requirement to the concrete violation and the enforcement consequence that was missed. Distinguish absent guidance, missed discovery, and failure to apply known guidance; preserve uncertainty where records cannot distinguish them.
+
+Repair the responsible decision or enforcement boundary for that class. Test the original case and a materially different instance of the same breach, plus a legitimate exception. Finding the missed artifact, loading rules, or collecting PASS reviews does not prove enforcement: check that a remaining applicable violation prevents final acceptance despite otherwise passing behavior. Preserve explicitly bounded scope; a broader causal explanation does not authorize unrelated repairs or an audit.
+
+## Adoption checks
+
+Examine the original directive, relevant contracts/consumers and actual proposed commitment or diff. Test consequential premises with a source-backed alternative or real input: could the action exclude authorized work or lose meaning while local checks pass? Report concrete findings with evidence and needed corrections, or no finding; do not redefine the whole problem. Preserve explicitly narrow or staged work and authorized semantic changes. The responsible writer resolves findings under existing disposition authority, applies the disposition and verifies the resulting artifact plus a representative consumer or action before dependent use. A review recommendation alone is not verified adoption or causal proof.
