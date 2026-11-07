@@ -300,6 +300,63 @@ func TestHookContextHomeAliasAboveRootIsCoordinator(t *testing.T) {
 	require.Equal(t, RoleWorker, got.Role)
 }
 
+// sessionsLinkFixture points HOME at a temporary omp home whose sessions link leads to a store outside it, and returns the store's project directory and a HOME alias.
+//
+// Example: HOME/.omp/agent/sessions -> store/sessions, so ALIAS/.omp/agent/sessions/project is store/sessions/project.
+func sessionsLinkFixture(t *testing.T) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	project := filepath.Join(t.TempDir(), "sessions", "project")
+	require.NoError(t, os.MkdirAll(project, 0700))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".omp", "agent"), 0700))
+	require.NoError(t, os.Symlink(filepath.Dir(project), filepath.Join(home, ".omp", "agent", "sessions")))
+	alias := filepath.Join(t.TempDir(), "alias")
+	require.NoError(t, os.Symlink(home, alias))
+	return project, alias
+}
+
+// TestHookContextSessionsLinkIsExemptFromIntoRootRule accepts a main transcript whose configured sessions link is itself a symlink into the store, both through a HOME alias and through the real HOME.
+//
+// Example: ALIAS/.omp/agent/sessions/project/C.jsonl with HOME/.omp/agent/sessions -> store/sessions is main, and so is the same file spelled via HOME.
+func TestHookContextSessionsLinkIsExemptFromIntoRootRule(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project, alias := sessionsLinkFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	transcript := filepath.Join(alias, ".omp", "agent", "sessions", "project", "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.NoError(t, err)
+	require.Equal(t, "main", status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleCoordinator, got.Role)
+	direct := filepath.Join(os.Getenv("HOME"), ".omp", "agent", "sessions", "project", "C.jsonl")
+	status, err = hookTranscriptStatus(direct)
+	require.NoError(t, err)
+	require.Equal(t, "main", status)
+	got, err = hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: direct})
+	require.NoError(t, err)
+	require.Equal(t, RoleCoordinator, got.Role)
+}
+
+// TestHookContextSessionsLinkDoesNotExemptReentryBelowIt keeps a symlink below the exempt sessions link that re-enters the root unknown.
+//
+// Example: ALIAS/.omp/agent/sessions/project/up -> root makes project/up/project/C.jsonl unknown.
+func TestHookContextSessionsLinkDoesNotExemptReentryBelowIt(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project, alias := sessionsLinkFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	require.NoError(t, os.Symlink(filepath.Dir(project), filepath.Join(project, "up")))
+	transcript := filepath.Join(alias, ".omp", "agent", "sessions", "project", "up", "project", "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "crosses a symlink")
+	require.Empty(t, status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
 // TestHookContextSymlinkIntoRootAboveMatchIsWorker rejects a HOME alias whose path re-enters the sessions root through a symlink inside it.
 //
 // Example: HOME/s -> root/project and root/project/up -> root make HOME/s/up/project/C.jsonl unknown.
