@@ -367,7 +367,7 @@ write_peer_receipt() {
     rm -f -- "$receipt_tmp" 2>/dev/null || true
     return 0
   fi
-  if ! chmod 600 -- "$receipt_tmp"; then
+  if ! chmod -- 600 "$receipt_tmp"; then
     printf 'ECI runtime maintenance advisory: could not set peer receipt mode: %s\n' "$receipt_tmp" >&2
   fi
   if ! mv -f -- "$receipt_tmp" "$receipt"; then
