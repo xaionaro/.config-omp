@@ -150,9 +150,14 @@ func TestRepositoryAllowStatusFailsClosedOnInvalidRecord(t *testing.T) {
 
 // TestRepositoryAllowOnRefusesCwdOutsideWorktree refuses an allowance from a directory that no git worktree contains and writes no record.
 func TestRepositoryAllowOnRefusesCwdOutsideWorktree(t *testing.T) {
+	t.Setenv("LC_ALL", "C")
 	fx := newRepoAllowFixture(t)
 	repo := fx.makeRepo(t, "target")
-	t.Chdir(t.TempDir())
+	outside := t.TempDir()
+	t.Chdir(outside)
+	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").CombinedOutput(); err == nil {
+		t.Fatalf("fixture directory %s is inside a git work tree (%s); set TMPDIR outside any repository", outside, out)
+	}
 
 	out, err := captureStdout(t, func() error {
 		return repositoryAllowOn([]string{"repository-allow-on", repo, "test reason"})
