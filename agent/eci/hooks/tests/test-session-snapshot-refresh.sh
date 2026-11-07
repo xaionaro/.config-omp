@@ -256,103 +256,77 @@ test_old_marker_dir_with_symlink_eci_marker_is_pruned() {
   [ ! -e "$marker_dir" ] && [ ! -L "$marker_dir" ] && [ -s "$target" ]
 }
 
-# A source-only checkout must bootstrap through the actual SessionStart hook.
-test_session_start_builds_missing_go_tools() {
+# A source-only checkout has no native tools. SessionStart must not compile them;
+# hooks/build-native-binaries.sh provisions the canonical pair into bin/, and
+# bin/eci-runtime-sync verifies that pair and provisions the Kimi peer copy.
+test_source_checkout_provisions_native_tools_into_bin() {
   local HOME="$TMP_ROOT/home"
-  local fixture="$HOME/.omp/agent/eci" module binary before after first second
-  local -a binaries=("$fixture/bin/eci-command-gate-mode")
-  # Pair tools publish to the owner's runtime root, not into the checkout.
-  local -a published=(
-    "$HOME/tmp/eci-runtime/eci/eci-command-plan"
-    "$HOME/tmp/eci-runtime/eci/eci-safe-import"
-    "$HOME/tmp/eci-runtime/eci/eci-hook-helper"
-  )
-  mkdir -p "$fixture/hooks/lib" "$fixture/bin" "$HOME/tmp" "$TMP_ROOT/build-config"
-  cp "$ROOT/hooks/session-snapshot.sh" "$fixture/hooks/"
-  cp "$ROOT/bin/eci-active" "$fixture/bin/"
-  cp "$ROOT/bin/eci-runtime-sync" "$fixture/bin/"
+  local fixture="$HOME/.omp/agent/eci" module tool importer_saved
+  local kimi="$TMP_ROOT/kimi/.kimi-code"
+  local -a tools=(eci-command-plan eci-safe-import eci-hook-helper)
+  mkdir -p "$fixture/hooks/lib" "$fixture/bin" "$HOME/tmp" "$kimi"
+  cp "$ROOT/hooks/session-snapshot.sh" "$ROOT/hooks/build-native-binaries.sh" "$fixture/hooks/"
+  cp "$ROOT/bin/eci-active" "$ROOT/bin/eci-runtime-sync" "$fixture/bin/"
   cp "$ROOT/hooks/lib/"*.sh "$fixture/hooks/lib/"
-  for module in eci-command-gate-mode-go eci-command-plan-go eci-safe-import-go eci-hook-helper-go eci-worker-git-go; do
-    mkdir -p "$fixture/hooks/lib/$module"
-    cp "$ROOT/hooks/lib/$module/go.mod" "$ROOT/hooks/lib/$module/"*.go "$fixture/hooks/lib/$module/"
-    [ ! -f "$ROOT/hooks/lib/$module/go.sum" ] || cp "$ROOT/hooks/lib/$module/go.sum" "$fixture/hooks/lib/$module/"
+  cp -a "$ROOT/tools" "$fixture/tools"
+  for module in eci-command-plan-go eci-safe-import-go eci-hook-helper-go eci-worker-git-go; do
+    cp -a "$ROOT/hooks/lib/$module" "$fixture/hooks/lib/$module"
   done
+
+  # SessionStart reports nothing and compiles nothing.
   printf '%s\n' '{"session_id":"build-test","cwd":"/tmp"}' |
     bash "$fixture/hooks/session-snapshot.sh" >"$TMP_ROOT/build.out"
-  for binary in "${binaries[@]}" "${published[@]}"; do
-    [ -x "$binary" ] || {
-      printf 'SessionStart did not build %s\n' "$binary" >&2
-      return 1
-    }
-  done
   [ ! -s "$TMP_ROOT/build.out" ]
-  XDG_CONFIG_HOME="$TMP_ROOT/build-config" "$fixture/bin/eci-command-gate-mode" get |
-    jq -e '.mode == "enforcing" or .mode == "permissive"' >/dev/null
-  printf '%s\n' '{"provider":"eci","role":"coordinator","cwd":"/tmp","marker":"inactive","command":"pwd"}' |
-    "${published[0]}" |
+  for tool in "${tools[@]}"; do
+    [ ! -e "$fixture/bin/$tool" ]
+    [ ! -e "$fixture/bin/$tool.sha256" ]
+  done
+
+  bash "$fixture/hooks/build-native-binaries.sh" >"$TMP_ROOT/provision.out"
+  for tool in "${tools[@]}"; do
+    [ -x "$fixture/bin/$tool" ]
+    [ -f "$fixture/bin/$tool.sha256" ]
+  done
+  KIMI_CODE_HOME="$kimi" "$fixture/bin/eci-runtime-sync" planner-check --target "$kimi" >"$TMP_ROOT/check.out"
+  [ "$(cat "$TMP_ROOT/check.out")" = "$(printf 'OK\tmanaged pair\teci')" ]
+  KIMI_CODE_HOME="$kimi" "$fixture/bin/eci-runtime-sync" planner-apply --target "$kimi" >"$TMP_ROOT/peer.out"
+  for tool in "${tools[@]}"; do
+    cmp -- "$fixture/bin/$tool" "$kimi/bin/$tool"
+    cmp -- "$fixture/bin/$tool.sha256" "$kimi/bin/$tool.sha256"
+  done
+
+  printf '%s\n' '{"provider":"omp","role":"coordinator","cwd":"/tmp","marker":"inactive","command":"pwd"}' |
+    "$fixture/bin/eci-command-plan" |
     jq -e '.decision == "allow"' >/dev/null
   mkdir -p "$TMP_ROOT/import-proof/build-test"
   printf '%s\n' 'build test report' >"$TMP_ROOT/import-report"
-  "${published[1]}" \
+  "$fixture/bin/eci-safe-import" \
     --proof-root "$(realpath "$TMP_ROOT/import-proof")" --session-dir "$(realpath "$TMP_ROOT/import-proof/build-test")" \
     --leaf wait-report --source "$TMP_ROOT/import-report"
   cmp "$TMP_ROOT/import-report" "$TMP_ROOT/import-proof/build-test/eci_user_owned_wait.md"
 
-  before="$(stat -c '%i:%Y:%s' "${binaries[@]}" "${published[@]}")"
-  # A compiler that fails proves warm starts do not attempt another build.
-  mkdir -p "$TMP_ROOT/failing-compiler"
-  cat >"$TMP_ROOT/failing-compiler/go" <<'EOF'
-#!/bin/sh
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = -o ]; then
-    shift
-    printf 'partial compiler output\n' >"$1"
-    break
-  fi
-  shift
-done
-printf 'compiler intentionally unavailable\n' >&2
-exit 1
-EOF
-  chmod +x "$TMP_ROOT/failing-compiler/go"
-  printf '%s\n' '{"session_id":"build-test","cwd":"/tmp"}' |
-    PATH="$TMP_ROOT/failing-compiler:$PATH" bash "$fixture/hooks/session-snapshot.sh" \
-      >"$TMP_ROOT/warm.out" 2>"$TMP_ROOT/warm.err"
-  after="$(stat -c '%i:%Y:%s' "${binaries[@]}" "${published[@]}")"
-  [ "$before" = "$after" ] && [ ! -s "$TMP_ROOT/warm.err" ]
-
-  rm "$fixture/bin/eci-command-gate-mode"
-  printf '%s\n' '{"session_id":"build-test","cwd":"/tmp"}' |
-    PATH="$TMP_ROOT/failing-compiler:$PATH" bash "$fixture/hooks/session-snapshot.sh" \
-      >"$TMP_ROOT/failed-build.out" 2>"$TMP_ROOT/failed-build.err"
-  [ ! -e "$fixture/bin/eci-command-gate-mode" ]
-  grep -q 'could not build.*eci-command-gate-mode' "$TMP_ROOT/failed-build.err"
-  [ ! -s "$TMP_ROOT/failed-build.out" ]
-  [ -z "$(find "$fixture" -type d -name '.eci-go-build.*' -print -quit)" ]
-
-  # Two cold starts must publish a working tool and invoke the compiler once.
-  printf '%s\n' '{"session_id":"build-test"}' |
-    bash "$fixture/hooks/session-snapshot.sh" >"$TMP_ROOT/first.out" 2>"$TMP_ROOT/first.err" &
-  first=$!
-  printf '%s\n' '{"session_id":"build-test"}' |
-    bash "$fixture/hooks/session-snapshot.sh" >"$TMP_ROOT/second.out" 2>"$TMP_ROOT/second.err" &
-  second=$!
-  wait "$first"
-  wait "$second"
-  [ "$(cat "$TMP_ROOT/first.err" "$TMP_ROOT/second.err" | grep -c 'Building missing Go tool:')" = 1 ]
-  XDG_CONFIG_HOME="$TMP_ROOT/build-config" "$fixture/bin/eci-command-gate-mode" get | jq -e '.mode' >/dev/null
-  # The importer must be recovered on demand when deleted mid-session. on/wait
-  # are retired; manifest-write is the surviving safe-import caller.
-  rm "${published[1]}"
+  # manifest-write never recovers a missing importer: it fails closed and names
+  # the provisioning step. Restoring the provisioned binary then succeeds.
+  importer_saved="$TMP_ROOT/eci-safe-import.provisioned"
+  cp -p -- "$fixture/bin/eci-safe-import" "$importer_saved"
+  rm -- "$fixture/bin/eci-safe-import"
   mkdir -p "$TMP_ROOT/import-proof/import-on-demand"
   printf '%s\n' '{"critics":[]}' >"$TMP_ROOT/import-manifest.json"
+  if (
+    cd "$fixture"
+    export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
+    "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null 2>"$TMP_ROOT/manifest.err"
+  ); then
+    return 1
+  fi
+  grep -Fq 'requires the native eci-safe-import binary; run hooks/build-native-binaries.sh.' "$TMP_ROOT/manifest.err"
+  cp -p -- "$importer_saved" "$fixture/bin/eci-safe-import"
   (
     cd "$fixture"
     export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
     "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null
   )
   cmp "$TMP_ROOT/import-manifest.json" "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
-  [ -x "${published[1]}" ]
 }
 
 if [ "${1:-}" = --lock-paths-only ]; then
@@ -362,9 +336,9 @@ if [ "${1:-}" = --lock-paths-only ]; then
   exit 0
 fi
 
-test_session_start_builds_missing_go_tools
-if [ "${1:-}" = --build-only ]; then
-  printf '%s\n' 'session-snapshot missing Go build tests: PASS'
+test_source_checkout_provisions_native_tools_into_bin
+if [ "${1:-}" = --provision-only ]; then
+  printf '%s\n' 'source checkout native provisioning tests: PASS'
   exit 0
 fi
 test_active_eci_refresh_signal_for_session_start_reminder
