@@ -125,13 +125,17 @@ eci_marker_file_is_bounded() {
   [ "$within" = true ]
 }
 
-# Enumerate only a finite number of immediate-session eci_active candidates.
+# Enumerate a finite number of eci_active candidates.  When a session is
+# supplied, only that session's direct marker directories (bare or
+# session_-prefixed) are scanned, so markers owned by other sessions never
+# consume capacity or emit the overflow token.  An empty session keeps the
+# broad proof-root scan, bounded by eci_marker_scan_max_candidates.
 # Unrelated proof files/directories do not consume marker capacity. Callers
 # treat the overflow token as unsafe control state; malformed or unsafe
 # candidates remain in the stream for strict validation rather than being
 # silently discarded.
 eci_marker_candidates_bounded() {
-  local root entry listing count=0
+  local session="${1:-}" root entry listing name count=0
 
   root="$(eci_proof_root)"
   if ! eci_proof_root_is_safe; then
@@ -141,6 +145,22 @@ eci_marker_candidates_bounded() {
   # An absent or unsearchable root has no visible markers: nothing to scan.
   [ -d "$root" ] || return 0
   [ -r "$root" ] && [ -x "$root" ] || return 0
+  if [ -n "$session" ]; then
+    eci_valid_session_id "$session" || return 0
+    for name in "$session" "session_$session"; do
+      [ -e "$root/$name" ] || continue
+      # Same fail-closed rule as the broad scan: an unreadable directory is
+      # unknown state, not an empty session.
+      listing="$(find "$root/$name" -maxdepth 1 -name eci_active -print 2>/dev/null)" || {
+        printf '%s\n' "$eci_marker_scan_unsafe_token"
+        return 0
+      }
+      if [ -n "$listing" ]; then
+        printf '%s\n' "$listing"
+      fi
+    done
+    return 0
+  fi
   # A failed listing (unreadable session directory, root removed mid-scan) is
   # unknown state, not an empty scan: report it as unsafe so every caller
   # treats the marker state as active and fails closed.
@@ -2097,7 +2117,7 @@ eci_markers_for_cwd() {
       printf '%s\n' "$marker"
       found=true
     fi
-  done < <(eci_marker_candidates_bounded)
+  done < <(eci_marker_candidates_bounded "$expected_session")
   [ "$found" = true ]
 }
 
