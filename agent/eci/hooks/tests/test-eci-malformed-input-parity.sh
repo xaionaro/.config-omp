@@ -42,7 +42,7 @@ printf '%s\n' \
 run_hook() {
   local provider="$1" payload="$2" output="$TMP_ROOT/$provider.out"
   case "$provider" in
-    eci)
+    omp)
       printf '%s' "$payload" |
         ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" \
         ECI_HOOK_IS_SUBAGENT=true ECI_VALIDATE_CWD="$ROOT" \
@@ -80,7 +80,7 @@ truncated="$(jq -cn --arg cwd "$ROOT" \
   '{session_id:"t00-session",cwd:$cwd,tool_input:{command:"git status --short"}}')"
 truncated="${truncated%?}"
 
-for provider in eci kimi; do
+for provider in omp kimi; do
   typed_output="$(run_hook "$provider" "$typed_malformed")"
   assert_common_diagnostic "$provider" "$typed_output"
   jq -e --arg cwd "$ROOT" '
