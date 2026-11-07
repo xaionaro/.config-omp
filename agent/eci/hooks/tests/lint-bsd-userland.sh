@@ -20,8 +20,9 @@
 # Patterns use bracket expressions so that this file does not match itself.
 # Documented limits (not detected): GNU forms inside strings that a shell later runs (eval, sh -c, bash -c,
 # sh <<<); flags written as quoted words ("-c"); a ")" inside quotes within "$(...)", which ends the kept
-# substitution early; runtime-only bash 4/5 features (coproc, globstar, $EPOCHSECONDS, wait -n); flags held in
-# variables.
+# substitution early; a quoted "}" inside ${...}, which ends the kept expansion early (echo "${x:-"}"}" hides
+# what follows on that line); runtime-only bash 4/5 features (coproc, globstar, $EPOCHSECONDS, wait -n); flags
+# held in variables.
 set -u
 
 lint_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
