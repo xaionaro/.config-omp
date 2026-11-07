@@ -37,13 +37,31 @@ eci_init_tmp() {
   return 0
 }
 
-_eci_fail_open_emit() {
+_eci_fail_closed_emit() {
+  local hook_name="$1" line="$2" exit_code="$3" cmd="$4" reason
+  reason="$(eci_diagnostic_reason "ECI_HOOK_FAIL_CLOSED" "PreToolUse" "hook-fail-closed" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed after its gate decision point; denying the tool call" "inspect the failing command and available temporary-directory/disk state, then retry")"
+  if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_FAIL_CLOSED: a gate hook failed unexpectedly after its decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"}}'
+  fi
+}
+
+# Gate hooks (PreToolUse) fail closed: an unexpected error emits an explicit
+# deny JSON first, and the hook exits 0 only after that JSON is printed.
+eci_install_fail_closed_trap() {
+  local name="${1:-${BASH_SOURCE[1]##*/}}"
+  # shellcheck disable=SC2064
+  trap '_eci_fail_closed_emit "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"; exit 0' ERR
+}
+
+_eci_advisory_emit() {
   local hook_name="$1" line="$2" exit_code="$3" cmd="$4"
   printf '%s\n' "$(eci_diagnostic_reason "ECI_HOOK_FAIL_OPEN" "PreToolUse" "hook-fail-open" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed; failing open" "inspect the failing command and available temporary-directory/disk state before retrying")" >&2
 }
 
-eci_install_fail_open_trap() {
+# Non-gate bookkeeping hooks (for example SessionStart) have no permission
+# decision to deny with; they keep the advisory diagnostic and exit 0.
+eci_install_advisory_fail_open_trap() {
   local name="${1:-${BASH_SOURCE[1]##*/}}"
   # shellcheck disable=SC2064
-  trap '_eci_fail_open_emit "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"; exit 0' ERR
+  trap '_eci_advisory_emit "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"; exit 0' ERR
 }

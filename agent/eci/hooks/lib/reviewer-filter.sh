@@ -14,12 +14,16 @@ fi
 
 reviewer_filter_lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
+# Publishes the filtered reviewer result in REVIEWER_FILTER_RESULT and prints
+# nothing. The verified descriptor is opened and used in the caller's shell, so
+# callers read the global and must never capture this function in $(...).
 filter_violations() {
   local result_json="$1"
   shift || true
-  [ -n "$result_json" ] || { printf '%s' "$result_json"; return 0; }
+  REVIEWER_FILTER_RESULT=""
+  [ -n "$result_json" ] || return 0
 
-  local static_corpus_text extra_text filtered
+  local static_corpus_text extra_text filtered=""
   static_corpus_text=$(
     # shellcheck disable=SC2086 # Space-separated corpus list is intentional.
     cat $REVIEWER_FILTER_CORPUS_FILES 2>/dev/null || true
@@ -32,32 +36,31 @@ filter_violations() {
     done
   )
 
-  local filter_ok=0 filter_rc=0 filter_input="" filter_output=""
+  local filter_ok=0 filter_rc=0 private_dir=""
   if . "$reviewer_filter_lib_dir/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
-    filter_input="$(mktemp -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-reviewer-filter-in.XXXXXX")" || filter_rc=1
+    private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-reviewer-filter.XXXXXX")" || filter_rc=1
     if [ "$filter_rc" -eq 0 ]; then
-      filter_output="$(mktemp -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-reviewer-filter-out.XXXXXX")" || filter_rc=1
+      printf '%s' "$result_json" >"$private_dir/input" || filter_rc=1
     fi
     if [ "$filter_rc" -eq 0 ]; then
-      printf '%s' "$result_json" >"$filter_input" || filter_rc=1
-    fi
-    if [ "$filter_rc" -eq 0 ]; then
-      "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$filter_input" >"$filter_output" 2>/dev/null || filter_rc=$?
+      "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || filter_rc=$?
     fi
     exec {ECI_RUNTIME_BINARY_FD}<&-
+    ECI_RUNTIME_BINARY_FD=''
     if [ "$filter_rc" -eq 0 ]; then
-      filtered="$(cat -- "$filter_output")" && filter_ok=1
+      filtered="$(cat -- "$private_dir/output")" && filter_ok=1
     fi
-    rm -f -- "$filter_input" "$filter_output"
+    [ -z "$private_dir" ] || rm -rf -- "$private_dir"
   else
     printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
   fi
   if [ "$filter_ok" = 1 ] && [ -n "$filtered" ]; then
-    printf '%s' "$filtered"
+    REVIEWER_FILTER_RESULT="$filtered"
   else
     # Fail closed: the filter could not verify any violation, so none are returned.
     # Verdict stays "fail", so the caller still blocks the stop.
     printf '%s\n' "ECI native gate binary eci-hook-helper reviewer-filter produced no result; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" >&2
-    printf '%s' '{"verdict":"fail","violations":[]}'
+    REVIEWER_FILTER_RESULT='{"verdict":"fail","violations":[]}'
   fi
+  return 0
 }

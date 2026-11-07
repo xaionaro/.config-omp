@@ -21,7 +21,10 @@ trap 'rm -rf -- "$tmp_dir"' EXIT HUP INT TERM
 input_file="$tmp_dir/input.json"
 cat >"$input_file"
 
-tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null || true)"
+if ! tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null)"; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input; provision jq and retry"}}'
+  exit 0
+fi
 case "$tool_name" in
 apply_patch) validator="$hook_dir/validate-apply-patch.sh" ;;
 Edit | Write | MultiEdit | NotebookEdit) validator="$hook_dir/validate-edit-write.sh" ;;
@@ -51,26 +54,31 @@ gates=(
   "$hook_dir/eci-active-gate.sh"
 )
 reminder_index=""
+reminder_fd=""
 if [ "${ENABLE_SECURITY_REMINDER:-0}" = 1 ] && security_reminder_candidate "$(<"$input_file")"; then
   if . "$hook_dir/lib/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
-    # Release the verification descriptor before any validator forks; the reminder child opens its own.
-    exec {ECI_RUNTIME_BINARY_FD}<&-
+    # The verified descriptor stays open only until the reminder is launched below, which happens before any validator forks.
     reminder_index="${#gates[@]}"
     gates+=("security-reminder")
+    reminder_fd="$ECI_RUNTIME_BINARY_FD"
   else
     printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
   fi
 fi
 pids=()
+if [ -n "$reminder_index" ]; then
+  # Launch the reminder on the verified descriptor, then release the descriptor so no validator inherits it.
+  "/proc/self/fd/$reminder_fd" security-reminder <"$input_file" >"$tmp_dir/output-$reminder_index" 2>"$tmp_dir/error-$reminder_index" &
+  pids[$reminder_index]=$!
+  exec {reminder_fd}<&-
+fi
 for index in "${!gates[@]}"; do
+  if [ "$index" = "$reminder_index" ]; then
+    continue
+  fi
   output_file="$tmp_dir/output-$index"
   error_file="$tmp_dir/error-$index"
-  if [ "$index" = "$reminder_index" ]; then
-    ( eci_runtime_open_verified eci-hook-helper || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
-      "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" security-reminder <"$input_file" >"$output_file" ) 2>"$error_file" &
-  else
-    bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
-  fi
+  bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
   pids[$index]=$!
 done
 

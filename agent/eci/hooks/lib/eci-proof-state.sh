@@ -2220,27 +2220,29 @@ eci_hook_sessions_root() {
 
 # Run the verified helper on ECI_RUNTIME_BINARY_FD with arguments "$2..." and
 # stdin taken from $1. The helper runs as a simple command in this shell, with
-# stdin and stdout held in temporary files; the descriptor is closed before
-# return. On success the captured stdout is in ECI_HOOK_HELPER_OUTPUT.
+# stdin and stdout held in files inside a private 0700 temporary directory. The
+# descriptor is closed and ECI_RUNTIME_BINARY_FD is cleared before return, so
+# the helper is only usable from the shell that opened it: never call this or
+# any caller of it inside a command substitution. On success the captured
+# stdout is in ECI_HOOK_HELPER_OUTPUT; nothing is printed.
 eci_hook_run_verified_helper() {
-  local input="$1" temp_dir input_file="" output_file="" rc=0
+  local input="$1" private_dir="" rc=0
   shift
-  temp_dir="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
-  input_file="$(mktemp -- "${temp_dir%/}/eci-hook-helper-in.XXXXXX")" || rc=1
+  ECI_HOOK_HELPER_OUTPUT=""
+  [ -n "${ECI_RUNTIME_BINARY_FD:-}" ] || return 1
+  private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-hook-helper.XXXXXX")" || rc=1
   if [ "$rc" -eq 0 ]; then
-    output_file="$(mktemp -- "${temp_dir%/}/eci-hook-helper-out.XXXXXX")" || rc=1
+    printf '%s' "$input" >"$private_dir/input" || rc=1
   fi
   if [ "$rc" -eq 0 ]; then
-    printf '%s' "$input" >"$input_file" || rc=1
-  fi
-  if [ "$rc" -eq 0 ]; then
-    "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" "$@" <"$input_file" >"$output_file" 2>/dev/null || rc=$?
+    "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" "$@" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || rc=$?
   fi
   exec {ECI_RUNTIME_BINARY_FD}<&-
+  ECI_RUNTIME_BINARY_FD=''
   if [ "$rc" -eq 0 ]; then
-    ECI_HOOK_HELPER_OUTPUT="$(cat -- "$output_file")" || rc=1
+    ECI_HOOK_HELPER_OUTPUT="$(cat -- "$private_dir/output")" || rc=1
   fi
-  rm -f -- "$input_file" "$output_file"
+  [ -z "$private_dir" ] || rm -rf -- "$private_dir"
   return "$rc"
 }
 
@@ -2248,26 +2250,26 @@ eci_hook_transcript_first_record() {
   local input="${1:-}"
   local sessions_root
 
+  ECI_HOOK_HELPER_OUTPUT=""
   sessions_root="$(eci_hook_sessions_root)" || return 1
   if ! eci_runtime_open_verified eci-hook-helper; then
     printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
     return 1
   fi
-  eci_hook_run_verified_helper "$input" hook-transcript-first-record "$sessions_root" || return 1
-  printf '%s\n' "$ECI_HOOK_HELPER_OUTPUT"
+  eci_hook_run_verified_helper "$input" hook-transcript-first-record "$sessions_root"
 }
 
 eci_hook_thread_spawn_metadata() {
   local input="${1:-}"
   local sessions_root
 
+  ECI_HOOK_HELPER_OUTPUT=""
   sessions_root="$(eci_hook_sessions_root)" || return 1
   if ! eci_runtime_open_verified eci-hook-helper; then
     printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
     return 1
   fi
-  eci_hook_run_verified_helper "$input" hook-transcript-thread-spawn-metadata "$sessions_root" || return 1
-  printf '%s\n' "$ECI_HOOK_HELPER_OUTPUT"
+  eci_hook_run_verified_helper "$input" hook-transcript-thread-spawn-metadata "$sessions_root"
 }
 
 eci_hook_omp_sessions_root() {
@@ -2323,55 +2325,61 @@ eci_hook_omp_transcript_status() {
   esac
 }
 
+# Publishes main, subagent, or unknown in ECI_HOOK_SUBAGENT_STATUS and prints
+# nothing, so no caller runs the verified helper in a subshell. Only a verified
+# transcript without a thread_spawn parent is main. A missing helper, a helper
+# rejection, or an unparseable record is unknown; callers must fail closed on
+# unknown.
 eci_hook_subagent_status() {
   local input="${1:-}"
-  local present record kind transcript
+  local present kind transcript
 
-  # Prints main, subagent, or unknown. Only a verified transcript without a
-  # thread_spawn parent is main. A missing helper, a helper rejection, or an
-  # unparseable record is unknown; callers must fail closed on unknown.
+  ECI_HOOK_SUBAGENT_STATUS=unknown
   present="$(printf '%s' "$input" | jq -r 'if type == "object" and has("transcript_path") and (.transcript_path != null) then "yes" else "no" end' 2>/dev/null)" || present=""
   case "$present" in
-    no) printf 'main\n'; return 0 ;;
+    no) ECI_HOOK_SUBAGENT_STATUS=main; return 0 ;;
     yes) ;;
-    *) printf 'unknown\n'; return 0 ;;
+    *) return 0 ;;
   esac
   transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)" || transcript=""
   if [ -n "$transcript" ] && eci_hook_is_omp_transcript "$transcript"; then
-    eci_hook_omp_transcript_status "$transcript"
+    ECI_HOOK_SUBAGENT_STATUS="$(eci_hook_omp_transcript_status "$transcript")"
     return 0
   fi
-  record="$(eci_hook_transcript_first_record "$input")" || { printf 'unknown\n'; return 0; }
-  kind="$(printf '%s' "$record" | jq -r 'if type == "object" then (if (.payload.source.subagent.thread_spawn.parent_thread_id | type) == "string" then "subagent" else "main" end) else "invalid" end' 2>/dev/null)" || kind=""
+  eci_hook_transcript_first_record "$input" || return 0
+  kind="$(printf '%s' "$ECI_HOOK_HELPER_OUTPUT" | jq -r 'if type == "object" then (if (.payload.source.subagent.thread_spawn.parent_thread_id | type) == "string" then "subagent" else "main" end) else "invalid" end' 2>/dev/null)" || kind=""
   case "$kind" in
-    subagent|main) printf '%s\n' "$kind" ;;
-    *) printf 'unknown\n' ;;
+    subagent|main) ECI_HOOK_SUBAGENT_STATUS="$kind" ;;
   esac
+  return 0
 }
 
 # Only a verified subagent answers yes.  Fail-closed callers test the status
 # for != main instead of relying on this predicate.
 eci_hook_is_subagent_context() {
-  [ "$(eci_hook_subagent_status "${1:-}")" = subagent ]
+  eci_hook_subagent_status "${1:-}"
+  [ "$ECI_HOOK_SUBAGENT_STATUS" = subagent ]
 }
 
 eci_hook_transcript_first_record_is_admissible() {
   local input="${1:-}"
 
-  eci_hook_transcript_first_record "$input" >/dev/null
+  eci_hook_transcript_first_record "$input"
 }
 
 eci_hook_transcript_path_present() {
   printf '%s' "${1:-}" | jq -e 'type == "object" and (.transcript_path | type) == "string" and (.transcript_path | length > 0)' >/dev/null 2>&1
 }
 
+# Publishes the parent id in ECI_HOOK_PARENT_SESSION_ID; empty on any failure.
 eci_hook_parent_session_id() {
-  local input="${1:-}"
-  local metadata
+  local input="${1:-}" parent=""
 
+  ECI_HOOK_PARENT_SESSION_ID=""
   eci_hook_transcript_path_present "$input" || return 1
-  metadata="$(eci_hook_thread_spawn_metadata "$input")" || return 1
-  printf '%s' "$metadata" | jq -r '.parent_thread_id // empty' 2>/dev/null
+  eci_hook_thread_spawn_metadata "$input" || return 1
+  parent="$(printf '%s' "$ECI_HOOK_HELPER_OUTPUT" | jq -r '.parent_thread_id // empty' 2>/dev/null)" || parent=""
+  ECI_HOOK_PARENT_SESSION_ID="$parent"
 }
 
 eci_path_owner_session_id() {
@@ -2432,26 +2440,33 @@ eci_path_owner_session_id() {
   return 1
 }
 
-# $2 is the caller's already-computed eci_hook_subagent_status; when it is
+# $2 is the caller's already-computed ECI_HOOK_SUBAGENT_STATUS; when it is
 # "main" no parent can exist, so the metadata helper is skipped entirely.
+# Publishes the allowed ids in the ECI_HOOK_ALLOWED_SESSION_IDS array; callers
+# copy it rather than reading it through a process substitution.
 eci_hook_allowed_session_ids() {
   local input="$1"
   local status="${2:-}"
   local session_id parent_session_id
 
+  ECI_HOOK_ALLOWED_SESSION_IDS=()
   session_id="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)"
   if eci_valid_session_id "$session_id"; then
-    printf '%s\n' "$session_id"
+    ECI_HOOK_ALLOWED_SESSION_IDS+=("$session_id")
   fi
 
-  [ -n "$status" ] || status="$(eci_hook_subagent_status "$input")"
+  if [ -z "$status" ]; then
+    eci_hook_subagent_status "$input"
+    status="$ECI_HOOK_SUBAGENT_STATUS"
+  fi
   if [ "$status" = main ]; then
     return 0
   fi
 
-  parent_session_id="$(eci_hook_parent_session_id "$input" 2>/dev/null || true)"
+  eci_hook_parent_session_id "$input" 2>/dev/null || true
+  parent_session_id="$ECI_HOOK_PARENT_SESSION_ID"
   if eci_valid_session_id "$parent_session_id" && [ "$parent_session_id" != "$session_id" ]; then
-    printf '%s\n' "$parent_session_id"
+    ECI_HOOK_ALLOWED_SESSION_IDS+=("$parent_session_id")
   fi
 }
 

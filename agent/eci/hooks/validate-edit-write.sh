@@ -9,7 +9,7 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-tmp.sh"
 . "$HOOK_DIR/lib/eci-diagnostic.sh"
 eci_init_tmp || true
-eci_install_fail_open_trap validate-edit-write
+eci_install_fail_closed_trap validate-edit-write
 
 input=$(cat)
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
@@ -44,7 +44,8 @@ file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.n
 
 # Thread ownership is resolved once.  "unknown" means the transcript could not
 # be verified; subagent-guarded control and ledger edits fail closed on it.
-hook_subagent_status="$(eci_hook_subagent_status "$input")"
+eci_hook_subagent_status "$input"
+hook_subagent_status="$ECI_HOOK_SUBAGENT_STATUS"
 
 resolved_file_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$file_path" 2>/dev/null || true)"
 lexical_file_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$file_path" 2>/dev/null || true)"
@@ -90,7 +91,8 @@ owner_probe="${lexical_file_path:-$file_path}"
 owner_session_id="$(eci_path_owner_session_id "$owner_probe" 2>/dev/null || true)"
 [ -n "$owner_session_id" ] || owner_session_id="$(eci_path_owner_session_id "${resolved_file_path:-$file_path}" 2>/dev/null || true)"
 if [ -n "$owner_session_id" ]; then
-  mapfile -t allowed_session_ids < <(eci_hook_allowed_session_ids "$input" "$hook_subagent_status")
+  eci_hook_allowed_session_ids "$input" "$hook_subagent_status"
+  allowed_session_ids=("${ECI_HOOK_ALLOWED_SESSION_IDS[@]}")
   if [ "${#allowed_session_ids[@]}" -eq 0 ]; then
     deny "Session-scoped file ${file_path##*/} requires a current session id; none resolved. Refusing fail-open on a session-scoped path."
   fi
@@ -99,7 +101,7 @@ if [ -n "$owner_session_id" ]; then
   fi
 fi
 trap - ERR
-eci_install_fail_open_trap validate-edit-write
+eci_install_fail_closed_trap validate-edit-write
 
 eci_direct_marker="$(eci_proof_root)/${session_id}/eci_active"
 if [ ! -f "$eci_direct_marker" ] || [ -L "$eci_direct_marker" ]; then

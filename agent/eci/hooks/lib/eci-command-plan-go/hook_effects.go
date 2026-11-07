@@ -1016,7 +1016,7 @@ func inspectHookLifecycle(
 			continue
 		}
 		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation selects another session: "+argv[index+1].value,
-			record.Segment, argv[index+1].offset, argv[index+1], "invoke the canonical lifecycle route with the current owner session "+request.ActiveSession, "lifecycle-session")
+			record.Segment, argv[index+1].offset, argv[index+1], "the lifecycle control route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; report the unavailable control route for owner session "+request.ActiveSession, "lifecycle-session")
 		diagnostic.Path = canonical
 		return diagnostic
 	}

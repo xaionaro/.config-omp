@@ -21,7 +21,8 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd" ] && cwd="$PWD"
 
 eci_valid_session_id "$session_id" || exit 0
-if [ "$(eci_hook_subagent_status "$input")" = subagent ]; then
+eci_hook_subagent_status "$input"
+if [ "$ECI_HOOK_SUBAGENT_STATUS" = subagent ]; then
   exit 0
 fi
 
@@ -251,7 +252,8 @@ elapsed=$(( $(date +%s) - start_call ))
 
 verdict=$(printf '%s' "$result" | jq -r '.verdict // empty' 2>/dev/null || true)
 if [ "$verdict" = "fail" ]; then
-  filtered=$(filter_violations "$result" "$body_file")
+  filter_violations "$result" "$body_file"
+  filtered="$REVIEWER_FILTER_RESULT"
   [ -n "$filtered" ] && result="$filtered"
   verdict=$(printf '%s' "$result" | jq -r '.verdict // empty' 2>/dev/null || true)
 fi

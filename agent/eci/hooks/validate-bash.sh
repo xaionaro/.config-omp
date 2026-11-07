@@ -18,6 +18,8 @@ fi
 rc=0
 "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook || rc=$?
 case "$rc" in
+  0|2) ;;
   126|127) hook_deny "ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
+  *) hook_deny "ECI native gate binary eci-command-plan returned unexpected exit $rc (signal or internal failure); rebuild it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
 esac
 exit "$rc"

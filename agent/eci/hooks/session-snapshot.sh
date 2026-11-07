@@ -7,7 +7,7 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-proof-state.sh"
 . "$HOOK_DIR/lib/eci-tmp.sh"
-eci_install_fail_open_trap session-snapshot
+eci_install_advisory_fail_open_trap session-snapshot
 
 input=$(cat)
 if ! printf '%s' "$input" | jq -e '

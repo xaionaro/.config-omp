@@ -9,7 +9,7 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-tmp.sh"
 . "$HOOK_DIR/lib/eci-diagnostic.sh"
 eci_init_tmp || true
-eci_install_fail_open_trap validate-apply-patch
+eci_install_fail_closed_trap validate-apply-patch
 
 input=$(cat)
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
@@ -19,7 +19,8 @@ patch_text=$(printf '%s' "$input" | jq -r '.tool_input.command // .tool_input.pa
 
 # Thread ownership is resolved once.  "unknown" means the transcript could not
 # be verified; subagent-guarded control and ledger edits fail closed on it.
-hook_subagent_status="$(eci_hook_subagent_status "$input")"
+eci_hook_subagent_status "$input"
+hook_subagent_status="$ECI_HOOK_SUBAGENT_STATUS"
 
 [ -n "$patch_text" ] || exit 0
 
@@ -115,7 +116,8 @@ while IFS= read -r path; do
   owner_session_id="$(eci_path_owner_session_id "$owner_probe" 2>/dev/null || true)"
   [ -n "$owner_session_id" ] || owner_session_id="$(eci_path_owner_session_id "${resolved_owner_path:-$path}" 2>/dev/null || true)"
   [ -n "$owner_session_id" ] || continue
-  mapfile -t allowed_session_ids < <(eci_hook_allowed_session_ids "$input" "$hook_subagent_status")
+  eci_hook_allowed_session_ids "$input" "$hook_subagent_status"
+  allowed_session_ids=("${ECI_HOOK_ALLOWED_SESSION_IDS[@]}")
   if [ "${#allowed_session_ids[@]}" -eq 0 ]; then
     deny "Session-scoped file ${path##*/} requires a current session id; none resolved. Refusing fail-open on a session-scoped path."
   fi
@@ -124,7 +126,7 @@ while IFS= read -r path; do
   fi
 done <<<"$patch_paths"
 trap - ERR
-eci_install_fail_open_trap validate-apply-patch
+eci_install_fail_closed_trap validate-apply-patch
 
 # Active ECI edit callbacks are deliberately marker-only and read-only.  Keep
 # the legacy activity bookkeeping for ordinary edits, but do not take its

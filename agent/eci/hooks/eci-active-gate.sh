@@ -13,9 +13,10 @@ input=$(cat)
 # A malformed typed callback is a repair task only while an ECI marker is
 # active; with no marker the ordinary tool call keeps its normal validation.
 malformed_identity_exit() {
+  local detail="${1:-malformed hook identity: tool_name, session_id, and cwd must be typed strings while an active marker exists}"
   local reason
   if [ -n "$(eci_marker_candidates_bounded 2>/dev/null)" ]; then
-    reason="$(eci_diagnostic_reason "ECI_HOOK_IDENTITY_MALFORMED" "PreToolUse" "edit-routing" "session=${session_id:-<missing>},cwd=${cwd:-<missing>}" "malformed hook identity: tool_name, session_id, and cwd must be typed strings while an active marker exists" "provide typed tool_name, session_id, and cwd fields, then retry")"
+    reason="$(eci_diagnostic_reason "ECI_HOOK_IDENTITY_MALFORMED" "PreToolUse" "edit-routing" "session=${session_id:-<missing>},cwd=${cwd:-<missing>}" "$detail" "provide typed tool_name, session_id, and cwd fields, then retry")"
     jq -n --arg reason "$reason" '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
@@ -43,12 +44,10 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id' 2>/dev/null || true)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 case "$session_id" in
   ""|*[!A-Za-z0-9_-]*)
-    exit 0
+    malformed_identity_exit "hook identity has an empty or invalid session_id while an active marker exists; session_id must be made of letters, digits, underscore, and hyphen"
     ;;
 esac
-[ -n "$cwd" ] || {
-  exit 0
-}
+[ -n "$cwd" ] || malformed_identity_exit "hook identity has no cwd while an active marker exists; cwd must be the absolute working directory string"
 case "$cwd" in
   *[![:print:]]*)
     malformed_identity_exit
