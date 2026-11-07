@@ -931,7 +931,7 @@ OMP_INIT_LINE='{"type":"session_init","customType":"session_init","data":{}}'
 
 # An omp subagent transcript sits at depth three under the omp sessions root and declares a
 # string parentSession, the header that classifies it as a subagent (hook_context.go:311-322;
-# eci-proof-state.sh:2416-2421). A depth-one codex-style transcript is classified as main.
+# eci-proof-state.sh:2416-2421). A depth-one transcript in the pre-migration source 575bb81 thread_spawn form is classified as main.
 write_omp_subagent_transcript() {
   local path="$1"
   mkdir -p "$(dirname "$path")" || return 1
@@ -1278,7 +1278,7 @@ test_compose_reviewer_prompt_uses_eci_sources() {
 
   # The composer's sources are the wrapper, the global AGENTS.md, and stop-checklist.md
   # (compose-reviewer-prompt.sh:44-57). AGENTS.md no longer carries the Response and Evidence
-  # headings that Codex's CODEX.md supplied; omp stopped loading that file.
+  # headings that the pre-migration source 575bb81 global instructions supplied; omp stopped loading that file.
   grep -q '# AGENTS.md' "$out" &&
     grep -q '# stop-checklist.md' "$out" &&
     grep -q '^# Reviewer Wrapper$' "$out" &&
@@ -1544,7 +1544,12 @@ test_eci_gate_allows_markdown_only_write_payload() {
   expect_no_output "$out"
 }
 
-test_eci_gate_denies_code_write_payload() {
+# A coordinator's ordinary repository edit must not become a control edit solely because it
+# is made from the main thread (pre-migration commit 0d519c7). Quoted from
+# pre-migration source 575bb81 hooks/eci-active-gate.sh:125-128; the omp port is agent/eci/hooks/eci-active-gate.sh:170-173.
+# The gate denies control targets only, so ordinary code payloads pass with no output.
+# Write's control-file denial is asserted by the direct-Write case.
+test_eci_gate_allows_code_write_payload() {
   local proof_root out
   proof_root="$(fresh_proof_root eci-code-write)"
   mkdir -p "$proof_root/t00-session"
@@ -1554,7 +1559,7 @@ test_eci_gate_denies_code_write_payload() {
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$FIXTURES/eci-write-code.json" \
     ECI_PROOF_ROOT="$proof_root" || return 1
 
-  is_edit_routing_deny "$out"
+  expect_no_output "$out"
 }
 
 test_eci_gate_denies_direct_write_to_active_control_file() {
@@ -1598,45 +1603,69 @@ test_eci_gate_allows_current_session_high_level_log_and_anchor() {
   expect_no_output "$out"
 }
 
-test_eci_gate_denies_code_notebookedit_payload() {
-  local proof_root input out
+test_eci_gate_allows_code_notebookedit_payload() {
+  local proof_root input out control
   proof_root="$(fresh_proof_root eci-code-notebook)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
+  control="$proof_root/t00-session/eci_active"
   input="$TMP_ROOT/eci-notebook.json"
-  jq -n '{session_id:"t00-session",cwd:"/tmp/eci-hooks-test-repo",tool_name:"NotebookEdit",tool_input:{notebook_path:"src/file.ipynb"}}' >"$input"
   out="$TMP_ROOT/eci-notebook.out"
+  jq -n '{session_id:"t00-session",cwd:"/tmp/eci-hooks-test-repo",tool_name:"NotebookEdit",tool_input:{notebook_path:"src/file.ipynb"}}' >"$input"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
     ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
 
-  is_edit_routing_deny "$out"
+  jq -n --arg cwd "$ROOT" --arg control "$control" \
+    '{session_id:"t00-session",cwd:$cwd,tool_name:"NotebookEdit",tool_input:{notebook_path:$control,new_string:"scope: forged"}}' >"$input"
+  run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
+    ECI_PROOF_ROOT="$proof_root" || return 1
+  is_pretool_deny "$out" &&
+    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
-test_eci_gate_denies_mixed_markdown_code_patch() {
-  local proof_root out
+test_eci_gate_allows_mixed_markdown_code_patch() {
+  local proof_root input out control patch_text
   proof_root="$(fresh_proof_root eci-mixed)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
+  control="$proof_root/t00-session/eci_active"
   out="$TMP_ROOT/eci-mixed.out"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$FIXTURES/eci-apply-patch-mixed.json" \
     ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
 
-  is_edit_routing_deny "$out"
+  patch_text="$(printf '*** Begin Patch\n*** Update File: %s\n-scope: test\n+scope: forged\n*** End Patch\n' "$control")"
+  input="$TMP_ROOT/eci-mixed-control.json"
+  jq -n --arg cwd "$ROOT" --arg patch "$patch_text" \
+    '{session_id:"t00-session",cwd:$cwd,tool_name:"apply_patch",tool_input:{command:$patch}}' >"$input"
+  run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
+    ECI_PROOF_ROOT="$proof_root" || return 1
+  is_pretool_deny "$out" &&
+    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
-test_eci_gate_blocks_multiedit_stdin() {
-  local proof_root out
+test_eci_gate_allows_multiedit_stdin() {
+  local proof_root input out control
   proof_root="$(fresh_proof_root eci-multiedit)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
+  control="$proof_root/t00-session/eci_active"
   out="$TMP_ROOT/eci-multiedit.out"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$FIXTURES/eci-multiedit.json" \
     ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
 
-  is_edit_routing_deny "$out"
+  input="$TMP_ROOT/eci-multiedit-control.json"
+  jq -n --arg cwd "$ROOT" --arg fp "$control" \
+    '{session_id:"t00-session",cwd:$cwd,tool_name:"MultiEdit",tool_input:{file_path:$fp,edits:[{old_string:"scope: test",new_string:"scope: forged"}]}}' >"$input"
+  run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
+    ECI_PROOF_ROOT="$proof_root" || return 1
+  is_pretool_deny "$out" &&
+    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
 # Matchers of the PreToolUse entries that run the edit dispatcher (hooks.json:49-68).
@@ -1742,21 +1771,21 @@ test_validate_edit_write_blocks_symlinked_alias_dir() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "unsafe session-scoped edit path"
 }
 
-test_validate_edit_write_blocks_relative_control_path() {
+test_eci_gate_blocks_relative_control_path_write() {
   local proof_root input out marker relative_path
-  proof_root="$(fresh_proof_root edit-write-relative-control)"
+  proof_root="$(fresh_proof_root gate-write-relative-control)"
   mkdir -p "$proof_root/t00-session"
   marker="$proof_root/t00-session/eci_active"
   printf '%s\n' 'scope: relative control path' >"$marker"
   relative_path="$(realpath --relative-to="$ROOT" "$marker")"
-  input="$TMP_ROOT/edit-write-relative-control.json"
+  input="$TMP_ROOT/gate-write-relative-control.json"
   jq -n --arg cwd "$ROOT" --arg fp "$relative_path" \
     '{session_id:"t00-session",cwd:$cwd,tool_name:"Write",tool_input:{file_path:$fp,content:"forged"}}' >"$input"
-  out="$TMP_ROOT/edit-write-relative-control.out"
+  out="$TMP_ROOT/gate-write-relative-control.out"
 
-  run_hook "$out" "$ROOT/hooks/validate-edit-write.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
+  run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
   is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "session-scoped"
+    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
 test_validate_edit_write_blocks_notebookedit_other_sid_proof() {
@@ -1810,22 +1839,22 @@ test_validate_apply_patch_blocks_symlinked_alias_dir() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "unsafe session-scoped patch path"
 }
 
-test_validate_apply_patch_blocks_relative_control_path() {
+test_eci_gate_blocks_relative_control_path_apply_patch() {
   local proof_root input out marker relative_path patch_text
-  proof_root="$(fresh_proof_root apply-patch-relative-control)"
+  proof_root="$(fresh_proof_root gate-apply-patch-relative-control)"
   mkdir -p "$proof_root/t00-session"
   marker="$proof_root/t00-session/eci_active"
   printf '%s\n' 'scope: relative control path' >"$marker"
   relative_path="$(realpath --relative-to="$ROOT" "$marker")"
   patch_text="$(printf '*** Begin Patch\n*** Update File: %s\n-scope: relative control path\n+scope: forged\n*** End Patch\n' "$relative_path")"
-  input="$TMP_ROOT/apply-patch-relative-control.json"
+  input="$TMP_ROOT/gate-apply-patch-relative-control.json"
   jq -n --arg cwd "$ROOT" --arg patch "$patch_text" \
     '{session_id:"t00-session",cwd:$cwd,tool_name:"apply_patch",tool_input:{patch:$patch}}' >"$input"
-  out="$TMP_ROOT/apply-patch-relative-control.out"
+  out="$TMP_ROOT/gate-apply-patch-relative-control.out"
 
-  run_hook "$out" "$ROOT/hooks/validate-apply-patch.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
+  run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
   is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "session-scoped"
+    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
 test_validate_apply_patch_blocks_other_sid_proof() {
@@ -2953,18 +2982,18 @@ run_case "ECI gate allows markdown-only Edit and MultiEdit payloads" \
   test_eci_gate_allows_markdown_only_edit_payloads
 run_case "ECI gate allows markdown-only Write payload" \
   test_eci_gate_allows_markdown_only_write_payload
-run_case "ECI gate denies code Write payload" \
-  test_eci_gate_denies_code_write_payload
+run_case "ECI gate allows code Write payload when marker exists" \
+  test_eci_gate_allows_code_write_payload
 run_case "ECI gate denies direct Write to active control file" \
   test_eci_gate_denies_direct_write_to_active_control_file
 run_case "ECI gate allows current-session high-level log and anchor updates" \
   test_eci_gate_allows_current_session_high_level_log_and_anchor
-run_case "ECI gate denies code NotebookEdit payload" \
-  test_eci_gate_denies_code_notebookedit_payload
-run_case "ECI gate denies mixed markdown/code apply_patch" \
-  test_eci_gate_denies_mixed_markdown_code_patch
-run_case "ECI gate blocks MultiEdit JSON stdin when marker exists" \
-  test_eci_gate_blocks_multiedit_stdin
+run_case "ECI gate allows code NotebookEdit payload when marker exists; denies control-file NotebookEdit" \
+  test_eci_gate_allows_code_notebookedit_payload
+run_case "ECI gate allows mixed markdown/code apply_patch when marker exists; denies control-file apply_patch" \
+  test_eci_gate_allows_mixed_markdown_code_patch
+run_case "ECI gate allows MultiEdit JSON stdin when marker exists; denies control-file MultiEdit" \
+  test_eci_gate_allows_multiedit_stdin
 run_case "hooks.json edit matcher includes MultiEdit" \
   test_multiedit_hook_config_is_wired
 run_case "hooks.json edit matcher includes NotebookEdit" \
@@ -2987,16 +3016,16 @@ run_case "validate-edit-write allows aliased proof dir" \
   test_validate_edit_write_allows_aliased_proof_dir
 run_case "validate-edit-write blocks symlinked alias dir" \
   test_validate_edit_write_blocks_symlinked_alias_dir
-run_case "validate-edit-write blocks relative control path" \
-  test_validate_edit_write_blocks_relative_control_path
+run_case "ECI gate blocks relative control path for Write" \
+  test_eci_gate_blocks_relative_control_path_write
 run_case "validate-edit-write blocks NotebookEdit on another session proof dir" \
   test_validate_edit_write_blocks_notebookedit_other_sid_proof
 run_case "validate-apply-patch allows aliased proof dir" \
   test_validate_apply_patch_allows_aliased_proof_dir
 run_case "validate-apply-patch blocks symlinked alias dir" \
   test_validate_apply_patch_blocks_symlinked_alias_dir
-run_case "validate-apply-patch blocks relative control path" \
-  test_validate_apply_patch_blocks_relative_control_path
+run_case "ECI gate blocks relative control path for apply_patch" \
+  test_eci_gate_blocks_relative_control_path_apply_patch
 run_case "validate-apply-patch blocks edits to another session proof dir" \
   test_validate_apply_patch_blocks_other_sid_proof
 run_case "validate-apply-patch blocks UUID proof dir despite alias marker" \
