@@ -13,3 +13,4 @@ setupVersion: 3
 extendedContext: true
 task:
   perCallModel: "on"
+defaultThinkingLevel: max
