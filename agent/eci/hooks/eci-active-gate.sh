@@ -9,6 +9,11 @@ if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.s
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
+# Every lib function this gate calls must be defined; a partial load would let
+# a missing marker check fall through to a silent exit.
+for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id; do
+  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn"; exit 0; }
+done
 
 input=$(cat)
 

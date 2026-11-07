@@ -4,15 +4,22 @@
 set -euo pipefail
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-# Child-health failures stay advisory: malformed output, stderr, or a non-zero
-# exit from a child never turns an edit into a denial by itself. A failure to
-# create the dispatch scratch directory is different: the gate cannot run, so
-# it fails closed with an explicit deny.
+# Child-health failures are advisory: malformed output or stderr from a child
+# never turns an edit into a denial by itself.  Every denial in this dispatch
+# depends on the ECI marker check, so the proof-state lib must load and define
+# it first; if it cannot, the gate cannot decide and denies.
+if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
+  exit 0
+fi
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
 if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
-  if ! jq -cn --arg reason "ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
+  # No scratch directory: deny only while a marker is active or unknown; with no marker exit 0 as the source does.
+  if eci_marker_active_or_unknown; then
+    if ! jq -cn --arg reason "[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
+      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
+    fi
   fi
   exit 0
 fi
@@ -22,7 +29,10 @@ input_file="$tmp_dir/input.json"
 cat >"$input_file"
 
 if ! tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null)"; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input; provision jq and retry"}}'
+  # Unparseable input denies only while a marker is active or unknown; with no marker exit 0 as the source does.
+  if eci_marker_active_or_unknown; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_JQ_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input while an active marker exists; provision jq and retry"}}'
+  fi
   exit 0
 fi
 case "$tool_name" in
@@ -82,10 +92,11 @@ for index in "${!gates[@]}"; do
   pids[$index]=$!
 done
 
-# A child may offer a concrete denial, but its transport health is advisory:
-# malformed JSON, stderr, and non-zero exit status mean only that this child
-# could not help classify the edit.  Another healthy child may still identify
-# a real control or cross-session target.
+# A child may offer a concrete denial.  Its stderr and malformed output are
+# advisory and never classify the edit by themselves.  A non-zero gate exit
+# means the edit could not be classified: it is denied only while an ECI marker
+# is active or unknown (ECI_EDIT_GATE_FAILED below); with no marker the source
+# behavior holds.  Another healthy child may still identify a real target.
 dispatch_max_output_bytes=65536
 dispatch_candidate_is_valid() {
   local path="$1" bytes
@@ -124,9 +135,13 @@ for index in "${!pids[@]}"; do
 done
 
 candidate_output=""
+gate_failed=""
 for index in "${!gates[@]}"; do
-  # Ignore child stderr and health.  Only a well-formed, explicit denial is
-  # actionable; all other child outcomes pass through without noise.
+  # Ignore child stderr and malformed output.  Only a well-formed, explicit
+  # denial is actionable; a non-zero gate exit is recorded for the marker gate.
+  if [ "$index" != "$reminder_index" ] && [ "${statuses[$index]:-1}" -ne 0 ]; then
+    gate_failed=1
+  fi
   if [ "${statuses[$index]:-1}" -eq 0 ] &&
     [ -s "$tmp_dir/output-$index" ] &&
     dispatch_candidate_is_valid "$tmp_dir/output-$index" &&
@@ -138,6 +153,8 @@ done
 
 if [ -n "$candidate_output" ]; then
   jq -c . "$candidate_output"
+elif [ -n "$gate_failed" ] && eci_marker_active_or_unknown; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_EDIT_GATE_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a gate child exited non-zero while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
 fi
 
 # The explicitly requested advisory is intentionally outside the provider

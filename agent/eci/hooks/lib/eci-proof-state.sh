@@ -140,6 +140,7 @@ eci_marker_candidates_bounded() {
   fi
   # An absent or unsearchable root has no visible markers: nothing to scan.
   [ -d "$root" ] || return 0
+  [ -r "$root" ] && [ -x "$root" ] || return 0
   # A failed listing (unreadable session directory, root removed mid-scan) is
   # unknown state, not an empty scan: report it as unsafe so every caller
   # treats the marker state as active and fails closed.

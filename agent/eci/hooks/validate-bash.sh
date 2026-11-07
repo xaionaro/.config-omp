@@ -11,7 +11,7 @@ hook_deny() {
   exit 0
 }
 case "${HOME:-}" in
-  ''|[!/]*) hook_deny '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable: HOME is unset or not absolute; set HOME to the absolute home directory and retry' ;;
+  ''|[!/]*) exit 0 ;;
 esac
 root="$HOME/.omp/agent/eci"
 if ! . "$root/hooks/lib/eci-native-binary.sh" 2>/dev/null; then
@@ -23,6 +23,11 @@ fi
 if ! . "$root/hooks/lib/eci-proof-state.sh" 2>/dev/null; then
   hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-proof-state.sh; reinstall the ECI hooks and retry"
 fi
+# Every lib function this hook calls must be defined; a partial load would let
+# a missing marker check fall through to a silent exit.
+for fn in eci_runtime_open_verified eci_install_fail_closed_trap eci_marker_active_or_unknown; do
+  declare -F "$fn" >/dev/null 2>&1 || hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash: ECI library function $fn is not defined; reinstall the ECI hooks and retry"
+done
 # Native-gate failures deny only while a marker is active or unknown; with no
 # marker the hook exits with the source status, as the source does.
 native_gate_fail() {
@@ -34,7 +39,7 @@ native_gate_fail() {
 }
 eci_install_fail_closed_trap validate-bash
 if ! eci_runtime_open_verified eci-command-plan; then
-  native_gate_fail 0 "$ECI_RUNTIME_DENY_REASON"
+  native_gate_fail 0 "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] $ECI_RUNTIME_DENY_REASON"
 fi
 rc=0
 "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook || rc=$?
