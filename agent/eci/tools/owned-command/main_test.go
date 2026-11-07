@@ -183,7 +183,10 @@ func TestSignalRetiresChildren(t *testing.T) {
 	// The guard writes its receipt in place, so only its exit proves the file is complete.
 	watchdog := time.AfterFunc(10*time.Second, func() { _ = cmd.Process.Kill() })
 	waitErr := cmd.Wait()
-	watchdog.Stop()
+	// Stop reports false only if the watchdog fired first, so a guard that never exits fails here.
+	if !watchdog.Stop() {
+		t.Fatal("guard did not exit within 10s of SIGINT")
+	}
 	var exit *exec.ExitError
 	if waitErr != nil && !errors.As(waitErr, &exit) {
 		t.Fatal(waitErr)
