@@ -1,36 +1,50 @@
 #!/usr/bin/env bash
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
-# eci-command-plan and eci-hook-helper are executed through lib/eci-native-binary.sh, which verifies each receipt before running it; eci-safe-import is allowlisted there but has no launcher caller in this tree.
-# eci-worker-git is built and installed with a receipt, but it is NOT run through that launcher. The skill runs it directly, so its receipt is informational and is not verified at runtime.
-# eci-command-gate-mode is built only on Linux hosts: its sources carry //go:build linux. Other hosts skip it.
-# Compatible with macOS system bash 3.2 and BSD userland: no realpath, mapfile, or GNU-only flags.
+# eci-command-plan, eci-safe-import and eci-hook-helper are gate binaries; lib/eci-native-binary.sh runs them only after verifying their receipts. eci-safe-import has no launcher caller in this tree.
+# eci-worker-git is built with a receipt, but the skill runs it directly, so the receipt is informational and not verified at runtime.
+# eci-active and owned-command are on-demand wrappers in bin/ that build from source on first use; this script does not build them.
+# eci-command-gate-mode is built only on Linux hosts; its sources carry //go:build linux.
+# Every built binary must pass eci_runtime_binary_is_native for this host before any file is installed. That check is ELF-only until the loader gains Mach-O support.
+# Runs under macOS system bash 3.2 with BSD userland; no GNU-only utilities.
 set -euo pipefail
 
 : "${HOME:?HOME must be set}"
 case "$HOME" in /*) ;; *) echo "build-native-binaries: HOME must be an absolute path" >&2; exit 1 ;; esac
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-
-# go must be an absolute PATH entry: a shell function or a relative PATH entry cannot build.
-go="$(command -v go || true)"
-case "$go" in
-  /*) ;;
-  '') echo "build-native-binaries: go not found in PATH; install Go 1.24 or newer" >&2; exit 1 ;;
-  *) echo "build-native-binaries: go must resolve to an absolute path, got $go" >&2; exit 1 ;;
-esac
-host_os="$(GOWORK=off GOTOOLCHAIN=local "$go" env GOHOSTOS)"
-host_arch="$(GOWORK=off GOTOOLCHAIN=local "$go" env GOHOSTARCH)"
-[ -n "$host_os" ] && [ -n "$host_arch" ] || { echo "build-native-binaries: go env reported no host platform" >&2; exit 1; }
-
-# sha256_cmd prints "<hex>  <file>" lines: sha256sum where present, otherwise macOS shasum.
-if command -v sha256sum >/dev/null 2>&1; then
-  sha256_cmd=(sha256sum)
-elif command -v shasum >/dev/null 2>&1; then
-  sha256_cmd=(shasum -a 256)
-else
-  echo "build-native-binaries: sha256sum or shasum is required" >&2
+die() {
+  printf 'build-native-binaries: %s\n' "$*" >&2
   exit 1
+}
+source "$hook_dir/lib/eci-native-binary.sh"
+
+# Select a PATH executable; a shell function or a relative PATH entry cannot build.
+go=$(command -v go) || die 'go not found on PATH; install Go 1.24 or newer and retry'
+case "$go" in
+  /*) [ -x "$go" ] || die "$go is not executable" ;;
+  *) die "go resolves to '$go', not an absolute path" ;;
+esac
+# The host platform comes from the selected toolchain, queried outside any module.
+{ IFS= read -r host_os && IFS= read -r host_arch; } \
+  <<<"$(cd / && GOTOOLCHAIN=local GOFLAGS=' ' "$go" env GOHOSTOS GOHOSTARCH)" \
+  || die "$go did not report GOHOSTOS and GOHOSTARCH"
+[ -n "$host_os" ] && [ -n "$host_arch" ] || die "$go reported an empty host platform"
+
+# Receipts use sha256sum where present (Linux) and shasum -a 256 otherwise (macOS).
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256_command=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  sha256_command=(shasum -a 256)
+else
+  die 'sha256sum or shasum is required'
+fi
+
+names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git)
+if [ "$host_os" = linux ]; then
+  names+=(eci-command-gate-mode)
+else
+  echo "build-native-binaries: skipping eci-command-gate-mode (Linux-only source)"
 fi
 
 bin_dir="$HOME/.omp/agent/eci/bin"
@@ -39,34 +53,25 @@ chmod 0755 -- "$bin_dir"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
-# Builds target the host platform and clear caller target and toolchain overrides.
-# GOPROXY is inherited, not forced off: a fresh macOS module cache must be able to download
-# golang.org/x/sys. go.sum, -mod=readonly and the checksum database still verify every module.
-names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git eci-active eci-command-gate-mode)
-built=()
+# Each build targets the host and clears caller tuning and target overrides. GOPROXY is inherited:
+# a fresh module cache downloads through the caller's proxy, and go.sum with GOSUMDB verifies every
+# module. Nothing here disables that verification: no GONOSUMDB, GONOSUMCHECK, insecure flag or sum-database override is set.
 for name in "${names[@]}"; do
-  case "$name" in
-    eci-active) module="$hook_dir/../tools/$name" ;;
-    eci-command-gate-mode)
-      if [ "$host_os" != linux ]; then
-        echo "build-native-binaries: skipping $name (Linux-only source)"
-        continue
-      fi
-      module="$hook_dir/lib/$name-go" ;;
-    *) module="$hook_dir/lib/$name-go" ;;
-  esac
-  [ -f "$module/go.mod" ] || { echo "build-native-binaries: missing Go module $module" >&2; exit 1; }
+  module="$hook_dir/lib/$name-go"
+  [ -f "$module/go.mod" ] || die "missing Go module $module"
   echo "build-native-binaries: building $name"
-  (cd -- "$module" && env -u GOOS -u GOARCH -u GOARM -u GOARM64 -u GOAMD64 \
-    GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS= GOTOOLCHAIN=local \
-    "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .)
+  (cd -- "$module" && env -u GO386 -u GOAMD64 -u GOARM -u GOARM64 -u GOMIPS -u GOMIPS64 -u GOPPC64 -u GORISCV64 -u GOWASM \
+    GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
+    "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
+    || die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""
   chmod 0755 -- "$stage/$name"
-  digest="$("${sha256_cmd[@]}" "$stage/$name")"
+  eci_runtime_binary_is_native "$stage/$name" \
+    || die "$name: built $host_os/$host_arch binary is not native for this host"
+  digest="$("${sha256_command[@]}" -- "$stage/$name")"
   printf '%s  %s\n' "${digest%% *}" "$name" >"$stage/$name.sha256"
-  built+=("$name")
 done
 
-for name in ${built[@]+"${built[@]}"}; do
+for name in "${names[@]}"; do
   mv -f -- "$stage/$name" "$bin_dir/$name"
   mv -f -- "$stage/$name.sha256" "$bin_dir/$name.sha256"
   echo "build-native-binaries: installed $bin_dir/$name"
