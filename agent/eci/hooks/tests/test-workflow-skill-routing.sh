@@ -2323,7 +2323,7 @@ assert_concurrent_task_contract() {
 
 assert_concurrent_tasks() {
   local input mutation output clause
-  input="$(<"$ECI")"
+  input="$(<"$ECI_BINDING_CONTRACT")"
   assert_concurrent_task_contract "$input"
   for clause in \
     'Admit independent user-requested tasks as separate owned lanes under the active lifecycle' \
