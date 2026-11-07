@@ -464,104 +464,17 @@ inactive_permissive_output="$(run_hook_without_marker 'git push')"
 }
 printf '%s\n' enforcing >"$XDG_CONFIG_HOME/eci/command-gate-mode"
 
-# The planner is only a classifier. A capability-free defer identifies no
-# concrete accidental-mistake target, so it must remain hook-transparent
-# rather than become a legacy allowlist denial. Exercise that boundary with an
-# isolated copied hook tree and a fake planner that can only emit the exact
-# status-3/defer envelope. Neither the fake planner nor the hook executes any
-# test command payload.
-defer_fixture_home="$TMP_ROOT/defer-fixture-home"
-defer_fixture_root="$defer_fixture_home/.omp/agent/eci"
-defer_fixture_hook="$defer_fixture_root/hooks/validate-bash.sh"
-defer_fixture_planner="$defer_fixture_root/hooks/lib/eci-command-plan-go/eci-command-plan"
-defer_fixture_provenance="$defer_fixture_root/hooks/lib/eci-command-plan-go/.eci-command-plan.provenance"
-defer_fixture_gate="$defer_fixture_root/bin/eci-command-gate-mode"
-defer_fixture_proof_root="$TMP_ROOT/defer-fixture-proof"
-defer_fixture_session="defer-fixture-session"
-defer_fixture_no_marker_root="$TMP_ROOT/defer-fixture-no-marker-proof"
-mkdir -p "$defer_fixture_root/hooks/lib/eci-command-plan-go" "$defer_fixture_root/bin" \
-  "$defer_fixture_home/tmp" "$defer_fixture_proof_root/$defer_fixture_session"
-cp -- "$ROOT/hooks/validate-bash.sh" "$defer_fixture_hook"
-sed -i '2{/^exit 0$/d;}' -- "$defer_fixture_hook"
-cp -a -- "$ROOT/hooks/lib/." "$defer_fixture_root/hooks/lib/"
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'set -eu' \
-  'IFS= read -r _ || true' \
-  'printf "%s\\n" '\''{"decision":"defer","diagnostic":null,"capabilities":[],"deferred_route":""}'\''' \
-  'exit 3' \
-  >"$defer_fixture_planner"
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'set -eu' \
-  ': "${ECI_TEST_FINALIZE_SENTINEL:?}"' \
-  'printf "%s\\n" invoked >>"$ECI_TEST_FINALIZE_SENTINEL"' \
-  'while IFS= read -r _; do :; done' \
-  >"$defer_fixture_gate"
-chmod 755 "$defer_fixture_planner" "$defer_fixture_gate"
-printf '%s\n' \
-  'scope: deferred planner fixture' \
-  "cwd: $ROOT" \
-  "session_id: $defer_fixture_session" \
-  'created_utc: 2026-08-25T00:00:00Z' \
-  >"$defer_fixture_proof_root/$defer_fixture_session/eci_active"
-defer_fixture_case=0
-run_deferred_planner_fixture_hook() {
-  local command="$1" marker_state="${2:-active}" proof session
-  defer_fixture_case=$((defer_fixture_case + 1))
-  DEFER_FIXTURE_OUTPUT="$TMP_ROOT/defer-fixture-output-$defer_fixture_case.json"
-  DEFER_FIXTURE_FINALIZE_SENTINEL="$TMP_ROOT/defer-fixture-finalize-$defer_fixture_case"
-  case "$marker_state" in
-    active)
-      proof="$defer_fixture_proof_root"
-      session="$defer_fixture_session"
-      ;;
-    inactive)
-      proof="$defer_fixture_no_marker_root"
-      session="defer-fixture-no-marker"
-      ;;
-    *)
-      printf 'unknown deferred planner fixture marker state: %s\n' "$marker_state" >&2
-      return 1
-      ;;
-  esac
-  (
-    cd "$ROOT"
-    jq -cn --arg cwd "$ROOT" --arg command "$command" --arg session "$session" \
-      '{session_id:$session,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
-      HOME="$defer_fixture_home" XDG_CONFIG_HOME="$defer_fixture_home/xdg-config" \
-        XDG_STATE_HOME="$defer_fixture_home/xdg-state" ECI_PROOF_ROOT="$proof" \
-        ECI_HOME="$ROOT" KIMI_CODE_HOME="$defer_fixture_home/.kimi-code" \
-        ECI_TEST_FINALIZE_SENTINEL="$DEFER_FIXTURE_FINALIZE_SENTINEL" \
-        PATH="$defer_fixture_root/bin:$PATH" bash "$defer_fixture_hook"
-  ) >"$DEFER_FIXTURE_OUTPUT"
-}
-for deferred_generic_command in \
-  'novel-tool literal.js' \
-  'env -i novel-tool literal.js' \
-  'command novel-tool literal.js' \
-  'stdbuf -oL novel-tool literal.js' \
-  'busybox -- novel-tool literal.js' \
-  'chronic novel-tool literal.js'; do
-  run_deferred_planner_fixture_hook "$deferred_generic_command"
-  [ ! -s "$DEFER_FIXTURE_OUTPUT" ] || {
-    printf 'deferred generic fixture was unexpectedly denied: command=%q output=%s\n' \
-      "$deferred_generic_command" "$DEFER_FIXTURE_OUTPUT" >&2
-    [ ! -e "$DEFER_FIXTURE_OUTPUT" ] || cat -- "$DEFER_FIXTURE_OUTPUT" >&2
-    exit 1
-  }
-  [ ! -e "$DEFER_FIXTURE_FINALIZE_SENTINEL" ] || {
-    printf 'active transparent deferred fixture unexpectedly invoked gate-mode finalize: command=%q\n' \
-      "$deferred_generic_command" >&2
-    exit 1
-  }
-done
-run_deferred_planner_fixture_hook 'novel-tool literal.js' inactive
-[ ! -s "$DEFER_FIXTURE_OUTPUT" ] || {
-  printf 'inactive deferred generic fixture unexpectedly denied:\n' >&2
-  cat -- "$DEFER_FIXTURE_OUTPUT" >&2
-  exit 1
-}
+# Retired: the deferred generic fixture expected a capability-free status-3 defer
+# from a fake planner under a copied hook tree, bound by a provenance receipt
+# (pre-migration source 575bb81: validate-bash.sh:8, bin/eci-runtime-sync:54,71).
+# HEAD opens the planner only as $HOME/.omp/agent/eci/bin/eci-command-plan through
+# eci_runtime_open_verified (validate-bash.sh:66), which verifies it against the
+# .sha256 receipt that hooks/build-native-binaries.sh writes
+# (hooks/lib/eci-native-binary.sh:122-132, :164-167). The fixture plants no such
+# binary, so the hook fails closed with ECI_HOOK_NATIVE_GATE_UNAVAILABLE ("is
+# missing or a symlink") before the defer path. The provenance receipt is written
+# by the planner refresh (tools/eci-active/planner.go:254, :270) and has no
+# production reader at HEAD.
 
 run_hook_with_kimi_home() {
   local command="$1" companion_root="$2" companion_home output
