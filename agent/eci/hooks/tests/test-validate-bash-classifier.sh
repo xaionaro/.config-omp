@@ -3301,7 +3301,7 @@ run_subagent_matrix_parallel allowed worker-current-control-reads \
 # instruction paths that are missing, outside configured roots, or escape
 # through a symlink fail with their exact path-ownership reason.
 run_subagent_matrix_parallel allowed worker-instruction-reads \
-  "wc -l $ROOT/AGENTS.md $ROOT/../skills/explore-critique-implement/SKILL.md $ROOT/skills/writing-status-reports/SKILL.md $ROOT/skills/harness-tuning/SKILL.md" \
+  "wc -l $ROOT/AGENTS.md $ROOT/../skills/explore-critique-implement/SKILL.md $ROOT/../skills/writing-status-reports/SKILL.md $ROOT/skills/harness-tuning/SKILL.md" \
   "wc -l $subagent_eci_home/AGENTS.md $subagent_eci_home/AGENTS.md $subagent_eci_home/skills/test/SKILL.md" \
   "rg -n worker $subagent_eci_home/skills/test" \
   "git log --format=%H -- skills/writing-status-reports/SKILL.md AGENTS.md"
