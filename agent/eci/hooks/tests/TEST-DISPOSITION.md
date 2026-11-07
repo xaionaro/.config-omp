@@ -114,14 +114,76 @@ Not diagnosed: `test-eci-coordinator-edit-hatch`, `test-eci-fast-path`, `test-ec
 - `hooks/lib/eci-runtime-sync.sh` (from 575bb81): `codex-file-lock.sh` -> `eci-file-lock.sh`; `codex_file_lock_*` -> `eci_file_lock_*`; `$HOME/.codex` and `*/.codex` -> `$HOME/.omp/agent/eci`. Deliberately kept: the provider token `codex` and the env name `CODEX_RUNTIME_ROOTS`. The provider token names the published artifact directories `~/tmp/eci-runtime/codex`, which exist on disk; renaming would republish to a new directory. This is a decision for the user. The file sources `bin/eci-runtime-sync`, which is not ported, so that source step fails.
 - `hooks/stop-gate.sh`: not ported. It is absent from 575bb81 because codex commit `f50ca64` deleted it.
 
-## Remaining failures (run.sh, copy runner, SUMMARY fail=60)
+## Disposition after port triage
 
-Causes come from the diagnostic line printed before each `FAIL` in `run.sh.log`. Groups marked "not diagnosed" have no established cause.
+Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pass. Items marked "unverified after b3f2c90" have no measured run.
 
-- Missing `bin/eci-runtime-sync`: session snapshot refresh and active-marker cleanup; configured PreToolUse consumers; explicit security reminder.
-- Missing `eci_accidental_override_cleanup_command` (not in HEAD `eci-proof-state.sh`): ECI recovery helper, Kimi recovery helper, lifecycle source authority.
-- Missing HEAD files: `bin/eci-active-dispatch` (planner-maintenance receipt binding), `bin/context7-mcp` and `config.toml` (context7 MCP, developer guidance), `AGENTS.md` and launchers `~/.local/bin/eci` and `~/bin/eci` (launcher checks; launchers are a user decision), reviewer global instructions (`ECI_REVIEW_INSTRUCTIONS_MISSING`), and `AGENTS.md` for the PreToolUse latency test (rsync code 23).
-- Lifecycle retired in HEAD: `live helper missing: ledger_ensure_anchor` (retired lifecycle CLI); direct lifecycle visibility and command syntax gating (`callback transcript is unknown: empty transcript path`).
-- Reviewer temp bodies: system reviewer slices, VCS skip, process redaction, response_item events. Each fails on a missing `reviewer-*-body.md`. Cause not established.
-- Go module parity: `hooks/pre-commit-go-mod.sh` in omp differs from `~/.kimi-code/hooks/pre-commit-go-mod.sh` (first difference at byte 760), has mode 775 (test wants 755), and link count 1 (test wants one inode shared with the peer). This is real drift in the runtime tree, reproducible in any runner. Fixing it needs changes to `hooks/pre-commit-go-mod.sh`, which is outside this scope.
-- Not diagnosed: ECI gate allow/deny payload cases (markdown-only, code Write/NotebookEdit, MultiEdit, mixed apply_patch, spawned-agent transcripts); omp status subagent detection; first-record and oversize-prefix helpers; validate-direct/apply subagent ledger paths; validate-bash marks shell activity and bare `go test`; workflow skill routing; `ledger append unexpectedly accepted a marker from another cwd`; protected-first finite command-plan; `provider lifecycle dispatcher authority` (`env: use -[v]S to pass options in shebang lines`).
+## Known gaps (Supervisor decisions 1, 2; not ported, tests stay failing and disclosed)
+
+- bin/eci-runtime-sync absent: tests 47, 49, 51, 116, 307 (run.sh). Reason: not ported; Supervisor decision 1.
+- bin/eci-active-dispatch absent: 69, 72, 89. Reason: not ported; decision 1.
+- bin/context7-mcp, eci/config.toml, eci/AGENTS.md absent: 91, 93, 95, 98, 100, 114. Reason: not ported; decision 1.
+- Launchers ~/.local/bin/eci and ~/bin/eci: 85, 87. Reason: user-owned; decision 2.
+
+## Decisions and rewrites (Supervisor decisions 3-6)
+
+- Engineering-goal block (143, 144 goal assertions): ported into agent/skills/explore-critique-implement/SKILL.md in migration commit e6c1edf (decision 3).
+- Go-module parity (139, 140): peer comparisons removed; executable-bit check instead of mode 755; omp copy canonical (decision 4). Commits e96e4ab, eb48691.
+- ECI_HOME (188): test adapted to the context root; ECI_HOME override dropped; child classified through the HOME-derived root (decision 5). Commit b3f2c90. Unverified after b3f2c90.
+- Stale rewrites, each with design reason:
+- 73 planner-fd greps repointed to eci_runtime_open_verified (d56ad4e).
+- 81 shell-library block removed, Go binary is not sourceable (d56ad4e).
+- 56, 167 transcript-unknown advisory tolerated by prefix, hook_context.go:271-305 (4fe45de).
+- 142 review-policy path to agent/skills (3aaefee).
+- 202 (was 203) filter result via REVIEWER_FILTER_RESULT, reviewer-filter.sh:17-23 (b3f2c90). Unverified after b3f2c90.
+- 219-221 and 225-227 (same matcher rewrite): hooks.json matcher now routes to pretooluse-edit-dispatch.sh; ate-orchestrator-gate and security-reminder assertions dropped because they are no longer wired (hooks.json:49-68) (b3f2c90). Unverified after b3f2c90.
+- 295 (was 302) go test admitted, classifier_test.go:6179, 6194-6197 (b3f2c90). Unverified after b3f2c90.
+- 189, 190 renamed and rewritten (b3f2c90): the cwd-less deny was accidental, after cwd was added to the fixture the gate delegates; rewritten to cwd-less control denied with marker live and transcript classified main. ACCEPTED BY SUPERVISOR WITH CONDITIONS: (1) the cwd-less control case stays in the suite; (2) per-assertion old/new expectations listed under "Assertion rewrites" below. Unverified after b3f2c90.
+- Fixture preconditions: 175-177, 178, 185-187 retargeted to eci sessions root (eci-proof-state.sh:2236-2240) (b3f2c90). Unverified after b3f2c90.
+- 253, 256 omp main transcript added (b3f2c90). Unverified after b3f2c90.
+- Harness: 178-184 read ECI_HOOK_SUBAGENT_STATUS / variable, not stdout (b3f2c90). Unverified after b3f2c90.
+- Isolation: AGENTS.md link (d56ad4e) and account skills symlink (1b1266c) in run-isolated.sh; reviewer and skill-path cases depend on these. Unverified after b3f2c90.
+- Counter: CASE_RECORDED dedupe, so the submodule case counts once (8e01045). The 60/144 vs 71/145 log gap was child-script output, not lost counts.
+- Fixtures: cwd added to 8 gate fixtures (d56ad4e).
+- 111 mkdir (d56ad4e).
+
+## Assertion rewrites (b3f2c90, Supervisor accepted)
+
+- 175 | `[ ! -s out ]` for short/boundary/large -> short/boundary output `subagent`, large `unknown`, trace scoped | helper publishes via variable; large over 64 KiB: hook_context.go:339, eci-proof-state.sh:2350-2377; fixtures to eci/sessions (eci-proof-state.sh:2236-2240) | run.sh 799-817. Depends on eci-hook-helper provisioned.
+- 176 | status 2 -> status 1, output empty | eci-proof-state.sh:2401-2402 | run.sh 819-831
+- 177 | path to eci/sessions; expectation unchanged | eci-proof-state.sh:2236-2240 | run.sh 833-847
+- 178 | dir to eci/sessions; expectations unchanged | eci-proof-state.sh:2236-2240, 2350-2405 | run.sh 849-909
+- 180 | stdout read -> variable via STATE_HELPER_SCRIPT; expect `subagent` kept | shell subagent vs Go unknown = D: eci-proof-state.sh:2335-2338, hook_context.go:323-324 | run.sh 737-797, 905-915
+- 181 | same harness change; expect `subagent` kept | D: eci-proof-state.sh:2343-2345 vs hook_context.go:313-314 | run.sh 905-915
+- 182 | same; expect `subagent` kept | D: eci-proof-state.sh:2335-2338 vs hook_context.go:323-324 | run.sh 905-915
+- 183 | same; expect `unknown` kept (shell returns unknown) | eci-proof-state.sh:2322-2331 | run.sh 905-915
+- 184 | same; expect `main` kept (shell returns main) | eci-proof-state.sh:2319-2348 | run.sh 905-915
+- 185 | fixture to eci/sessions; expect no output kept | vacuous: eci-active-gate.sh never reads transcript_path (:87-211) | run.sh 1045
+- 186 | fixture to eci/sessions; expect no output kept | same vacuity | run.sh 1062
+- 187 | sessions root to eci/sessions symlink; expect no output kept | eci-proof-state.sh:2236-2240 | run.sh 1079-1082
+- 188 | ECI_HOME=logical_eci, no output -> ECI_HOME dropped, eci/sessions symlink; no gate output AND status `subagent` | eci-proof-state.sh:638-650 (never reads ECI_HOME), 2236-2240 | run.sh 1095-1118
+- 189 | is_pretool_deny (passed only via cwd-less malformed deny, eci-active-gate.sh:96; cwd added by d56ad4e) -> no gate output; cwd-less control denied; status `main` | eci-active-gate.sh:202-211 delegates code edits | run.sh 1120-1145
+- 190 | ECI_HOME override, deny -> no gate output; status `main` via eci/sessions symlink | eci-active-gate.sh:202-211, eci-proof-state.sh:638-650 | run.sh 1147-1167
+- 202 | `kept=$(filter_violations ...)` -> direct call + `$REVIEWER_FILTER_RESULT`; assertions unchanged | reviewer-filter.sh:17-23 | run.sh 1285-1302
+- 219 | matcher from /eci-active-gate.sh (absent) -> /pretooluse-edit-dispatch.sh; MultiEdit assertion kept | hooks.json:49-68; pretooluse-edit-dispatch.sh:62-63, 85-88 | run.sh 1587-1597, 1607-1611
+- 220 | same matcher rewrite; NotebookEdit assertion kept | hooks.json:49-68 | run.sh 1613-1617
+- 221 | separate validator/security-reminder/ate-gate commands -> dispatcher wiring; security-reminder and ate-orchestrator-gate dropped (not wired) | hooks.json:49-68; dispatcher :62-63, :85-88 | run.sh 2059-2073
+- 225-227 | log labels mapped by name; no separate change; covered by the 219-220 matcher rewrite | — | run.sh 1587-1617
+- 253 | no transcript (worker, no shell marker) -> omp main transcript at depth 2 via transcript_path and HOME; expectations unchanged | hook_context.go:53-65, 317-320, 592-602, 725-759 | run.sh 2129-2153
+- 256 | same fixture change; expectations unchanged | hook_context.go:53-65, 725-759 | run.sh 2185-2199
+- 295 | expect deny "captured to a file" -> expect no output; renamed test_validate_bash_admits_bare_go_test | classifier_test.go:6179, 6194-6197; text absent from lib/eci-command-plan-go | run.sh 2530-2536, reg 3063-3064
+
+## Still failing, not yet resolved (classified)
+
+- 109 edit marker overflow: R, product (eci-proof-state.sh:129-158). Pending Producer (c).
+- 156 canonical-handoff hardlink denial: R, product (classifier.go:4639-4643). Pending (c).
+- 157 ledger append other cwd: R, product (tools/eci-active/ledger.go). Pending (c).
+- 180, 181, 182 omp status depth rule: D, shell (eci-proof-state.sh:2335-2346) vs Go (hook_context.go:313-324). Pick one contract.
+- 213, 216, 217, 222, 223, 224: F+R, the routing text "Delegate repository edits" has no producer outside tests (eci-active-gate.sh:202-211). Stale expectation, not yet rewritten.
+- 164 command-plan NAME=value escaped-space branch: U.
+- 236, 240 relative control path reason text: U.
+- 245 subagent ledger paths: U (depends on whether omp-root transcripts carry thread_spawn).
+- 260, 263 bash activity writer: R, no writer in validate-bash.sh; no design citation for removal.
+- 175-187 helper-backed cases: depend on eci-hook-helper being present and the isolated copy providing it; unverified.
+- 311 security reminder: cascade of 307.
+- 201, 203, 205, 207, 210, 212: expected to pass after AGENTS.md link; unverified after b3f2c90.
