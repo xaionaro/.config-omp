@@ -24,9 +24,9 @@ assert_absent() {
 # turn a caller's ordinary named temporary path into a command denial.
 assert_absent '${TMPDIR:-/tmp}' "$ROOT/hooks/pre-commit-go-mod.sh"
 assert_absent '${TMPDIR:-/tmp}' "$ROOT/hooks/pretooluse-edit-dispatch.sh"
-assert_absent "'/tmp/brainstorm" "$ROOT/skills/brainstorming/scripts/server.cjs"
-assert_absent 'SESSION_DIR="/tmp/brainstorm-' "$ROOT/skills/brainstorming/scripts/start-server.sh"
-assert_absent '[[ "$SESSION_DIR" == /tmp/* ]]' "$ROOT/skills/brainstorming/scripts/stop-server.sh"
+assert_absent "'/tmp/brainstorm" "$ROOT/../skills/brainstorming/scripts/server.cjs"
+assert_absent 'SESSION_DIR="/tmp/brainstorm-' "$ROOT/../skills/brainstorming/scripts/start-server.sh"
+assert_absent '[[ "$SESSION_DIR" == /tmp/* ]]' "$ROOT/../skills/brainstorming/scripts/stop-server.sh"
 
 for path in "$ROOT/hooks/system-prompt-reviewer.sh"; do
   if rg -n '(^|[=( ])mktemp[[:space:]]*($|[;&])' "$path" >/dev/null 2>&1; then
