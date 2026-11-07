@@ -491,11 +491,14 @@ mkdir -p -- "$dstand/bin"
 cat >"$dstand/bin/stat" <<'STAND'
 #!/bin/sh
 # Test-only stand-in for macOS `stat -f`, so the darwin copy path runs on Linux. It answers only the
-# forms the path uses and exits 2 on anything else:
-#   stat -f '%u %Lp' -- PATH        lstat: owner and octal mode
-#   stat -f '%d %i' -- PATH         lstat: device and inode
-#   stat -f '%d %i %u %Lp %HT' <&N  fstat of stdin: device, inode, owner, mode, type
-# NT_STAT_FAKE_PATH with NT_STAT_FAKE_UID or NT_STAT_FAKE_MODE overrides that path only.
+# forms the path uses and exits 2 on anything else. The fields follow BSD stat(1): %Lp is the
+# permission bits (mode & 0777); %Mp is the suid, sgid and sticky bits as one octal digit.
+#   stat -f '%u %Lp' -- PATH         lstat: owner and permission bits
+#   stat -f '%u %Mp%Lp' -- PATH      lstat: owner, then 4 octal digits (special bits, permission bits)
+#   stat -f '%d %i' -- PATH          lstat: device and inode
+#   stat -f '%d %i %u %Lp %HT' <&N   fstat of stdin: device, inode, owner, permission bits, type
+# NT_STAT_FAKE_PATH with NT_STAT_FAKE_UID or NT_STAT_FAKE_MODE overrides that path only. A fake mode
+# is a full mode such as 1777 and is split into the special and permission fields like a real one.
 # NT_STAT_SWAP (symlink or rename) replaces NT_STAT_SWAP_PATH once, during the fstat, from NT_STAT_SWAP_TO.
 [ "${1:-}" = -f ] || exit 2
 fmt="$2"
@@ -512,18 +515,30 @@ fake_apply() {
     fake_mode="${NT_STAT_FAKE_MODE:-}"
   fi
 }
+split_mode() {  # split_mode <full octal mode, as GNU %a prints it>: sets special and perms
+  case "$1" in
+    ????) special="${1%???}"; perms="${1#?}" ;;
+    ???) special=0; perms="$1" ;;
+    *) exit 2 ;;
+  esac
+}
 if [ "$#" -gt 0 ]; then
   path="$1"
   case "$fmt" in
-    '%u %Lp')
+    '%u %Lp' | '%u %Mp%Lp')
       line="$("$real" -c '%u %a' -- "$path")" || exit 2
       set -- $line
       uid="$1"
-      mode="$2"
+      full="$2"
       fake_apply "$path"
       [ -n "$fake_uid" ] && uid="$fake_uid"
-      [ -n "$fake_mode" ] && mode="$fake_mode"
-      printf '%s %s\n' "$uid" "$mode"
+      [ -n "$fake_mode" ] && full="$fake_mode"
+      split_mode "$full"
+      if [ "$fmt" = '%u %Lp' ]; then
+        printf '%s %s\n' "$uid" "$perms"
+      else
+        printf '%s %s%s\n' "$uid" "$special" "$perms"
+      fi
       ;;
     '%d %i') exec "$real" -c '%d %i' -- "$path" ;;
     *) exit 2 ;;
@@ -543,19 +558,20 @@ else
   dev="$1"
   ino="$2"
   uid="$3"
-  mode="$4"
+  full="$4"
   shift 4
   kind="$*"
   fake_apply "$target"
   [ -n "$fake_uid" ] && uid="$fake_uid"
-  [ -n "$fake_mode" ] && mode="$fake_mode"
+  [ -n "$fake_mode" ] && full="$fake_mode"
+  split_mode "$full"
   case "$kind" in
     'regular file' | 'regular empty file') type='Regular File' ;;
     directory) type='Directory' ;;
     'symbolic link') type='Symbolic Link' ;;
     *) type='Other' ;;
   esac
-  printf '%s %s %s %s %s\n' "$dev" "$ino" "$uid" "$mode" "$type"
+  printf '%s %s %s %s %s\n' "$dev" "$ino" "$uid" "$perms" "$type"
 fi
 STAND
 chmod 0755 -- "$dstand/bin/stat"
@@ -656,13 +672,15 @@ if [ "$host_os" = Linux ]; then
   darwin_deny_check darwin-copy-rename-swap "$ctmp" 'resolves outside the verified bin directory'
   install_binary "$fixtures/macho-arm64"
   ctmp="$(fresh_tmp sticky)"
+  chmod 1777 -- "$ctmp"
   real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
-  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0 NT_STAT_FAKE_MODE=1777
-  darwin_accept_check darwin-temp-root-sticky-accept "$ctmp" 'root-owned sticky TMPDIR accepted; copy under it, close removes it'
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0
+  darwin_accept_check darwin-temp-root-sticky-accept "$ctmp" 'TMPDIR is a real 1777 directory (sticky bit read through %Mp), owner faked to root; accepted, copy under it, close removes it'
   install_binary "$fixtures/macho-arm64"
   ctmp="$(fresh_tmp root-777)"
+  chmod 0777 -- "$ctmp"
   real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
-  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0 NT_STAT_FAKE_MODE=777
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0
   darwin_deny_check darwin-temp-root-777-denied "$ctmp" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
 else
   skip "darwin copy cases that need the BSD stat stand-in run on Linux only"

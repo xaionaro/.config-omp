@@ -260,7 +260,8 @@ eci_runtime_darwin_directory_chain_is_trusted() {
 # sticky directory (the 1000 bit set) whose own parents pass the chain check. Returns a status only.
 eci_runtime_darwin_temp_dir_is_trusted() {
   local dir="$1" record owner='' mode='' mode_re='^[0-7]{3,4}$'
-  record="$(stat -f '%u %Lp' -- "$dir" 2>/dev/null)" || return 1
+  # BSD %Mp carries the suid, sgid and sticky bits; %Lp carries only the permission bits.
+  record="$(stat -f '%u %Mp%Lp' -- "$dir" 2>/dev/null)" || return 1
   read -r owner mode <<<"$record" || return 1
   [[ $mode =~ $mode_re ]] || return 1
   if [ "$owner" = 0 ] && (( 8#$mode & 01000 )); then
