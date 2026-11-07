@@ -734,6 +734,25 @@ write_first_record_scoped_subagent_transcript() {
   [ "$record_bytes" -eq "$(head -c "$record_bytes" "$path" | wc -c)" ]
 }
 
+# Runs one proof-state helper as a simple command in a fresh shell, then prints what
+# it published: the status or parent id variable, the allowed-id array, or the
+# captured helper output. The helpers print nothing on stdout (eci-proof-state.sh:2350-2405).
+STATE_HELPER_SCRIPT='
+. "$1" || exit 1
+rc=0
+"$2" "$3" || rc=$?
+case "$2" in
+  eci_hook_subagent_status | eci_hook_is_subagent_context)
+    [ -z "${ECI_HOOK_SUBAGENT_STATUS:-}" ] || printf "%s\n" "$ECI_HOOK_SUBAGENT_STATUS" ;;
+  eci_hook_parent_session_id)
+    [ -z "${ECI_HOOK_PARENT_SESSION_ID:-}" ] || printf "%s\n" "$ECI_HOOK_PARENT_SESSION_ID" ;;
+  eci_hook_allowed_session_ids)
+    [ "${#ECI_HOOK_ALLOWED_SESSION_IDS[@]}" -eq 0 ] || printf "%s\n" "${ECI_HOOK_ALLOWED_SESSION_IDS[@]}" ;;
+  *) printf "%s" "${ECI_HOOK_HELPER_OUTPUT:-}" ;;
+esac
+exit "$rc"
+'
+
 trace_first_record_helper() {
   local helper="$1"
   local transcript="$2"
@@ -741,8 +760,7 @@ trace_first_record_helper() {
   local trace="$4"
 
   strace -f -qq -s 8192 -e trace=read -P "$transcript" -o "$trace" \
-    env -u ECI_HOME HOME="$TMP_ROOT/home" bash -c '. "$1"; "$2" "$3"' \
-    bash "$ROOT/hooks/lib/eci-proof-state.sh" "$helper" \
+    env -u ECI_HOME HOME="$TMP_ROOT/home" bash -c "$STATE_HELPER_SCRIPT" bash "$ROOT/hooks/lib/eci-proof-state.sh" "$helper" \
     "$(jq -cn --arg transcript "$transcript" '{transcript_path: $transcript}')" \
     >"$output" 2>"$output.err"
 }
@@ -774,45 +792,47 @@ invoke_state_helper() {
   local input="$2"
   local output="$3"
 
-  env -u ECI_HOME HOME="$TMP_ROOT/home" bash -c '. "$1"; "$2" "$3"' \
-    bash "$ROOT/hooks/lib/eci-proof-state.sh" "$helper" "$input" \
+  env -u ECI_HOME HOME="$TMP_ROOT/home" bash -c "$STATE_HELPER_SCRIPT" bash "$ROOT/hooks/lib/eci-proof-state.sh" "$helper" "$input" \
     >"$output" 2>"$output.err"
 }
 
 test_subagent_helper_reads_oversize_metadata_prefix() {
-  local label record_bytes transcript output trace
+  local label record_bytes want transcript output trace
   for label in short boundary large; do
     case "$label" in
-      short) record_bytes=256 ;;
-      boundary) record_bytes=4096 ;;
-      large) record_bytes=1048576 ;;
+      short) record_bytes=256 want=subagent ;;
+      boundary) record_bytes=4096 want=subagent ;;
+      # Over the 64 KiB+1 prefix budget the record is rejected, so the status is unknown
+      # (hook_context.go:339; eci-proof-state.sh:2371).
+      large) record_bytes=1048576 want=unknown ;;
     esac
-    transcript="$TMP_ROOT/home/.omp/agent/sessions/first-record-subagent-$label.jsonl"
+    transcript="$TMP_ROOT/home/.omp/agent/eci/sessions/first-record-subagent-$label.jsonl"
     output="$TMP_ROOT/first-record-subagent-$label.out"
     trace="$TMP_ROOT/first-record-subagent-$label.strace"
     write_first_record_scoped_subagent_transcript "$transcript" "$record_bytes" || return 1
     trace_first_record_helper eci_hook_is_subagent_context \
-      "$transcript" "$output" "$trace" || return 1
-    [ ! -s "$output" ] && trace_is_first_record_scoped "$trace" "$transcript" || return 1
+      "$transcript" "$output" "$trace" || true
+    [ "$(cat "$output")" = "$want" ] && trace_is_first_record_scoped "$trace" "$transcript" || return 1
   done
 }
 
 test_parent_helper_reads_oversize_metadata_prefix() {
   local transcript output trace status=0
-  transcript="$TMP_ROOT/home/.omp/agent/sessions/first-record-parent-large.jsonl"
+  transcript="$TMP_ROOT/home/.omp/agent/eci/sessions/first-record-parent-large.jsonl"
   output="$TMP_ROOT/first-record-parent-large.out"
   trace="$TMP_ROOT/first-record-parent-large.strace"
   write_first_record_scoped_subagent_transcript "$transcript" 1048576 || return 1
 
-  # Records whose newline is beyond the 64 KiB+1 budget are rejected by design.
+  # Records whose newline is beyond the 64 KiB+1 budget are rejected by design;
+  # eci_hook_parent_session_id then returns 1 (eci-proof-state.sh:2401-2402).
   trace_first_record_helper eci_hook_parent_session_id \
     "$transcript" "$output" "$trace" || status=$?
-  [ "$status" -eq 2 ] && [ ! -s "$output" ] && trace_is_first_record_scoped "$trace" "$transcript"
+  [ "$status" -eq 1 ] && [ ! -s "$output" ] && trace_is_first_record_scoped "$trace" "$transcript"
 }
 
 test_first_record_helpers_reject_oversize_without_final_newline() {
   local transcript input output
-  transcript="$TMP_ROOT/home/.omp/agent/sessions/first-record-no-final-newline.jsonl"
+  transcript="$TMP_ROOT/home/.omp/agent/eci/sessions/first-record-no-final-newline.jsonl"
   output="$TMP_ROOT/first-record-no-final-newline.out"
   write_first_record_scoped_subagent_transcript "$transcript" 1048576 no no || return 1
   input="$(jq -cn --arg transcript "$transcript" '{transcript_path: $transcript}')"
@@ -828,7 +848,7 @@ test_first_record_helpers_reject_oversize_without_final_newline() {
 
 test_first_record_helpers_preserve_boundary_behavior() {
   local dir transcript input output
-  dir="$TMP_ROOT/home/.omp/agent/sessions"
+  dir="$TMP_ROOT/home/.omp/agent/eci/sessions"
   mkdir -p "$dir" || return 1
 
   transcript="$dir/boundary-subagent.jsonl"
@@ -1042,7 +1062,7 @@ test_eci_gate_allows_spawned_agent_transcript_payload() {
   proof_root="$(fresh_proof_root eci-subagent-transcript)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
-  transcript="$(subagent_transcript_path)"
+  transcript="$TMP_ROOT/home/.omp/agent/eci/sessions/eci-hooks-test-subagent.jsonl"
   write_subagent_transcript "$transcript" || return 1
   input="$TMP_ROOT/eci-subagent-transcript.json"
   jq --arg transcript "$transcript" '.transcript_path = $transcript' "$FIXTURES/eci-apply-patch-code.json" >"$input"
@@ -1059,7 +1079,7 @@ test_eci_gate_allows_oversize_spawned_agent_transcript_payload() {
   proof_root="$(fresh_proof_root eci-oversize-subagent-transcript)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
-  transcript="$TMP_ROOT/home/.omp/agent/sessions/eci-oversize-subagent.jsonl"
+  transcript="$TMP_ROOT/home/.omp/agent/eci/sessions/eci-oversize-subagent.jsonl"
   write_first_record_scoped_subagent_transcript "$transcript" 1048576 yes no t00-session || return 1
   input="$TMP_ROOT/eci-oversize-subagent-transcript.json"
   jq --arg transcript "$transcript" '.transcript_path = $transcript' "$FIXTURES/eci-apply-patch-code.json" >"$input"
@@ -1076,10 +1096,10 @@ test_eci_gate_allows_spawned_agent_through_sessions_root_symlink() {
   proof_root="$(fresh_proof_root eci-subagent-sessions-symlink)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
-  sessions_root="$TMP_ROOT/home/.omp/agent/sessions"
+  sessions_root="$TMP_ROOT/home/.omp/agent/eci/sessions"
   sessions_target="$TMP_ROOT/eci-subagent-sessions-target"
   mkdir -p "$TMP_ROOT/home/.omp/agent/eci" "$sessions_target"
-  ln -s "$sessions_target" "$sessions_root"
+  rm -rf "$sessions_root" && ln -s "$sessions_target" "$sessions_root" || return 1
   transcript="$sessions_root/child.jsonl"
   write_subagent_transcript "$transcript" || return 1
   input="$TMP_ROOT/eci-subagent-sessions-symlink.json"
@@ -1093,27 +1113,31 @@ test_eci_gate_allows_spawned_agent_through_sessions_root_symlink() {
 }
 
 test_eci_gate_allows_split_root_logical_child_transcript() {
-  local proof_root input out physical_sessions logical_eci transcript
+  local proof_root input out physical_sessions logical_sessions transcript status_out
   proof_root="$(fresh_proof_root eci-split-root-logical-child)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
   physical_sessions="$TMP_ROOT/home/.omp/agent/sessions"
-  logical_eci="$TMP_ROOT/logical-eci"
-  mkdir -p "$physical_sessions" "$logical_eci"
-  ln -s "$physical_sessions" "$logical_eci/sessions"
-  transcript="$logical_eci/sessions/child.jsonl"
-  write_subagent_transcript "$transcript" || return 1
+  logical_sessions="$TMP_ROOT/home/.omp/agent/eci/sessions"
+  mkdir -p "$physical_sessions/-proj-" "$TMP_ROOT/home/.omp/agent/eci" || return 1
+  rm -rf "$logical_sessions" && ln -s "$physical_sessions" "$logical_sessions" || return 1
+  transcript="$logical_sessions/-proj-/child.jsonl"
+  printf '%s\n%s\n' "$OMP_PARENT_HEADER_LINE" "$OMP_MESSAGE_LINE" >"$transcript" || return 1
   input="$TMP_ROOT/eci-split-root-logical-child.json"
   jq --arg transcript "$transcript" '.transcript_path = $transcript' "$FIXTURES/eci-apply-patch-code.json" >"$input"
   out="$TMP_ROOT/eci-split-root-logical-child.out"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
-    HOME="$TMP_ROOT/home" ECI_HOME="$logical_eci" ECI_PROOF_ROOT="$proof_root" || return 1
-
-  expect_no_output "$out"
+    HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
+  # Classified through the HOME-derived ECI root (eci_hook_sessions_root,
+  # eci-proof-state.sh:2236-2240; eci_home_lexical_root, :638-650), not an ECI_HOME override.
+  status_out="$TMP_ROOT/eci-split-root-logical-child.status"
+  invoke_state_helper eci_hook_subagent_status "$(cat "$input")" "$status_out" || return 1
+  [ "$(cat "$status_out")" = subagent ]
 }
 
-test_eci_gate_blocks_main_transcript_payload() {
+test_eci_gate_delegates_main_transcript_payload() {
   local proof_root input out transcript
   proof_root="$(fresh_proof_root eci-main-transcript)"
   mkdir -p "$proof_root/t00-session"
@@ -1126,29 +1150,40 @@ test_eci_gate_blocks_main_transcript_payload() {
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
     HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
 
-  is_pretool_deny "$out"
+  # Control: without cwd the identity check denies while the marker is active, so
+  # the empty output above is a delegation (eci-active-gate.sh:202-211), not a dead gate.
+  jq 'del(.cwd)' "$input" >"$TMP_ROOT/eci-main-transcript-no-cwd.json" || return 1
+  run_hook "$TMP_ROOT/eci-main-transcript-no-cwd.out" "$ROOT/hooks/eci-active-gate.sh" \
+    "$TMP_ROOT/eci-main-transcript-no-cwd.json" \
+    HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
+  is_pretool_deny "$TMP_ROOT/eci-main-transcript-no-cwd.out" || return 1
+
+  invoke_state_helper eci_hook_subagent_status "$(cat "$input")" "$TMP_ROOT/eci-main-transcript.status" || return 1
+  [ "$(cat "$TMP_ROOT/eci-main-transcript.status")" = main ]
 }
 
-test_eci_gate_blocks_split_root_logical_main_transcript() {
-  local proof_root input out physical_sessions logical_eci transcript
+test_eci_gate_classifies_split_root_logical_main_transcript() {
+  local proof_root input out logical_sessions transcript status_out
   proof_root="$(fresh_proof_root eci-split-root-logical-main)"
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
-  physical_sessions="$TMP_ROOT/home/.omp/agent/sessions"
-  logical_eci="$TMP_ROOT/logical-eci"
-  mkdir -p "$physical_sessions" "$logical_eci"
-  ln -s "$physical_sessions" "$logical_eci/sessions"
-  transcript="$logical_eci/sessions/main.jsonl"
-  write_main_transcript "$transcript" || return 1
+  logical_sessions="$TMP_ROOT/home/.omp/agent/eci/sessions"
+  mkdir -p "$TMP_ROOT/home/.omp/agent/sessions/-proj-" "$TMP_ROOT/home/.omp/agent/eci" || return 1
+  rm -rf "$logical_sessions" && ln -s "$TMP_ROOT/home/.omp/agent/sessions" "$logical_sessions" || return 1
+  transcript="$logical_sessions/-proj-/main.jsonl"
+  printf '%s\n%s\n' "$OMP_HEADER_LINE" "$OMP_MESSAGE_LINE" >"$transcript" || return 1
   input="$TMP_ROOT/eci-split-root-logical-main.json"
   jq --arg transcript "$transcript" '.transcript_path = $transcript' "$FIXTURES/eci-apply-patch-code.json" >"$input"
   out="$TMP_ROOT/eci-split-root-logical-main.out"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
-    HOME="$TMP_ROOT/home" ECI_HOME="$logical_eci" ECI_PROOF_ROOT="$proof_root" || return 1
-
-  is_pretool_deny "$out"
+    HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
+  expect_no_output "$out" || return 1
+  status_out="$TMP_ROOT/eci-split-root-logical-main.status"
+  invoke_state_helper eci_hook_subagent_status "$(cat "$input")" "$status_out" || return 1
+  [ "$(cat "$status_out")" = main ]
 }
 
 test_reviewer_backend_parser_accepts_no_credential_backends() {
@@ -1269,10 +1304,14 @@ EOF
   (
     . "$ROOT/hooks/lib/reviewer-filter.sh"
     REVIEWER_FILTER_CORPUS_FILES="$ROOT/hooks/stop-checklist.md"
-    kept=$(filter_violations '{"verdict":"fail","violations":[{"rule":"Always run bash hooks/tests/run.sh before stopping.","evidence":"I skipped it."}]}' "$body")
-    paraphrased=$(filter_violations '{"verdict":"fail","violations":[{"rule":"You must execute the requested hook test suite before ending the turn.","evidence":"I skipped it."}]}' "$body")
-    fabricated=$(filter_violations '{"verdict":"fail","violations":[{"rule":"Always whistle three times before stopping.","evidence":"I skipped it."}]}' "$body")
-    current_copy=$(filter_violations '{"verdict":"fail","violations":[{"rule":"I skipped it because the database migration failed.","evidence":"I skipped it because the database migration failed."}]}' "$body")
+    filter_violations '{"verdict":"fail","violations":[{"rule":"Always run bash hooks/tests/run.sh before stopping.","evidence":"I skipped it."}]}' "$body"
+    kept="$REVIEWER_FILTER_RESULT"
+    filter_violations '{"verdict":"fail","violations":[{"rule":"You must execute the requested hook test suite before ending the turn.","evidence":"I skipped it."}]}' "$body"
+    paraphrased="$REVIEWER_FILTER_RESULT"
+    filter_violations '{"verdict":"fail","violations":[{"rule":"Always whistle three times before stopping.","evidence":"I skipped it."}]}' "$body"
+    fabricated="$REVIEWER_FILTER_RESULT"
+    filter_violations '{"verdict":"fail","violations":[{"rule":"I skipped it because the database migration failed.","evidence":"I skipped it because the database migration failed."}]}' "$body"
+    current_copy="$REVIEWER_FILTER_RESULT"
     [ "$(printf '%s' "$kept" | jq -r '.verdict')" = "fail" ] &&
       [ "$(printf '%s' "$kept" | jq '.violations | length')" = "1" ] &&
       [ "$(printf '%s' "$paraphrased" | jq -r '.verdict')" = "fail" ] &&
@@ -1549,7 +1588,7 @@ test_eci_gate_denies_code_notebookedit_payload() {
   mkdir -p "$proof_root/t00-session"
   printf 'scope: test\n' >"$proof_root/t00-session/eci_active"
   input="$TMP_ROOT/eci-notebook.json"
-  jq -n '{session_id:"t00-session",tool_name:"NotebookEdit",tool_input:{notebook_path:"src/file.ipynb"}}' >"$input"
+  jq -n '{session_id:"t00-session",cwd:"/tmp/eci-hooks-test-repo",tool_name:"NotebookEdit",tool_input:{notebook_path:"src/file.ipynb"}}' >"$input"
   out="$TMP_ROOT/eci-notebook.out"
 
   run_hook "$out" "$ROOT/hooks/eci-active-gate.sh" "$input" \
@@ -1584,11 +1623,12 @@ test_eci_gate_blocks_multiedit_stdin() {
   is_edit_routing_deny "$out"
 }
 
-eci_gate_matcher() {
+# Matchers of the PreToolUse entries that run the edit dispatcher (hooks.json:49-68).
+edit_dispatch_matcher() {
   jq -er '
     [
       .hooks.PreToolUse[]?
-      | select(any(.hooks[]?; (.command // "") | test("/eci-active-gate\\.sh")))
+      | select(any(.hooks[]?; (.command // "") | test("/pretooluse-edit-dispatch\\.sh")))
       | .matcher
       | strings
     ] | join("|")
@@ -1605,13 +1645,13 @@ matcher_has_tool() {
 
 test_multiedit_hook_config_is_wired() {
   local matcher
-  matcher="$(eci_gate_matcher)" || return 1
+  matcher="$(edit_dispatch_matcher)" || return 1
   matcher_has_tool "$matcher" "MultiEdit"
 }
 
 test_notebookedit_hook_config_is_wired() {
   local matcher
-  matcher="$(eci_gate_matcher)" || return 1
+  matcher="$(edit_dispatch_matcher)" || return 1
   matcher_has_tool "$matcher" "NotebookEdit"
 }
 
@@ -2055,26 +2095,20 @@ test_validate_edit_write_allows_remote_multiedit_gomod_replace() {
   expect_no_output "$out"
 }
 
-test_edit_write_hook_config_is_split_and_preserves_gates() {
+test_edit_write_hook_config_is_routed_through_dispatcher() {
+  local dispatcher="$ROOT/hooks/pretooluse-edit-dispatch.sh"
   jq -e '
     def commands_for($matcher):
       [.hooks.PreToolUse[]? | select(.matcher == $matcher) | .hooks[]?.command];
-    def has($commands; $suffix):
-      any($commands[]?; contains($suffix));
-
     (commands_for("^apply_patch$") as $apply
       | commands_for("^(Edit|Write|MultiEdit|NotebookEdit)$") as $direct
-      | has($apply; "/validate-apply-patch.sh") and
-        (has($apply; "/validate-edit-write.sh") | not) and
-        has($apply; "/security-reminder.py") and
-        has($apply; "/eci-active-gate.sh") and
-        has($apply; "/ate-orchestrator-gate.sh") and
-        has($direct; "/validate-edit-write.sh") and
-        (has($direct; "/validate-apply-patch.sh") | not) and
-        has($direct; "/security-reminder.py") and
-        has($direct; "/eci-active-gate.sh") and
-        has($direct; "/ate-orchestrator-gate.sh"))
-  ' "$ROOT/hooks.json" >/dev/null
+      | ($apply | length) == 1 and ($direct | length) == 1 and
+        ($apply[0] | contains("/pretooluse-edit-dispatch.sh")) and
+        ($direct[0] | contains("/pretooluse-edit-dispatch.sh")))
+  ' "$ROOT/hooks.json" >/dev/null &&
+    grep -Fq 'apply_patch) validator="$hook_dir/validate-apply-patch.sh" ;;' "$dispatcher" &&
+    grep -Fq 'Edit | Write | MultiEdit | NotebookEdit) validator="$hook_dir/validate-edit-write.sh" ;;' "$dispatcher" &&
+    grep -Fq '"$hook_dir/eci-active-gate.sh"' "$dispatcher"
 }
 
 test_ate_gate_allows_markdown_edits_for_lead() {
@@ -2131,14 +2165,28 @@ test_validate_apply_patch_allows_unrelated_non_plan_edit() {
   expect_no_output "$out"
 }
 
+# The Go recorder writes activity/sessions/<sid>/shell only for a coordinator
+# (main) role, which comes from the callback transcript (hook_context.go:53-65,
+# 592-602; writer hook_context.go:725-759). A main transcript is depth two with a
+# session header (hook_context.go:317-320).
+write_omp_main_transcript() {
+  local path="$1"
+  mkdir -p "$(dirname "$path")" || return 1
+  printf '%s\n' "$OMP_HEADER_LINE" "$OMP_MESSAGE_LINE" >"$path" || return 1
+  printf '%s\n' "$path"
+}
+
 test_validate_bash_marks_shell_activity() {
-  local proof_root input out
+  local proof_root input out transcript
   proof_root="$(fresh_proof_root activity-bash)"
+  transcript="$(write_omp_main_transcript "$TMP_ROOT/home/.omp/agent/sessions/-proj-/activity-main.jsonl")" || return 1
   input="$TMP_ROOT/activity-bash.json"
-  jq --arg cwd "$ROOT" '.session_id = "t00-session" | .cwd = $cwd' "$FIXTURES/validate-bash-go-test-redirect.json" >"$input"
+  jq --arg cwd "$ROOT" --arg transcript "$transcript" \
+    '.session_id = "t00-session" | .cwd = $cwd | .transcript_path = $transcript' \
+    "$FIXTURES/validate-bash-go-test-redirect.json" >"$input"
   out="$TMP_ROOT/activity-bash.out"
 
-  run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
+  run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$input" HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
   expect_no_output "$out" &&
     [ -s "$proof_root/activity/sessions/t00-session/shell" ]
 }
@@ -2174,16 +2222,17 @@ test_validate_bash_skips_read_only_shell_chain_activity() {
 }
 
 test_validate_bash_marks_redirected_read_shell_activity() {
-  local proof_root input out command
+  local proof_root input out command transcript
   proof_root="$(fresh_proof_root activity-bash-read-redirect)"
+  transcript="$(write_omp_main_transcript "$TMP_ROOT/home/.omp/agent/sessions/-proj-/activity-redirect-main.jsonl")" || return 1
   command="sed -n '1,5p' AGENTS.md > /tmp/eci-read-output.txt"
   input="$TMP_ROOT/activity-bash-read-redirect.json"
-  jq --arg cwd "$ROOT" --arg command "$command" \
-    '.session_id = "t00-session" | .cwd = $cwd | .tool_input.command = $command' \
+  jq --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
+    '.session_id = "t00-session" | .cwd = $cwd | .tool_input.command = $command | .transcript_path = $transcript' \
     "$FIXTURES/validate-bash-go-test-bare.json" >"$input"
   out="$TMP_ROOT/activity-bash-read-redirect.out"
 
-  run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
+  run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$input" HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" || return 1
   expect_no_output "$out" &&
     [ -s "$proof_root/activity/sessions/t00-session/shell" ]
 }
@@ -2517,12 +2566,12 @@ test_validate_edit_write_marks_edit_activity() {
     [ -s "$proof_root/activity/sessions/t00-session/edit" ]
 }
 
-test_validate_bash_blocks_bare_go_test() {
+# classifier_test.go:6179-6197 admits the direct `go test ./...` argv (Decision allow, no diagnostic).
+test_validate_bash_admits_bare_go_test() {
   local out
   out="$TMP_ROOT/bash-go-test-bare.out"
   run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$FIXTURES/validate-bash-go-test-bare.json" || return 1
-  is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "captured to a file"
+  expect_no_output "$out"
 }
 
 test_validate_bash_allows_redirected_go_test() {
@@ -2850,10 +2899,10 @@ run_case "ECI gate allows spawned-agent transcript through sessions-root symlink
   test_eci_gate_allows_spawned_agent_through_sessions_root_symlink
 run_case "ECI gate allows split-root logical child transcript" \
   test_eci_gate_allows_split_root_logical_child_transcript
-run_case "ECI gate blocks main transcript payload" \
-  test_eci_gate_blocks_main_transcript_payload
-run_case "ECI gate blocks split-root logical main transcript" \
-  test_eci_gate_blocks_split_root_logical_main_transcript
+run_case "ECI gate delegates main transcript payload and classifies it main" \
+  test_eci_gate_delegates_main_transcript_payload
+run_case "ECI gate classifies split-root logical main transcript as main" \
+  test_eci_gate_classifies_split_root_logical_main_transcript
 run_case "reviewer backend parser accepts no-credential backends" \
   test_reviewer_backend_parser_accepts_no_credential_backends
 run_case "reviewer backend parser rejects credential backends" \
@@ -2904,8 +2953,8 @@ run_case "hooks.json edit matcher includes MultiEdit" \
   test_multiedit_hook_config_is_wired
 run_case "hooks.json edit matcher includes NotebookEdit" \
   test_notebookedit_hook_config_is_wired
-run_case "hooks.json splits apply_patch and direct edit validators while preserving gates" \
-  test_edit_write_hook_config_is_split_and_preserves_gates
+run_case "hooks.json routes apply_patch and direct edits through the edit dispatcher" \
+  test_edit_write_hook_config_is_routed_through_dispatcher
 run_case "ATE gate allows markdown edits for lead role" \
   test_ate_gate_allows_markdown_edits_for_lead
 run_case "ATE gate allows markdown edits for coordinator role" \
@@ -3050,8 +3099,8 @@ run_case "validate-apply-patch marks edit activity" \
   test_validate_apply_patch_marks_edit_activity
 run_case "validate-edit-write marks edit activity" \
   test_validate_edit_write_marks_edit_activity
-run_case "validate-bash blocks bare go test" \
-  test_validate_bash_blocks_bare_go_test
+run_case "validate-bash admits bare go test" \
+  test_validate_bash_admits_bare_go_test
 run_case "validate-bash allows redirected go test" \
   test_validate_bash_allows_redirected_go_test
 run_case "validate-bash allows go test piped to tee" \
