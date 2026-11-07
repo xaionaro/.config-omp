@@ -778,10 +778,13 @@ trace_read_bytes() {
 trace_is_first_record_scoped() {
   local trace="$1"
   local transcript="$2"
-  local first_record_bytes maximum_read_bytes total_bytes read_bytes
+  local maximum_read_bytes="${3:-}"
+  local first_record_bytes total_bytes read_bytes
   first_record_bytes="$(sed -n '1{p;q;}' "$transcript" | wc -c)"
-  maximum_read_bytes=$((first_record_bytes + 8192))
-  [ "$maximum_read_bytes" -le 73728 ] || maximum_read_bytes=73728
+  if [ -z "$maximum_read_bytes" ]; then
+    maximum_read_bytes=$((first_record_bytes + 8192))
+    [ "$maximum_read_bytes" -le 73728 ] || maximum_read_bytes=73728
+  fi
   total_bytes="$(wc -c <"$transcript")"
   read_bytes="$(trace_read_bytes "$trace")"
 
@@ -802,6 +805,10 @@ invoke_state_helper() {
 
 test_subagent_helper_reads_oversize_metadata_prefix() {
   local label record_bytes want transcript output trace
+  # The first-record reader issues one read of at most inputBudget+1 bytes: pre-migration source
+  # 575bb81 hooks/lib/eci-hook-helper-go/transcript.go:140 (r.Read(buf[start:cap(buf)]) with
+  # cap inputBudget+1 = 65537). strace measured exactly 65537 bytes for every fixture below.
+  local first_record_read_cap=65537
   for label in short boundary large; do
     case "$label" in
       short) record_bytes=256 want=subagent ;;
@@ -816,7 +823,9 @@ test_subagent_helper_reads_oversize_metadata_prefix() {
     write_first_record_scoped_subagent_transcript "$transcript" "$record_bytes" || return 1
     trace_first_record_helper eci_hook_is_subagent_context \
       "$transcript" "$output" "$trace" || true
-    [ "$(cat "$output")" = "$want" ] && trace_is_first_record_scoped "$trace" "$transcript" || return 1
+    # Live cap: the traced first-record read may not exceed the reader's 65537-byte request.
+    [ "$(cat "$output")" = "$want" ] &&
+      trace_is_first_record_scoped "$trace" "$transcript" "$first_record_read_cap" || return 1
   done
 }
 
