@@ -30,6 +30,7 @@ cp -- "$ROOT/bin/eci-active" "$KIMI_HOME/bin/eci-active"
 cp -- "$ROOT/bin/eci-active-dispatch" "$FIXTURE_HOME/bin/eci-active-dispatch"
 cp -- "$ROOT/hooks.json" "$FIXTURE_HOME/hooks.json"
 cp -a -- "$ROOT/hooks/." "$FIXTURE_HOME/hooks/"
+cp -a -- "$ROOT/tools" "$FIXTURE_HOME/tools"
 sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_HOME/hooks/validate-bash.sh"
 
 # Keep one managed source below a private directory so the receipt test can
