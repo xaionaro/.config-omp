@@ -94,7 +94,9 @@ func run(args []string) error {
 		return accidentalOverrideCleanup(args)
 	case "maintain-planner":
 		return maintainPlanner(args)
-	case "aggregate-review", "sync-runtime":
+	case "sync-runtime":
+		return syncRuntime(args)
+	case "aggregate-review":
 		return exitError{code: 2, msg: fmt.Sprintf("[ECI_DEPENDENCY_UNPORTED] %s depends on a helper that is not yet ported to omp; no state was changed.", cmd)}
 	}
 	return usageError()
@@ -133,12 +135,13 @@ func usage(w io.Writer) {
   %[1]s manifest-write <source-json>
   %[1]s accidental-override-cleanup --authorized-by-user <claim-dir>
   %[1]s maintain-planner
+  %[1]s sync-runtime
   %[1]s status
 
 Set ECI_SESSION_ID to target a session. Lifecycle commands are retired; the native goal owns continuation and the
 Supervisor owns ECI lifecycle. Coordination uses explicit session identity
 and the current working directory.
 Marker-dependent coordination mutators are deferred until their hooks migrate.
-Not yet ported to omp: aggregate-review, sync-runtime.
+Not yet ported to omp: aggregate-review.
 `, exe)
 }
