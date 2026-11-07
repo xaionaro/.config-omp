@@ -2031,7 +2031,7 @@ $step2_line}"
 
 assert_fast_path_progress_waits() {
   local eci_text fast_text mutation output
-  eci_text="$(<"$ECI")"
+  eci_text="$(<"$ECI_BINDING_CONTRACT")"
   fast_text="$(<"$FAST_PATH")"
   assert_fast_path_progress_wait_contract "$eci_text" "$fast_text"
   mutation="$(sed '/^- Wait only for/d' <<<"$eci_text")"
