@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
+# Usage: build-native-binaries.sh [NAME...]. With no NAME it builds every binary this host lists below. Each NAME must
+# be one of those, at most once; then only the named binaries are built and installed.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # eci-command-plan, eci-safe-import and eci-hook-helper are gate binaries; lib/eci-native-binary.sh runs them only after verifying their receipts. eci-safe-import has no launcher caller in this tree.
 # eci-worker-git is built with a receipt but not launcher-wired: the typed Worker Git route is unavailable during active ECI, so Workers use native Git, and the receipt is not verified at runtime.
 # eci-active and owned-command are on-demand wrappers in bin/ that build from source on first use; this script does not build them.
 # eci-command-gate-mode is built only on Linux hosts; its sources carry //go:build linux.
-# Every built binary must pass eci_runtime_binary_is_native for this host before any file is installed. That check is ELF-only until the loader gains Mach-O support.
+# Every built binary must pass eci_runtime_binary_is_native for this host (ELF on Linux, Mach-O on macOS) before any file is installed.
 # Runs under macOS system bash 3.2 with BSD userland; no GNU-only utilities.
 set -euo pipefail
 
@@ -43,8 +45,22 @@ fi
 names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git)
 if [ "$host_os" = linux ]; then
   names+=(eci-command-gate-mode)
-else
+elif [ "$#" -eq 0 ]; then
   echo "build-native-binaries: skipping eci-command-gate-mode (Linux-only source)"
+fi
+if [ "$#" -gt 0 ]; then
+  requested=' '
+  for name in "$@"; do
+    case " ${names[*]} " in
+      *" $name "*) ;;
+      *) die "unknown binary '$name' for $host_os; known: ${names[*]}" ;;
+    esac
+    case "$requested" in
+      *" $name "*) die "binary '$name' is named more than once" ;;
+    esac
+    requested="$requested$name "
+  done
+  names=("$@")
 fi
 
 bin_dir="$HOME/.omp/agent/eci/bin"
