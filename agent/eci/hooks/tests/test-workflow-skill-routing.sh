@@ -1098,9 +1098,25 @@ assert_configuration_e2e_waiver_fixtures() {
     "$(fast_path_fixture 'normative policy remains unchanged.' 'E2E for configuration changes may be waived.')"
 }
 
+# Proportionate routing is checked as behavior: a verified local defect with a clear cause and
+# repair takes the ordinary Producer and required review path; delegated repro/RCA/regression work
+# is conditioned on uncertain local behavior, cause, or repair; no report or note gates RCA.
 assert_coordinator_bug_routing_is_nonblocking() {
-  require_text "$COORDINATOR" 'Capture a regression report or current coordination note before or alongside RCA;'
-  forbid_text "$COORDINATOR" 'Write/update the regression report before RCA;'
+  local section
+  section="$(extract_h2_section "$COORDINATOR" '## Blockers, bugs, and limits')" ||
+    fail "$COORDINATOR lacks the blockers, bugs, and limits section"
+  require_section_pattern "$section" 'concrete defects use debugging-discipline direct-fix or uncertain-case RCA' \
+    'debugging-discipline[^.]*direct-fix[^.]*uncertain-case RCA'
+  require_section_pattern "$section" 'a verified local defect with a clear cause and repair follows the ordinary Producer and required review path' \
+    'verified local defect[^.]*clear cause[^.]*repair[^.]*ordinary Producer[^.]*required[^.]*review path'
+  require_section_pattern "$section" 'delegated repro/RCA/regression work is conditioned on uncertain local behavior, cause, or repair' \
+    'delegate[^.]*(repro|RCA)[^.]*when[^.]*uncertain'
+  require_section_pattern "$section" 'an unknown relation to the original incident alone does not require RCA' \
+    'relation to the original incident[^.]*alone does not require RCA'
+  require_section_pattern "$section" 'required steps, independent reviews, and the central E2E policy are preserved on either path' \
+    'Preserve[^.]*independent reviews[^.]*E2E[^.]*either path'
+  ! grep -Eiq -- '(regression report|coordination note)[^.]*before[^.]*RCA' <<<"$(tr '\n' ' ' <<<"$section")" ||
+    fail "$COORDINATOR gates RCA on a regression report or coordination note"
 }
 
 assert_eci_ordinary_role_split() {
