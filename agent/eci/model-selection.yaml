@@ -1,0 +1,12 @@
+# Per-call model selection is OFF in the `task` tool on this host.
+# These profiles are advisory routing references only: every omp `task`
+# run uses anthropic/claude-haiku-5-5 regardless of profile.
+default:
+  model: anthropic/claude-haiku-5-5
+  reasoning_effort: low
+higher:
+  model: anthropic/claude-haiku-5-5
+  reasoning_effort: medium
+max:
+  model: anthropic/claude-haiku-5-5
+  reasoning_effort: xhigh
