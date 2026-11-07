@@ -5,10 +5,13 @@
 # the caller keeps its descriptor open.
 # Descriptors must be canonical decimal numbers >= 3. Darwin's command cleanup
 # closes its standard streams before unlocking, so those cannot be lock owners.
+# The descriptor pattern lives in a variable: bash 3.2 cannot parse a parenthesised pattern written
+# after =~ inline, and every bash that sources this file must parse it.
+eci_file_lock_descriptor_re='^([3-9]|[1-9][0-9]+)$'
 eci_file_lock_acquire_fd() {
   local descriptor="${1:-}" mode="${2:-}" platform
 
-  [[ "$descriptor" =~ ^([3-9]|[1-9][0-9]+)$ ]] || return 2
+  [[ "$descriptor" =~ $eci_file_lock_descriptor_re ]] || return 2
   case "$mode" in blocking|nonblocking) ;; *) return 2 ;; esac
   platform="$(command uname -s)" || return $?
 
@@ -28,7 +31,7 @@ eci_file_lock_acquire_fd() {
 # otherwise retain the lock after this caller releases its descriptor.
 eci_file_lock_release_fd() {
   local descriptor="${1:-}" platform status=0 close_status
-  [[ "$descriptor" =~ ^([3-9]|[1-9][0-9]+)$ ]] || return 2
+  [[ "$descriptor" =~ $eci_file_lock_descriptor_re ]] || return 2
   platform="$(command uname -s)" || status=$?
   if [ "$status" -eq 0 ]; then
     case "$platform" in
