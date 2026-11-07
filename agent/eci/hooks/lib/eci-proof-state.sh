@@ -453,6 +453,12 @@ eci_lexical_hook_path() {
     "~") path="$HOME" ;;
     "~/"*) path="$HOME/${path#~/}" ;;
   esac
+  # A relative target names a path under the payload cwd, not the hook process
+  # cwd; realpath -ms would otherwise resolve it against the process directory.
+  case "$path" in
+    /*) ;;
+    *) path="$cwd/$path" ;;
+  esac
   # GNU realpath -ms performs lexical abspath/normpath without following
   # symlink ancestors and without starting an interpreter per callback.
   # The shell fallback below is the non-normalizing form, as before.
@@ -461,10 +467,7 @@ eci_lexical_hook_path() {
      lexical_path="$(realpath -ms -- "$path" 2>/dev/null)"; then
     printf '%s\n' "$lexical_path"
   else
-    case "$path" in
-      /*) printf '%s\n' "$path" ;;
-      *) printf '%s\n' "$cwd/$path" ;;
-    esac
+    printf '%s\n' "$path"
   fi
 }
 
@@ -2324,27 +2327,26 @@ eci_hook_sessions_root() {
   printf '%s/sessions\n' "$root"
 }
 
-# Run the verified helper on ECI_RUNTIME_BINARY_FD with arguments "$2..." and
+# Run the verified helper at ECI_RUNTIME_BINARY_EXEC with arguments "$2..." and
 # stdin taken from $1. The helper runs as a simple command in this shell, with
 # stdin and stdout held in files inside a private 0700 temporary directory. The
-# descriptor is closed and ECI_RUNTIME_BINARY_FD is cleared before return, so
-# the helper is only usable from the shell that opened it: never call this or
-# any caller of it inside a command substitution. On success the captured
-# stdout is in ECI_HOOK_HELPER_OUTPUT; nothing is printed.
+# verified helper is released by eci_runtime_close_verified before return, so it is
+# only usable from the shell that opened it: never call this or any caller of it
+# inside a command substitution. On success the captured stdout is in
+# ECI_HOOK_HELPER_OUTPUT; nothing is printed.
 eci_hook_run_verified_helper() {
   local input="$1" private_dir="" rc=0
   shift
   ECI_HOOK_HELPER_OUTPUT=""
-  [ -n "${ECI_RUNTIME_BINARY_FD:-}" ] || return 1
+  [ -n "${ECI_RUNTIME_BINARY_EXEC:-}" ] || return 1
   private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-hook-helper.XXXXXX")" || rc=1
   if [ "$rc" -eq 0 ]; then
     printf '%s' "$input" >"$private_dir/input" || rc=1
   fi
   if [ "$rc" -eq 0 ]; then
-    "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" "$@" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || rc=$?
+    "$ECI_RUNTIME_BINARY_EXEC" "$@" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || rc=$?
   fi
-  exec {ECI_RUNTIME_BINARY_FD}<&-
-  ECI_RUNTIME_BINARY_FD=''
+  eci_runtime_close_verified
   if [ "$rc" -eq 0 ]; then
     ECI_HOOK_HELPER_OUTPUT="$(cat -- "$private_dir/output")" || rc=1
   fi
