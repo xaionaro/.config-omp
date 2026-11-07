@@ -51,6 +51,12 @@ At N = 0, the Supervisor performs ordinary lifecycle teardown only after every J
 
 Workers explicitly deliver progress and final reports before returning. Preserve the Job, outcome, assignment, original source, report, and evidence references. Use `write agent://<id>` for an Orchestrator and `send_message` for the Supervisor. A published owner processes reports within its assignment except during a handoff hold. A non-current owner relays through the current logical parent route without dispatch, implementation, review, disposition, acceptance, or lifecycle action; root-Job reports go to the Supervisor. Forward only reports that still need current-owner processing; already-routed evidence needs no duplicate followup. A timeout alone does not trigger a drain.
 
+## Job hold and tool errors
+
+- The published Orchestrator holds its Job until the Supervisor closes it or tears it down. A report, a candidate ready for approval, or a stand-by does not release the Job. After reporting, it waits idle as the still-published owner; the Supervisor or a Worker revives it with `write agent://<id>`. See [Counts and ownership](#counts-and-ownership).
+- On a tool error while its Job is open (for example `wait` returns `Operation aborted` or times out), it reads `proc://` to check its Workers and re-issues the wait on those still running. A tool error is never a stopping point; waits stay bounded per [Active Job compliance](#active-job-compliance).
+- It never ends its turn with an open Job because of a tool error, or with work unreported. Before any turn end, it reports Job state, remaining work, and running Workers to the Supervisor and names itself as still holding the Job. See [Authority and reporting](#authority-and-reporting).
+
 ## Active Job compliance
 
 The current Job owner immediately critiques significant-movement and final Worker reports against actual work, original requirements, and applicable ECI duties. Check role authority, applicable ECI dependency skills and their methods, model selection, delegation, and completion evidence; a positive report or unchanged assignment is insufficient. Resolve concrete deviations through the responsible Worker and verify its correction. Continue unaffected work.
