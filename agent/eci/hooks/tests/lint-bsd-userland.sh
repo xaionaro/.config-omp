@@ -10,6 +10,8 @@
 #   enclosing function and form, never by line number. The lint also checks the guard that makes each of those
 #   functions Linux-only: the platform switch before the use, or the single Linux-only caller.
 # - No other linted file may call the loader's Linux-only functions.
+# - eci_runtime_close_verified is allowed only as the paired release of eci_runtime_open_verified (lint_paired_release):
+#   a file that calls it must also call eci_runtime_open_verified.
 # Patterns use bracket expressions so that this file does not match itself.
 set -u
 
@@ -58,6 +60,12 @@ _eci_runtime_open_verified_in	-	caller:eci_runtime_open_verified:    Darwin) _ec
 eci_runtime_close_verified	exec-named-fd	before:  if [ -n \"\$ECI_RUNTIME_BINARY_FD\" ]; then"
 # Linux-only loader functions that no other linted file may call.
 lint_linux_only='eci_runtime_elf_matches_host eci_runtime_directory_chain_is_trusted eci_runtime_verify_fd _eci_runtime_open_verified_in'
+# RELEASE:ACQUIRE. eci_runtime_close_verified is the paired, idempotent release of eci_runtime_open_verified and runs on
+# every platform; its only Linux branch, the descriptor close at eci-native-binary.sh:189, is guarded at :188 by
+# `[ -n "$ECI_RUNTIME_BINARY_FD" ]`, which only the Linux open sets. A file may call it only if it also calls the open.
+lint_paired_release='eci_runtime_close_verified:eci_runtime_open_verified'
+paired_release_re=$(printf '(^|[^[:alnum:]_])%s([^[:alnum:]_]|$)' "${lint_paired_release%%:*}")
+paired_acquire_re=$(printf '(^|[^[:alnum:]_])%s([^[:alnum:]_]|$)' "${lint_paired_release#*:}")
 
 func_re='^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*[(][)]'
 end_re='^[})]'
@@ -192,6 +200,8 @@ for file in "$@"; do
   has_fallback=0
   if grep -F -q -- 'command -v sha256sum' "$file" && grep -F -q -- 'shasum -a 256' "$file"; then has_fallback=1; fi
   hits=''
+  release_hits=''
+  has_acquire=0
   n=1
   while [ "$n" -le "$line_count" ]; do
     line=${line_text[$n]}
@@ -223,9 +233,15 @@ for file in "$@"; do
         fi
         i=$((i + 1))
       done
+      [[ $line =~ $paired_acquire_re ]] && has_acquire=1
+      if [[ $line =~ $paired_release_re ]]; then
+        release_hits="$release_hits  ${file##*/}:$n: calls ${lint_paired_release%%:*} without ${lint_paired_release#*:} in the same file: $line
+"
+      fi
     fi
     n=$((n + 1))
   done
+  [ "$has_acquire" = 1 ] || hits="$hits$release_hits"
   if [ -n "$hits" ]; then
     printf 'FAIL %s\n%s' "$file" "$hits"
     status=1
