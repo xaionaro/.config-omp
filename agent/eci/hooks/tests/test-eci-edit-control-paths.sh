@@ -116,23 +116,55 @@ run_bash_worker_allowed "git -C $ROOT status --short"
 # into an allowlist/grammar denial.
 run_bash_worker_allowed 'for item in one; do printf "$item"; done'
 
-# Callback metadata is diagnostic context.  Without a typed command target or
-# a usable HOME authority, the hook must make no decision rather than create a
-# false control-plane denial.
+# A callback envelope that cannot be decoded names no scope.  Under an active
+# ECI marker the planner fails closed with ECI_MALFORMED_HOOK_IDENTITY, so the
+# hook must not treat it as advisory.  Without any active marker the same
+# envelope is diagnostic context and produces no decision.  The contract is
+# hook.go RunHook (decode error -> hookMalformedIdentityDenied, ported in
+# 67ac529), pinned by hook_test.go TestHookMalformedIdentityFailsClosedOnlyWithActiveScope.
+malformed_envelope='{"session_id":"t00-session","tool_name":"Bash","cwd":[],"tool_input":{"command":"printf harmless"}}'
 metadata_output="$TMP_ROOT/metadata-advisory.out"
-printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":[],"tool_input":{"command":"printf harmless"}}' |
+printf '%s\n' "$malformed_envelope" |
   ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" HOME="$HOST_HOME" \
     bash "$control_hook_fixture" >"$metadata_output"
+jq -e '
+  .hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_MALFORMED_HOOK_IDENTITY]"))
+' "$metadata_output" >/dev/null || {
+  printf '%s\n' 'malformed callback metadata under an active marker was not denied:' >&2
+  cat -- "$metadata_output" >&2
+  exit 1
+}
+inactive_proof="$TMP_ROOT/inactive-proof"
+mkdir -p "$inactive_proof"
+printf '%s\n' "$malformed_envelope" |
+  ECI_PROOF_ROOT="$inactive_proof" ECI_HOME="$ROOT" HOME="$HOST_HOME" \
+    bash "$control_hook_fixture" >"$metadata_output"
 [ ! -s "$metadata_output" ] || {
-  printf '%s\n' 'malformed callback metadata produced a hook decision:' >&2
+  printf '%s\n' 'malformed callback metadata without an active marker produced a hook decision:' >&2
+  cat -- "$metadata_output" >&2
+  exit 1
+}
+# A relative HOME leaves the verified planner unresolvable (lib/eci-native-binary.sh
+# eci_runtime_artifact_path requires an absolute HOME).  validate-bash.sh then
+# fails closed under an active marker and stays silent without one; see its
+# native_gate_fail and the HOME gate introduced by 99b577b.
+printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"printf harmless"}}' |
+  ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" HOME=relative \
+    bash "$control_hook_fixture" >"$metadata_output"
+jq -e '
+  .hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
+' "$metadata_output" >/dev/null || {
+  printf '%s\n' 'relative HOME under an active marker was not denied by the native gate:' >&2
   cat -- "$metadata_output" >&2
   exit 1
 }
 printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"printf harmless"}}' |
-  ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" HOME=relative \
+  ECI_PROOF_ROOT="$inactive_proof" ECI_HOME="$ROOT" HOME=relative \
     bash "$control_hook_fixture" >"$metadata_output"
 [ ! -s "$metadata_output" ] || {
-  printf '%s\n' 'malformed HOME produced a hook decision:' >&2
+  printf '%s\n' 'relative HOME without an active marker produced a hook decision:' >&2
   cat -- "$metadata_output" >&2
   exit 1
 }
