@@ -255,6 +255,22 @@ eci_runtime_darwin_directory_chain_is_trusted() {
   done
 }
 
+# The scratch and copy directories are created under the temporary directory, where another user must
+# not be able to rename or replace them. Trusted: a directory the chain check accepts, or a root-owned
+# sticky directory (the 1000 bit set) whose own parents pass the chain check. Returns a status only.
+eci_runtime_darwin_temp_dir_is_trusted() {
+  local dir="$1" record owner='' mode='' mode_re='^[0-7]{3,4}$'
+  record="$(stat -f '%u %Lp' -- "$dir" 2>/dev/null)" || return 1
+  read -r owner mode <<<"$record" || return 1
+  [[ $mode =~ $mode_re ]] || return 1
+  if [ "$owner" = 0 ] && (( 8#$mode & 01000 )); then
+    [ "$dir" = / ] && return 0
+    eci_runtime_darwin_directory_chain_is_trusted "$(dirname -- "$dir")"
+    return
+  fi
+  eci_runtime_darwin_directory_chain_is_trusted "$dir"
+}
+
 # Darwin twin of eci_runtime_binary_is_native: a regular file, not a symlink, executable, and the
 # Mach-O header test for the host CPU type.
 _eci_runtime_binary_is_native_darwin() {
@@ -336,10 +352,13 @@ _eci_runtime_darwin_stage_verified_copy() {
 # Darwin entry, reached only through the platform switch at the top of eci_runtime_open_verified.
 # The scratch directory is created and removed here on every path.
 _eci_runtime_open_verified_darwin() {
-  local name="$1" scratch rc=0
+  local name="$1" scratch rc=0 temp_dir='' cputype=''
   ECI_RUNTIME_BINARY_EXEC=''
-  scratch="$(mktemp -d -- "${TMPDIR:-/tmp}/eci-runtime-verify.XXXXXX" 2>/dev/null)" || { eci_runtime_denial "$name" "private verification directory cannot be created"; return 1; }
-  _eci_runtime_darwin_open_in "$name" "$scratch" || rc=$?
+  cputype="$(eci_runtime_darwin_host_cputype)" || { eci_runtime_denial "$name" "host CPU type is not supported"; return 1; }
+  temp_dir="$(cd -P -- "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || { eci_runtime_denial "$name" "temporary directory is missing"; return 1; }
+  eci_runtime_darwin_temp_dir_is_trusted "$temp_dir" || { eci_runtime_denial "$name" "temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit"; return 1; }
+  scratch="$(mktemp -d -- "$temp_dir/eci-runtime-verify.XXXXXX" 2>/dev/null)" || { eci_runtime_denial "$name" "private verification directory cannot be created"; return 1; }
+  _eci_runtime_darwin_open_in "$name" "$scratch" "$temp_dir" "$cputype" || rc=$?
   rm -rf -- "$scratch"
   return "$rc"
 }
@@ -347,9 +366,8 @@ _eci_runtime_open_verified_darwin() {
 # Creates the private copy directory, then stages the verified copy. A denied open removes that
 # directory here, so nothing is left behind.
 _eci_runtime_darwin_open_in() {
-  local name="$1" scratch="$2" cputype=''
-  cputype="$(eci_runtime_darwin_host_cputype)" || { eci_runtime_denial "$name" "host CPU type is not supported"; return 1; }
-  eci_runtime_copy_dir="$(mktemp -d -- "${TMPDIR:-/tmp}/eci-runtime-exec.XXXXXX" 2>/dev/null)" || { eci_runtime_denial "$name" "private copy directory cannot be created"; return 1; }
+  local name="$1" scratch="$2" temp_dir="$3" cputype="$4"
+  eci_runtime_copy_dir="$(mktemp -d -- "$temp_dir/eci-runtime-exec.XXXXXX" 2>/dev/null)" || { eci_runtime_denial "$name" "private copy directory cannot be created"; return 1; }
   if ! _eci_runtime_darwin_stage_verified_copy "$name" "$scratch" "$cputype"; then
     eci_runtime_close_verified
     return 1
