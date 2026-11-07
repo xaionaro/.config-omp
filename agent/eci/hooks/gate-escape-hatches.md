@@ -92,6 +92,8 @@ native operations can alter unnamed administrative metadata. Observed live hook 
 
 ## Native tools on first use
 
+**Status: pending.** This section applies once the `bin/eci-active` provisioning change (AUTOBUILD commit 3) lands; until then the native tools are not provisioned automatically, so run `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh"`.
+
 The first `eci` or `eci-active` command after a checkout builds the native tools that the hooks verify. These are `eci-command-plan`, `eci-hook-helper`, `eci-safe-import` and `eci-worker-git`, built through `hooks/lib/eci-native-provision.sh` and `hooks/build-native-binaries.sh`. Most commands trigger it; the exceptions are `--help`, `-h`, no argument, and `maintain-planner`, which builds the pair itself. Expect one stderr line naming the tools, about 1-2 minutes of build time, then a line with the elapsed time. Only absent or host-incompatible tools are built. A tool whose bytes no longer match its receipt is not rebuilt: the hooks deny it, and `manifest-write` refuses to run it. Hooks never build.
 
 Prerequisites:
