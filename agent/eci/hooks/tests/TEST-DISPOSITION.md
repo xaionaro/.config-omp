@@ -175,7 +175,7 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 
 ## Still failing, not yet resolved (classified)
 
-- 109 edit marker overflow: R, product (eci-proof-state.sh:129-158). Pending Producer (c).
+- 109 edit marker overflow (run.sh "Edit marker overflow remains session scoped", test-eci-fast-path.sh): D, deliberate. Session-scoped sub-case fixed in c214a8c (eci-proof-state.sh:137-180, 2120: candidates scoped to expected session). Malformed-callback sub-case (`session_id:123`, Edit) still denies ECI_HOOK_IDENTITY_MALFORMED via the session-less broad path of eci_marker_active_or_unknown. Supervisor decision (Main): keep fail-closed deny; an unreadable marker must deny. Broad path unchanged; assertion not rewritten. Unverified: run.sh line 2834 still expected to fail on that sub-case.
 - 156 canonical-handoff hardlink denial: R, product (classifier.go:4639-4643). Pending (c).
 - 157 ledger append other cwd: R, product (tools/eci-active/ledger.go). Pending (c).
 - 180, 181, 182 omp status depth rule: D, shell (eci-proof-state.sh:2335-2346) vs Go (hook_context.go:313-324). Pick one contract.
