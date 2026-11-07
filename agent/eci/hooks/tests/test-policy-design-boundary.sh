@@ -2,7 +2,7 @@
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-POLICY="$ROOT/skills/references/workflow-runtime/review-policy.md"
+POLICY="$ROOT/../skills/references/workflow-runtime/review-policy.md"
 
 grep -Fq '## Design-versus-implementation boundary' "$POLICY"
 grep -Fq 'blast radius and repair nature' "$POLICY"
