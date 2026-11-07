@@ -18,7 +18,7 @@ if ! eci_runtime_open_verified eci-hook-helper; then
 fi
 helper_fd="$ECI_RUNTIME_BINARY_FD"
 input_file="$(mktemp)" || exit 0
-trap 'rm -f "$input_file"' EXIT
+trap 'rm -f "$input_file" "${helper_output:-}"' EXIT
 head -c 65537 >"$input_file" || exit 0
 if (( $(wc -c <"$input_file") > 65536 )); then exit 0; fi
 if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then exit 0; fi
@@ -56,7 +56,17 @@ while IFS= read -r clause; do
   fi
 done < <(printf '%s\n' "$normalized_prompt" | sed -E 's/[,;.!?]/\n/g; s/[[:space:]]+then[[:space:]]+/\n/g; s/[[:space:]]+and[[:space:]]+(show|give|provide|write|send|what|how|where|can[[:space:]]+you)[[:space:]]+/\n\1 /g')
 # Run the verified helper before any reminder is emitted; a helper runtime failure is an explicit deny, not a silent exit.
-input="$("/proc/self/fd/$helper_fd" stdin <"$input_file")" || hook_deny "ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
+helper_rc=0
+helper_output="$(mktemp -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || helper_rc=1
+if [ "$helper_rc" -eq 0 ]; then
+  "/proc/self/fd/$helper_fd" stdin <"$input_file" >"$helper_output" || helper_rc=$?
+fi
+exec {helper_fd}<&-
+if [ "$helper_rc" -ne 0 ]; then
+  hook_deny "ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
+fi
+input="$(cat -- "$helper_output")"
+rm -f -- "$helper_output"
 if [[ "$reminder" == true ]]; then
   jq -n '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:"For the requested status report, load writing-status-reports; reconcile YAML, validate, render with status-report render, and publish the full rendered result. Correct known missing sections in YAML and rerender; use the documented incomplete fallback only if structural failure prevents rendering."}}'
 fi

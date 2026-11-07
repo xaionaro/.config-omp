@@ -2218,34 +2218,56 @@ eci_hook_sessions_root() {
   printf '%s/sessions\n' "$root"
 }
 
+# Run the verified helper on ECI_RUNTIME_BINARY_FD with arguments "$2..." and
+# stdin taken from $1. The helper runs as a simple command in this shell, with
+# stdin and stdout held in temporary files; the descriptor is closed before
+# return. On success the captured stdout is in ECI_HOOK_HELPER_OUTPUT.
+eci_hook_run_verified_helper() {
+  local input="$1" temp_dir input_file="" output_file="" rc=0
+  shift
+  temp_dir="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
+  input_file="$(mktemp -- "${temp_dir%/}/eci-hook-helper-in.XXXXXX")" || rc=1
+  if [ "$rc" -eq 0 ]; then
+    output_file="$(mktemp -- "${temp_dir%/}/eci-hook-helper-out.XXXXXX")" || rc=1
+  fi
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$input" >"$input_file" || rc=1
+  fi
+  if [ "$rc" -eq 0 ]; then
+    "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" "$@" <"$input_file" >"$output_file" 2>/dev/null || rc=$?
+  fi
+  exec {ECI_RUNTIME_BINARY_FD}<&-
+  if [ "$rc" -eq 0 ]; then
+    ECI_HOOK_HELPER_OUTPUT="$(cat -- "$output_file")" || rc=1
+  fi
+  rm -f -- "$input_file" "$output_file"
+  return "$rc"
+}
+
 eci_hook_transcript_first_record() {
   local input="${1:-}"
-  local sessions_root first_record rc=0
+  local sessions_root
 
   sessions_root="$(eci_hook_sessions_root)" || return 1
   if ! eci_runtime_open_verified eci-hook-helper; then
     printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
     return 1
   fi
-  first_record="$(printf '%s' "$input" | "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" hook-transcript-first-record "$sessions_root" 2>/dev/null)" || rc=$?
-  exec {ECI_RUNTIME_BINARY_FD}<&-
-  [ "$rc" -eq 0 ] || return 1
-  printf '%s\n' "$first_record"
+  eci_hook_run_verified_helper "$input" hook-transcript-first-record "$sessions_root" || return 1
+  printf '%s\n' "$ECI_HOOK_HELPER_OUTPUT"
 }
 
 eci_hook_thread_spawn_metadata() {
   local input="${1:-}"
-  local sessions_root metadata rc=0
+  local sessions_root
 
   sessions_root="$(eci_hook_sessions_root)" || return 1
   if ! eci_runtime_open_verified eci-hook-helper; then
     printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
     return 1
   fi
-  metadata="$(printf '%s' "$input" | "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" hook-transcript-thread-spawn-metadata "$sessions_root" 2>/dev/null)" || rc=$?
-  exec {ECI_RUNTIME_BINARY_FD}<&-
-  [ "$rc" -eq 0 ] || return 1
-  printf '%s\n' "$metadata"
+  eci_hook_run_verified_helper "$input" hook-transcript-thread-spawn-metadata "$sessions_root" || return 1
+  printf '%s\n' "$ECI_HOOK_HELPER_OUTPUT"
 }
 
 eci_hook_omp_sessions_root() {

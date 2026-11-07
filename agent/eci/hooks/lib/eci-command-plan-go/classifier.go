@@ -820,15 +820,15 @@ func eciLifecycleDispatcherDiagnostic(command string, word lifecycleLexicalWord)
 		Path:            "n/a",
 		Predicate:       "distinct-lifecycle-dispatcher-target",
 		Reason:          "eci-active-dispatch is a distinct lifecycle control target, not the eci-active command",
-		Remediation:     "invoke the intended eci-active target directly",
+		Remediation:     "the lifecycle control route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; report the unavailable control route instead of invoking another executable",
 		RejectedSegment: shellEscape(command),
 	}
 }
 
-// ledgerAppendRemediation returns copy-paste-safe ledger guidance for a provider.
+// ledgerAppendRemediation returns copy-paste-safe ledger guidance.
 //
 // Example: the ledger route is reported as unprovisioned, never as an eci-active command.
-func ledgerAppendRemediation(provider Provider) string {
+func ledgerAppendRemediation() string {
 	return "ledger-append route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", which builds only the three gate binaries; report the unavailable ledger route instead of editing the ledger directly"
 }
 
@@ -4653,7 +4653,7 @@ func inspectProofPathOwnershipExact(
 					code = CodeLedgerAppendOnly
 					reason = "active-session high-level ledger files are append-only coordinator artifacts"
 					predicate = "append-only-ledger"
-					remediation = ledgerAppendRemediation(request.Provider)
+					remediation = ledgerAppendRemediation()
 				}
 				diagnostic := diagnosticForToken(code, reason, segmentIndex, argumentIndex, pathArgument, remediation, predicate)
 				diagnostic.Path = controlPath
@@ -4674,7 +4674,7 @@ func inspectProofPathOwnershipExact(
 					segmentIndex,
 					argumentIndex,
 					pathArgument,
-					ledgerAppendRemediation(request.Provider),
+					ledgerAppendRemediation(),
 					"append-only-ledger",
 				)
 				diagnostic.Path = lexical

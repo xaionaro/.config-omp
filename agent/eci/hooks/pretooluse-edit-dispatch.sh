@@ -9,9 +9,11 @@ hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # create the dispatch scratch directory is different: the gate cannot run, so
 # it fails closed with an explicit deny.
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
-if ! tmp_dir="$(mktemp -d "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
-  jq -cn --arg reason "ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
+  if ! jq -cn --arg reason "ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
+  fi
   exit 0
 fi
 trap 'rm -rf -- "$tmp_dir"' EXIT HUP INT TERM
@@ -49,10 +51,10 @@ gates=(
   "$hook_dir/eci-active-gate.sh"
 )
 reminder_index=""
-reminder_fd=""
 if [ "${ENABLE_SECURITY_REMINDER:-0}" = 1 ] && security_reminder_candidate "$(<"$input_file")"; then
   if . "$hook_dir/lib/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
-    reminder_fd="$ECI_RUNTIME_BINARY_FD"
+    # Release the verification descriptor before any validator forks; the reminder child opens its own.
+    exec {ECI_RUNTIME_BINARY_FD}<&-
     reminder_index="${#gates[@]}"
     gates+=("security-reminder")
   else
@@ -64,15 +66,13 @@ for index in "${!gates[@]}"; do
   output_file="$tmp_dir/output-$index"
   error_file="$tmp_dir/error-$index"
   if [ "$index" = "$reminder_index" ]; then
-    "/proc/self/fd/$reminder_fd" security-reminder <"$input_file" >"$output_file" 2>"$error_file" &
+    ( eci_runtime_open_verified eci-hook-helper || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
+      "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" security-reminder <"$input_file" >"$output_file" ) 2>"$error_file" &
   else
     bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
   fi
   pids[$index]=$!
 done
-if [ -n "$reminder_fd" ]; then
-  exec {reminder_fd}<&-
-fi
 
 # A child may offer a concrete denial, but its transport health is advisory:
 # malformed JSON, stderr, and non-zero exit status mean only that this child
