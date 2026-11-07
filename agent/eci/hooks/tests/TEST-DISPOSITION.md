@@ -123,7 +123,7 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 - bin/eci-runtime-sync absent: tests 47, 49, 51, 116, 307 (run.sh). Reason: not ported; Supervisor decision 1.
 - bin/eci-active-dispatch absent: 69, 72, 89. Reason: not ported; decision 1.
 - bin/context7-mcp, eci/config.toml, eci/AGENTS.md absent: 91, 93, 95, 98, 100, 114. Reason: not ported; decision 1.
-- Launchers ~/.local/bin/eci and ~/bin/eci: 85, 87. Reason: user-owned; decision 2.
+- Launchers ~/.local/bin/eci and ~/bin/eci: 85, 87. Restored: tracked launcher `agent/eci/launchers/eci` (f31c3d7) exports `ECI_HOME="$HOME/.omp/agent/eci"`. Install step: `bash ~/.omp/agent/eci/launchers/install-launchers.sh` (run once after checkout; idempotent; creates symlinks only; does not enable hooks). Assertion change: test line 34 now requires `ECI_HOME="$HOME/.omp/agent/eci"` instead of `ECI_HOME="$HOME/.eci"`, because the `.eci` value is stale: it has no codex origin (575bb81 has no launcher) and the launcher exports the canonical omp path. Supersedes decision 2.
 - aggregate-manifest-write deferred (main.go:54, ECI_COORDINATION_DEFERRED). aggregate-review prewrite/final now exit 1 naming the unmet manifest gate (f88c626, aggregate.go). Disclosed gap; reason: the producer is not ported.
 
 ## Decisions and rewrites (Supervisor decisions 3-6)

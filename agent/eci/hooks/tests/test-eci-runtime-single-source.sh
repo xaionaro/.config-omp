@@ -31,7 +31,7 @@ fail() {
   fail "test root must be the HOME-derived canonical ECI home: root=$ROOT home=$CANONICAL_ECI_HOME"
 
 for launcher in "${LAUNCHERS[@]}"; do
-  if ! grep -Eq '^[[:space:]]*export[[:space:]]+ECI_HOME="\$HOME/\.eci"[[:space:]]*$' "$launcher"; then
+  if ! grep -Eq '^[[:space:]]*export[[:space:]]+ECI_HOME="\$HOME/\.omp/agent/eci"[[:space:]]*$' "$launcher"; then
     fail "$launcher must force ECI_HOME=\"\$HOME/.omp/agent/eci\""
   fi
 done
