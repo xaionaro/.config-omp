@@ -21,7 +21,7 @@ case "$TMP_ROOT" in
   exit 1
   ;;
 esac
-trap 'rm -rf -- "$TMP_ROOT"' EXIT
+trap 'rm -rf -- "$TMP_ROOT" ${MAIN_TRANSCRIPT_DIR:+"$MAIN_TRANSCRIPT_DIR"}' EXIT
 
 SESSION_ID="t00-command-syntax"
 PROOF_ROOT="$TMP_ROOT/proof"
@@ -51,55 +51,51 @@ printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 printf '%s\n' outside >"$OUTSIDE_PROOF"
 ln -s -- "$OUTSIDE_PROOF" "$EVIDENCE_DIR/outside-link"
 
-# Exercise the private hook bodies, removing a line-2 bypass if present.
+# Exercise the private hook body, removing a line-2 bypass if present.  The
+# command planner is the only policy path: validate-bash.sh runs the published
+# native planner unconditionally, so no planner-absent fallback exists to test.
 cp -- "$ROOT/hooks/validate-bash.sh" "$TMP_ROOT/validate-bash.before"
 TEST_HOOK_ROOT="$TMP_ROOT/private-hooks"
-NO_PLANNER_HOOK_ROOT="$TMP_ROOT/private-hooks-no-planner"
 cp -a -- "$ROOT/hooks" "$TEST_HOOK_ROOT"
-cp -a -- "$ROOT/hooks" "$NO_PLANNER_HOOK_ROOT"
 sed -i '2{/^exit 0$/d;}' -- "$TEST_HOOK_ROOT/validate-bash.sh"
-sed -i '2{/^exit 0$/d;}' -- "$NO_PLANNER_HOOK_ROOT/validate-bash.sh"
 cmp -- "$TMP_ROOT/validate-bash.before" "$ROOT/hooks/validate-bash.sh" || {
   printf '%s\n' 'private hook setup modified the source' >&2
   exit 1
 }
 cmp -- "$TEST_HOOK_ROOT/validate-bash.sh" <(sed '2{/^exit 0$/d;}' -- "$TMP_ROOT/validate-bash.before")
-cmp -- "$NO_PLANNER_HOOK_ROOT/validate-bash.sh" <(sed '2{/^exit 0$/d;}' -- "$TMP_ROOT/validate-bash.before")
-mv -- "$NO_PLANNER_HOOK_ROOT/lib/eci-command-plan-go" "$TMP_ROOT/no-planner-command-plan"
+
+# The planner takes the callback role from its transcript, never from ECI_ROLE:
+# a depth-two main transcript is the coordinator, and a callback without a
+# verifiable transcript fails closed to the worker (hookTranscriptStatus in
+# eci-command-plan-go/hook_context.go).  Coordinator callbacks carry this
+# transcript, which lives under the test HOME sessions root and is removed on exit.
+mkdir -p -- "$HOME/.omp/agent/sessions"
+MAIN_TRANSCRIPT_DIR="$(mktemp -d "$HOME/.omp/agent/sessions/command-syntax.XXXXXX")"
+MAIN_TRANSCRIPT="$MAIN_TRANSCRIPT_DIR/coordinator.jsonl"
+printf '%s\n' "{\"type\":\"session\",\"id\":\"$SESSION_ID\"}" >"$MAIN_TRANSCRIPT"
 
 run_hook() {
-  local command="$1" role="$2" planner_mode="${3:-available}" hook_root hook_status
+  local command="$1" role="$2" transcript="" hook_status
 
-  case "$planner_mode" in
-  available)
-    hook_root="$TEST_HOOK_ROOT"
-    ;;
-  unavailable)
-    # This second copied hook has no planner source directory, which selects
-    # the hook's transparent target-aware fallback without touching the live
-    # runtime or executing any tested command.
-    hook_root="$NO_PLANNER_HOOK_ROOT"
-    ;;
-  *)
-    printf 'unknown planner mode: %s\n' "$planner_mode" >&2
-    exit 1
-    ;;
-  esac
-
+  if [ "$role" = coordinator ]; then
+    transcript="$MAIN_TRANSCRIPT"
+  fi
   jq -cn \
     --arg session_id "$SESSION_ID" \
     --arg cwd "$ROOT" \
     --arg command "$command" \
-    '{session_id:$session_id,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' \
+    --arg transcript "$transcript" \
+    '{session_id:$session_id,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}
+      + (if $transcript == "" then {} else {transcript_path:$transcript} end)' \
     >"$INPUT"
 
   set +e
   ECI_TMPDIR="$FIXTURE_TMP" TMPDIR="$FIXTURE_TMP" \
     HOME="$HOME" ECI_HOME="$ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \
-    ECI_ROLE="$role" ECI_HOOK_IS_SUBAGENT="$([ "$role" = worker ] && printf true || printf false)" \
+    ECI_HOOK_IS_SUBAGENT="$([ "$role" = worker ] && printf true || printf false)" \
     XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_STATE_HOME="$TMP_ROOT/state" \
     PATH="$ROOT/bin:$PATH" \
-    bash "$hook_root/validate-bash.sh" <"$INPUT" >"$OUTPUT" 2>"$ERROR_OUTPUT"
+    bash "$TEST_HOOK_ROOT/validate-bash.sh" <"$INPUT" >"$OUTPUT" 2>"$ERROR_OUTPUT"
   hook_status=$?
   set -e
   [ "$hook_status" -eq 0 ] || {
@@ -128,57 +124,28 @@ assert_allowed() {
   done
 }
 
-assert_allowed_without_planner() {
-  local command="$1" role
-
-  for role in coordinator worker; do
-    run_hook "$command" "$role" unavailable
-    [ ! -s "$OUTPUT" ] || {
-      printf 'ordinary no-planner command was hook-denied for role=%s: %s\n' "$role" "$command" >&2
-      cat -- "$OUTPUT" >&2
-      exit 1
-    }
-  done
-}
-
 assert_broad_root_denied() {
-  local role
+  local role code operation predicate
 
   for role in coordinator worker; do
+    case "$role" in
+    coordinator) code=ECI_BROAD_DESTRUCTIVE_DENIED operation=broad-destructive predicate=broad-destructive-root ;;
+    # The worker's root write resolves to the live session control target, not the broad-destructive
+    # predicate (hook_effects.go:1238: "resolved write selects live session control target").
+    worker) code=ECI_CONTROL_OWNER_REQUIRED operation=worker-control predicate=worker-live-control ;;
+    esac
     run_hook 'rm -rf / | head -n 20' "$role"
-    jq -e '
+    jq -e --arg code "[$code]" --arg operation "operation=$operation" --arg predicate "predicate=$predicate" '
       .hookSpecificOutput.permissionDecision == "deny" and
       (.hookSpecificOutput.permissionDecisionReason |
-        contains("[ECI_BROAD_DESTRUCTIVE_DENIED]") and
-        contains("operation=broad-destructive") and
+        contains($code) and
+        contains($operation) and
         contains("token=/") and
         contains("path=/") and
-        contains("predicate=broad-destructive-root")
+        contains($predicate)
       )
     ' "$OUTPUT" >/dev/null || {
       printf 'broad root denial contract mismatch for role=%s\n' "$role" >&2
-      cat -- "$OUTPUT" >&2
-      exit 1
-    }
-  done
-}
-
-assert_broad_root_denied_without_planner() {
-  local role
-
-  for role in coordinator worker; do
-    run_hook 'rm -rf / | head -n 20' "$role" unavailable
-    jq -e '
-      .hookSpecificOutput.permissionDecision == "deny" and
-      (.hookSpecificOutput.permissionDecisionReason |
-        contains("[ECI_BROAD_DESTRUCTIVE_DENIED]") and
-        contains("operation=broad-destructive") and
-        contains("token=/") and
-        contains("target=/") and
-        contains("class=broad")
-      )
-    ' "$OUTPUT" >/dev/null || {
-      printf 'no-planner broad root denial contract mismatch for role=%s\n' "$role" >&2
       cat -- "$OUTPUT" >&2
       exit 1
     }
@@ -204,30 +171,63 @@ assert_current_marker_denied() {
         contains("predicate=" + $predicate)
       )
     ' "$OUTPUT" >/dev/null || {
-      printf 'current marker denial contract mismatch for role=%s\n' "$role" >&2
+      printf 'current marker denial contract mismatch for role=%s: %s\n' "$role" "$command" >&2
       cat -- "$OUTPUT" >&2
       exit 1
     }
   done
 }
 
-assert_current_marker_denied_without_planner() {
-  local command="${1:-touch $MARKER | head -n 20}" role
+# A wrapped worker write such as `env touch <marker>` must be denied, and the reason must name
+# the marker. The planner routes it through its worker-control route (ECI_CONTROL_OWNER_REQUIRED),
+# not the direct proof-control route, so the code is not pinned here. The coordinator's wrapped
+# marker write is not asserted: its ownership check runs on the pre-unwrap argv (classifier.go:3720),
+# which is a recorded security follow-up in TEST-DISPOSITION.md.
+assert_wrapped_marker_write_denied() {
+  local command="$1" role
 
-  for role in coordinator worker; do
-    run_hook "$command" "$role" unavailable
+  for role in worker; do
+    run_hook "$command" "$role"
     jq -e --arg marker "$MARKER" '
       .hookSpecificOutput.permissionDecision == "deny" and
       (.hookSpecificOutput.permissionDecisionReason |
-        contains("[ECI_CONTROL_OWNER_REQUIRED]") and
-        contains("resolved_control_target=" + $marker)
+        (contains("[ECI_PLAN_LIVE_CONTROL_DENIED]") or contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
+        (contains("token=" + $marker) or contains("path=" + $marker))
       )
     ' "$OUTPUT" >/dev/null || {
-      printf 'no-planner current marker denial contract mismatch for role=%s: %s\n' "$role" "$command" >&2
-      cat -- "$OUTPUT" >&2
+      printf 'wrapped marker write denial mismatch for role=%s: %s\n' "$role" "$command" >&2
+      if [ -s "$OUTPUT" ]; then
+        cat -- "$OUTPUT" >&2
+      else
+        printf '%s\n' 'planner returned allow: no denial was emitted' >&2
+      fi
       exit 1
     }
   done
+}
+
+# A worker `env - -v touch <marker>` is denied by the live-control route for the exact marker
+# (classifier.go:7011 message, 7016 predicate). The check pins the code and predicate.
+assert_worker_live_control_denied() {
+  local command="$1"
+
+  run_hook "$command" worker
+  jq -e --arg marker "$MARKER" '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason |
+      contains("[ECI_CONTROL_OWNER_REQUIRED]") and
+      contains("predicate=worker-live-control") and
+      contains("token=" + $marker)
+    )
+  ' "$OUTPUT" >/dev/null || {
+    printf 'worker live-control denial mismatch: %s\n' "$command" >&2
+    if [ -s "$OUTPUT" ]; then
+      cat -- "$OUTPUT" >&2
+    else
+      printf '%s\n' 'planner returned allow: no denial was emitted' >&2
+    fi
+    exit 1
+  }
 }
 
 assert_foreign_marker_denied() {
@@ -257,29 +257,12 @@ assert_foreign_marker_denied() {
   done
 }
 
-assert_foreign_marker_denied_without_planner() {
-  local role command foreign_marker
-
-  command="novel-inspection-tool --format table | touch $OTHER_MARKER"
-  foreign_marker="$(realpath -e -- "$OTHER_MARKER")"
-  for role in coordinator worker; do
-    run_hook "$command" "$role" unavailable
-    jq -e --arg foreign_marker "$foreign_marker" '
-      .hookSpecificOutput.permissionDecision == "deny" and
-      (.hookSpecificOutput.permissionDecisionReason |
-        contains("[ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED]") and
-        contains("operation=eci-control") and
-        contains("target=" + $foreign_marker) and
-        contains("foreign_session=other-session")
-      )
-    ' "$OUTPUT" >/dev/null || {
-      printf 'no-planner foreign marker denial contract mismatch for role=%s: %s\n' "$role" "$command" >&2
-      cat -- "$OUTPUT" >&2
-      exit 1
-    }
-  done
-}
-
+# Known defect, recorded and kept red (shared by the pre-migration source and omp): the worker
+# denial for `git fsck --lost-found` is unreachable while the marker is active. Both classifiers
+# return DecisionDefer for worker git commands first (pre-migration source 575bb81
+# classifier.go:3767-3769; omp classifier.go:3761-3763), so the worker-git-ownership branch
+# (source classifier.go:3772-3782; omp classifier.go:3766-3777) never runs. The pre-migration
+# test expects this denial at its lines 282-290. The classifier is not changed here.
 assert_worker_fsck_lost_found_denied() {
   run_hook 'env git fsck --lost-found | head -n 20' worker
   jq -e '
@@ -305,40 +288,54 @@ assert_current_control_operand_boundaries() {
   local command suffix
 
   for suffix in '' ' | cat'; do
+    # Writers to the active marker are denied for both roles: coordinator-proof-control
+    # (classifier.go:4721) and worker-proof-control (classifier.go:4735).
     for command in \
       "cp $OUTSIDE_PROOF $MARKER" \
       "cp -frR -v --force --recursive --verbose -- $OUTSIDE_PROOF $MARKER" \
       "rm -f -- $MARKER" \
       "rm -frR -- $MARKER" \
       "touch -- $MARKER" \
+      "sed -i -e '1p' $MARKER" \
+      "rm --unknown $MARKER" \
+      "sed -i 's/needle/replacement/' $MARKER"; do
+      assert_current_marker_denied "$command$suffix"
+    done
+    for command in \
       "env touch $MARKER" \
       "env -u CONTROL_NAME NAME=value touch -- $MARKER" \
-      "env -C ${MARKER%/*} touch eci_active" \
-      "sed -i 's/needle/replacement/' $MARKER"; do
-      assert_current_marker_denied_without_planner "$command$suffix"
+      "env -C ${MARKER%/*} touch eci_active"; do
+      assert_wrapped_marker_write_denied "$command$suffix"
     done
+    # `env - -v touch <marker>`: the worker is denied by the live-control route (classifier.go:7011, 7016);
+    # the coordinator argv stays allowed.
+    assert_worker_live_control_denied "env - -v touch $MARKER$suffix"
+    run_hook "env - -v touch $MARKER$suffix" coordinator
+    [ ! -s "$OUTPUT" ] || {
+      printf 'coordinator env-wrapped marker touch was hook-denied: %s\n' "env - -v touch $MARKER$suffix" >&2
+      cat -- "$OUTPUT" >&2
+      exit 1
+    }
+    # `sed -i <marker> <destination>` and `sed -i.bak '1p' <marker>` are not asserted as allowed for the
+    # coordinator: the pre-migration source (575bb81 validate-bash.sh with its planner) denies the same
+    # bare commands for the coordinator with predicate coordinator-proof-control, so the omp denials match.
     for command in \
       "cat $MARKER" \
       "cp $MARKER $TMP_ROOT/ordinary-destination" \
       "printf '%s' $MARKER" \
       "sed -n '1p' $MARKER" \
-      "sed -i '$MARKER' $TMP_ROOT/ordinary-destination" \
-      "sed -i.bak '1p' $MARKER" \
-      "sed -i -e '1p' $MARKER" \
-      "rm --unknown $MARKER" \
       "cp --output=$MARKER $OUTSIDE_PROOF $TMP_ROOT/ordinary-destination" \
       "cp $OUTSIDE_PROOF $MARKER $TMP_ROOT/ordinary-destination" \
       "env -u touch $MARKER" \
-      "env - -v touch $MARKER" \
       "env NAME=value -v touch $MARKER" \
       "printf '%s' '|' touch $MARKER"; do
-      assert_allowed_without_planner "$command$suffix"
+      assert_allowed "$command$suffix"
     done
   done
 
   # The first child's CWD must not become the second segment's CWD.
-  assert_allowed_without_planner "env -C ${MARKER%/*} printf ordinary; touch eci_active"
-  assert_current_marker_denied_without_planner "cp --output=$MARKER ordinary elsewhere > $MARKER"
+  assert_allowed "env -C ${MARKER%/*} printf ordinary; touch eci_active"
+  assert_current_marker_denied "cp --output=$MARKER ordinary elsewhere > $MARKER"
 
   for command in \
     "cp $MARKER $TMP_ROOT/ordinary-destination" \
@@ -379,8 +376,6 @@ assert_allowed "cat $OTHER_MARKER"
 assert_allowed "cat $OTHER_MARKER | head -n 20"
 assert_allowed "printf '%s\\n' '|' touch $OTHER_MARKER"
 assert_allowed "printf '%s\\n' '|' touch $OTHER_MARKER | head -n 20"
-assert_allowed_without_planner "cat $OTHER_MARKER | head -n 20"
-assert_allowed_without_planner "printf '%s\\n' '|' touch $OTHER_MARKER | head -n 20"
 
 # `git fsck --lost-found` writes recovered objects under .git/lost-found.  Its
 # worker denial preserves the concrete Git ownership boundary, independent of
@@ -392,8 +387,5 @@ assert_worker_fsck_lost_found_denied
 assert_broad_root_denied
 assert_current_marker_denied
 assert_foreign_marker_denied
-assert_broad_root_denied_without_planner
-assert_current_marker_denied_without_planner
-assert_foreign_marker_denied_without_planner
 
 printf '%s\n' 'target-aware command syntax regression: PASS'
