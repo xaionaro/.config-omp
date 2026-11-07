@@ -59,11 +59,11 @@ if ! grep -Fqx 'args = ["-lc", "exec \"$HOME/.omp/agent/eci/bin/context7-mcp\""]
   fail "context7 MCP must launch from the literal \$HOME/.omp/agent/eci source"
 fi
 
-if ! grep -Fqx 'Also follow `$HOME/.omp/agent/eci/AGENTS.md` as user-level guidance when it does not conflict with higher-priority ECI instructions.' "$CONFIG_TOML"; then
-  fail "developer guidance must select the literal \$HOME/.omp/agent/eci/AGENTS.md source"
+if ! grep -Fqx 'Also follow `$HOME/.omp/agent/AGENTS.md` as user-level guidance when it does not conflict with higher-priority ECI instructions.' "$CONFIG_TOML"; then
+  fail "developer guidance must select the literal \$HOME/.omp/agent/AGENTS.md source"
 fi
-if ! grep -Fqx 'Ported skills live in `$HOME/.omp/agent/eci/skills`; use matching skills for Go, Python, tests, debugging, UI, Android, porting, skill/prompt work, and explicit delegated-agent work.' "$CONFIG_TOML"; then
-  fail "developer guidance must select the literal \$HOME/.omp/agent/eci/skills source"
+if ! grep -Fqx 'Ported skills live in `$HOME/.omp/agent/skills`; use matching skills for Go, Python, tests, debugging, UI, Android, porting, skill/prompt work, and explicit delegated-agent work.' "$CONFIG_TOML"; then
+  fail "developer guidance must select the literal \$HOME/.omp/agent/skills source"
 fi
 if grep -Fq '$ECI_HOME/' "$CONFIG_TOML"; then
   fail "developer guidance must not select an inherited ECI_HOME source"
