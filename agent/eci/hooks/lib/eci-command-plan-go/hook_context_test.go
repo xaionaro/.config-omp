@@ -357,6 +357,38 @@ func TestHookContextSessionsLinkDoesNotExemptReentryBelowIt(t *testing.T) {
 	require.Equal(t, RoleWorker, got.Role)
 }
 
+// TestHookContextSessionsLinkRequiresHomeAlias keeps a sessions-root link unknown unless its prefix physically resolves to HOME, even when its path ends in .omp/agent/sessions.
+//
+// Example: ALIAS/evil/.omp/agent/sessions with HOME/evil/.omp/agent/sessions -> root is unknown, because ALIAS/evil does not resolve to HOME.
+func TestHookContextSessionsLinkRequiresHomeAlias(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project, alias := sessionsLinkFixture(t)
+	root := filepath.Dir(project)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	home := os.Getenv("HOME")
+	other := t.TempDir()
+	cases := []struct {
+		name       string
+		parent     string
+		transcript string
+	}{
+		{"evil", filepath.Join(home, "evil"), filepath.Join(alias, "evil", ".omp", "agent", "sessions", "project", "C.jsonl")},
+		{"deep", filepath.Join(home, "a", "b", "c"), filepath.Join(alias, "a", "b", "c", ".omp", "agent", "sessions", "project", "C.jsonl")},
+		{"outside", other, filepath.Join(other, ".omp", "agent", "sessions", "project", "C.jsonl")},
+	}
+	for _, tc := range cases {
+		require.NoError(t, os.MkdirAll(filepath.Join(tc.parent, ".omp", "agent"), 0700))
+		require.NoError(t, os.Symlink(root, filepath.Join(tc.parent, ".omp", "agent", "sessions")))
+		status, err := hookTranscriptStatus(tc.transcript)
+		require.ErrorIs(t, err, errHookTranscriptUnknown, tc.name)
+		require.ErrorContains(t, err, "crosses a symlink", tc.name)
+		require.Empty(t, status, tc.name)
+		got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: tc.transcript})
+		require.NoError(t, err, tc.name)
+		require.Equal(t, RoleWorker, got.Role, tc.name)
+	}
+}
+
 // TestHookContextSymlinkIntoRootAboveMatchIsWorker rejects a HOME alias whose path re-enters the sessions root through a symlink inside it.
 //
 // Example: HOME/s -> root/project and root/project/up -> root make HOME/s/up/project/C.jsonl unknown.

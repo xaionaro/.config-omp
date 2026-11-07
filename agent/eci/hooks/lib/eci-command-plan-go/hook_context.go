@@ -486,7 +486,7 @@ func hookTranscriptRoots() (string, string, error) {
 // reaches the root through a symlink above it, such as a HOME alias, the base is the
 // topmost ancestor of path that resolves to the resolved root. Every component of path
 // must avoid symlinks into the root (hookNoSymlinkIntoRoot), except the base itself when
-// it is the configured sessions link; symlinks below the base are rejected by
+// it is the HOME-alias configured sessions link; symlinks below the base are rejected by
 // hookNoSymlinkBelow.
 //
 // Example: <root>/project/a.jsonl and ALIAS/.omp/agent/sessions/project/a.jsonl, with
@@ -541,17 +541,22 @@ func hookNoSymlinkBelow(base, relative string) error {
 // hookNoSymlinkIntoRoot fails when any component of path, from the filesystem root
 // down to path, is a symlink whose physical location is the resolved root or lies
 // below it. Such a link reaches the sessions root from outside, so a match above it
-// is not a plain alias. The one exception is the chosen base when its lexical path
-// ends in .omp/agent/sessions: its physical target is the resolved root by design,
-// and hookNoSymlinkBelow still guards everything below it.
+// is not a plain alias. The one exception is the chosen base when it is the configured
+// sessions link under a HOME alias: its lexical path ends in .omp/agent/sessions and the
+// prefix before that suffix physically resolves to physical HOME. Its physical target is
+// the resolved root by design, and hookNoSymlinkBelow still guards everything below it.
 //
 // Example: HOME/s -> root/project makes HOME/s/up/project/C.jsonl unknown, while
 // ALIAS/.omp/agent/sessions -> root with base ALIAS/.omp/agent/sessions is accepted.
 func hookNoSymlinkIntoRoot(path, base, resolved string) error {
 	configured := string(filepath.Separator) + filepath.Join(".omp", "agent", "sessions")
 	exempt := ""
-	if strings.HasSuffix(base, configured) {
-		exempt = base
+	if alias := strings.TrimSuffix(base, configured); alias != base {
+		physicalAlias, aliasErr := filepath.EvalSymlinks(alias)
+		physicalHome, homeErr := filepath.EvalSymlinks(os.Getenv("HOME"))
+		if aliasErr == nil && homeErr == nil && physicalAlias == physicalHome {
+			exempt = base
+		}
 	}
 	current := string(filepath.Separator)
 	for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
