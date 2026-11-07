@@ -2218,27 +2218,33 @@ eci_hook_sessions_root() {
   printf '%s/sessions\n' "$root"
 }
 
-eci_hook_helper_path() {
-  eci_runtime_hook_helper_path
-}
-
 eci_hook_transcript_first_record() {
   local input="${1:-}"
-  local sessions_root first_record helper
+  local sessions_root first_record rc=0
 
   sessions_root="$(eci_hook_sessions_root)" || return 1
-  helper="$(eci_hook_helper_path)" || return 1
-  first_record="$(printf '%s' "$input" | "$helper" hook-transcript-first-record "$sessions_root" 2>/dev/null)" || return 1
+  if ! eci_runtime_open_verified eci-hook-helper; then
+    printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
+    return 1
+  fi
+  first_record="$(printf '%s' "$input" | "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" hook-transcript-first-record "$sessions_root" 2>/dev/null)" || rc=$?
+  exec {ECI_RUNTIME_BINARY_FD}<&-
+  [ "$rc" -eq 0 ] || return 1
   printf '%s\n' "$first_record"
 }
 
 eci_hook_thread_spawn_metadata() {
   local input="${1:-}"
-  local sessions_root metadata helper
+  local sessions_root metadata rc=0
 
   sessions_root="$(eci_hook_sessions_root)" || return 1
-  helper="$(eci_hook_helper_path)" || return 1
-  metadata="$(printf '%s' "$input" | "$helper" hook-transcript-thread-spawn-metadata "$sessions_root" 2>/dev/null)" || return 1
+  if ! eci_runtime_open_verified eci-hook-helper; then
+    printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
+    return 1
+  fi
+  metadata="$(printf '%s' "$input" | "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" hook-transcript-thread-spawn-metadata "$sessions_root" 2>/dev/null)" || rc=$?
+  exec {ECI_RUNTIME_BINARY_FD}<&-
+  [ "$rc" -eq 0 ] || return 1
   printf '%s\n' "$metadata"
 }
 
@@ -2313,7 +2319,7 @@ eci_hook_subagent_status() {
     eci_hook_omp_transcript_status "$transcript"
     return 0
   fi
-  record="$(eci_hook_transcript_first_record "$input" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+  record="$(eci_hook_transcript_first_record "$input")" || { printf 'unknown\n'; return 0; }
   kind="$(printf '%s' "$record" | jq -r 'if type == "object" then (if (.payload.source.subagent.thread_spawn.parent_thread_id | type) == "string" then "subagent" else "main" end) else "invalid" end' 2>/dev/null)" || kind=""
   case "$kind" in
     subagent|main) printf '%s\n' "$kind" ;;

@@ -212,7 +212,7 @@ func TestHookWorkerGitFamilies(t *testing.T) {
 				result := Classify(request)
 				diagnostic := inspectHookEffects(request, result)
 				require.Falsef(t, diagnostic == nil || diagnostic.Code != CodeWorkerGitOwnershipDenied, "want typed Worker Git route, got %+v (analysis=%+v)", diagnostic, result.ShellAnalysis)
-				require.Falsef(t, !strings.Contains(diagnostic.Remediation, "eci-worker-git") || !strings.Contains(diagnostic.Remediation, "run-once"), "missing bounded hatch: %+v", diagnostic)
+				require.Falsef(t, !strings.Contains(diagnostic.Remediation, "build-native-binaries.sh"), "missing native build remediation: %+v", diagnostic)
 			})
 	}
 }

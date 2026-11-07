@@ -827,12 +827,9 @@ func eciLifecycleDispatcherDiagnostic(command string, word lifecycleLexicalWord)
 
 // ledgerAppendRemediation returns copy-paste-safe ledger guidance for a provider.
 //
-// Example: an omp denial names the literal current-home lifecycle executable.
+// Example: the ledger route is reported as unprovisioned, never as an eci-active command.
 func ledgerAppendRemediation(provider Provider) string {
-	if provider == ProviderOmp {
-		return `use "$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json`
-	}
-	return "use eci-active ledger-append --json"
+	return "ledger-append route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", which builds only the three gate binaries; report the unavailable ledger route instead of editing the ledger directly"
 }
 
 // reviewedScriptTraceTopology recognizes exactly the coordinator diagnostic

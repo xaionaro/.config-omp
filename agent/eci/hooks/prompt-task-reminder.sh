@@ -5,16 +5,9 @@ set -euo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
-input_file="$(mktemp)" || exit 0
-trap 'rm -f "$input_file"' EXIT
-head -c 65537 >"$input_file" || exit 0
-if (( $(wc -c <"$input_file") > 65536 )); then exit 0; fi
-if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then exit 0; fi
-iconv -f UTF-8 -t UTF-8 "$input_file" >/dev/null 2>&1 || exit 0
-jq -se 'length == 1 and (.[0] | type == "object")' "$input_file" >/dev/null 2>&1 || exit 0
 # Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.
 hook_deny() {
-  jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason,additionalContext:$reason}}'
   exit 0
 }
 if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
@@ -24,6 +17,13 @@ if ! eci_runtime_open_verified eci-hook-helper; then
   hook_deny "$ECI_RUNTIME_DENY_REASON"
 fi
 helper_fd="$ECI_RUNTIME_BINARY_FD"
+input_file="$(mktemp)" || exit 0
+trap 'rm -f "$input_file"' EXIT
+head -c 65537 >"$input_file" || exit 0
+if (( $(wc -c <"$input_file") > 65536 )); then exit 0; fi
+if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then exit 0; fi
+iconv -f UTF-8 -t UTF-8 "$input_file" >/dev/null 2>&1 || exit 0
+jq -se 'length == 1 and (.[0] | type == "object")' "$input_file" >/dev/null 2>&1 || exit 0
 prompt=$(jq -r 'if (.prompt? | type) == "string" then .prompt else "" end' "$input_file" 2>/dev/null || true)
 normalized_prompt="${prompt,,}"
 explicit_report='(^|[^[:alpha:]])(give|show|provide|write|send|want|need|request|get|what[[:space:]]+is)([[:space:]]+(me|us|a|an|the|my|our|proper|current|full|detailed|quick|brief|please|latest|updated|comprehensive))*[[:space:]]+(status([[:space:]]+and[[:space:]]+progress)?|progress)[[:space:]]+(report|update)'
@@ -55,13 +55,14 @@ while IFS= read -r clause; do
     break
   fi
 done < <(printf '%s\n' "$normalized_prompt" | sed -E 's/[,;.!?]/\n/g; s/[[:space:]]+then[[:space:]]+/\n/g; s/[[:space:]]+and[[:space:]]+(show|give|provide|write|send|what|how|where|can[[:space:]]+you)[[:space:]]+/\n\1 /g')
+# Run the verified helper before any reminder is emitted; a helper runtime failure is an explicit deny, not a silent exit.
+input="$("/proc/self/fd/$helper_fd" stdin <"$input_file")" || hook_deny "ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
 if [[ "$reminder" == true ]]; then
   jq -n '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:"For the requested status report, load writing-status-reports; reconcile YAML, validate, render with status-report render, and publish the full rendered result. Correct known missing sections in YAML and rerender; use the documented incomplete fallback only if structural failure prevents rendering."}}'
 fi
 
 # Keep the independent, nonblocking reminder even if the steps below fail.
 trap 'exit 0' ERR
-input="$("/proc/self/fd/$helper_fd" stdin <"$input_file")" || exit 0
 rm -f "$input_file"
 trap - EXIT
 . "$HOOK_DIR/lib/eci-proof-state.sh"

@@ -44,24 +44,30 @@ gates=(
   "$hook_dir/eci-active-gate.sh"
 )
 reminder_index=""
-reminder_helper=""
+reminder_fd=""
 if [ "${ENABLE_SECURITY_REMINDER:-0}" = 1 ] && security_reminder_candidate "$(<"$input_file")"; then
-  reminder_helper="$(source "$hook_dir/lib/eci-native-binary.sh" && eci_runtime_hook_helper_path)" || reminder_helper=""
-  if [ -n "$reminder_helper" ]; then
+  if . "$hook_dir/lib/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
+    reminder_fd="$ECI_RUNTIME_BINARY_FD"
     reminder_index="${#gates[@]}"
-    gates+=("$reminder_helper")
+    gates+=("security-reminder")
+  else
+    printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
   fi
 fi
 pids=()
 for index in "${!gates[@]}"; do
   output_file="$tmp_dir/output-$index"
   error_file="$tmp_dir/error-$index"
-  case "${gates[$index]}" in
-  */eci-hook-helper) "${gates[$index]}" security-reminder <"$input_file" >"$output_file" 2>"$error_file" & ;;
-  *) bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" & ;;
-  esac
+  if [ "$index" = "$reminder_index" ]; then
+    "/proc/self/fd/$reminder_fd" security-reminder <"$input_file" >"$output_file" 2>"$error_file" &
+  else
+    bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
+  fi
   pids[$index]=$!
 done
+if [ -n "$reminder_fd" ]; then
+  exec {reminder_fd}<&-
+fi
 
 # A child may offer a concrete denial, but its transport health is advisory:
 # malformed JSON, stderr, and non-zero exit status mean only that this child

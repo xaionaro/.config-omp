@@ -112,10 +112,3 @@ eci_runtime_open_verified() {
   fi
   ECI_RUNTIME_BINARY_FD="$fd"
 }
-
-# Resolve the verified hook helper path for callers that run it by path. Callers treat failure as advisory.
-eci_runtime_hook_helper_path() {
-  eci_runtime_open_verified eci-hook-helper || return 1
-  exec {ECI_RUNTIME_BINARY_FD}<&-
-  eci_runtime_artifact_path eci-hook-helper
-}

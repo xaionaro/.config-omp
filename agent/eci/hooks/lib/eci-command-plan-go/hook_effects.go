@@ -577,7 +577,7 @@ func inspectHookGit(
 		diagnostic := diagnosticForToken(CodeWorkerGitOwnershipDenied,
 			fmt.Sprintf("native Worker Git family %s selects repository context %s", argv[verbIndex].value, firstNonEmpty(directory, "<unresolved>")),
 			record.Segment, argv[verbIndex].offset, argv[verbIndex],
-			"use \"$HOME/.omp/agent/eci/bin/eci-worker-git\" --repo <repository> stage-content|stage-removals|stage-hunks|unstage|restore|remove|move|commit with exact literal paths and explicit source/destination modes; preserve the original repository context, scope agreement, fresh same-index lookup and complete staged-result review; only with explicit user authorization for the exact command and environment use --repo <repository> run-once --reason <reason> --user-authorized -- <native Git args>",
+			"use native Git with exact literal paths and explicit source/destination modes; preserve the original repository context, scope agreement, fresh same-index lookup and complete staged-result review; the typed eci-worker-git route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", which builds only the three gate binaries",
 			"worker-git-ownership")
 		diagnostic.Path = directory
 		return diagnostic
@@ -618,7 +618,7 @@ func inspectHookGitMutation(
 	}
 	if !approved && len(request.ApprovedRoots) > 0 {
 		diagnostic := diagnosticForToken(hookCodeGitCrossScopeDenied, "Git mutation selects another repository: "+repository,
-			record.Segment, argv[verbIndex].offset, argv[verbIndex], "the legitimate session owner declares this exact repository with \"$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on <canonical-repository> \"<reason>\", then performs the same scoped work", "git-cross-scope")
+			record.Segment, argv[verbIndex].offset, argv[verbIndex], "legacy repository-allow-on declarations are unavailable and no marker-free replacement is provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
 		diagnostic.Path = repository
 		return diagnostic
 	}
@@ -908,7 +908,7 @@ func inspectHookGitProtectedTarget(
 		}
 		if target, protected := protectedHookModeTargetPath(repository, argument.value); protected {
 			diagnostic := diagnosticForToken(hookCodeCoordinatorEditRouting, "Git "+verb+" physically overwrites, removes or relocates protected live hook "+target,
-				record.Segment, argument.offset, argument, "the responsible Producer edits this tracked hook source in place and stages exact owned paths with eci-worker-git; use index-only unstage for index correction; do not reroute the same destructive operation", "coordinator-protected-target")
+				record.Segment, argument.offset, argument, "the responsible Producer edits this tracked hook source in place and stages exact owned paths through native Git (the typed eci-worker-git route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"); use index-only unstage for index correction; do not reroute the same destructive operation", "coordinator-protected-target")
 			diagnostic.Path = target
 			return diagnostic
 		}
@@ -1155,7 +1155,7 @@ func inspectHookScript(
 		code = hookCodeCoordinatorScriptTargetDenied
 	}
 	diagnostic := diagnosticForToken(code, "script execution selects target outside its assigned roots: "+target,
-		record.Segment, argv[index].offset, argv[index], "the legitimate session owner declares the exact dependency repository from this session with \"$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on <canonical-repository> \"<reason>\", then executes the same script", "script-target")
+		record.Segment, argv[index].offset, argv[index], "legacy repository-allow-on declarations are unavailable and no marker-free replacement is provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
 	diagnostic.Path = target
 	return diagnostic
 }

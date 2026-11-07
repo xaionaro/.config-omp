@@ -32,17 +32,19 @@ filter_violations() {
     done
   )
 
-  local helper filter_ok
-  helper="$( { source "$reviewer_filter_lib_dir/eci-native-binary.sh" && eci_runtime_hook_helper_path; } 2>/dev/null )" || helper=""
-  filter_ok=0
-  if [ -n "$helper" ]; then
-    filtered=$(printf '%s' "$result_json" | "$helper" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" 2>/dev/null) && filter_ok=1
+  local filter_ok=0
+  if . "$reviewer_filter_lib_dir/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
+    filtered=$(printf '%s' "$result_json" | "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" 2>/dev/null) && filter_ok=1
+    exec {ECI_RUNTIME_BINARY_FD}<&-
+  else
+    printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
   fi
   if [ "$filter_ok" = 1 ] && [ -n "$filtered" ]; then
     printf '%s' "$filtered"
   else
     # Fail closed: the filter could not verify any violation, so none are returned.
     # Verdict stays "fail", so the caller still blocks the stop.
+    printf '%s\n' "ECI native gate binary eci-hook-helper reviewer-filter produced no result; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" >&2
     printf '%s' '{"verdict":"fail","violations":[]}'
   fi
 }

@@ -15,4 +15,9 @@ fi
 if ! eci_runtime_open_verified eci-command-plan; then
   hook_deny "$ECI_RUNTIME_DENY_REASON"
 fi
-exec "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook
+rc=0
+"/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook || rc=$?
+case "$rc" in
+  126|127) hook_deny "ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
+esac
+exit "$rc"
