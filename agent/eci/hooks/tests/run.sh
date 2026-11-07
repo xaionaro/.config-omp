@@ -1276,10 +1276,13 @@ test_compose_reviewer_prompt_uses_eci_sources() {
     compose_reviewer_prompt "$ROOT/hooks/reviewer-rules.md" >"$out"
   ) || return 1
 
+  # The composer's sources are the wrapper, the global AGENTS.md, and stop-checklist.md
+  # (compose-reviewer-prompt.sh:44-57). AGENTS.md no longer carries the Response and Evidence
+  # headings that Codex's CODEX.md supplied; omp stopped loading that file.
   grep -q '# AGENTS.md' "$out" &&
     grep -q '# stop-checklist.md' "$out" &&
-    grep -q '^# Response$' "$out" &&
-    grep -q '^## Evidence$' "$out" &&
+    grep -q '^# Reviewer Wrapper$' "$out" &&
+    grep -q '^# Stop Checklist$' "$out" &&
     ! grep -Eq '[.]claude' "$out"
 }
 
