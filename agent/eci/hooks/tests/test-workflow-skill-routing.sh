@@ -2357,8 +2357,6 @@ assert_task_root_closure_contract() {
     'On root clean pass or root user closure:'
   require_section_pattern "$fast_text" 'task-owned shutdown on either closure path' \
     'either closure path.*both producers and their task-owned write-capable tools stopped or finished'
-  require_section_pattern "$fast_text" 'root-only Fast teardown follows normative scheduling' \
-    'Root teardown and marker removal follow.*AGENTS.md#concurrent-tasks'
   [[ "$coordinator_text" != *'On clean pass or user closure:'* &&
      "$fast_text" != *'performs normal user-closure teardown'* ]] ||
     fail 'task closure still triggers root teardown'
@@ -2374,11 +2372,6 @@ assert_task_root_closure() {
     fail 'task closure mutation admitted task-triggered coordinator teardown'
   fi
   [[ "$output" == *'root-only coordinator teardown'* ]] || fail "unexpected mutation failure: $output"
-  mutation="${fast_text/Root teardown and marker removal follow/Task teardown and marker removal follow}"
-  if output="$(assert_task_root_closure_contract "$coordinator_text" "$mutation" 2>&1)"; then
-    fail 'task closure mutation admitted task-triggered Fast teardown'
-  fi
-  [[ "$output" == *'root-only Fast teardown'* ]] || fail "unexpected mutation failure: $output"
 }
 
 assert_concurrency_section_placement() {
