@@ -4,11 +4,16 @@
 set -euo pipefail
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-# Dispatch is advisory infrastructure around concrete target guards.  A
-# missing HOME, unusable scratch path, or child-health failure must never turn
-# an ordinary repository edit into a user-facing denial.
+# Child-health failures stay advisory: malformed output, stderr, or a non-zero
+# exit from a child never turns an edit into a denial by itself. A failure to
+# create the dispatch scratch directory is different: the gate cannot run, so
+# it fails closed with an explicit deny.
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
-tmp_dir="$(mktemp -d "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)" || exit 0
+if ! tmp_dir="$(mktemp -d "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
+  jq -cn --arg reason "ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  exit 0
+fi
 trap 'rm -rf -- "$tmp_dir"' EXIT HUP INT TERM
 
 input_file="$tmp_dir/input.json"
