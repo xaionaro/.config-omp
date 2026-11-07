@@ -28,7 +28,7 @@ Every assignment and roster entry names one category and one semantic role. Stat
 
 Use stable role labels where available. An unfamiliar label or changed profile prompts a quick clarification or a reasonable available assignment; it does not block normal work or require profile hashing. Select models per [model selection](../../explore-critique-implement/SKILL.md#model-selection); record unavailable selector fields plainly.
 
-Send selectors as [model selection](../../explore-critique-implement/SKILL.md#model-selection) directs when they materially help the assignment. Treat unavailable or conflicting telemetry as a note for review, not a reason to halt, manufacture evidence, or reject ordinary worker progress.
+Send selectors as [model selection](../../explore-critique-implement/SKILL.md#model-selection) directs. Treat unavailable or conflicting telemetry as a note for review, not a reason to halt, manufacture evidence, or reject ordinary worker progress.
 
 ### Closed role map
 
