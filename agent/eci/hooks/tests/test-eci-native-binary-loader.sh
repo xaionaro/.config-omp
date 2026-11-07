@@ -277,6 +277,40 @@ EOF
       pass "deny wrong-owner in chroot (root-owned binary bind-mounted): is not owned by the current user"
     fi
   fi
+
+  # A second open without a close must release the first open's handle, whether it is denied or accepted.
+  # On Linux a released descriptor number may be reused by the second open, so only "a different number
+  # that still exists" counts as a leak.
+  reset_bin; install_binary "$fixtures/native"
+  eci_runtime_open_verified eci-hook-helper || fail "reopen-denied: first open denied: $ECI_RUNTIME_DENY_REASON"
+  first_fd="$ECI_RUNTIME_BINARY_FD"; first_copy_dir="$eci_runtime_copy_dir"
+  rm -f -- "$bin/eci-hook-helper.sha256"
+  ECI_RUNTIME_DENY_REASON=''
+  if eci_runtime_open_verified eci-hook-helper; then fail "reopen-denied: second open accepted without a receipt"; fi
+  [ "$ECI_RUNTIME_DENY_REASON" = "$(deny_text eci-hook-helper 'has no sha256 receipt')" ] ||
+    fail "reopen-denied: deny text was [$ECI_RUNTIME_DENY_REASON]"
+  [ -z "$ECI_RUNTIME_BINARY_EXEC" ] || fail "reopen-denied: EXEC still names the earlier binary: $ECI_RUNTIME_BINARY_EXEC"
+  [ -z "$ECI_RUNTIME_BINARY_FD" ] && [ -z "$eci_runtime_copy_dir" ] || fail "reopen-denied: denied open left state set"
+  if [ "$host_os" = Linux ]; then
+    [ ! -e "/proc/self/fd/$first_fd" ] || fail "reopen-denied: first descriptor $first_fd leaked"
+  else
+    [ ! -e "$first_copy_dir" ] || fail "reopen-denied: first copy directory leaked: $first_copy_dir"
+  fi
+  pass "reopen-denied: a failed reopen closed the first handle and left EXEC empty"
+
+  reset_bin; install_binary "$fixtures/native"
+  eci_runtime_open_verified eci-hook-helper || fail "reopen-accepted: first open denied: $ECI_RUNTIME_DENY_REASON"
+  first_fd="$ECI_RUNTIME_BINARY_FD"; first_copy_dir="$eci_runtime_copy_dir"
+  eci_runtime_open_verified eci-hook-helper || fail "reopen-accepted: second open denied: $ECI_RUNTIME_DENY_REASON"
+  if [ "$host_os" = Linux ]; then
+    [ "$ECI_RUNTIME_BINARY_FD" = "$first_fd" ] || [ ! -e "/proc/self/fd/$first_fd" ] ||
+      fail "reopen-accepted: first descriptor $first_fd leaked beside $ECI_RUNTIME_BINARY_FD"
+  else
+    [ ! -e "$first_copy_dir" ] || fail "reopen-accepted: first copy directory leaked: $first_copy_dir"
+  fi
+  [ -e "$ECI_RUNTIME_BINARY_EXEC" ] || fail "reopen-accepted: second handle is absent: $ECI_RUNTIME_BINARY_EXEC"
+  eci_runtime_close_verified
+  pass "reopen-accepted: an accepted reopen released the first handle"
 fi
 
 # is_native checks: the Linux ELF check on Linux, the Mach-O check on macOS, and the
@@ -692,6 +726,58 @@ mkdir -p -- "$temp777"
 chmod 0777 -- "$temp777"
 darwin_child "$temp777"
 darwin_deny_check darwin-temp-777-not-sticky-denied "$temp777" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
+
+# Reopen on the darwin copy path: a second open must release the first copy directory, whether the
+# second open is denied or accepted. Each case is a child process, so no state carries over.
+cat >"$dstand/reopen.sh" <<'REOPEN'
+#!/bin/bash
+# Reopen child: open, open again, then report what the second open left behind. $1 is the loader,
+# $2 the installed binary. REOPEN_BREAK_RECEIPT=1 removes the receipt before the second open.
+. "$1" || { echo 'child: loader did not source'; exit 90; }
+eci_runtime_platform=Darwin
+eci_runtime_darwin_host_cputype() { printf '%s\n' '0c 00 00 01'; }
+if eci_runtime_open_verified eci-hook-helper; then printf 'FIRST=accept\n'; else printf 'FIRST=deny\n'; fi
+first_dir="$eci_runtime_copy_dir"
+if [ -n "${REOPEN_BREAK_RECEIPT:-}" ]; then rm -f -- "$2.sha256"; fi
+if eci_runtime_open_verified eci-hook-helper; then printf 'SECOND=accept\n'; else printf 'SECOND=deny\n'; fi
+second_dir="$eci_runtime_copy_dir"
+if [ -n "$first_dir" ] && [ -e "$first_dir" ]; then printf 'FIRST_DIR_LEAKED=yes\n'; else printf 'FIRST_DIR_LEAKED=no\n'; fi
+printf 'EXEC_AFTER_SECOND=%s\n' "$ECI_RUNTIME_BINARY_EXEC"
+printf 'REASON=%s\n' "$ECI_RUNTIME_DENY_REASON"
+eci_runtime_close_verified
+if [ -n "$second_dir" ] && [ -e "$second_dir" ]; then printf 'SECOND_DIR_AFTER_CLOSE=left\n'; else printf 'SECOND_DIR_AFTER_CLOSE=gone\n'; fi
+printf 'CLOSED\n'
+REOPEN
+chmod 0755 -- "$dstand/reopen.sh"
+reopen_child_run() {  # reopen_child_run <tmpdir> [VAR=value ...]: runs reopen.sh; sets child_out and child_st
+  local ctmp="$1" prefix=''
+  shift 1
+  if [ "$host_os" = Linux ]; then prefix="$dstand/bin:"; fi
+  child_st=0
+  child_out="$(env -i HOME="$home" TMPDIR="$ctmp" PATH="${prefix}/usr/bin:/bin" NT_REAL_STAT="$dreal_stat" "$@" "$BASH" "$dstand/reopen.sh" "$loader" "$bin/eci-hook-helper" 2>&1)" || child_st=$?
+}
+install_binary "$fixtures/macho-arm64"
+ctmp="$(fresh_tmp reopen-accepted)"
+reopen_child_run "$ctmp"
+[ "$child_st" -eq 0 ] || fail "darwin-reopen-accepted: child died (status $child_st): $child_out"
+[ "$(child_field FIRST)" = accept ] && [ "$(child_field SECOND)" = accept ] ||
+  fail "darwin-reopen-accepted: opens were [$child_out]"
+[ "$(child_field FIRST_DIR_LEAKED)" = no ] || fail "darwin-reopen-accepted: the first copy directory leaked"
+[ "$(child_field SECOND_DIR_AFTER_CLOSE)" = gone ] || fail "darwin-reopen-accepted: the second copy directory was left after close"
+[ -z "$(ls -A -- "$ctmp")" ] || fail "darwin-reopen-accepted: TMPDIR is not empty after close"
+pass "darwin-reopen-accepted: an accepted reopen released the first copy directory"
+install_binary "$fixtures/macho-arm64"
+ctmp="$(fresh_tmp reopen-denied)"
+reopen_child_run "$ctmp" REOPEN_BREAK_RECEIPT=1
+[ "$child_st" -eq 0 ] || fail "darwin-reopen-denied: child died (status $child_st): $child_out"
+[ "$(child_field FIRST)" = accept ] && [ "$(child_field SECOND)" = deny ] ||
+  fail "darwin-reopen-denied: opens were [$child_out]"
+[ "$(child_field REASON)" = "$(deny_text eci-hook-helper 'has no sha256 receipt')" ] ||
+  fail "darwin-reopen-denied: deny text was [$(child_field REASON)]"
+[ -z "$(child_field EXEC_AFTER_SECOND)" ] || fail "darwin-reopen-denied: EXEC still names the earlier binary"
+[ "$(child_field FIRST_DIR_LEAKED)" = no ] || fail "darwin-reopen-denied: the first copy directory leaked"
+[ -z "$(ls -A -- "$ctmp")" ] || fail "darwin-reopen-denied: TMPDIR is not empty after close"
+pass "darwin-reopen-denied: a failed reopen released the first copy directory and left EXEC empty"
 
 # Receipt-case table (Linux). Fixed descriptor 8 keeps it runnable under bash 3.2.
 if [ "$host_os" = Linux ]; then

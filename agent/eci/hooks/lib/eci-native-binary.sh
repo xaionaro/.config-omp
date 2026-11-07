@@ -134,10 +134,13 @@ eci_runtime_verify_fd() {
 
 # Open and verify $HOME/.omp/agent/eci/bin/<name>. On success ECI_RUNTIME_BINARY_EXEC names the
 # verified binary: on Linux the descriptor stays open in ECI_RUNTIME_BINARY_FD; on macOS it is a
-# private copy. Release either with eci_runtime_close_verified. On failure ECI_RUNTIME_DENY_REASON is set.
+# private copy. Release either with eci_runtime_close_verified. A new open first releases any
+# earlier one, so a failed open never leaves EXEC naming an earlier binary. On failure
+# ECI_RUNTIME_DENY_REASON is set.
 # The platform switch comes first, so macOS never reaches the Linux body and its named descriptors.
 # The private scratch directory is created before the descriptor opens and removed before return.
 eci_runtime_open_verified() {
+  eci_runtime_close_verified
   case "$eci_runtime_platform" in
     Darwin) _eci_runtime_open_verified_darwin "${1:-}"; return ;;
   esac
