@@ -19,10 +19,10 @@ chmod 0755 -- "$bin_dir"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
-names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git owned-command)
+names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git owned-command eci-active)
 for name in "${names[@]}"; do
   case "$name" in
-    owned-command) module="$hook_dir/../tools/$name" ;;
+    owned-command|eci-active) module="$hook_dir/../tools/$name" ;;
     *) module="$hook_dir/lib/$name-go" ;;
   esac
   [ -f "$module/go.mod" ] || { echo "build-native-binaries: missing Go module $module" >&2; exit 1; }
