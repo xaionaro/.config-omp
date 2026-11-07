@@ -61,10 +61,11 @@ For a new root package, record the Job and publish its Orchestrator as described
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Match the task against the trigger table in `~/.omp/agent/eci-binding-contract.md#eci-supervisor-repository-edit-routing`, the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
+Match the task against the [trigger table](~/.omp/agent/eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
 
 - `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
-- A skill that the role's module (Module routing) restricts to a predicate the task does not meet is `no match: <module predicate not met>`. Example: `debugging-discipline` for an explorer matches only for assigned bug investigation.
+- A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
+- A unit excluded by the module predicate rule in the contract's loading bullet gets `no match: <module predicate not met>`.
 - The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The Supervisor derives it from the Routing lines.
 
 ## Model selection
