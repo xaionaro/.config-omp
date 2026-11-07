@@ -16,7 +16,7 @@ node -p 'require.resolve("yaml")' >/dev/null
 parse() {
   node -e 'const fs=require("fs"), YAML=require("yaml"); const value=YAML.parse(fs.readFileSync(process.argv[1],"utf8"),{uniqueKeys:true,stringKeys:true,maxAliasCount:0}); process.stdout.write(JSON.stringify(value));' "$1"
 }
-example="$ROOT/skills/context-ledger/examples/project-understanding.yaml"
+example="$ROOT/../skills/context-ledger/examples/project-understanding.yaml"
 parse "$example" > "$TMP_ROOT/before.json"
 # Same native record edit on a latest owned snapshot; no YAML serialization.
 cp -- "$example" "$TMP_ROOT/edited.yaml"

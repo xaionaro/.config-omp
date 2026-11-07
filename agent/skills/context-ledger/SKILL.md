@@ -25,7 +25,7 @@ Keep current project/task facts in `project-understanding.yaml` and current fore
 
 Err on exhaustive useful detail for current state. Do not omit a detail because it seems obvious from transcript, local state, prior agent memory, or project familiarity. Equally, do not retain a detail because it was true earlier. Exhaustive on current state; zero on superseded state.
 
-For ECI, record stage `normal` as a context fact. Track main and fast progress under the same task: owners, provisional evidence, current ECI decision, and needed adaptation. [ECI fast path](../../../skills/explore-critique-implement/references/fast-path.md) defines their relationship; these are paths, not separate stages or automatic lanes. Reconcile missing or stale metadata alongside safe work; records never grant permission.
+For ECI, record stage `normal` as a context fact. Track main and fast progress under the same task: owners, provisional evidence, current ECI decision, and needed adaptation. [ECI fast path](../explore-critique-implement/references/fast-path.md) defines their relationship; these are paths, not separate stages or automatic lanes. Reconcile missing or stale metadata alongside safe work; records never grant permission.
 
 For material ECI work, keep `exact user source → faithful requested outcome →
 bounded scope` as readable context. A repair stays in its lane when it is
@@ -34,7 +34,7 @@ post-ECI observation or follow-up, never current lane, assignment, code change,
 review, deadline, forecast, or proof program. Reconcile missing or stale
 lineage alongside known work; do not block it.
 
-Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../../../skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
+Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
 
 Ground each progress item in `high_level_log.jsonl` and `latest-status-report.yaml` in a
 named or linked user-stated requirement. Explain how the change advances or
@@ -42,7 +42,7 @@ verifies the requested outcome; for a blocker, state its effect on that outcome.
 For supporting work, state what it enables and whether the requested outcome
 remains open.
 
-Apply [Project requirements](../../../eci-binding-contract.md#project-requirements) before classifying material input. Preserve exact attributed user passages and distinguish project-specific changes, instruction corrections, hypotheses and derived work using existing record types and links. Reuse the affected outcome for corrective work. Keep applicable instruction sources and unresolved inquiries with their owner and next action; do not attribute agent-derived checks to the user.
+Apply [Project requirements](../../eci-binding-contract.md#project-requirements) before classifying material input. Preserve exact attributed user passages and distinguish project-specific changes, instruction corrections, hypotheses and derived work using existing record types and links. Reuse the affected outcome for corrective work. Keep applicable instruction sources and unresolved inquiries with their owner and next action; do not attribute agent-derived checks to the user.
 
 Example: ‘The test harness now exercises the requested production behavior,
 making the fix verifiable; the production fix remains open.’
@@ -120,7 +120,7 @@ same envelope themselves.
 
 For a material change that should also update the report, put an explicit
 `details.status_update` payload in the appended event. Use the operation schema,
-closure evidence rules, and examples in the [status-report README](../../tools/status-report/README.md#log-driven-report-updates).
+closure evidence rules, and examples in the [status-report README](../../eci/tools/status-report/README.md#log-driven-report-updates).
 Describe only supplied facts; ordinary event prose does not authorize inferred report
 changes. The producer assigns impact points and their basis; the renderer calculates
 priority from those points and remaining work.
@@ -174,7 +174,7 @@ jq -r 'select(.schema == "eci-high-level-log/v1" and .event == "worker_progress"
 | Forecast projection | Derive equivalent native fields from `forecasts.yaml`, including outcome, target, assessment, baseline or recalibration and evidence, dependencies, and applicable scenarios and completion. Render exact lines and tables only in user-facing reports. The report is not a second source of truth. |
 | No copying the ledger | Report changed state plus next focus; do not duplicate ledger structure. Cross-reference instead. |
 
-The executable contract and example live in [status-report README](../../tools/status-report/README.md). Before a status response, reconcile the report with the current ledger and `forecasts.yaml`, including applicable work, evidence, and forecast projections. Mark missing, stale, inconsistent, or incomplete source evidence and affected coverage as incomplete; do not infer completeness from schema validation. Use `status-report validate FILE` to check schema and references, then `status-report render FILE` and publish its full output, including when validation reports incomplete reconciliation. Correct known missing sections in YAML and rerender before publication. Validation cannot establish factual truth or reviewer independence. If structural failure prevents rendering, answer the user directly with supported facts, label the response incomplete, and repair the report alongside safe work. Track task hierarchy and top-priority IDs; do not store a progress bar or percentage. Include queue review records when applicable. Forecast values remain projections from `forecasts.yaml`.
+The executable contract and example live in [status-report README](../../eci/tools/status-report/README.md). Before a status response, reconcile the report with the current ledger and `forecasts.yaml`, including applicable work, evidence, and forecast projections. Mark missing, stale, inconsistent, or incomplete source evidence and affected coverage as incomplete; do not infer completeness from schema validation. Use `status-report validate FILE` to check schema and references, then `status-report render FILE` and publish its full output, including when validation reports incomplete reconciliation. Correct known missing sections in YAML and rerender before publication. Validation cannot establish factual truth or reviewer independence. If structural failure prevents rendering, answer the user directly with supported facts, label the response incomplete, and repair the report alongside safe work. Track task hierarchy and top-priority IDs; do not store a progress bar or percentage. Include queue review records when applicable. Forecast values remain projections from `forecasts.yaml`.
 
 Apply the scalar and selective-edit rules in [YAML authoring and native edits](#authoring-and-native-edits) to this report, without the ledger's envelope, record schema, or record-specific ID/type checks. Select changed fields against the latest report and preserve unrelated content. Use the supported schema to retain the status skill's lane, dependency, root-task status, forecast and scenario detail. Record changed forecast prior and current targets, reason and evidence; record initial baseline and evidence; record actual completion timestamps for every lane whose required-environment status is closed, without an active deadline. Represent each applicable root-task status and every material scenario with its trigger, affected work, duration basis, evidence, assumptions, endpoint and next fact-finding action. Task `id` and `parent_id` preserve hierarchy: a dotted ID's parent is its exact prefix before the final dot, and a root has no parent. Lane `task_id` references that task. Task `owner` executes the task; lane `owner` coordinates the lane. The three lane status values retain distinct readiness meanings. Forecasts remain projections of `forecasts.yaml`.
 
@@ -326,7 +326,7 @@ When a lane or root forecast changes, update its current record in `forecasts.ya
 
 For ECI forecasts, including nested ECI, store a base case and every material
 downside scenario alongside the canonical target, including risks whose timing
-is not yet supported. Apply [Work estimates](../../../eci-binding-contract.md#work-estimates):
+is not yet supported. Apply [Work estimates](../../eci-binding-contract.md#work-estimates):
 decompose remaining work, use labeled educated guesses where evidence is
 incomplete, and always give an overall completion estimate. Keep evidence gaps
 visible; a probe supplements the estimate.
@@ -526,7 +526,7 @@ fixture; this fails if the ID is missing or has another type:
 ```sh
 yq -e --arg id 'work:receiver:clock' \
   'if (.records | has($id)) and .records[$id].type == "work" then .records[$id] | .data.owner = "worker-b" else error("missing or mistyped work record") end' \
-  skills/context-ledger/examples/project-understanding.yaml
+  ~/.omp/agent/skills/context-ledger/examples/project-understanding.yaml
 ```
 
 ### Read-only queries

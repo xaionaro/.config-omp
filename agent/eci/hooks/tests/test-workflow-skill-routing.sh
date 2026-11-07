@@ -8,7 +8,7 @@ ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 TESTING_DISCIPLINE="$ROOT/skills/testing-discipline/SKILL.md"
 DEBUGGING="$ROOT/skills/debugging-discipline/SKILL.md"
 STATUS_REPORT="$ROOT/skills/writing-status-reports/SKILL.md"
-LEDGER="$ROOT/skills/context-ledger/SKILL.md"
+LEDGER="$ROOT/../skills/context-ledger/SKILL.md"
 LINEAGE="$ROOT/../skills/references/requirement-lineage.md"
 ATE="$ROOT/skills/agent-teams-execution/SKILL.md"
 ECI_COVERAGE="$ROOT/../skills/explore-critique-implement/references/coverage-map.md"
@@ -2675,7 +2675,7 @@ assert_forecast_target_history_coordinator_contract() {
   local source="$1" input="$2"
 
   require_forecast_target_history_text "$source" 'ledger audit-contract pointer' \
-    'Use the [`forecast-target-history.tsv` audit contract](../../../eci/skills/context-ledger/SKILL.md#forecast-target-history) for every root-target transition. It is audit-only and never a gate.' "$input"
+    'Use the [`forecast-target-history.tsv` audit contract](../../context-ledger/SKILL.md#forecast-target-history) for every root-target transition. It is audit-only and never a gate.' "$input"
   forbid_forecast_target_history_text "$source" 'direct audit-artifact gate' \
     'must verify `forecast-target-history.tsv`, `high_level_log.jsonl`, hash, receipt, or artifact before ordinary work.' "$input"
   forbid_forecast_target_history_text "$source" 'direct reason gate' \

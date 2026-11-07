@@ -6,7 +6,7 @@ const fs = require('fs');
 const YAML = require('yaml');
 const path = require('path');
 const assert = require('assert');
-const examples = path.join(process.argv[2], 'skills/context-ledger/examples');
+const examples = path.join(process.argv[2], '../skills/context-ledger/examples');
 const parse = file => YAML.parse(fs.readFileSync(path.join(examples, file), 'utf8'), {uniqueKeys:true, stringKeys:true, maxAliasCount:0});
 const ledger = parse('project-understanding.yaml');
 const forecasts = parse('forecasts.yaml');
@@ -30,7 +30,7 @@ NODE
 node - "$root" <<'NODE'
 const fs = require('fs');
 const assert = require('assert');
-const text = fs.readFileSync(`${process.argv[2]}/skills/context-ledger/SKILL.md`, 'utf8');
+const text = fs.readFileSync(`${process.argv[2]}/../skills/context-ledger/SKILL.md`, 'utf8');
 assert(!text.includes('Initial forecast.Original baseline'), 'baseline must use its YAML key');
 assert(!text.includes('Target basis: conditional'), 'conditional basis must use its YAML key');
 assert(text.includes('forecast record’s `kind`'), 'forecast edits must check kind rather than ledger type');
@@ -45,7 +45,7 @@ const path = require('path');
 const os = require('os');
 const assert = require('assert');
 const YAML = require('yaml');
-const fixture = fs.readFileSync(path.join(process.argv[2], 'skills/context-ledger/examples/forecasts.yaml'), 'utf8');
+const fixture = fs.readFileSync(path.join(process.argv[2], '../skills/context-ledger/examples/forecasts.yaml'), 'utf8');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forecast-lifecycle-'));
 const file = path.join(dir, 'forecasts.yaml');
 const parse = () => YAML.parse(fs.readFileSync(file, 'utf8'), {uniqueKeys:true, stringKeys:true, maxAliasCount:0});

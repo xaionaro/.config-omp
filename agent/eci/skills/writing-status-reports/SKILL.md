@@ -34,7 +34,7 @@ Progress reports changed state and completed outcomes, not files read, commands 
 
 ## Format Rules
 
-- These formatting rules, including exact forecast lines and tables, apply to rendered user-facing reports. The persisted YAML projection carries equivalent structured fields as described in [Latest Status Report](../context-ledger/SKILL.md#latest-status-report).
+- These formatting rules, including exact forecast lines and tables, apply to rendered user-facing reports. The persisted YAML projection carries equivalent structured fields as described in [Latest Status Report](../../../skills/context-ledger/SKILL.md#latest-status-report).
 - Keep ordinary progress commentary short: one tight paragraph or relevant coverage categories as bullets. For a requested status report, use the applicable detailed bundle below by default.
 - Lead with state, then include only categories that changed or matter now.
 - Name exact affected area, requirement, command, file, or decision when relevant.
@@ -65,7 +65,7 @@ rather than implying the tree is complete.
 
 When newly time-estimated items enter the queue, have an independent critic review only those items' estimates, impact, and priority. The reporter repairs findings and requests another review as needed, for at most five reporter–critic rounds. Expose unresolved findings or unavailable review honestly. A report refresh, compaction, or recalibration of existing items alone does not trigger this review; do not critique the whole report under this rule.
 
-Present a separate top-priority list and the full task tree. Both refer to the same task records. Reconcile the structured YAML against current ledger and forecast evidence, validate it, then render and publish the full rendered result using the status-report tool as described in [Latest Status Report](../context-ledger/SKILL.md#latest-status-report). Validation may report incomplete evidence without preventing rendering. Correct missing known sections in the YAML and rerender before publication. Label missing, stale, inconsistent, or incomplete evidence and affected coverage incomplete. If structural failure prevents rendering, answer directly with supported facts, label the response incomplete, and repair the report alongside safe work.
+Present a separate top-priority list and the full task tree. Both refer to the same task records. Reconcile the structured YAML against current ledger and forecast evidence, validate it, then render and publish the full rendered result using the status-report tool as described in [Latest Status Report](../../../skills/context-ledger/SKILL.md#latest-status-report). Validation may report incomplete evidence without preventing rendering. Correct missing known sections in the YAML and rerender before publication. Label missing, stale, inconsistent, or incomplete evidence and affected coverage incomplete. If structural failure prevents rendering, answer directly with supported facts, label the response incomplete, and repair the report alongside safe work.
 
 For an active multi-agent status report, show the recursive roster of actually
 active agents under their parent agents, including each agent's current task, owner or
@@ -97,7 +97,7 @@ uncertainty, and dependencies, including external waits. Combine serial
 durations and use the latest required parallel endpoint on the critical path;
 do not sum parallel durations or double-count shared work. Follow
 [Work estimates](../../../eci-binding-contract.md#work-estimates) and,
-for ECI, the [scenario forecast rule](../context-ledger/SKILL.md#eci-scenario-forecasts).
+for ECI, the [scenario forecast rule](../../../skills/context-ledger/SKILL.md#eci-scenario-forecasts).
 Use evidence-backed guesses for missing impact and work inputs, labeled as
 estimates, or leave priority unscored with a reason. Never invent
 measurements or omit the completion estimate.
@@ -145,7 +145,7 @@ that update, include this standalone line once:
 
 `Root completion forecast: <named active root-task outcome> will be finished by <UTC ISO8601>.`
 
-The forecast line itself names the finished outcome using the [canonical forecast outcome wording](../context-ledger/SKILL.md#forecast-outcome-wording). A separate `Lane` or `Next milestone` does not substitute, and the outcome never names a critic, reviewer, actor, or stage. Root completion is full root completion, not a child sum or stage. In that update, emit each
+The forecast line itself names the finished outcome using the [canonical forecast outcome wording](../../../skills/context-ledger/SKILL.md#forecast-outcome-wording). A separate `Lane` or `Next milestone` does not substitute, and the outcome never names a critic, reviewer, actor, or stage. Root completion is full root completion, not a child sum or stage. In that update, emit each
 lane/root canonical forecast once. For
 a changed lane or root forecast, restate its current canonical line, then state
 Forecast recalibration: <prior UTC ISO8601> → <current UTC ISO8601>; why moved:
@@ -175,7 +175,7 @@ not supported; identify the lane or root in each row:
 | `<lane/root> — base case` | No listed downside scenario | Remaining authorized in-scope critical-path work | No generic buffer | `<current work facts and progress used; assumptions/limits>` | `<UTC>` | — |
 | `<lane/root> — <scenario or conditional combination>` | `<trigger/evidence>` | `<work/dependency>` | `<estimated duration/range; evidence or labeled educated-guess basis>` | `<relevant facts reviewed and assumptions/limits>` | `<estimated UTC endpoint/range; label conditional guesses>` | `<specific evidence gap and next fact-finding action; — when resolved>` |
 
-Apply the canonical [ledger scenario rule](../context-ledger/SKILL.md#eci-scenario-forecasts)
+Apply the canonical [ledger scenario rule](../../../skills/context-ledger/SKILL.md#eci-scenario-forecasts)
 for decomposition, educated guesses, external-wait assumptions, evidence gaps,
 duration combinations and critical-path endpoints. Always report an overall
 completion estimate; a bounded probe supplements it. Keep guessed timing
