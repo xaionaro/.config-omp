@@ -17,6 +17,7 @@
 - omp HEAD verified against: `c113fea5c853707eeef85c486959b2ba692c2d5c`. At `0c5a82c4ecdd32cce42e21cd172f9697c6f158fb` (HEAD on the final check) every cited Go, shell and test file is unchanged from c113fea except `hooks/build-native-binaries.sh` (see G18). `git diff --stat 0107338 c113fea -- agent/eci/tools/eci-active` is empty, so the Go port is unchanged across every HEAD this table was checked against.
 - Citation forms: `575bb81:bin/eci-active:NN` for the source script; `src:<alias>:NN` for the other source files (for example `src:proof-state:897`); `omp:file:N` = c113fea `agent/eci/tools/eci-active/file`; `test:path:N` = c113fea `agent/eci/hooks/tests/path`; `hooks/lib/...` and `hooks/...` without a prefix are omp c113fea paths under `agent/eci/`. A bare `file.go:N` is an omp Go file under `agent/eci/tools/eci-active/`.
 - Test-file citations are c113fea lines. `test-session-snapshot-refresh.sh` changed in c113fea, so its lines are the new ones.
+- Rows rewritten for ECIPARITY cite omp lines at 21e3953 (or HEAD), not at c113fea. Other rows still cite c113fea.
 
 ### Counts and how they were obtained
 
@@ -31,7 +32,7 @@ Rows: 33 command rows (`--help` and `-h` share one row; `permissive-on` has two 
 
 ### Verification done
 
-- omp has no Go unit tests in `agent/eci/tools/eci-active`: `git ls-files 'agent/eci/tools/eci-active/*_test.go'` is empty. `go test` there prints `[no test files]`.
+- omp has no Go unit tests in `agent/eci/tools/eci-active` at c113fea: `git ls-files 'agent/eci/tools/eci-active/*_test.go'` is empty there. `go test` there prints `[no test files]`.
 - Go coverage of the ported commands is in `hooks/lib/eci-requirement-assignment-go/*_test.go`, which execute `bin/eci-active`, plus shell tests in `hooks/tests/` that run `bin/eci-active`.
 - All runs used a `git archive` of c113fea compiled into a temp directory. The untracked live `agent/eci/bin/eci-active` was not used.
 - Differential runs used the 575bb81 `bin/eci-active` and its libraries from `git archive` in a temp directory, not the source checkout.
@@ -164,7 +165,7 @@ Helpers are the 30 identifiers from the grep in §1. `variable` marks identifier
 | 575bb81:bin/eci-active:1173 `go run -mod=readonly . --ledger … --request …` in `hooks/lib/eci-requirement-assignment-go` (cd at line 1172) | requirement-assignment; lock taken at line 1171, released at line 1176 | requirement.go:48 exec of bin/eci-requirement-assignment (no cmd.Dir); lock taken :43, closed :54 | Yes. requirement.go:48 (was :47 with go run). |
 | 575bb81:bin/eci-active:1276 `if ! (cd "$base_dir/tools/status-report" && go run -mod=readonly . refresh "$ledger_dir" "$(jq -r .event <<<"$entry")"); then` (advisory on failure) | ledger-append after the append; lock held | ledger.go:411 `runStatusRefresh(ledgerDir, event)` → ledger.go:423 exec of bin/status-report; advisory text identical | Yes. ledger.go:411 call and :423 exec. Advisory checked by differential run. |
 
-omp also runs `go build` in `planner.go:169` (through `/usr/lib/go-1.26/bin/go`). The source's counterpart is in `src:runtime-sync:137`, not in the source script.
+`plannerBuildTool` runs `go build` with the absolute PATH go (`plannerGoTool`, c72b398). The source's counterpart is in `src:runtime-sync:137`, not in the source script.
 
 ## 6. Gap summary
 
@@ -205,7 +206,7 @@ Each item gives the disposition and the reason. Items 1, 3, 4, 16, 17, 18, 20 an
 Observed test defects (not parity gaps):
 
 - T1. `test-eci-active-normal-git.sh` failed on c113fea (gap 1). It passes since 921f8d8.
-- T2. `test-eci-active-readonly-visibility.sh` failed on c113fea with 11 `FAIL` lines, all from `status` assertions. The source 575bb81 and omp both print only the lifecycle line for `status`, so those expectations could not pass. Fixed in 84ad19d: the wrong status assertions are deleted, the help assertions and the PASS line are kept, and the fixture links the runtime (comment repaired in e02764a). Before: rc 1 at HEAD (14 runtime-refusal failures); after: rc 0, PASS.
+- T2. `test-eci-active-readonly-visibility.sh` failed on c113fea with 11 `FAIL` lines, all from `status` assertions. The source 575bb81 and omp both print only the lifecycle line for `status`, so those expectations could not pass. Fixed in 84ad19d: the wrong status assertions are deleted, the help assertions and the PASS line are kept, and the fixture links the runtime (comment repaired in e02764a). Before: rc 1 at 09a28fc (14 runtime-refusal failures); after: rc 0, PASS.
 - T3. `test-eci-active-sync-runtime-local-first.sh` failed at fixture setup on c113fea. Fixed in 4f55e53: the binary path is kept in `ECI_ACTIVE`, the deployed `.omp/agent` parent is created, and `tools/` is copied beside `bin/`. Before: rc 1 (`cannot create directory .../deployed/.omp/agent/eci`); after: rc 0, PASS.
 - T4. `test-eci-native-repository-allow.sh` stopped at the validate-bash hook step on c113fea. Its scratch HOME was built with a bare `go build` that the gate does not load, and the coordinator role needs a main-session transcript. Fixed in 53ecb9a: the scratch HOME is provisioned with `build-native-binaries.sh` and a transcript is written. Before: rc 1; after: rc 0, `Native repository allowance: PASS`.
 
@@ -239,14 +240,14 @@ Limitations and UNVERIFIED:
 
 ## FastParity follow-up record (ECIPARITY)
 
-This section records the FastParity dispositions and corrections. Where an older row above conflicts with it, this section wins; the older rows and section 6 items above were rewritten in place to agree with it.
+This section records the FastParity dispositions and corrections. Where an older row above conflicts with it, this section wins; commit 21e3953 rewrote in place the rows `repository-allow-status`, `repository-allow-on` and `maintain-planner` (rows 56, 57 and 63), the section 6 intro and items 17, 18, 20 and 30, T1-T4, the section 7 test lines, this preface and the gap 16 bullet. Rows 65 (`sync-runtime`) and 151 (`KIMI_CODE_HOME`) and item 16 were not changed by 21e3953: they are PEER.ProdSync's, corrected in ProdSync's own commits (item 16 in 77e240a; row 65 after this commit).
 
 - Gap 1, approve-commit: ported in 921f8d8 (compatibility notice, exit 0).
 - Gap 3, repository-allow-status: ported in e8c5229 (an invalid record fails closed with exit 1).
 - Gap 4, repository-allow-on: ported in ce76026 (refuses a cwd outside a worktree); test hardening in 0e87005.
 - Gap 16, sync-runtime peer step: ported. `runtime_sync.go:87-92` runs `bin/eci-runtime-sync peer-apply --target <kimi home>` after the local publish, and prints the advisory only on failure. The code is in the shared sweep e5a3d55 (content verified; not a FastParity commit). The test that requires the advisory is test-eci-active-sync-runtime-local-first.sh.
 - Gaps 17 and 18, maintain-planner: ported in 7ec6785 (transactional publish of the pair into bin/, with rollback), c72b398 (absolute PATH go, the AD4 build environment, loader-identical host checks) and b99a6f3 (a signal during the build cancels it and removes the transaction). The TEST-DISPOSITION row is f2c2a72.
-- Gap 20, session identity: ported in 54d9550 (ECI_THREAD_ID is used when ECI_SESSION_ID is unset; an invalid ECI_SESSION_ID is not replaced).
+- Gap 20, session identity: ported in 54d9550 (ECI_THREAD_ID is used when ECI_SESSION_ID is empty or unset; an invalid ECI_SESSION_ID is not replaced).
 - T1: test-eci-active-normal-git.sh failed on c113fea (gap 1). It passes since 921f8d8.
 - T2: the wrong status assertions are deleted (84ad19d); the help assertions and the PASS line are kept; the comment is corrected in e02764a.
 - T3: fixture repaired (4f55e53). T4: the scratch HOME is provisioned with the real build and a main-session transcript (53ecb9a).
