@@ -86,7 +86,13 @@ func run(args []string) error {
 		return statusRefresh(args)
 	case "ledger-append":
 		return ledgerAppend(args)
-	case "requirement-assignment", "manifest-write", "aggregate-review", "maintain-planner", "accidental-override-cleanup", "sync-runtime":
+	case "requirement-assignment":
+		return requirementAssignment(args)
+	case "manifest-write":
+		return manifestWrite(args)
+	case "accidental-override-cleanup":
+		return accidentalOverrideCleanup(args)
+	case "aggregate-review", "maintain-planner", "sync-runtime":
 		return exitError{code: 2, msg: fmt.Sprintf("[ECI_DEPENDENCY_UNPORTED] %s depends on a helper that is not yet ported to omp; no state was changed.", cmd)}
 	}
 	return usageError()
@@ -121,13 +127,15 @@ func usage(w io.Writer) {
   %[1]s permissive-on global <gate> <operation> <request> <ttl-seconds>
   %[1]s permissive-off <session|global> <gate> <operation> <request>
   %[1]s permissive-status <session|global> <gate> <operation> <request>
+  %[1]s requirement-assignment --request <request-json>
+  %[1]s manifest-write <source-json>
+  %[1]s accidental-override-cleanup --authorized-by-user <claim-dir>
   %[1]s status
 
-Set PI_SESSION_ID to target a session. Lifecycle commands are retired; the native goal owns continuation and the
+Set ECI_SESSION_ID to target a session. Lifecycle commands are retired; the native goal owns continuation and the
 Supervisor owns ECI lifecycle. Coordination uses explicit session identity
 and the current working directory.
 Marker-dependent coordination mutators are deferred until their hooks migrate.
-Not yet ported to omp: requirement-assignment, manifest-write, aggregate-review,
-maintain-planner, accidental-override-cleanup, sync-runtime.
+Not yet ported to omp: aggregate-review, maintain-planner, sync-runtime.
 `, exe)
 }

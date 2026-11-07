@@ -289,7 +289,13 @@ func ledgerAppend(args []string) error {
 	if len(args) != 3 {
 		return usageError()
 	}
-	obj, err := validateLedgerEntry(args[2])
+	return appendLedgerEntry(args[2], true)
+}
+
+// appendLedgerEntry validates and appends one structured event. announce
+// controls the success line so internal callers keep stdout clean.
+func appendLedgerEntry(raw string, announce bool) error {
+	obj, err := validateLedgerEntry(raw)
 	if err != nil {
 		return exitError{code: 2, msg: "ECI high-level log append rejected invalid structured entry before log mutation."}
 	}
@@ -363,7 +369,9 @@ func ledgerAppend(args []string) error {
 	if err := runStatusRefresh(ledgerDir, event); err != nil {
 		fmt.Fprintf(os.Stderr, "ECI advisory: log append succeeded; status refresh failed. Reconcile the report, then run eci-active status-refresh --event %s without appending the event again.\n", event)
 	}
-	fmt.Printf("ECI high-level log appended at EOF: %s\n", logPath)
+	if announce {
+		fmt.Printf("ECI high-level log appended at EOF: %s\n", logPath)
+	}
 	return nil
 }
 

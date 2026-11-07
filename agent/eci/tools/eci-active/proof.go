@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	envSessionID = "PI_SESSION_ID"
+	envSessionID = "ECI_SESSION_ID"
 	envProofRoot = "ECI_PROOF_ROOT"
 )
 
@@ -89,10 +89,10 @@ func validSessionID(s string) bool { return sessionIDPattern.MatchString(s) }
 func currentSession() (string, error) {
 	sid := os.Getenv(envSessionID)
 	if sid == "" {
-		return "", exitError{code: 1, msg: "ECI coordination requires an explicit PI_SESSION_ID."}
+		return "", exitError{code: 1, msg: "ECI coordination requires an explicit ECI_SESSION_ID."}
 	}
 	if !validSessionID(sid) {
-		return "", exitError{code: 1, msg: "Invalid PI_SESSION_ID; use only letters, digits, '_' or '-'."}
+		return "", exitError{code: 1, msg: "Invalid ECI_SESSION_ID; use only letters, digits, '_' or '-'."}
 	}
 	return sid, nil
 }
