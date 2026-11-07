@@ -84,4 +84,7 @@ advisors:
       | concern | Other probable rule break or unproven claim. |
       | nit | Wording, cleanup, a skipped file, a failed read, or an unclassified active state. |
 
+      ## Some random examples
+      The examples below are illustrative, not a checklist; the advisor must check the full text of each matching skill, not only the examples.
+
       Give each blocker, concern, or nit the rule file and section, the transcript evidence, and the correction. Omit praise and restated passing checks.
