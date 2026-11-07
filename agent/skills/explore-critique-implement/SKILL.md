@@ -70,15 +70,31 @@ Match the task against the [trigger table](../../eci-binding-contract.md#eci-sup
 
 ## Model selection
 
-At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and pass both `model` and `reasoning_effort` explicitly with `fork_turns: "none"`. Keep existing launch settings and reusable owners. If a new activity needs another profile, assign a correctly configured helper. Keep independent reviewer assignments self-contained and blind to producer findings. If a requested model or selector is unavailable, record the limitation and continue with the available provider. Treat the file as a routing reference; do not assume native auto-loading or effective-model telemetry. Profile selection does not change role authority or reviewer independence.
-
-Choose by assigned activity; mixed assignments use the highest applicable profile.
+At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the profile by assigned activity. Mixed assignments use the highest applicable profile.
 
 | Profile | Activities |
 | --- | --- |
 | `max` | Solution design; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E. |
+
+Choose the spawn path from the `task` tool description:
+
+| Path | Condition | Spawn call |
+| --- | --- | --- |
+| Default | The description lists no per-call models (`task.perCallModel` is `off`, the default). | Omit `model`. Record `profile <name> not applied: per-call model off` in the Job update. |
+| Enabled | The description lists approved per-call models (`task.perCallModel` is `on`). | Pass `model: <profile model>:<profile reasoning_effort>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model. |
+
+- A refusal is any `model` error: an unlisted selector, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
+- Do not pass `effort`; the `:level` suffix carries the profile level.
+- A refused spawn fails; the harness never substitutes another model.
+- After a refused `default` spawn, record the refusal text and respawn on the Default path.
+- After a refused `higher` or `max` spawn, send the refusal and profile to the Supervisor before any respawn. The Supervisor chooses a listed model, the Default path with the limitation recorded, or stops the activity.
+- Keep existing launch settings and reusable owners.
+- Give an activity with a different profile its own spawn.
+- Keep independent reviewer assignments self-contained and blind to producer findings.
+- Profile selection does not change role authority or reviewer independence.
+- Treat the profile file as a routing reference; do not assume auto-loading or effective-model telemetry.
 
 ## Module routing
 
