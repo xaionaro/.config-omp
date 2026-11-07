@@ -1,0 +1,71 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'exec \"$HOME/.omp/agent/eci/hooks/session-snapshot.sh\"'",
+            "statusMessage": "Loading ECI session rules"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'exec \"$HOME/.omp/agent/eci/hooks/eci-post-compact-refresh.sh\"'",
+            "statusMessage": "Refreshing ECI rules after compaction"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'exec \"$HOME/.omp/agent/eci/hooks/prompt-task-reminder.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.omp/agent/eci/hooks/validate-bash.sh\"",
+            "timeout": 75,
+            "statusMessage": "Checking shell command"
+          }
+        ]
+      },
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.omp/agent/eci/hooks/pretooluse-edit-dispatch.sh\"",
+            "statusMessage": "Checking edit gates"
+          }
+        ]
+      },
+      {
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.omp/agent/eci/hooks/pretooluse-edit-dispatch.sh\"",
+            "statusMessage": "Checking edit gates"
+          }
+        ]
+      }
+    ]
+  }
+}

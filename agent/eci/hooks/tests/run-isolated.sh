@@ -3,33 +3,40 @@
 #
 # Usage: run-isolated.sh <test-file-in-this-dir> [args...]
 #
-# A copy of the runtime is placed at <tmp>/home/.omp/agent/eci and the test
-# runs from that copy, so ROOT equals the HOME-derived runtime path the tests
-# check. HOME=<tmp>/home, so the context root (~/.agent/context) and the proof
-# root (~/tmp/agent/proof, also ECI_PROOF_ROOT) resolve under <tmp> and are
-# removed on exit. ~/.kimi-code is a symlink to the real peer tree (read by
-# tests, not copied). Go caches stay on account paths so child go processes
-# never fetch under the temp HOME.
+# The per-test work area lives under $XDG_RUNTIME_DIR (mode 0700). Its ancestors
+# must be private because the planner refuses a bin directory with a
+# group/other-writable ancestor, and ~/tmp is group-writable.
+# HOME is set to <work>/home. The runtime is copied to <work>/home/.omp/agent/eci
+# and the test runs from that copy, so ROOT equals the HOME-derived runtime path.
+# The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
+# a symlink to the real peer tree (read by tests). Context and proof roots
+# (~/.agent, ~/tmp/agent) resolve under <work> and are removed on exit. Go caches
+# stay on account paths.
 set -euo pipefail
+umask 077
 
-real_home="${HOME:?HOME must be set}"
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-runtime_root="$(cd "$here/../.." && pwd)"
+account_home="$(realpath -e -- "${HOME:?HOME must be set}")"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+runtime_root="$(cd "$here/../.." && pwd -P)"
 test_name="${1:?usage: run-isolated.sh <test-file-in-this-dir> [args...]}"
 shift
 
-export GOPATH="${GOPATH:-$real_home/go}"
+export GOPATH="${GOPATH:-$account_home/go}"
 export GOMODCACHE="${GOMODCACHE:-$GOPATH/pkg/mod}"
-export GOCACHE="${GOCACHE:-$real_home/.cache/go-build}"
+export GOCACHE="${GOCACHE:-$account_home/.cache/go-build}"
 
-mkdir -p "$real_home/tmp/mtlog"
-work="$(mktemp -d "$real_home/tmp/mtlog/eci-hooktest.XXXXXX")"
+base="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set; it is the private (0700) work area}/eci-hooktest"
+mkdir -p -m 700 "$base"
+work="$(realpath -e -- "$(mktemp -d "$base/eci-hooktest.XXXXXX")")"
 cleanup() { rm -rf -- "$work"; }
 trap cleanup EXIT
 
 mkdir -p "$work/home/.omp/agent" "$work/home/tmp/mtlog"
 cp -a "$runtime_root" "$work/home/.omp/agent/eci"
-ln -s "$real_home/.kimi-code" "$work/home/.kimi-code"
+if [ -d "$account_home/tmp/eci-runtime" ]; then
+  cp -a "$account_home/tmp/eci-runtime" "$work/home/tmp/eci-runtime"
+fi
+ln -s "$account_home/.kimi-code" "$work/home/.kimi-code"
 
 export HOME="$work/home"
 export TMPDIR="$HOME/tmp/mtlog"

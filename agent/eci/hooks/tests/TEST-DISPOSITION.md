@@ -5,9 +5,9 @@ Destination: `agent/eci/hooks/tests` (133 files, 53 under `fixtures/`). One sour
 
 ## Isolation
 
-Run every test through `run-isolated.sh <test-file>`. It copies the runtime to `<tmp>/home/.omp/agent/eci` and runs the test from that copy, so `ROOT` matches the HOME-derived path. HOME is `<tmp>/home`, so the context root (`$HOME/.agent/context`) and proof root (`$HOME/tmp/agent/proof`, also `ECI_PROOF_ROOT`) resolve under `<tmp>` and are removed on exit. `~/.kimi-code` is a symlink to the real peer tree. GOPATH, GOMODCACHE, and GOCACHE stay on account paths. Running a test directly writes to the real account HOME (for example `test-eci-structured-log.sh` and `test-eci-understanding-yaml.sh` write `$HOME/.agent/context/sessions/<id>`).
+Run every test through `run-isolated.sh <test-file>`. It needs `XDG_RUNTIME_DIR` (0700) for the per-run work area, because the planner refuses a bin directory whose ancestor is group- or other-writable, and `~/tmp` is group-writable. The runtime is copied to `<work>/home/.omp/agent/eci` and the test runs from that copy; `$HOME/tmp/eci-runtime` (published Go helpers) is copied too. HOME is `<work>/home`, where `<work>` is a realpath, so `pwd -P` and HOME agree. `~/.kimi-code` is a symlink to the real peer tree. Context and proof roots resolve under `<work>` and are removed on exit. GOPATH, GOMODCACHE, and GOCACHE stay on account paths. Running a test directly writes to the real account HOME.
 
-Measured on one `run.sh` run each: symlinked runtime, `SUMMARY pass=139 fail=65`, real `t00-session` log rewritten once (12:37:41, `wrong-cwd probe` line); copied runtime, `SUMMARY pass=115 fail=89`, real `t00-session` log unchanged. Copy-only failures include `pre-commit-go-mod.sh` byte checks whose log paths show `/mnt/nvme0n1/home` while HOME is `/home/pheona`, because `/home` is a symlink to `/mnt/nvme0n1/home`. The `validate-bash ... make without memory cap` failures are not diagnosed.
+Measured with one `run.sh` run each (SUMMARY): symlinked-runtime runner `pass=139 fail=65`, which wrote one `wrong-cwd probe` line into the real `t00-session` log; copy runner before this revision `pass=114 fail=90`; copy runner after this revision `pass=144 fail=60`, with no write to the real `t00-session` log. The copy-only failures came from the `/home` vs `/mnt/nvme0n1/home` path split (`~/tmp` is a symlink) and from a group-writable ancestor of the temp area. Both are fixed in `run-isolated.sh`.
 
 ## Exclusions
 
@@ -36,7 +36,7 @@ Measured on one `run.sh` run each: symlinked runtime, `SUMMARY pass=139 fail=65`
 ## Known gaps (not papered over)
 
 - `eci-hook-e2e-go` drives an installed runtime (`ECI_E2E_BINARY`, default `/usr/bin/eci`) and copies `hooks.json`. It is skipped unless `ECI_E2E=1` and is not run by `run.sh`. HEAD has no `hooks.json`, and `/usr/bin/eci` does not exist.
-- Paths absent from HEAD `agent/eci`: `hooks/stop-gate.sh`, `hooks.json`, `AGENTS.md`, `hooks/lib/eci-runtime-sync.sh`, `hooks/lib/eci-environment-command.sh`, `hooks/lib/eci-command-plan-go/eci-command-plan`, several `skills/*`.
+- Paths absent from HEAD `agent/eci` after this revision: `hooks/stop-gate.sh` (deleted in codex `f50ca64`, which precedes 575bb81, so there is no source to port), `AGENTS.md`, `bin/eci-runtime-sync` (sourced by `hooks/lib/eci-runtime-sync.sh`; not ported), `bin/eci-active-dispatch`, `bin/context7-mcp`, `config.toml`, `hooks/lib/eci-command-plan-go/eci-command-plan`, several `skills/*`.
 - Function referenced by tests but absent from HEAD `hooks/lib`: `eci_accidental_override_cleanup_command` (source had `codex_eci_accidental_override_cleanup_command`). Used by `test-lifecycle-source-authority.sh`.
 - HEAD retired the lifecycle: several tests expect behavior that HEAD replaces with `[ECI_LIFECYCLE_RETIRED] Native goals own continuation; the Supervisor owns ECI lifecycle.` Those assertions fail as a result.
 - `hooks/tests/test-eci-off-history-reconciliation.sh` is referenced by `test-eci-review-gate.sh` but absent from source 575bb81. Carried over unchanged; the reference is unresolved.
@@ -106,3 +106,22 @@ Not re-run (first run only, 53 files):
 - Exit 127 (3): `test-stop-aux-metadata-advisory`, `test-stop-history-advisory`, `test-stop-r11-recovery`. Each needs `hooks/stop-gate.sh`, which is absent from HEAD.
 
 Not diagnosed: `test-eci-coordinator-edit-hatch`, `test-eci-fast-path`, `test-eci-file-lock`, `test-eci-wait-repair` exit non-zero with no output in their logs.
+
+## Ported in this revision
+
+- `hooks.json` (from 575bb81): `$HOME/.codex/hooks/` -> `$HOME/.omp/agent/eci/hooks/`; status text `Loading Codex session rules` -> `Loading ECI session rules`. The file does not enable hooks; `agent/hooks-disabled/` is untouched.
+- `hooks/lib/eci-environment-command.sh` (from 575bb81): verbatim; no codex references.
+- `hooks/lib/eci-runtime-sync.sh` (from 575bb81): `codex-file-lock.sh` -> `eci-file-lock.sh`; `codex_file_lock_*` -> `eci_file_lock_*`; `$HOME/.codex` and `*/.codex` -> `$HOME/.omp/agent/eci`. Deliberately kept: the provider token `codex` and the env name `CODEX_RUNTIME_ROOTS`. The provider token names the published artifact directories `~/tmp/eci-runtime/codex`, which exist on disk; renaming would republish to a new directory. This is a decision for the user. The file sources `bin/eci-runtime-sync`, which is not ported, so that source step fails.
+- `hooks/stop-gate.sh`: not ported. It is absent from 575bb81 because codex commit `f50ca64` deleted it.
+
+## Remaining failures (run.sh, copy runner, SUMMARY fail=60)
+
+Causes come from the diagnostic line printed before each `FAIL` in `run.sh.log`. Groups marked "not diagnosed" have no established cause.
+
+- Missing `bin/eci-runtime-sync`: session snapshot refresh and active-marker cleanup; configured PreToolUse consumers; explicit security reminder.
+- Missing `eci_accidental_override_cleanup_command` (not in HEAD `eci-proof-state.sh`): ECI recovery helper, Kimi recovery helper, lifecycle source authority.
+- Missing HEAD files: `bin/eci-active-dispatch` (planner-maintenance receipt binding), `bin/context7-mcp` and `config.toml` (context7 MCP, developer guidance), `AGENTS.md` and launchers `~/.local/bin/eci` and `~/bin/eci` (launcher checks; launchers are a user decision), reviewer global instructions (`ECI_REVIEW_INSTRUCTIONS_MISSING`), and `AGENTS.md` for the PreToolUse latency test (rsync code 23).
+- Lifecycle retired in HEAD: `live helper missing: ledger_ensure_anchor` (retired lifecycle CLI); direct lifecycle visibility and command syntax gating (`callback transcript is unknown: empty transcript path`).
+- Reviewer temp bodies: system reviewer slices, VCS skip, process redaction, response_item events. Each fails on a missing `reviewer-*-body.md`. Cause not established.
+- Go module parity: `hooks/pre-commit-go-mod.sh` in omp differs from `~/.kimi-code/hooks/pre-commit-go-mod.sh` (first difference at byte 760), has mode 775 (test wants 755), and link count 1 (test wants one inode shared with the peer). This is real drift in the runtime tree, reproducible in any runner. Fixing it needs changes to `hooks/pre-commit-go-mod.sh`, which is outside this scope.
+- Not diagnosed: ECI gate allow/deny payload cases (markdown-only, code Write/NotebookEdit, MultiEdit, mixed apply_patch, spawned-agent transcripts); omp status subagent detection; first-record and oversize-prefix helpers; validate-direct/apply subagent ledger paths; validate-bash marks shell activity and bare `go test`; workflow skill routing; `ledger append unexpectedly accepted a marker from another cwd`; protected-first finite command-plan; `provider lifecycle dispatcher authority` (`env: use -[v]S to pass options in shebang lines`).
