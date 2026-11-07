@@ -245,7 +245,7 @@ run_hook() {
     --arg command_path "$CALLBACK_PATH" \
     --argjson timeout_replays "$timeout_replays" \
     --argjson compound_validation "$compound_replay" \
-    '{session_id:$session,cwd:$cwd,timeout_replays:$timeout_replays,tool_input:{command:$command}} |
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,timeout_replays:$timeout_replays,tool_input:{command:$command}} |
       if $compound_validation then
         .eci_compound_segment = {
           validation: true,
