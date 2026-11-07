@@ -13,10 +13,11 @@ import (
 // and rewrites inside the session's context directory.
 const requirementLedgerName = "project-understanding.yaml"
 
-// requirementAssignment prepares one requirement assignment with the native
-// helper while holding the mutation lock. The lock is released before the
-// event goes through the ledger owner; the payload is printed only after that
-// append succeeds, so a failed append never emits an assignment.
+// requirementAssignment prepares one requirement assignment with
+// bin/eci-requirement-assignment, built on demand, while holding the mutation
+// lock. The lock is released before the event goes through the ledger owner;
+// the payload is printed only after that append succeeds, so a failed append
+// never emits an assignment.
 func requirementAssignment(args []string) error {
 	if len(args) != 3 || args[1] != "--request" {
 		return usageError()
@@ -44,9 +45,8 @@ func requirementAssignment(args []string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("go", "run", "-mod=readonly", ".",
+	cmd := exec.Command(filepath.Join(eciBaseDir(), "bin", "eci-requirement-assignment"),
 		"--ledger", filepath.Join(ledgerDir, requirementLedgerName), "--request", requestPath)
-	cmd.Dir = filepath.Join(eciBaseDir(), "hooks", "lib", "eci-requirement-assignment-go")
 	cmd.Stderr = os.Stderr
 	var out bytes.Buffer
 	cmd.Stdout = &out

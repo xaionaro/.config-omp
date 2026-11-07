@@ -417,10 +417,10 @@ func appendLedgerEntry(raw string, announce bool) error {
 	return nil
 }
 
-// runStatusRefresh invokes the native status-report tool for a ledger dir.
+// runStatusRefresh runs the status-report refresh for a ledger dir through bin/status-report, which builds
+// tools/status-report on demand and execs the cached binary. No go command runs per call.
 func runStatusRefresh(ledgerDir, event string) error {
-	cmd := exec.Command("go", "run", "-mod=readonly", ".", "refresh", ledgerDir, event)
-	cmd.Dir = filepath.Join(eciBaseDir(), "tools", "status-report")
+	cmd := exec.Command(filepath.Join(eciBaseDir(), "bin", "status-report"), "refresh", ledgerDir, event)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -455,4 +455,3 @@ func statusRefresh(args []string) error {
 	}
 	return nil
 }
-
