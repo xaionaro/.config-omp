@@ -284,11 +284,15 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
   });
 
-  test("blocked ask result tells the model to read its skill, follow the task's rules, and end its turn", () => {
+  test("blocked ask result tells the model to follow a loaded skill, read an unloaded one, and end its turn", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
     const reason = blockReasonOf(fire("tool_call", askCall, main()));
-    assert.ok(reason.includes("read `skill://<name>` and follow it"));
+    assert.ok(
+      reason.includes(
+        "If the matching skill is loaded, follow it. If it is not loaded, read `skill://<name>` and follow it.",
+      ),
+    );
     assert.ok(reason.includes("end your turn"));
   });
 
