@@ -1,0 +1,6 @@
+{
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "patch": "*** Begin Patch\n*** Update File: go.mod\n@@\n require example.com/other v1.0.0\n+replace (\n+  example.com/module => ../module\n+)\n*** End Patch\n"
+  }
+}

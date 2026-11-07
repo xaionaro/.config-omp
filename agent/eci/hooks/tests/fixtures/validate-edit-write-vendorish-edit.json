@@ -1,0 +1,8 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "vendorish/example/file.go",
+    "old_string": "old\n",
+    "new_string": "new\n"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "session_id": "../bad",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": ".",
+  "prompt": "test prompt"
+}

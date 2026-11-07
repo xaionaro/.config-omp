@@ -1,0 +1,6 @@
+{
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "patch": "*** Begin Patch\n*** Add File: docs/notes/t00.md\n+# note\n+\n+This mentions docs/plans without editing one.\n*** End Patch\n"
+  }
+}

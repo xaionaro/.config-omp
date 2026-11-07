@@ -1,0 +1,8 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "docs/notes/t00.md",
+    "old_string": "old",
+    "new_string": "mentions docs/plans in prose only"
+  }
+}

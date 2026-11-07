@@ -1,0 +1,4 @@
+{"timestamp":"2026-05-05T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session","source":"cli"}}
+{"timestamp":"2026-05-05T00:00:01.000Z","type":"user","message":{"content":"Render ECI response_item tool events."}}
+{"timestamp":"2026-05-05T00:00:02.000Z","type":"response_item","payload":{"type":"function_call","call_id":"call_1","name":"functions.exec_command","arguments":"{\"command\":\"sed -n '1,20p' hooks/stop-gate.sh\"}"}}
+{"timestamp":"2026-05-05T00:00:03.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"hooks/stop-gate.sh\nhooks/system-prompt-reviewer.sh\n"}}

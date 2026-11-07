@@ -1,0 +1,6 @@
+{"timestamp":"2026-05-05T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session","source":"cli"}}
+{"timestamp":"2026-05-05T00:00:01.000Z","type":"user","message":{"content":"Earlier request: inspect the hook config."}}
+{"timestamp":"2026-05-05T00:00:02.000Z","type":"assistant","message":{"content":[{"type":"text","text":"Earlier response should not appear in USER_HISTORY."},{"type":"tool_use","name":"Bash","input":{"command":"jq . hooks.json"}}]}}
+{"timestamp":"2026-05-05T00:00:03.000Z","type":"user","message":{"content":"Current request: implement the ECI reviewer hook."}}
+{"timestamp":"2026-05-05T00:00:04.000Z","type":"assistant","message":{"content":[{"type":"text","text":"I will inspect the relevant files before editing."}]}}
+{"timestamp":"2026-05-05T00:00:05.000Z","type":"user","message":{"content":[{"type":"tool_result","content":"hooks/stop-gate.sh\nhooks.json\n"}],"isMeta":true}}

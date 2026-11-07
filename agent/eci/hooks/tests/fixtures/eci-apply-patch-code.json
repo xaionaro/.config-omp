@@ -1,0 +1,7 @@
+{
+  "session_id": "t00-session",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Add File: hooks/tests/tmp.sh\n+echo no\n*** End Patch\n"
+  }
+}

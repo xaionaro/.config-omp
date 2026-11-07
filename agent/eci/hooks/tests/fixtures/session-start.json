@@ -1,0 +1,5 @@
+{
+  "session_id": "t00-session",
+  "transcript_path": "/tmp/eci-hooks-test-transcript.jsonl",
+  "source": "startup"
+}

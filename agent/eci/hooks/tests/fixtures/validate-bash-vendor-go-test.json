@@ -1,0 +1,6 @@
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "go test ./vendor/... > /tmp/go-test.log 2>&1"
+  }
+}

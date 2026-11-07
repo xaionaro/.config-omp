@@ -1,0 +1,7 @@
+{
+  "session_id": "t00-session",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Update File: notes/source.md\n*** Move to: .github/workflows/ci.yml\n@@\n-old\n+new\n*** End Patch\n"
+  }
+}

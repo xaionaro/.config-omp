@@ -1,0 +1,2 @@
+{"hook_event_name":"UserPromptSubmit","session_id":"019df500-a88a-78f3-bd9f-b1dad23ad6d3","cwd":"<eci-home>","observed":"spawn_agent nonce visible"}
+{"hook_event_name":"PostToolUse","session_id":"019df500-e086-7ab1-a6d4-1880667d9f6e","cwd":"<eci-home>","tool_name":"Bash","tool_input_keys":["command"],"observed":"spawn_agent pwd tool"}

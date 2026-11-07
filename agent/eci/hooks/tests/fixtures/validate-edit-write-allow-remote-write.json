@@ -1,0 +1,7 @@
+{
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "go.mod",
+    "content": "module sample\n\nreplace example.com/module => github.com/acme/module v1.2.3\n"
+  }
+}

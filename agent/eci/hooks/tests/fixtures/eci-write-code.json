@@ -1,0 +1,8 @@
+{
+  "session_id": "t00-session",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "hooks/tests/tmp.sh",
+    "content": "echo no"
+  }
+}

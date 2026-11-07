@@ -1,0 +1,7 @@
+{
+  "session_id": "t00-session",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": ".",
+  "turn_id": "fixture-turn",
+  "prompt": "test prompt"
+}

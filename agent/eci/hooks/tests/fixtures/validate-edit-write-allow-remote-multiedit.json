@@ -1,0 +1,12 @@
+{
+  "tool_name": "MultiEdit",
+  "tool_input": {
+    "file_path": "sample/go.mod",
+    "edits": [
+      {
+        "old_string": "replace example.com/module => ./module",
+        "new_string": "replace example.com/module => github.com/acme/module v1.2.3"
+      }
+    ]
+  }
+}

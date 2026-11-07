@@ -1,0 +1,13 @@
+{
+  "session_id": "t00-session",
+  "tool_name": "MultiEdit",
+  "tool_input": {
+    "file_path": "reports/eci-summary.markdown",
+    "edits": [
+      {
+        "old_string": "old",
+        "new_string": "new"
+      }
+    ]
+  }
+}

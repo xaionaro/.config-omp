@@ -1,0 +1,9 @@
+{
+  "session_id": "t00-session",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "reports/eci-summary.md",
+    "old_string": "old",
+    "new_string": "new"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "input": "*** Begin Patch\n*** Update File: vendorish/example/file.go\n@@\n-old\n+new\n*** End Patch\n"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "printf 'new\\n' > vendor/example/file.go"
+  }
+}

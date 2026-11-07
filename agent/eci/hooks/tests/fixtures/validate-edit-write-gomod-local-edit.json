@@ -1,0 +1,8 @@
+{
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "go.mod",
+    "old_string": "require example.com/module v1.0.0",
+    "new_string": "replace example.com/module => ../module"
+  }
+}
