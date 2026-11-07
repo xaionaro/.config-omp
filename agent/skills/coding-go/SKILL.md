@@ -139,7 +139,7 @@ func (n *NodeWithCustomData[C, T]) RemovePushTo(
 
 ## Build cache
 
-Use the global build cache only. Its path comes from `go env GOCACHE`.
+Use the global build cache unless the caller set a non-empty `GOCACHE`. Its path comes from `go env GOCACHE`.
 
 | Situation | Action |
 |---|---|

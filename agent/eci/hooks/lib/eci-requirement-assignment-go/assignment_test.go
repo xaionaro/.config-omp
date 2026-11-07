@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -99,10 +100,11 @@ func newCLIFixture(t *testing.T) cliFixture {
 }
 
 // env isolates HOME so ledger and log writes never reach the real ~/.agent.
-// The CLI runs `go run` for status refresh; Go derives its module cache, GOPATH,
-// and build cache from HOME, so those are pinned to the account locations to keep
-// module downloads and read-only cache files out of the temporary HOME.
-// A GOCACHE the caller set is inherited unchanged.
+// The CLI runs `go run` for status refresh; Go derives its module cache and GOPATH
+// from HOME, so those are pinned to the account locations to keep module downloads
+// and read-only cache files out of the temporary HOME. The build cache is pinned to
+// the path `go env GOCACHE` reports under the account HOME; a non-empty GOCACHE the
+// caller set is inherited unchanged.
 //
 // Example: every CLI invocation of one fixture shares the same temporary HOME.
 func (f cliFixture) env(t *testing.T) []string {
@@ -129,11 +131,17 @@ func (f cliFixture) env(t *testing.T) []string {
 	return env
 }
 
-// resolveGoCache returns the absolute build cache directory that `go env GOCACHE` reports.
+// resolveGoCache returns the absolute build cache directory that `go env GOCACHE` reports under the account HOME.
 //
 // Example: resolve the account build cache from the parent environment before a fixture isolates HOME.
 func resolveGoCache() (string, error) {
-	out, err := exec.Command("go", "env", "GOCACHE").Output()
+	home, err := accountHome()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command("go", "env", "GOCACHE")
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("go env GOCACHE: %w", err)
 	}
@@ -142,6 +150,18 @@ func resolveGoCache() (string, error) {
 		return "", fmt.Errorf("go env GOCACHE returned %q; want an absolute path", cache)
 	}
 	return cache, nil
+}
+
+// accountHome returns the account's home directory from the user database, never from $HOME.
+func accountHome() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("look up account home: %w", err)
+	}
+	if u.HomeDir == "" {
+		return "", fmt.Errorf("account %q has no home directory", u.Username)
+	}
+	return u.HomeDir, nil
 }
 
 // globalGoCache memoizes resolveGoCache so every fixture in the test process shares one `go env` run.
