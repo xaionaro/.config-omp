@@ -196,7 +196,7 @@ Each item gives the disposition I propose and the reason. Nothing was ported. Th
 Observed test defects (not parity gaps):
 
 - T1. `test-eci-active-normal-git.sh` fails on c113fea (gap 1).
-- T2. `test-eci-active-readonly-visibility.sh` fails with 11 `FAIL` lines, all from `status` assertions that expect `session_id:` lines. Neither codex 575bb81 (bin:51-53) nor omp prints them. Help assertions pass. Disposition: fix the test.
+- T2. `test-eci-active-readonly-visibility.sh` fails with 11 `FAIL` lines, all from `status` assertions (test lines 77, 78, 101, 119, 121, 140, 153, 163, 186, 201, 214). Nine expect a status output line that status never prints (`session_id:`, `ECI active:`, `ECI inactive`, `ECI unavailable`); two expect a non-zero exit with a refusal message for a symlinked or non-regular marker. codex 575bb81 `status` prints only the Supervisor lifecycle line (bin:51-53), as does omp (main.go:60-62), so none of these expectations can pass against either. Help assertions (test lines 72-76) pass. Disposition: fix the test.
 - T3. `test-eci-active-sync-runtime-local-first.sh` fails at fixture setup. Line 14 reassigns `SOURCE_ECI` to the binary path, line 17 creates that path as a directory, line 21 copies into it, and line 31 executes it. Disposition: fix the fixture to use the eci root. Manual run with a corrected root exits 0.
 - T4. `test-eci-native-repository-allow.sh` runs its eci-active steps (lines 14-23) successfully, then exits 1 at line 36, a validate-bash hook step. `bash -x` trace shows the failure inside `validate-bash.sh`, outside eci-active. Disposition: investigate the hook step separately.
 
