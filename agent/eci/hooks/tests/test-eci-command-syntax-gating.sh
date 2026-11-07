@@ -181,8 +181,9 @@ assert_current_marker_denied() {
 # A wrapped worker write such as `env touch <marker>` must be denied, and the reason must name
 # the marker. The planner routes it through its worker-control route (ECI_CONTROL_OWNER_REQUIRED),
 # not the direct proof-control route, so the code is not pinned here. The coordinator's wrapped
-# marker write is not asserted: its ownership check runs on the pre-unwrap argv (classifier.go:3720),
-# which is a recorded security follow-up in TEST-DISPOSITION.md.
+# marker write is not asserted: its ownership check runs on the pre-unwrap argv (omp HEAD
+# classifier.go:3726, inspectProofPathOwnership(request, current.argv, ...), before the unwrap at
+# classifier.go:3744). It is an open security follow-up, not yet recorded in TEST-DISPOSITION.md.
 assert_wrapped_marker_write_denied() {
   local command="$1" role
 
