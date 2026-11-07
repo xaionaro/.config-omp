@@ -23,8 +23,10 @@ if env -u ECI_SESSION_ID -u ECI_THREAD_ID "$base_dir/bin/eci-active" ledger-appe
 fi
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active" ]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/ate_nested_eci_active" ]
-mkdir -p "$fixture/repository"
+mkdir -p "$fixture/repository" "$fixture/work"
 git init -q "$fixture/repository"
+git init -q "$fixture/work"
+cd "$fixture/work"
 "$base_dir/bin/eci-active" repository-allow-on "$fixture/repository" 'dependency repair' >/dev/null
 "$base_dir/bin/eci-active" repository-allow-off "$fixture/repository" >/dev/null
 printf 'existing record\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-additional-repository"
