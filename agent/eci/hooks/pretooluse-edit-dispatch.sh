@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # TODO: Reconcile the ECI control-gate dispatch after its marker-dependent hooks are migrated.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # Child-health failures are advisory: malformed output or stderr from a child
@@ -12,6 +12,30 @@ if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
+# Unexpected failure after the lib load.  With an active or unknown marker the
+# tool call is denied with the fail-closed constant; with no marker the hook
+# exits with the failing status, as errexit does in the source.  A subshell
+# failure exits with its own status so no deny JSON is captured into a value,
+# and the busy flag stops a failure inside this handler from re-entering it.
+_dispatch_err_busy=""
+_dispatch_err_trap() {
+  local status="$1"
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$status"
+  fi
+  if [ -z "$_dispatch_err_busy" ]; then
+    _dispatch_err_busy=1
+    if eci_marker_active_or_unknown; then
+      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: an unexpected failure occurred while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
+      exit 0
+    fi
+  elif eci_marker_active_or_unknown; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a failure inside the fail-closed handler occurred while an active marker exists; inspect the hook log and retry"}}'
+    exit 0
+  fi
+  exit "$status"
+}
+trap '_dispatch_err_trap "$?"' ERR
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
 if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
   # No scratch directory: deny only while a marker is active or unknown; with no marker exit 0 as the source does.

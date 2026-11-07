@@ -111,16 +111,12 @@ ownership_busy=""
 ownership_failure_deny() {
   local code="${1:-1}"
   # Under set -E a subshell failure exits with its own status, so no deny JSON
-  # is printed into a captured value.  The busy flag stops re-entry.
+  # is printed into a captured value.
   if [ "$BASHPID" != "$$" ]; then
     exit "$code"
   fi
-  # With no active (or unknown) marker the failure exits 0, as the source does.
-  if ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
-    _eci_lib_unavailable_constant validate-apply-patch
-    exit 0
-  fi
-  eci_marker_active_or_unknown || exit 0
+  # Unconditional deny, as source 575bb81:hooks/validate-apply-patch.sh:95-96.
+  # The busy flag stops re-entry: a failure inside deny prints one constant deny.
   if [ -n "$ownership_busy" ]; then
     _eci_fail_closed_constant validate-apply-patch
     exit 0

@@ -10,24 +10,33 @@ hook_deny() {
   jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' || validate_bash_fallback_deny
   exit 0
 }
-case "${HOME:-}" in
-  ''|[!/]*) exit 0 ;;
-esac
-root="$HOME/.omp/agent/eci"
-if ! . "$root/hooks/lib/eci-native-binary.sh" 2>/dev/null; then
-  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-native-binary.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+lib_dir="${BASH_SOURCE[0]%/*}/lib"
+if ! . "$lib_dir/eci-native-binary.sh" 2>/dev/null; then
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $lib_dir/eci-native-binary.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
-if ! . "$root/hooks/lib/eci-tmp.sh" 2>/dev/null; then
-  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-tmp.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+if ! . "$lib_dir/eci-tmp.sh" 2>/dev/null; then
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $lib_dir/eci-tmp.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
-if ! . "$root/hooks/lib/eci-proof-state.sh" 2>/dev/null; then
-  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-proof-state.sh; reinstall the ECI hooks and retry"
+if ! . "$lib_dir/eci-proof-state.sh" 2>/dev/null; then
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $lib_dir/eci-proof-state.sh; reinstall the ECI hooks and retry"
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_runtime_open_verified eci_install_fail_closed_trap eci_marker_active_or_unknown; do
   declare -F "$fn" >/dev/null 2>&1 || hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash: ECI library function $fn is not defined; reinstall the ECI hooks and retry"
 done
+# The native artifact path is $HOME-rooted and requires an absolute HOME
+# (eci_runtime_artifact_path).  An empty or relative HOME denies while a marker
+# is active or unknown; with no marker it exits 0 with empty output.
+case "${HOME:-}" in
+  /*) ;;
+  *)
+    if eci_marker_active_or_unknown; then
+      hook_deny "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] hook validate-bash denied the tool call because HOME is empty or relative; the native gate binary eci-command-plan lives under an absolute \$HOME/.omp/agent/eci/bin; set HOME to an absolute path and retry"
+    fi
+    exit 0
+    ;;
+esac
 # Native-gate failures deny only while a marker is active or unknown; with no
 # marker the hook exits with the source status, as the source does.
 native_gate_fail() {

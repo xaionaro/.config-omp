@@ -29,7 +29,7 @@ fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_runtime_open_verified eci_marker_active_or_unknown eci_proof_root eci_valid_session_id eci_ensure_cwd_state_dir; do
-  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn"; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn"; exit 0; }
 done
 if ! command -v jq >/dev/null 2>&1; then
   prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
