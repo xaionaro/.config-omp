@@ -261,11 +261,13 @@ var errHookTranscriptUnknown = errors.New("callback transcript is unknown")
 
 // hookTranscriptStatus classifies the callback transcript as main, subagent, or
 // unknown. A subagent is a transcript at depth three or more whose header declares
-// a string parentSession; a main transcript is at depth two with neither a
-// parentSession nor a session_init marker. Every other outcome is unknown, which
-// fails closed to the worker role and carries its reason in the error.
+// a string parentSession. A main transcript is at depth two with a session header
+// and no parentSession key of any value or session_init marker. The path must hold
+// no symlink below the sessions root and must resolve to its own location there.
+// Every other outcome is unknown, which fails closed to the worker role and carries
+// its reason in the error.
 //
-// Example: a depth-two transcript with a string parentSession is unknown, not subagent.
+// Example: a depth-two transcript with a null parentSession is unknown, not main.
 func hookTranscriptStatus(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("%w: empty transcript path", errHookTranscriptUnknown)
@@ -277,38 +279,46 @@ func hookTranscriptStatus(path string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("%w: transcript is not a regular file", errHookTranscriptUnknown)
 	}
-	root, err := hookSessionsRoot()
+	lexical, root, err := hookTranscriptRoots()
 	if err != nil {
+		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
+	}
+	base, relative, err := hookTranscriptRelative(path, lexical, root)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
+	}
+	if err := hookNoSymlinkBelow(base, relative); err != nil {
 		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
 	}
 	physical, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
 	}
-	relative, err := filepath.Rel(root, physical)
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%w: transcript is outside the sessions root", errHookTranscriptUnknown)
+	if physical != filepath.Join(root, relative) {
+		return "", fmt.Errorf("%w: transcript does not resolve to its sessions location", errHookTranscriptUnknown)
 	}
 	info, err = os.Stat(physical)
 	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 		return "", fmt.Errorf("%w: transcript is missing or empty", errHookTranscriptUnknown)
 	}
-	parentSession, sessionInit, err := hookTranscriptScan(physical)
+	facts, err := hookTranscriptScan(physical)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
 	}
 	depth := strings.Count(relative, string(filepath.Separator)) + 1
 	switch {
-	case depth == 2 && !parentSession && !sessionInit:
-		return "main", nil
-	case depth >= 3 && parentSession:
-		return "subagent", nil
-	case depth == 2 && parentSession:
-		return "", fmt.Errorf("%w: parentSession at depth two", errHookTranscriptUnknown)
-	case depth == 2:
+	case depth == 2 && facts.parentPresent:
+		return "", fmt.Errorf("%w: parentSession key at depth two", errHookTranscriptUnknown)
+	case depth == 2 && facts.sessionInit:
 		return "", fmt.Errorf("%w: session_init marker at depth two", errHookTranscriptUnknown)
+	case depth == 2 && !facts.header:
+		return "", fmt.Errorf("%w: depth two without a session header", errHookTranscriptUnknown)
+	case depth == 2:
+		return "main", nil
+	case depth >= 3 && facts.parentString:
+		return "subagent", nil
 	case depth >= 3:
-		return "", fmt.Errorf("%w: depth three or more without parentSession", errHookTranscriptUnknown)
+		return "", fmt.Errorf("%w: depth three or more without string parentSession", errHookTranscriptUnknown)
 	default:
 		return "", fmt.Errorf("%w: depth %d", errHookTranscriptUnknown, depth)
 	}
@@ -321,50 +331,44 @@ var errHookLineTooLong = errors.New("transcript line exceeds the bounded header 
 // JSON, repeats a signal key, or the session header lies beyond the bounded prefix:
 // before the header is seen, every line must end within maxHookTranscriptPrefixBytes.
 // After the header, lines are not capped, so a long message cannot demote a main
-// transcript. parentSession reports a session record with a string parentSession;
-// sessionInit reports an omp session_init marker.
+// transcript. The returned facts summarize the signals of every record.
 //
 // Example: a first record longer than 64 KiB fails, so the transcript is unknown.
-func hookTranscriptScan(path string) (bool, bool, error) {
+func hookTranscriptScan(path string) (hookTranscriptFacts, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return false, false, err
+		return hookTranscriptFacts{}, err
 	}
 	defer file.Close()
 	reader := bufio.NewReader(file)
-	parentSession, sessionInit, header := false, false, false
+	var facts hookTranscriptFacts
 	offset := 0
 	for {
 		limit := -1
-		if !header {
+		if !facts.header {
 			limit = maxHookTranscriptPrefixBytes - offset
 		}
 		line, readErr := readHookLine(reader, limit)
 		if errors.Is(readErr, errHookLineTooLong) {
-			return false, false, errors.New("session header lies beyond the bounded prefix")
+			return hookTranscriptFacts{}, errors.New("session header lies beyond the bounded prefix")
 		}
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return false, false, readErr
+			return hookTranscriptFacts{}, readErr
 		}
 		if len(line) > 0 {
 			offset += len(line)
 			body := bytes.TrimSuffix(line, []byte("\n"))
 			var value any
 			if json.Unmarshal(body, &value) != nil {
-				return false, false, errors.New("transcript line is not JSON")
+				return hookTranscriptFacts{}, errors.New("transcript line is not JSON")
 			}
 			if hookDuplicateSignalKey(body) {
-				return false, false, errors.New("transcript record repeats a signal key")
+				return hookTranscriptFacts{}, errors.New("transcript record repeats a signal key")
 			}
-			recordParent, recordInit := hookTranscriptSignal(value)
-			parentSession = parentSession || recordParent
-			sessionInit = sessionInit || recordInit
-			if object, ok := value.(map[string]any); ok && object["type"] == "session" {
-				header = true
-			}
+			facts.merge(hookTranscriptSignal(value))
 		}
 		if errors.Is(readErr, io.EOF) {
-			return parentSession, sessionInit, nil
+			return facts, nil
 		}
 	}
 }
@@ -422,36 +426,94 @@ func hookDuplicateSignalKey(body []byte) bool {
 	return false
 }
 
-// hookTranscriptSignal reports whether a record is a session header with a string
-// parentSession, and whether it carries an omp session_init marker.
+// hookTranscriptFacts summarizes the classifier signals of one transcript.
+type hookTranscriptFacts struct {
+	header        bool // a record has type session
+	parentString  bool // a session record declares a string parentSession
+	parentPresent bool // a record carries a parentSession key of any JSON value
+	sessionInit   bool // a record carries an omp session_init marker
+}
+
+// merge adds the signals of one record to the transcript facts.
+func (facts *hookTranscriptFacts) merge(record hookTranscriptFacts) {
+	facts.header = facts.header || record.header
+	facts.parentString = facts.parentString || record.parentString
+	facts.parentPresent = facts.parentPresent || record.parentPresent
+	facts.sessionInit = facts.sessionInit || record.sessionInit
+}
+
+// hookTranscriptSignal reads the classifier signals of one record: a session
+// header, a string parentSession on a session header, any parentSession key, and
+// an omp session_init marker.
 //
-// Example: {"type":"session","parentSession":"x"} sets the first result.
-func hookTranscriptSignal(value any) (bool, bool) {
+// Example: {"type":"session","parentSession":5} is a header whose parentSession is present but not a string.
+func hookTranscriptSignal(value any) hookTranscriptFacts {
 	object, ok := value.(map[string]any)
 	if !ok {
-		return false, false
+		return hookTranscriptFacts{}
 	}
 	recordType, _ := object["type"].(string)
 	customType, _ := object["customType"].(string)
-	sessionInit := recordType == "session_init" || customType == "session_init"
-	_, hasParent := object["parentSession"].(string)
-	return recordType == "session" && hasParent, sessionInit
+	parent, hasParent := object["parentSession"]
+	_, parentIsString := parent.(string)
+	return hookTranscriptFacts{
+		header:        recordType == "session",
+		parentString:  recordType == "session" && parentIsString,
+		parentPresent: hasParent,
+		sessionInit:   recordType == "session_init" || customType == "session_init",
+	}
 }
 
-// hookSessionsRoot resolves the omp sessions root that bounds every transcript.
+// hookTranscriptRoots returns the omp sessions root under HOME as configured and as
+// resolved through symlinks.
 //
-// Example: HOME=/home/u resolves /home/u/.omp/agent/sessions.
-func hookSessionsRoot() (string, error) {
+// Example: HOME=/home/u yields /home/u/.omp/agent/sessions and its resolved form.
+func hookTranscriptRoots() (string, string, error) {
 	home := os.Getenv("HOME")
 	if home == "" {
-		return "", errors.New("HOME is unset")
+		return "", "", errors.New("HOME is unset")
 	}
-	return filepath.EvalSymlinks(filepath.Join(home, ".omp", "agent", "sessions"))
+	lexical := filepath.Join(home, ".omp", "agent", "sessions")
+	resolved, err := filepath.EvalSymlinks(lexical)
+	return lexical, resolved, err
+}
+
+// hookTranscriptRelative returns the base, either the configured or the resolved
+// sessions root, under which path lies, and the path relative to that base.
+//
+// Example: a transcript at <root>/project/a.jsonl yields project/a.jsonl.
+func hookTranscriptRelative(path, lexical, resolved string) (string, string, error) {
+	for _, base := range []string{lexical, resolved} {
+		relative, err := filepath.Rel(base, path)
+		if err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return base, relative, nil
+		}
+	}
+	return "", "", errors.New("transcript is outside the sessions root")
+}
+
+// hookNoSymlinkBelow fails when any component of relative, below base, is a symlink
+// or cannot be inspected.
+//
+// Example: sessions/S/P/C.jsonl fails when sessions/S/P is a symlink.
+func hookNoSymlinkBelow(base, relative string) error {
+	current := base
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("transcript path crosses a symlink")
+		}
+	}
+	return nil
 }
 
 // hookTranscriptRole maps the callback transcript to a planner role and the parent
-// session a subagent inherits. Only a verified main transcript (depth two, no
-// parentSession, no session_init marker) is the coordinator. Every other outcome is
+// session a subagent inherits. Only a verified main transcript (depth two, a session
+// header, no parentSession key, no session_init marker) is the coordinator. Every other outcome is
 // unknown and fails closed to the worker role; the reason is returned wrapping
 // errHookTranscriptUnknown.
 //
@@ -510,7 +572,7 @@ func hookParentSessionID(declared string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("parent transcript is not a regular non-symlink file")
 	}
-	root, err := hookSessionsRoot()
+	_, root, err := hookTranscriptRoots()
 	if err != nil {
 		return "", err
 	}

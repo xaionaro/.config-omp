@@ -94,9 +94,13 @@ func TestHookContextOversizedFirstRecordTail(t *testing.T) {
 	contextMarker(t, root, "parent", cwd)
 	parent := filepath.Join(sessions, "parent.jsonl")
 	require.NoError(t, os.WriteFile(parent, []byte(`{"type":"session","version":3,"id":"parent"}`+"\n"), 0600))
-	transcript := filepath.Join(sessions, "child.jsonl")
+	transcript := filepath.Join(subagentDirectory(t, sessions), "child.jsonl")
 	header := `{"type":"session","version":3,"id":"child","tail":"` + strings.Repeat("x", 2<<20) + `","parentSession":"` + parent + `"}`
 	require.NoError(t, os.WriteFile(transcript, []byte(header+"\n"), 0600))
+	status, err := hookTranscriptStatus(transcript)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "bounded prefix")
+	require.Empty(t, status)
 	got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
 	require.NoError(t, err)
 	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession == "parent" || got.Marker == MarkerActive, "context=%+v", got)
@@ -223,6 +227,48 @@ func TestHookContextDepthTwoParentSessionIsWorker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, RoleWorker, got.Role)
 	require.NotEqual(t, "parent", got.ActiveSession)
+}
+
+// TestHookContextDepthTwoSignalsAreUnknown keeps depth-two transcripts without a session header, with any parentSession key, or with a session_init marker out of the main role.
+//
+// Example: a depth-two header with parentSession null is unknown, not main.
+func TestHookContextDepthTwoSignalsAreUnknown(t *testing.T) {
+	_, cwd := contextFixture(t)
+	sessions := sessionsFixture(t)
+	cases := map[string]string{
+		"parent-number": `{"type":"session","version":3,"id":"owner","parentSession":5}` + "\n",
+		"parent-null":   `{"type":"session","version":3,"id":"owner","parentSession":null}` + "\n",
+		"no-header":     `{"type":"message","id":"owner"}` + "\n",
+		"session-init":  `{"type":"session","version":3,"id":"owner"}` + "\n" + `{"type":"session_init"}` + "\n",
+	}
+	for name, content := range cases {
+		transcript := filepath.Join(sessions, name+".jsonl")
+		require.NoError(t, os.WriteFile(transcript, []byte(content), 0600))
+		status, err := hookTranscriptStatus(transcript)
+		require.ErrorIs(t, err, errHookTranscriptUnknown, name)
+		require.Empty(t, status, name)
+		got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+		require.NoError(t, err, name)
+		require.Equal(t, RoleWorker, got.Role, name)
+	}
+}
+
+// TestHookContextSymlinkedAncestorIsWorker keeps a transcript reached through a symlinked intermediate directory out of the main role.
+//
+// Example: project/P/C.jsonl with P linked to project is unknown, although the physical file sits at depth two.
+func TestHookContextSymlinkedAncestorIsWorker(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	link := filepath.Join(project, "P")
+	require.NoError(t, os.Symlink(project, link))
+	transcript := filepath.Join(link, "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.Empty(t, status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
 }
 
 // TestHookContextMarkerAliasAndInvalid checks supported aliases and invalid records.
