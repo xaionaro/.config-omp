@@ -440,7 +440,7 @@ func hookArgumentKnown(
 // hookGitFamily identifies the native Worker operations routed to the typed CLI.
 // Membership depends on the default verb family, never its selected options.
 //
-// Example: worktree list stays native while worktree add uses the typed route.
+// Example: git add is routed while git worktree add stays native.
 func hookGitFamily(
 	argv []token,
 	verbIndex int,
@@ -448,14 +448,6 @@ func hookGitFamily(
 	switch argv[verbIndex].value {
 	case "add", "rm", "mv", "reset", "checkout", "switch", "commit", "update-index", "read-tree", "merge", "rebase", "cherry-pick", "revert", "am", "stash", "pull":
 		return true
-	case "worktree":
-		if verbIndex+1 >= len(argv) {
-			return false
-		}
-		switch argv[verbIndex+1].value {
-		case "add":
-			return true
-		}
 	}
 	return false
 }
@@ -618,7 +610,7 @@ func inspectHookGitMutation(
 	}
 	if !approved && len(request.ApprovedRoots) > 0 {
 		diagnostic := diagnosticForToken(hookCodeGitCrossScopeDenied, "Git mutation selects another repository: "+repository,
-			record.Segment, argv[verbIndex].offset, argv[verbIndex], "legacy repository-allow-on declarations are unavailable because their hooks remain marker-dependent, and no marker-free replacement exists; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
+			record.Segment, argv[verbIndex].offset, argv[verbIndex], "repository-allow-on writes an inert record and no gate honors it unless a legacy marker is active; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
 		diagnostic.Path = repository
 		return diagnostic
 	}
@@ -712,6 +704,8 @@ func hookGitCoordinatorMutation(
 		case "add", "prune", "remove", "rename", "set-head", "set-url", "update":
 			return true
 		}
+	case "worktree":
+		return verbIndex+1 < len(argv) && argv[verbIndex+1].value == "add"
 	}
 	return false
 }
@@ -991,7 +985,7 @@ func inspectHookLifecycle(
 			return nil
 		}
 		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation selects a different executable target: "+resolved,
-			record.Segment, argv[0].offset, argv[0], "the lifecycle control route is retired (native goals own continuation; the Supervisor owns ECI lifecycle); keep the lifecycle mutation with its legitimate owner or report the unavailable control route", "lifecycle-target")
+			record.Segment, argv[0].offset, argv[0], "the lifecycle control route is present but rejects lifecycle commands without publishing state; native goals own continuation and the Supervisor owns ECI lifecycle; keep the lifecycle mutation with its legitimate owner or report the unavailable control route", "lifecycle-target")
 		diagnostic.Path = resolved
 		return diagnostic
 	}
@@ -1155,7 +1149,7 @@ func inspectHookScript(
 		code = hookCodeCoordinatorScriptTargetDenied
 	}
 	diagnostic := diagnosticForToken(code, "script execution selects target outside its assigned roots: "+target,
-		record.Segment, argv[index].offset, argv[index], "legacy repository-allow-on declarations are unavailable because their hooks remain marker-dependent, and no marker-free replacement exists; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
+		record.Segment, argv[index].offset, argv[index], "repository-allow-on writes an inert record and no gate honors it unless a legacy marker is active; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
 	diagnostic.Path = target
 	return diagnostic
 }

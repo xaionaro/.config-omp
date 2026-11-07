@@ -202,7 +202,7 @@ func TestHookWorkerGitFamilies(t *testing.T) {
 				}
 			})
 	}
-	for _, command := range []string{"git add --help", "git rm --cached file", "git mv old new", "git reset --dry-run", "git checkout topic", "git switch topic", "git update-index --refresh", "git read-tree HEAD", "git merge topic", "git rebase topic", "git cherry-pick -n HEAD", "git revert -n HEAD", "git am patch", "git commit -n -m checkpoint", "git stash", "git pull", "git worktree add next", "git diff; git add file", "git restore --staged file; git stash", "git apply --index patch; git pull", "git worktree repair old; git add file", "bash -c 'git diff; git commit -m checkpoint'", "printf '%s' \"$(git rebase topic)\"", "timeout 5 git add file", "command git checkout file", "env -C " + root + " git add file"} {
+	for _, command := range []string{"git add --help", "git rm --cached file", "git mv old new", "git reset --dry-run", "git checkout topic", "git switch topic", "git update-index --refresh", "git read-tree HEAD", "git merge topic", "git rebase topic", "git cherry-pick -n HEAD", "git revert -n HEAD", "git am patch", "git commit -n -m checkpoint", "git stash", "git pull", "git diff; git add file", "git restore --staged file; git stash", "git apply --index patch; git pull", "git worktree repair old; git add file", "bash -c 'git diff; git commit -m checkpoint'", "printf '%s' \"$(git rebase topic)\"", "timeout 5 git add file", "command git checkout file", "env -C " + root + " git add file"} {
 		t.Run(command,
 			// Verify each reachable selected mutation has the typed route.
 			//
@@ -214,6 +214,24 @@ func TestHookWorkerGitFamilies(t *testing.T) {
 				require.Falsef(t, diagnostic == nil || diagnostic.Code != CodeWorkerGitOwnershipDenied, "want typed Worker Git route, got %+v (analysis=%+v)", diagnostic, result.ShellAnalysis)
 				require.Falsef(t, !strings.Contains(diagnostic.Remediation, "build-native-binaries.sh"), "missing native build remediation: %+v", diagnostic)
 				require.Falsef(t, strings.Contains(diagnostic.Remediation, "eci-worker-git"), "remediation names eci-worker-git: %+v", diagnostic)
+			})
+	}
+}
+
+// TestHookWorkerGitWorktreeAddStaysNative verifies that worktree add has no typed route and stays native.
+//
+// Example: git worktree add next is an ordinary native Worker command, not a typed-route denial.
+func TestHookWorkerGitWorktreeAddStaysNative(t *testing.T) {
+	root := t.TempDir()
+	for _, command := range []string{"git worktree add next", "git worktree add --detach next HEAD"} {
+		t.Run(command,
+			// Verify worktree add stays native without a typed-route denial.
+			//
+			// Example: a detached worktree add is accepted by the native Worker path.
+			func(t *testing.T) {
+				request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, CWD: root, Command: command, CollectShellCommands: true, ApprovedRoots: []string{root}}
+				diagnostic := inspectHookEffects(request, Classify(request))
+				require.Nilf(t, diagnostic, "native git worktree add denied: %+v", diagnostic)
 			})
 	}
 }
@@ -235,6 +253,11 @@ func TestHookCoordinatorGitTargets(t *testing.T) {
 	{
 		diagnostic := inspectHookEffects(request, Classify(request))
 		require.Falsef(t, diagnostic == nil || diagnostic.Code != DiagnosticCode("ECI_GIT_CROSS_SCOPE_DENIED"), "foreign mutation scope missing: %+v", diagnostic)
+	}
+	request.Command = "git -C " + foreign + " worktree add next"
+	{
+		diagnostic := inspectHookEffects(request, Classify(request))
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != DiagnosticCode("ECI_GIT_CROSS_SCOPE_DENIED"), "foreign worktree add scope missing: %+v", diagnostic)
 	}
 	request.ApprovedRoots = append(request.ApprovedRoots, foreign)
 	{

@@ -820,7 +820,7 @@ func eciLifecycleDispatcherDiagnostic(command string, word lifecycleLexicalWord)
 		Path:            "n/a",
 		Predicate:       "distinct-lifecycle-dispatcher-target",
 		Reason:          "eci-active-dispatch is a distinct lifecycle control target, not the eci-active command",
-		Remediation:     "the lifecycle control route is retired (native goals own continuation; the Supervisor owns ECI lifecycle); report the unavailable control route instead of invoking another executable",
+		Remediation:     "the lifecycle control route is present but rejects lifecycle commands without publishing state; native goals own continuation and the Supervisor owns ECI lifecycle; report the unavailable control route instead of invoking another executable",
 		RejectedSegment: shellEscape(command),
 	}
 }
