@@ -230,8 +230,12 @@ assert_worker_live_control_denied() {
   }
 }
 
+# A write to another session's active marker is denied by the role's proof-control route:
+# coordinator-proof-control (classifier.go:4721) or worker-proof-control (classifier.go:4735).
+# The pre-migration source (575bb81) and omp give the same deny for all three forms. The
+# cross-session code is not pinned to these inputs: neither tree emits it for them.
 assert_foreign_marker_denied() {
-  local role command foreign_marker
+  local role command foreign_marker predicate
 
   foreign_marker="$(realpath -e -- "$OTHER_MARKER")"
   for command in \
@@ -239,14 +243,18 @@ assert_foreign_marker_denied() {
     "novel-inspection-tool --format table | touch $OTHER_MARKER" \
     "printf '%s\\n' marker > $OTHER_MARKER"; do
     for role in coordinator worker; do
+      case "$role" in
+      coordinator) predicate=coordinator-proof-control ;;
+      worker) predicate=worker-proof-control ;;
+      esac
       run_hook "$command" "$role"
-      jq -e --arg foreign_marker "$foreign_marker" '
+      jq -e --arg foreign_marker "$foreign_marker" --arg predicate "$predicate" '
         .hookSpecificOutput.permissionDecision == "deny" and
         (.hookSpecificOutput.permissionDecisionReason |
-          contains("[ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED]") and
-          contains("operation=eci-control") and
-          contains("target=" + $foreign_marker) and
-          contains("foreign_session=other-session")
+          contains("[ECI_PLAN_LIVE_CONTROL_DENIED]") and
+          contains("operation=plan-segment") and
+          contains("token=" + $foreign_marker) and
+          contains("predicate=" + $predicate)
         )
       ' "$OUTPUT" >/dev/null || {
         printf 'foreign marker denial contract mismatch for role=%s: %s\n' "$role" "$command" >&2
