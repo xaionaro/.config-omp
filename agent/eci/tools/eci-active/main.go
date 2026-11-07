@@ -13,6 +13,9 @@ import (
 	"path/filepath"
 )
 
+// approveCommitNotice is printed by the approve-commit compatibility spelling.
+const approveCommitNotice = "Normal Git commits do not need ECI approval artifacts. Continue with the intended Git command."
+
 // exitError carries a process exit status and an optional stderr message.
 type exitError struct {
 	code int
@@ -98,6 +101,10 @@ func run(args []string) error {
 		return syncRuntime(args)
 	case "aggregate-review":
 		return aggregateReview(args)
+	case "approve-commit":
+		// Compatibility spelling: any arguments are accepted. Normal Git commits need no approval artifact, so the notice is informational and succeeds.
+		fmt.Println(approveCommitNotice)
+		return nil
 	}
 	return usageError()
 }

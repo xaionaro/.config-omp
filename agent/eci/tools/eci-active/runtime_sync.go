@@ -83,7 +83,7 @@ func syncRuntime(args []string) error {
 	fmt.Fprintf(os.Stdout, "ECI runtime synchronization complete: provider=%s source=%s targets=%d staging=cleaned\n",
 		runtimeSyncProvider, source, len(targets))
 	fmt.Fprintf(os.Stderr, "ECI runtime peer synchronization advisory: local runtime synchronization succeeded; the Kimi peer runtime was not synchronized.\n")
-	fmt.Fprintf(os.Stderr, "[ECI_RUNTIME_SYNC_PROVIDER] peer synchronization skipped: no peer is configured; peer apply runs only from the canonical Codex home: %s\n", source)
+	fmt.Fprintf(os.Stderr, "[ECI_RUNTIME_SYNC_PROVIDER] peer synchronization skipped: no peer is configured; sync-runtime does not run peer apply in omp: %s\n", source)
 	return nil
 }
 
