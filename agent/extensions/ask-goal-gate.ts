@@ -20,7 +20,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 export const GOAL_BLOCK_REASON =
-  "Work autonomously: no user can answer `ask` while the goal runs. If the matching skill is loaded, follow it. If it is not loaded, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. Use `ask` only when you cannot progress. State the exact blocker and needed input in your final message. Then end your turn.";
+  "Work autonomously: no user can answer `ask` while the goal runs. If the matching skill is loaded, follow it. If it is not loaded, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you cannot progress, do not call `ask`; state the exact blocker, then end your turn. State the exact blocker and needed input in your final message. Then end your turn.";
 
 export const GOAL_UNREADABLE_REASON = "`ask` is unavailable: goal state could not be read";
 
