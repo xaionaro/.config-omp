@@ -128,8 +128,9 @@ func newKimiCleanupFixture(t *testing.T) (home, kimi, elsewhere string) {
 //
 // Source anchors (pre-migration source 575bb81 hooks/lib/eci-hook-helper-go/cleanup_route.go):
 // KIMI_CODE_HOME pair 343-348; rm checks 115-134; mv checks 425-437; approved
-// tables 32-35; escape 401; outside-home 421. The 575bb81 tree has no cleanup
-// route test, so each expectation is derived from that source.
+// tables 32-35; escape 401; outside-home 421. The 575bb81 cleanup_route_test.go
+// has no Kimi-home case (its four tests are at lines 18, 37, 63, 87), so the
+// Kimi cases here are derived from the cleanup_route.go lines above.
 func TestCleanupRouteKimiHomeApprovedAndRefused(t *testing.T) {
 	cases := []struct {
 		name       string
