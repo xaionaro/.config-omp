@@ -345,16 +345,48 @@ func TestHookWorkerSessionsWritesDenied(t *testing.T) {
 		diagnostic := hookTestDiagnostic(request)
 		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "unquoted tilde sessions command allowed: %s: %+v", command, diagnostic)
 	}
-	// Observed before C1r5 and kept: ~other/... and quoted "~/..." or '~/...' are literal
-	// (not HOME-expanded), so the sessions-root check does not fire and no diagnostic is returned.
+	// Ambiguous spellings that mention the sessions root deny closed: globs, braces, ~user, ~+, ~-,
+	// a quoted segment after an unquoted tilde (mixed quoting), a ".." after a component, and
+	// ~other, which previously passed and now denies.
 	for _, command := range []string{
+		"echo x > ~/.omp/agent/sess[s]ions/slug/new.jsonl",
+		"tee ~/.omp/agent/sess*/slug/new.jsonl",
+		"tee ~/.omp/agent/{sessions,eci}/slug/new.jsonl",
+		"tee ~pheona/.omp/agent/sessions/slug/new.jsonl",
+		"tee ~+/.omp/agent/sessions/slug/new.jsonl",
+		"tee ~-/.omp/agent/sessions/slug/new.jsonl",
 		"echo x > ~other/.omp/agent/sessions/slug/new.jsonl",
+		"tee ~/\".omp/agent/sessions/slug/new.jsonl\"",
+		"tee ~/.omp/agent/x/../sessions/y.jsonl",
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "ambiguous sessions command allowed: %s: %+v", command, diagnostic)
+	}
+	// Quoted "~/..." and '~/...', and a quote inside the tilde-prefix (~"/..."), are literal:
+	// they keep the observed C1r5 behavior and return no diagnostic.
+	for _, command := range []string{
 		"echo x > \"~/.omp/agent/sessions/slug/new.jsonl\"",
 		"echo x > '~/.omp/agent/sessions/slug/new.jsonl'",
+		"echo x > ~\"/.omp/agent/sessions/slug/new.jsonl\"",
 	} {
 		request.Command = command
 		diagnostic := hookTestDiagnostic(request)
 		require.Falsef(t, diagnostic != nil, "literal tilde command denied: %s: %+v", command, diagnostic)
+	}
+	// With an unknown CWD, an operand that mentions the sessions root denies; other relative operands are not resolved.
+	unknown := request
+	unknown.CWDKnown = false
+	for _, argv := range [][]token{
+		{{value: "tee"}, {value: "~/.omp/agent/sessions/slug/new.jsonl"}},
+		{{value: "tee"}, {value: ".omp/agent/sessions/slug/new.jsonl"}},
+	} {
+		diagnostic := inspectHookControlWriter(unknown, argv, 1)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "unknown-CWD sessions mention allowed: %+v", diagnostic)
+	}
+	{
+		diagnostic := inspectHookControlWriter(unknown, []token{{value: "tee"}, {value: "relative/scratch.txt"}}, 1)
+		require.Falsef(t, diagnostic != nil, "unknown-CWD non-sessions operand denied: %+v", diagnostic)
 	}
 }
 

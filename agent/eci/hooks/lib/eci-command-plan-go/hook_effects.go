@@ -1229,9 +1229,13 @@ func inspectHookControlWriter(
 		if !pathLike {
 			continue
 		}
+		sessionsDiagnostic := hookSessionsOperandDiagnostic(request, name, argv, segmentIndex, index, pathArgument)
 		lexical := pathArgument.value
 		if !filepath.IsAbs(lexical) {
 			if !request.CWDKnown {
+				if sessionsDiagnostic != nil {
+					return sessionsDiagnostic
+				}
 				continue
 			}
 			lexical = filepath.Join(request.CWD, lexical)
@@ -1243,6 +1247,9 @@ func inspectHookControlWriter(
 			if err != nil {
 				// An unavailable external filesystem observation cannot
 				// establish which directory entry would be unlinked.
+				if sessionsDiagnostic != nil {
+					return sessionsDiagnostic
+				}
 				continue
 			}
 			resolved = entry
@@ -1269,24 +1276,8 @@ func inspectHookControlWriter(
 			diagnostic.Path = resolved
 			return diagnostic
 		}
-		sessionsLexical, sessionsResolved := lexical, resolved
-		if home, ok := hookTildeHome(pathArgument); ok {
-			// An unquoted leading tilde is an absolute HOME path to the shell; only the sessions-root check applies it.
-			sessionsLexical = filepath.Clean(filepath.Join(home, pathArgument.value[1:]))
-			sessionsResolved = resolvePathIdentity(sessionsLexical)
-			if hookUnlinksDirectoryEntry(argv) {
-				entry, err := resolvePathEntryWithMissingSuffix(sessionsLexical)
-				if err != nil {
-					continue
-				}
-				sessionsResolved = entry
-			}
-		}
-		if hookSessionsRootTarget(name, index == len(argv)-1, sessionsLexical, sessionsResolved) {
-			diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal selects omp session transcript root "+sessionsResolved,
-				segmentIndex, index, pathArgument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
-			diagnostic.Path = sessionsResolved
-			return diagnostic
+		if sessionsDiagnostic != nil {
+			return sessionsDiagnostic
 		}
 	}
 	return nil
@@ -1326,13 +1317,41 @@ func hookSessionsRootTarget(name string, final bool, lexical, resolved string) b
 	return false
 }
 
-// hookTildeHome returns the HOME that an unquoted leading "~" or "~/" word denotes.
-// Quoted words (any quoting, including escapes) and "~user" forms are literal here and
-// report false; a non-absolute HOME yields no expansion, matching hookSessionsRoots.
+// hookTildePrefix returns the text between a leading "~" and the first "/", and whether
+// bash expands that tilde-prefix. Only an unquoted tilde-prefix expands; any quoting inside
+// it makes the word literal. Quoting after the first unquoted "/" does not stop expansion.
+// A word without raw offsets is treated as unquoted, so the check fails closed.
 //
-// Example: unquoted ~/.omp/agent/sessions/x.jsonl expands under HOME, while "~/x" does not.
+// Example: ~/".omp/x" expands with an empty prefix, while ~"/.omp/x" stays literal.
+func hookTildePrefix(argument token) (string, bool) {
+	if !strings.HasPrefix(argument.value, "~") {
+		return "", false
+	}
+	slash := strings.IndexByte(argument.value, '/')
+	if slash < 0 {
+		slash = len(argument.value)
+	}
+	prefix := argument.value[1:slash]
+	if len(argument.sourceOffsets) != len(argument.value) {
+		return prefix, true
+	}
+	leadingUnquoted := argument.sourceOffsets[0] == argument.offset
+	if slash == len(argument.value) {
+		return prefix, leadingUnquoted && !argument.quoted
+	}
+	return prefix, leadingUnquoted && argument.sourceOffsets[slash] == argument.offset+slash
+}
+
+// hookTildeHome returns the HOME that an unquoted leading "~" denotes: an empty tilde-prefix,
+// as in "~" or "~/...". Quoting after the first unquoted "/" does not stop the expansion, so
+// ~/".omp" expands here and is then denied as a mixed quote form. "~user", "~+", and "~-"
+// report false here; the sessions check denies them when they mention the sessions root.
+// A non-absolute HOME yields no expansion, matching hookSessionsRoots.
+//
+// Example: unquoted ~/.omp/agent/sessions/x.jsonl expands under HOME, while "~/x" and ~"/x" do not.
 func hookTildeHome(argument token) (string, bool) {
-	if argument.quoted || argument.value != "~" && !strings.HasPrefix(argument.value, "~/") {
+	prefix, expands := hookTildePrefix(argument)
+	if !expands || prefix != "" {
 		return "", false
 	}
 	home := os.Getenv("HOME")
@@ -1340,6 +1359,86 @@ func hookTildeHome(argument token) (string, bool) {
 		return "", false
 	}
 	return filepath.Clean(home), true
+}
+
+// hookSessionsMention reports whether operand text names the omp agent sessions location,
+// including glob or brace spellings of it.
+//
+// Example: ~/.omp/agent/sess[s]ions/x and {sessions,eci} both mention it.
+func hookSessionsMention(text string) bool {
+	return strings.Contains(text, ".omp/agent") || strings.Contains(text, "sess")
+}
+
+// hookSessionsAmbiguous reports whether an operand that mentions the sessions location has a
+// spelling the lexical check cannot establish: a glob or brace, a "~user", "~+", or "~-" prefix,
+// a mixed quote form after an unquoted "~", a ".." after a component, or an unknown CWD.
+//
+// Example: ~/.omp/agent/sess*/x and ~/.omp/agent/x/../sessions/y are ambiguous.
+func hookSessionsAmbiguous(argument token, cwdKnown bool) bool {
+	if !cwdKnown || strings.ContainsAny(argument.value, "*?[{}") {
+		return true
+	}
+	if prefix, expands := hookTildePrefix(argument); expands && (prefix != "" || argument.quoted) {
+		return true
+	}
+	for index, component := range strings.Split(argument.value, "/") {
+		if index > 0 && component == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// hookSessionsOperandDiagnostic applies the Worker sessions-root rule to one path operand.
+// An ambiguous operand that mentions the sessions location denies, and so does any resolution
+// error. It returns nil when the operand does not reach the sessions root.
+//
+// Example: tee ~/.omp/agent/sess*/x denies; tee ~/tmp/x passes.
+func hookSessionsOperandDiagnostic(
+	request Request,
+	name string,
+	argv []token,
+	segmentIndex int,
+	argvIndex int,
+	argument token,
+) *Diagnostic {
+	home, expands := hookTildeHome(argument)
+	text := argument.value
+	if expands {
+		text = home + argument.value[1:]
+	}
+	if (hookSessionsMention(argument.value) || hookSessionsMention(text)) && hookSessionsAmbiguous(argument, request.CWDKnown) {
+		return diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal spells omp session transcript root ambiguously: "+argument.value,
+			segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
+	}
+	lexical := argument.value
+	switch {
+	case expands:
+		lexical = text
+	case !filepath.IsAbs(lexical):
+		if !request.CWDKnown {
+			return nil
+		}
+		lexical = filepath.Join(request.CWD, lexical)
+	}
+	lexical = filepath.Clean(lexical)
+	resolved, err := resolvePathWithMissingSuffix(lexical)
+	if err == nil && hookUnlinksDirectoryEntry(argv) {
+		resolved, err = resolvePathEntryWithMissingSuffix(lexical)
+	}
+	if err != nil {
+		diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal cannot resolve "+lexical+" to rule out the omp session transcript root",
+			segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
+		diagnostic.Path = lexical
+		return diagnostic
+	}
+	if !hookSessionsRootTarget(name, argvIndex == len(argv)-1, lexical, resolved) {
+		return nil
+	}
+	diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal selects omp session transcript root "+resolved,
+		segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
+	diagnostic.Path = resolved
+	return diagnostic
 }
 
 // inspectHookCleanup protects existing live hooks from removal or relocation.
