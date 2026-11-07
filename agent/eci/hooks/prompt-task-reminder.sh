@@ -5,10 +5,21 @@ set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
+# A deny decision is written to stdout.  bash replaces a closed stdout with
+# /dev/null, and a stdout whose target cannot be checked (no /proc) cannot be
+# shown to reach the caller; the prompt is blocked with a stderr message.
+deny_stdout_usable() {
+  [ -e /proc/self/fd/1 ] && ! [ /proc/self/fd/1 -ef /dev/null ]
+}
+prompt_write_failed() {
+  printf '%s\n' 'prompt-task-reminder: could not write the deny decision to stdout; the prompt is blocked' >&2 || true
+  exit 2
+}
 # Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.
 hook_deny() {
+  deny_stdout_usable || prompt_write_failed
   if ! jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason,additionalContext:$reason}}' 2>/dev/null; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry","additionalContext":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry"}}' || { printf '%s\n' 'prompt-task-reminder: could not write the deny decision to stdout; the prompt is blocked' >&2 || true; exit 2; }
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry","additionalContext":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry"}}' || prompt_write_failed
   fi
   exit 0
 }
@@ -39,7 +50,7 @@ fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_runtime_open_verified eci_marker_active_or_unknown eci_proof_root eci_valid_session_id eci_ensure_cwd_state_dir; do
-  declare -F "$fn" >/dev/null 2>&1 || { eci_prompt_marker_verified_absent && exit 0; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn"; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { eci_prompt_marker_verified_absent && exit 0; deny_stdout_usable || prompt_write_failed; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn" || prompt_write_failed; exit 0; }
 done
 if ! command -v jq >/dev/null 2>&1; then
   prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
@@ -110,7 +121,8 @@ prompt_fail_closed() {
     exit "$code"
   fi
   if [ -n "$prompt_busy" ]; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry","additionalContext":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
+    deny_stdout_usable || prompt_write_failed
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry","additionalContext":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}' || prompt_write_failed
     exit 0
   fi
   prompt_busy=1

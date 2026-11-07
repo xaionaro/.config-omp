@@ -10,21 +10,23 @@ deny_write_failed() {
   printf '%s\n' "$1: could not write the deny decision to stdout; the tool call is blocked" >&2 || true
   exit 2
 }
-# bash replaces a closed stdout with /dev/null, so a decision written there is
-# lost.  That case is caught here and the tool call is blocked with a stderr message.
-if [ /proc/self/fd/1 -ef /dev/null ] 2>/dev/null; then
-  deny_write_failed validate-apply-patch
-fi
+# A deny decision is written to stdout.  bash replaces a closed stdout with
+# /dev/null, and a stdout whose target cannot be checked (no /proc) cannot be
+# shown to reach the caller; the tool call is blocked with a stderr message.
+deny_stdout_usable() {
+  [ -e /proc/self/fd/1 ] && ! [ /proc/self/fd/1 -ef /dev/null ]
+}
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
+  deny_stdout_usable || deny_write_failed validate-apply-patch
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}' || deny_write_failed validate-apply-patch
   exit 0
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
-  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { deny_stdout_usable || deny_write_failed validate-apply-patch; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
 done
 eci_init_tmp || true
 eci_require_jq_or_deny validate-apply-patch
@@ -56,21 +58,13 @@ deny() {
       permissionDecisionReason: $reason
     }
   }')" || deny_write_failed validate-apply-patch
+  if [ -z "$json" ] || ! printf '%s' "$json" | jq -e . >/dev/null 2>&1; then
+    deny_write_failed validate-apply-patch
+  fi
+  deny_stdout_usable || deny_write_failed validate-apply-patch
   printf '%s\n' "$json" || deny_write_failed validate-apply-patch
   exit 0
 }
-
-# A relative ECI_PROOF_ROOT cannot be verified as a proof root, so the marker
-# state is unknown.  While the marker check reports active or unknown, the patch
-# is denied.
-case "${ECI_PROOF_ROOT:-}" in
-  ""|/*) ;;
-  *)
-    if eci_marker_active_or_unknown; then
-      deny "[ECI_PROOF_ROOT_RELATIVE] ECI_PROOF_ROOT is not an absolute path, so the proof root cannot be verified while the marker is active or unknown; the patch is denied; set ECI_PROOF_ROOT to an absolute path and retry"
-    fi
-    ;;
-esac
 
 # An apply_patch callback with no patch text cannot be checked for targets.
 # While an active marker exists it is denied; with no marker the ordinary path exits 0.
@@ -80,6 +74,20 @@ if [ -z "$patch_text" ]; then
   fi
   exit 0
 fi
+
+# A relative ECI_PROOF_ROOT cannot be verified as a proof root, so the marker
+# state is unknown.  A patch target under that root (lexically or resolved), or
+# under the context root, is denied while the marker check reports active or
+# unknown; ordinary targets are not affected.
+under_relative_proof_root() {
+  local rel_root
+  for rel_root in "$(eci_lexical_hook_path "${cwd:-$PWD}" "$ECI_PROOF_ROOT" 2>/dev/null || true)" "$(eci_resolve_hook_path "${cwd:-$PWD}" "$ECI_PROOF_ROOT" 2>/dev/null || true)"; do
+    [ -n "$rel_root" ] || continue
+    case "$1" in "$rel_root"|"$rel_root"/*) return 0 ;; esac
+    case "$2" in "$rel_root"|"$rel_root"/*) return 0 ;; esac
+  done
+  return 1
+}
 
 patch_paths=$(printf '%s\n' "$patch_text" | awk '
   /^\*\*\* (Add|Update|Delete) File: / {
@@ -98,6 +106,17 @@ while IFS= read -r path; do
   [ -n "$path" ] || continue
   lexical_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
   resolved_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
+  case "${ECI_PROOF_ROOT:-}" in
+    ""|/*) ;;
+    *)
+      if { under_relative_proof_root "$lexical_path" "$resolved_path" ||
+           eci_context_session_rest "$lexical_path" >/dev/null 2>&1 ||
+           eci_context_session_rest "$resolved_path" >/dev/null 2>&1; } &&
+         eci_marker_active_or_unknown; then
+        deny "[ECI_PROOF_ROOT_RELATIVE] ECI_PROOF_ROOT is not an absolute path, so the proof root cannot be verified and the marker state is unknown; this patch targets the proof root or a context root and is denied; set ECI_PROOF_ROOT to an absolute path and retry"
+      fi
+      ;;
+  esac
   if eci_session_path_is_unsafe "$lexical_path"; then
     deny "$(eci_diagnostic_reason "ECI_PROOF_PATH_ESCAPE_DENIED" "PreToolUse" "patch-validation" "$path" "Refusing unsafe session-scoped patch path ${path##*/}: proof-root and context-root ancestors and final components must not be symlinks." "use the current session's canonical path")"
   fi
