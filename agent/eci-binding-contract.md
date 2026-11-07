@@ -12,7 +12,7 @@ Binding rules for omp sessions on this workstation. Ported from the prior bindin
 | ECI skill files (`explore-critique-implement/…`) | `~/.omp/agent/eci/skills/explore-critique-implement/…` |
 | Hook files (`hooks/…`) | `~/.omp/agent/eci/hooks/…` |
 | Runtime root | `~/.omp/agent/eci/` |
-| Worker Git wrapper | `"$HOME/.omp/agent/eci/bin/eci-worker-git"` (NOT YET BUILT NATIVELY; not built by `hooks/build-native-binaries.sh`; see Pending native targets); source `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/` |
+| Worker Git wrapper | `"$HOME/.omp/agent/eci/bin/eci-worker-git"` (built natively by `hooks/build-native-binaries.sh`, sha256 receipt; see Pending native targets); source `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/` |
 | Worker Git invocation log | the pre-migration cache log for eci-worker-git (source 575bb81); native: `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) |
 | Gate catalog | `~/.omp/agent/eci/hooks/gate-escape-hatches.md` |
 | Stop checklist | `~/.omp/agent/eci/hooks/stop-checklist.md` |
@@ -144,7 +144,7 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 
 ## Git
 
-- One-use Git exception: only after explicit user authorization for the exact command and environment, run `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (binary NOT YET BUILT NATIVELY; see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
+- One-use Git exception: only after explicit user authorization for the exact command and environment, run `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (binary built natively by `hooks/build-native-binaries.sh`; see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
 
 - Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` (native; legacy source: the pre-migration cache log for eci-worker-git, source 575bb81; UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
 
@@ -255,4 +255,4 @@ These targets are not yet native. Each path above is the target:
 
 - `~/.omp/agent/skills` is a symlink whose owner is the pre-migration runtime that owns source commit 575bb81; verify the target with `readlink ~/.omp/agent/skills`; replace it with a native skills directory.
 - Skill references `references/review-investigation.md`, `references/workflow-runtime/coding-style-admission.md`, and `requesting-code-review/SKILL.md` exist on disk under `~/.omp/agent/skills/`, reached through that symlink.
-- `~/.omp/agent/eci/bin/eci-worker-git` is not built natively: `hooks/build-native-binaries.sh` builds only `eci-command-plan`, `eci-safe-import`, and `eci-hook-helper`. Source: `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/`.
+- `~/.omp/agent/eci/bin/eci-worker-git` is built natively: `hooks/build-native-binaries.sh` (commit f0f918a) builds and installs `eci-command-plan`, `eci-safe-import`, `eci-hook-helper`, and `eci-worker-git` into `~/.omp/agent/eci/bin/`, each with a sha256 receipt. The skill runs `eci-worker-git` directly (`agent/eci/skills/explore-critique-implement/references/task-orchestrator.md:65`). It is not on the launcher allowlist, so its receipt is not verified at runtime. Source: `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/`.
