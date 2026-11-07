@@ -59,6 +59,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 
 	for _, validator := range []string{
 		filepath.Join(providerHome(ProviderOmp), "hooks", "validate-bash.sh"),
+		filepath.Join(providerHome(ProviderKimi), "hooks", "validate-bash.sh"),
 	} {
 		source, err := os.ReadFile(validator)
 		if err != nil {
