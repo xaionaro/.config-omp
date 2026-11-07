@@ -820,16 +820,16 @@ func eciLifecycleDispatcherDiagnostic(command string, word lifecycleLexicalWord)
 		Path:            "n/a",
 		Predicate:       "distinct-lifecycle-dispatcher-target",
 		Reason:          "eci-active-dispatch is a distinct lifecycle control target, not the eci-active command",
-		Remediation:     "the lifecycle control route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; report the unavailable control route instead of invoking another executable",
+		Remediation:     "the lifecycle control route is retired (native goals own continuation; the Supervisor owns ECI lifecycle); report the unavailable control route instead of invoking another executable",
 		RejectedSegment: shellEscape(command),
 	}
 }
 
 // ledgerAppendRemediation returns copy-paste-safe ledger guidance.
 //
-// Example: the ledger route is reported as unprovisioned, never as an eci-active command.
+// Example: the remediation names the native eci-active ledger-append command, not a direct ledger edit.
 func ledgerAppendRemediation() string {
-	return "ledger-append route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", which builds only the three gate binaries; report the unavailable ledger route instead of editing the ledger directly"
+	return "append the entry with \"$HOME/.omp/agent/eci/bin/eci-active\" ledger-append --json <event-object>; do not edit the ledger directly"
 }
 
 // reviewedScriptTraceTopology recognizes exactly the coordinator diagnostic

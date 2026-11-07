@@ -577,7 +577,7 @@ func inspectHookGit(
 		diagnostic := diagnosticForToken(CodeWorkerGitOwnershipDenied,
 			fmt.Sprintf("native Worker Git family %s selects repository context %s", argv[verbIndex].value, firstNonEmpty(directory, "<unresolved>")),
 			record.Segment, argv[verbIndex].offset, argv[verbIndex],
-			"use native Git with exact literal paths and explicit source/destination modes; preserve the original repository context, scope agreement, fresh same-index lookup and complete staged-result review; the typed Worker Git route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", which builds only the three gate binaries",
+			"use native Git with exact literal paths and explicit source/destination modes; preserve the original repository context, scope agreement, fresh same-index lookup and complete staged-result review; the typed Worker Git route is built but not launcher-wired (\"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" installs its binary without a launcher), so its named operations are unavailable",
 			"worker-git-ownership")
 		diagnostic.Path = directory
 		return diagnostic
@@ -618,7 +618,7 @@ func inspectHookGitMutation(
 	}
 	if !approved && len(request.ApprovedRoots) > 0 {
 		diagnostic := diagnosticForToken(hookCodeGitCrossScopeDenied, "Git mutation selects another repository: "+repository,
-			record.Segment, argv[verbIndex].offset, argv[verbIndex], "legacy repository-allow-on declarations are unavailable and no marker-free replacement is provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
+			record.Segment, argv[verbIndex].offset, argv[verbIndex], "legacy repository-allow-on declarations are unavailable because their hooks remain marker-dependent, and no marker-free replacement exists; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
 		diagnostic.Path = repository
 		return diagnostic
 	}
@@ -908,7 +908,7 @@ func inspectHookGitProtectedTarget(
 		}
 		if target, protected := protectedHookModeTargetPath(repository, argument.value); protected {
 			diagnostic := diagnosticForToken(hookCodeCoordinatorEditRouting, "Git "+verb+" physically overwrites, removes or relocates protected live hook "+target,
-				record.Segment, argument.offset, argument, "the responsible Producer edits this tracked hook source in place and stages exact owned paths through native Git (the typed Worker Git route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"); use index-only unstage for index correction; do not reroute the same destructive operation", "coordinator-protected-target")
+				record.Segment, argument.offset, argument, "the responsible Producer edits this tracked hook source in place and stages exact owned paths through native Git (the typed Worker Git route is built but not launcher-wired, so its operations are unavailable); use index-only unstage for index correction; do not reroute the same destructive operation", "coordinator-protected-target")
 			diagnostic.Path = target
 			return diagnostic
 		}
@@ -991,7 +991,7 @@ func inspectHookLifecycle(
 			return nil
 		}
 		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation selects a different executable target: "+resolved,
-			record.Segment, argv[0].offset, argv[0], "the lifecycle control route is not provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; keep the lifecycle mutation with its legitimate owner or report the unavailable control route", "lifecycle-target")
+			record.Segment, argv[0].offset, argv[0], "the lifecycle control route is retired (native goals own continuation; the Supervisor owns ECI lifecycle); keep the lifecycle mutation with its legitimate owner or report the unavailable control route", "lifecycle-target")
 		diagnostic.Path = resolved
 		return diagnostic
 	}
@@ -1155,7 +1155,7 @@ func inspectHookScript(
 		code = hookCodeCoordinatorScriptTargetDenied
 	}
 	diagnostic := diagnosticForToken(code, "script execution selects target outside its assigned roots: "+target,
-		record.Segment, argv[index].offset, argv[index], "legacy repository-allow-on declarations are unavailable and no marker-free replacement is provisioned by \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\"; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
+		record.Segment, argv[index].offset, argv[index], "legacy repository-allow-on declarations are unavailable because their hooks remain marker-dependent, and no marker-free replacement exists; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
 	diagnostic.Path = target
 	return diagnostic
 }

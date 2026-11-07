@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -67,13 +68,9 @@ func TestClassifyLedgerAppendRemediationUsesEciAuthority(t *testing.T) {
 	}
 
 	for _, testCase := range []struct {
-		provider        Provider
-		wantRemediation string
+		provider Provider
 	}{
-		{
-			provider:        ProviderOmp,
-			wantRemediation: `ledger-append route is not provisioned by "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh", which builds only the three gate binaries; report the unavailable ledger route instead of editing the ledger directly`,
-		},
+		{provider: ProviderOmp},
 	} {
 		testCase := testCase
 		t.Run(string(testCase.provider), func(t *testing.T) {
@@ -95,11 +92,36 @@ func TestClassifyLedgerAppendRemediationUsesEciAuthority(t *testing.T) {
 			if result.Diagnostic.Operation != "ledger-append-only" {
 				t.Errorf("operation: got %q, want ledger-append-only", result.Diagnostic.Operation)
 			}
-			if result.Diagnostic.Remediation != testCase.wantRemediation {
-				t.Errorf("remediation: got %q, want %q", result.Diagnostic.Remediation, testCase.wantRemediation)
+			if err := eciActiveRemediationError(result.Diagnostic.Remediation); err != nil {
+				t.Errorf("remediation: %v", err)
 			}
 		})
 	}
+}
+
+// eciActivePathPattern captures the $HOME-relative path of the eci-active executable from a quoted remediation path.
+//
+// Example: "$HOME/.omp/agent/eci/bin/eci-active" captures /.omp/agent/eci/bin/eci-active.
+var eciActivePathPattern = regexp.MustCompile(`"\$HOME(/[^"]*/eci-active)"`)
+
+// eciActiveRemediationError checks that a remediation names the eci-active executable under $HOME
+// and that the named path exists as an executable file.
+//
+// Example: a remediation naming "$HOME/.omp/agent/eci/bin/eci-active" passes once that file is installed.
+func eciActiveRemediationError(remediation string) error {
+	match := eciActivePathPattern.FindStringSubmatch(remediation)
+	if match == nil {
+		return fmt.Errorf("remediation names no quoted $HOME eci-active path: %q", remediation)
+	}
+	path := filepath.Join(os.Getenv("HOME"), match[1])
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("named executable %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return fmt.Errorf("named executable %s is not an executable file: mode %v", path, info.Mode())
+	}
+	return nil
 }
 
 func TestClassifyFiniteCommandPlans(t *testing.T) {

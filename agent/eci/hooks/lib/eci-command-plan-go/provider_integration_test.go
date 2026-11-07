@@ -981,9 +981,8 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 					if diagnostic.Predicate != "append-only-ledger" {
 						t.Errorf("%s predicate: got %q, want append-only-ledger", name, diagnostic.Predicate)
 					}
-					wantRemediation := `ledger-append route is not provisioned by "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh", which builds only the three gate binaries; report the unavailable ledger route instead of editing the ledger directly`
-					if diagnostic.Remediation != wantRemediation {
-						t.Errorf("%s remediation: got %q, want %q", name, diagnostic.Remediation, wantRemediation)
+					if err := eciActiveRemediationError(diagnostic.Remediation); err != nil {
+						t.Errorf("%s remediation: %v", name, err)
 					}
 				})
 			}
