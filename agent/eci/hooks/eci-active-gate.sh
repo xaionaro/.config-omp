@@ -5,15 +5,17 @@
 set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$HOOK_DIR/lib/eci-proof-state.sh"
-. "$HOOK_DIR/lib/eci-diagnostic.sh"
+if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
+  exit 0
+fi
 
 input=$(cat)
 
 # Constant deny used when jq is unavailable or failed.  It names this hook and
 # the code only; it carries no repair instruction for another hook.
 gate_fallback_deny() {
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s: hook eci-active-gate denied the tool call while an active marker exists because jq is unavailable or failed; restore jq and inspect the hook log, then retry"}}\n' "$1"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[%s]: hook eci-active-gate denied the tool call while an active marker exists because jq is unavailable or failed; restore jq and inspect the hook log, then retry"}}\n' "$1"
 }
 
 # A malformed typed callback is a repair task only while an ECI marker is
@@ -23,7 +25,7 @@ malformed_identity_exit() {
   local reason
   if eci_marker_active_or_unknown; then
     reason="$(eci_diagnostic_reason "ECI_HOOK_IDENTITY_MALFORMED" "PreToolUse" "edit-routing" "session=${session_id:-<missing>},cwd=${cwd:-<missing>}" "$detail" "provide typed tool_name, session_id, and cwd fields, then retry")" ||
-      reason="ECI_HOOK_IDENTITY_MALFORMED: $detail; provide typed tool_name, session_id, and cwd fields, then retry"
+      reason="[ECI_HOOK_IDENTITY_MALFORMED]: $detail; provide typed tool_name, session_id, and cwd fields, then retry"
     if ! jq -n --arg reason "$reason" '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
@@ -58,7 +60,7 @@ _eci_gate_error_trap() {
   _gate_error_busy=1
   if eci_marker_active_or_unknown; then
     reason="$(eci_diagnostic_reason "ECI_HOOK_GATE_ERROR" "PreToolUse" "edit-routing" "hook=eci-active-gate,line=$line,exit=$code,command=$cmd" "gate hook failed while an active marker exists; denying the tool call" "inspect the hook log and available temporary-directory/disk state, then retry")" ||
-      reason="ECI_HOOK_GATE_ERROR: gate hook eci-active-gate failed while an active marker exists; inspect the hook log and available temporary-directory/disk state, then retry"
+      reason="[ECI_HOOK_GATE_ERROR]: gate hook eci-active-gate failed while an active marker exists; inspect the hook log and available temporary-directory/disk state, then retry"
     if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
       gate_fallback_deny ECI_HOOK_GATE_ERROR
     fi

@@ -5,9 +5,10 @@
 set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$HOOK_DIR/lib/eci-proof-state.sh"
-. "$HOOK_DIR/lib/eci-tmp.sh"
-. "$HOOK_DIR/lib/eci-diagnostic.sh"
+if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-edit-write cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
+  exit 0
+fi
 eci_init_tmp || true
 eci_require_jq_or_deny validate-edit-write
 eci_install_fail_closed_trap validate-edit-write
@@ -88,7 +89,12 @@ if [ "$hook_subagent_status" != main ] &&
 fi
 
 # Local relative replace directives in go.mod bypass the go.work rule; deny at edit time.
-edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null || true)"
+edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null)" || {
+  edit_text=""
+  if eci_marker_active_or_unknown; then
+    deny "[ECI_EDIT_PAYLOAD_UNREADABLE] edit payload could not be read while an active marker exists; the edit cannot be checked, so it is denied"
+  fi
+}
 if [[ "$file_path" == go.mod || "$file_path" == */go.mod ]] &&
    printf '%s\n' "$edit_text" | grep -Eq '=>[[:space:]]*(\.\./|\./)'; then
   deny "$(eci_diagnostic_reason "ECI_GOMOD_LOCAL_REPLACE_DENIED" "PreToolUse" "edit-validation" "$file_path" "Do not add local relative replace directives to go.mod. Use a workspace, module proxy, or explicit user-approved local override." "use a workspace, module proxy, or explicit user-approved local override")"
@@ -105,6 +111,12 @@ ownership_failure_deny() {
   if [ "$BASHPID" != "$$" ]; then
     exit "$code"
   fi
+  # With no active (or unknown) marker the failure exits 0, as the source does.
+  if ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
+    _eci_lib_unavailable_constant validate-edit-write
+    exit 0
+  fi
+  eci_marker_active_or_unknown || exit 0
   if [ -n "$ownership_busy" ]; then
     _eci_fail_closed_constant validate-edit-write
     exit 0

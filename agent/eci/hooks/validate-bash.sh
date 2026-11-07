@@ -4,25 +4,37 @@ set -Eeuo pipefail
 # Constant deny when jq is unavailable or failed.  It names the planner and its
 # provisioning script so the agent can repair the gate without another hook.
 validate_bash_fallback_deny() {
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_NATIVE_GATE_UNAVAILABLE: hook validate-bash denied the tool call because jq is unavailable or failed while reporting the eci-command-plan gate result; install jq, provision eci-command-plan with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] hook validate-bash denied the tool call because jq is unavailable or failed while reporting the eci-command-plan gate result; install jq, provision eci-command-plan with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
 }
 hook_deny() {
   jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' || validate_bash_fallback_deny
   exit 0
 }
 case "${HOME:-}" in
-  ''|[!/]*) hook_deny 'ECI native gate binary eci-command-plan is unavailable: HOME is unset or not absolute; set HOME to the absolute home directory and retry' ;;
+  ''|[!/]*) hook_deny '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable: HOME is unset or not absolute; set HOME to the absolute home directory and retry' ;;
 esac
 root="$HOME/.omp/agent/eci"
 if ! . "$root/hooks/lib/eci-native-binary.sh" 2>/dev/null; then
-  hook_deny "ECI native gate binary eci-command-plan is unavailable: $root/hooks/lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-native-binary.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
 if ! . "$root/hooks/lib/eci-tmp.sh" 2>/dev/null; then
-  hook_deny "ECI native gate binary eci-command-plan is unavailable: $root/hooks/lib/eci-tmp.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-tmp.sh; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
+if ! . "$root/hooks/lib/eci-proof-state.sh" 2>/dev/null; then
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash cannot load $root/hooks/lib/eci-proof-state.sh; reinstall the ECI hooks and retry"
+fi
+# Native-gate failures deny only while a marker is active or unknown; with no
+# marker the hook exits with the source status, as the source does.
+native_gate_fail() {
+  local code="$1"
+  if ! eci_marker_active_or_unknown; then
+    exit "$code"
+  fi
+  hook_deny "$2"
+}
 eci_install_fail_closed_trap validate-bash
 if ! eci_runtime_open_verified eci-command-plan; then
-  hook_deny "$ECI_RUNTIME_DENY_REASON"
+  native_gate_fail 0 "$ECI_RUNTIME_DENY_REASON"
 fi
 rc=0
 "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook || rc=$?
@@ -31,7 +43,7 @@ rc=0
 exec {ECI_RUNTIME_BINARY_FD}<&-
 case "$rc" in
   0|2) ;;
-  126|127) hook_deny "ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
-  *) hook_deny "ECI native gate binary eci-command-plan returned unexpected exit $rc (signal or internal failure); rebuild it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
+  126|127) native_gate_fail "$rc" "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
+  *) native_gate_fail "$rc" "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan returned unexpected exit $rc (signal or internal failure); rebuild it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;
 esac
 exit "$rc"

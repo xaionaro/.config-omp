@@ -5,9 +5,10 @@
 set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$HOOK_DIR/lib/eci-proof-state.sh"
-. "$HOOK_DIR/lib/eci-tmp.sh"
-. "$HOOK_DIR/lib/eci-diagnostic.sh"
+if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
+  exit 0
+fi
 eci_init_tmp || true
 eci_require_jq_or_deny validate-apply-patch
 eci_install_fail_closed_trap validate-apply-patch
@@ -109,6 +110,12 @@ ownership_failure_deny() {
   if [ "$BASHPID" != "$$" ]; then
     exit "$code"
   fi
+  # With no active (or unknown) marker the failure exits 0, as the source does.
+  if ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
+    _eci_lib_unavailable_constant validate-apply-patch
+    exit 0
+  fi
+  eci_marker_active_or_unknown || exit 0
   if [ -n "$ownership_busy" ]; then
     _eci_fail_closed_constant validate-apply-patch
     exit 0

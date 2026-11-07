@@ -12,25 +12,36 @@ hook_deny() {
   fi
   exit 0
 }
+# Pre-helper denies: with no active or unknown marker the prompt is not under
+# ECI control, so exit 0 as the source does; otherwise deny.
+prompt_skip_or_deny() {
+  if ! eci_marker_active_or_unknown; then
+    exit 0
+  fi
+  hook_deny "$1"
+}
 if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
-  hook_deny "[ECI_NATIVE_HELPER_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+fi
+if ! . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null; then
+  hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: lib/eci-proof-state.sh failed to load; reinstall the ECI hooks and retry"
 fi
 if ! command -v jq >/dev/null 2>&1; then
-  hook_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
+  prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
 fi
-private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || { if . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null && ! eci_marker_active_or_unknown; then exit 0; fi; hook_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"; }
+private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || prompt_skip_or_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"
 trap 'rm -rf -- "$private_dir"' EXIT
 if ! eci_runtime_open_verified eci-hook-helper; then
-  hook_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
+  prompt_skip_or_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
 fi
 helper_fd="$ECI_RUNTIME_BINARY_FD"
 input_file="$private_dir/input"
 helper_output="$private_dir/output"
-head -c 65537 >"$input_file" || exit 0
-if (( $(wc -c <"$input_file") > 65536 )); then exit 0; fi
-if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then exit 0; fi
-iconv -f UTF-8 -t UTF-8 "$input_file" >/dev/null 2>&1 || exit 0
-jq -se 'length == 1 and (.[0] | type == "object")' "$input_file" >/dev/null 2>&1 || exit 0
+head -c 65537 >"$input_file" || prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input could not be read; retry"
+if (( $(wc -c <"$input_file") > 65536 )); then prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input exceeds 65536 bytes; shorten the prompt and retry"; fi
+if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input contains NUL bytes; remove them and retry"; fi
+iconv -f UTF-8 -t UTF-8 "$input_file" >/dev/null 2>&1 || prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input is not valid UTF-8; re-enter it and retry"
+jq -se 'length == 1 and (.[0] | type == "object")' "$input_file" >/dev/null 2>&1 || prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input is not one JSON object; retry"
 prompt=$(jq -r 'if (.prompt? | type) == "string" then .prompt else "" end' "$input_file" 2>/dev/null || true)
 normalized_prompt="${prompt,,}"
 explicit_report='(^|[^[:alpha:]])(give|show|provide|write|send|want|need|request|get|what[[:space:]]+is)([[:space:]]+(me|us|a|an|the|my|our|proper|current|full|detailed|quick|brief|please|latest|updated|comprehensive))*[[:space:]]+(status([[:space:]]+and[[:space:]]+progress)?|progress)[[:space:]]+(report|update)'
@@ -69,9 +80,9 @@ if [ "$helper_rc" -eq 0 ]; then
 fi
 exec {helper_fd}<&-
 if [ "$helper_rc" -ne 0 ]; then
-  hook_deny "[ECI_NATIVE_HELPER_FAILED] ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
+  prompt_skip_or_deny "[ECI_NATIVE_HELPER_FAILED] ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
 fi
-input="$(cat -- "$helper_output")" || { rm -rf -- "$private_dir"; hook_deny "[ECI_NATIVE_HELPER_OUTPUT_UNREADABLE] ECI prompt reminder denied: the native helper output was unreadable; reinstall the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"; }
+input="$(cat -- "$helper_output")" || { rm -rf -- "$private_dir"; prompt_skip_or_deny "[ECI_NATIVE_HELPER_OUTPUT_UNREADABLE] ECI prompt reminder denied: the native helper output was unreadable; reinstall the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"; }
 rm -rf -- "$private_dir"
 
 # Fail closed once the helper gate has decided: an internal failure after that
@@ -99,7 +110,6 @@ prompt_fail_closed() {
 trap 'prompt_fail_closed "$?"' ERR
 rm -f "$input_file"
 trap - EXIT
-. "$HOOK_DIR/lib/eci-proof-state.sh"
 
 session_id=$(printf '%s' "$input" | jq -r 'if (.session_id? | type) == "string" then .session_id else "" end' 2>/dev/null || true)
 cwd=$(printf '%s' "$input" | jq -r 'if (.cwd? | type) == "string" then .cwd else "" end' 2>/dev/null || true)

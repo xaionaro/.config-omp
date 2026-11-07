@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hook scratch + error helpers.
-. "${BASH_SOURCE[0]%/*}/eci-diagnostic.sh"
+. "${BASH_SOURCE[0]%/*}/eci-diagnostic.sh" || return 1
 
 eci_init_tmp() {
   local home="${HOME:-}" requested target canonical inherited inherited_canonical
@@ -38,7 +38,13 @@ eci_init_tmp() {
 }
 
 _eci_fail_closed_constant() {
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_FAIL_CLOSED: hook %s failed after its gate decision point and denied the tool call; jq is unavailable or failed; inspect the hook log and available temporary-directory/disk state, then retry"}}\n' "$1"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] hook %s failed after its gate decision point and denied the tool call; jq is unavailable or failed; inspect the hook log and available temporary-directory/disk state, then retry"}}\n' "$1"
+}
+
+# Constant deny for a hook whose ECI library cannot load.  The marker state is
+# unknown, so it fails closed; it needs no library to print.
+_eci_lib_unavailable_constant() {
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook %s cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}\n' "$1"
 }
 
 # Up-front jq gate for PreToolUse validators.  Without jq no JSON deny can be
@@ -51,7 +57,7 @@ eci_require_jq_or_deny() {
     return 0
   fi
   if eci_marker_active_or_unknown; then
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_JQ_MISSING: hook %s denied the tool call while an active marker exists because jq is not installed; install jq and retry"}}\n' "$hook_name"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_JQ_MISSING] hook %s denied the tool call while an active marker exists because jq is not installed; install jq and retry"}}\n' "$hook_name"
   fi
   exit 0
 }
@@ -59,7 +65,7 @@ eci_require_jq_or_deny() {
 _eci_fail_closed_emit() {
   local hook_name="$1" line="$2" exit_code="$3" cmd="$4" reason
   reason="$(eci_diagnostic_reason "ECI_HOOK_FAIL_CLOSED" "PreToolUse" "hook-fail-closed" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed after its gate decision point; denying the tool call" "inspect the failing command and available temporary-directory/disk state, then retry")" ||
-    reason="ECI_HOOK_FAIL_CLOSED: hook $hook_name failed after its gate decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"
+    reason="[ECI_HOOK_FAIL_CLOSED] hook $hook_name failed after its gate decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"
   if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null; then
     _eci_fail_closed_constant "$hook_name"
   fi
@@ -77,6 +83,14 @@ _eci_fail_closed_trap() {
   if [ "$BASHPID" != "$$" ]; then
     exit "$exit_code"
   fi
+  # Without the proof-state lib the marker state is unknown: fail closed.
+  if ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
+    _eci_lib_unavailable_constant "$hook_name"
+    exit 0
+  fi
+  # Only an active (or unknown) marker turns an unexpected error into a deny;
+  # with no marker the hook exits 0 as the source does.
+  eci_marker_active_or_unknown || exit 0
   if [ -n "$_eci_fail_closed_busy" ]; then
     _eci_fail_closed_constant "$hook_name"
     exit 0
