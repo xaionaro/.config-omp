@@ -177,7 +177,7 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 ## Still failing, not yet resolved (classified)
 
 - 109 edit marker overflow (run.sh "Edit marker overflow remains session scoped", test-eci-fast-path.sh): design decision open. c214a8c scopes marker candidate capacity to the expected session (eci-proof-state.sh:137-180, 2120). The gate path is session-less and still reports overflow as active. The malformed sub-case (`session_id:123`, Edit) still denies ECI_HOOK_IDENTITY_MALFORMED; assertion not rewritten. Unverified after 360b0ad: run.sh line 2834 status not measured.
-- 156 canonical-handoff hardlink denial: 2e3c28a denies a hardlinked canonical handoff with the proof target (classifier.go:4639-4643). Unverified after 360b0ad.
+- 156 canonical-handoff hardlink denial: 2e3c28a denial change kept (denies a hardlinked canonical handoff with the proof target, classifier.go:4639-4643). The regression is attributed to the timeout probe deadline, not the denial change. Repair: 84086ca raises timeoutProbeTimeout to 5s (classifier.go:29). Evidence at 2e3c28a (OrchPort2.Port156Diag, sequential, load 43-66): base 150ms Prefix test 6/20 failing; 5s 0/20 failing. Unverified after 360b0ad.
 - 157 ledger append other cwd: 16e911d binds ledger-append to marker cwd (tools/eci-active/ledger.go). Unverified after 360b0ad.
 - 180, 181, 182 omp status depth rule: D, shell (eci-proof-state.sh:2335-2346) vs Go (hook_context.go:313-324). Pick one contract.
 - 213, 216, 217, 222, 223, 224: F+R, the routing text "Delegate repository edits" has no producer outside tests (eci-active-gate.sh:202-211). Stale expectation, not yet rewritten.
@@ -188,3 +188,8 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 - 175-187 helper-backed cases: depend on eci-hook-helper being present and the isolated copy providing it; unverified.
 - 311 security reminder: cascade of 307.
 - 201, 203, 205, 207, 210, 212: expected to pass after AGENTS.md link; unverified after b3f2c90.
+
+## Follow-up
+
+- Compound flake: TestTimeoutCompoundReplayUsesLiteralShellState, 1 failure in 44 runs per tree at 384263a and 2e3c28a. Not caused by 2e3c28a. Open.
+- Fail-open: the timeout probe miss maps to allow (Opaque, classifier.go:3360). Under load this is fail-open. Design issue; follow-up; not fixed.
