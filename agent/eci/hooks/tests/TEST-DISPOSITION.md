@@ -9,6 +9,16 @@ Run every test through `run-isolated.sh <test-file>`. It needs `XDG_RUNTIME_DIR`
 
 Measured with one `run.sh` run each (SUMMARY): symlinked-runtime runner `pass=139 fail=65`, which wrote one `wrong-cwd probe` line into the real `t00-session` log; copy runner before this revision `pass=114 fail=90`; copy runner after this revision `pass=144 fail=60`, with no write to the real `t00-session` log. The copy-only failures came from the `/home` vs `/mnt/nvme0n1/home` path split (`~/tmp` is a symlink) and from a group-writable ancestor of the temp area. Both are fixed in `run-isolated.sh`.
 
+## SUMMARY counting
+
+`run.sh` records exactly one outcome per `run_case` call: `pass` or `fail`. `pass + fail` equals the number of `run_case` calls (203). A case that runs a delegated sub-script (`bash test-*.sh`) is counted once, by that sub-script's exit status. Delegated sub-scripts keep their own counters and print `FAIL`/`PASS` lines to the same stream; `run.sh` does not count those lines. So the number of `FAIL`-prefixed lines in the log can exceed SUMMARY `fail`. This is the defined behavior: SUMMARY `fail` = failing `run_case` outcomes.
+
+Measured with `run-isolated.sh run.sh`, one run each:
+- Earlier run at HEAD: `SUMMARY pass=172 fail=31`; 42 `FAIL`-prefixed lines.
+- Baseline on this revision: `SUMMARY pass=171 fail=32 xfail=0 xpass=0 todo=0`; 43 `FAIL`-prefixed lines; 172 `PASS`-prefixed lines.
+- The 11 extra `FAIL` lines come from delegated sub-scripts: 4 from `test-lifecycle-source-authority.sh`, 7 from `test-eci-runtime-single-source.sh`. The one extra `PASS` line comes from `test-eci-marker-retirement-cli.sh`.
+- Totals differ between runs (172/31 vs 171/32). No `run.sh` counter defect was found.
+
 ## Exclusions
 
 | File | Reason |
