@@ -18,8 +18,13 @@ prompt_write_failed() {
 # Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.
 hook_deny() {
   deny_stdout_usable || prompt_write_failed
-  if ! jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason,additionalContext:$reason}}' 2>/dev/null; then
+  local json
+  if ! json="$(jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason,additionalContext:$reason}}' 2>/dev/null)"; then
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry","additionalContext":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry"}}' || prompt_write_failed
+  elif [ -z "$json" ] || ! printf '%s' "$json" | jq -e . >/dev/null 2>&1; then
+    prompt_write_failed
+  else
+    printf '%s\n' "$json" || prompt_write_failed
   fi
   exit 0
 }
