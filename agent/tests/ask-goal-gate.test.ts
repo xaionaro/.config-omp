@@ -301,6 +301,14 @@ describe("ask goal gate", () => {
     assert.ok(reason.includes("end your turn"));
   });
 
+  test("blocked ask result says ask is disabled and asks for the needed input", () => {
+    const { fire } = setup();
+    fire("goal_updated", goalUpdated(true, "active"), main());
+    const reason = blockReasonOf(fire("tool_call", askCall, main()));
+    assert.ok(reason.includes("`ask` is disabled"));
+    assert.ok(reason.includes("needed input"));
+  });
+
   test("a throwing ctx.agent in goal_updated keeps ask blocked until a clean update", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());

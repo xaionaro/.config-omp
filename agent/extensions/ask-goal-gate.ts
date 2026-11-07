@@ -20,7 +20,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 export const GOAL_BLOCK_REASON =
-  "`ask` is disabled while a goal runs unattended; no user can answer it. Work autonomously. If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you cannot progress, do not call `ask`; state the exact blocker and needed input in your final message, then end your turn. The user pauses the goal to answer.";
+  "`ask` is disabled while a goal runs unattended; no user can answer it. Work autonomously. If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you cannot progress, do not call `ask`; state the exact blocker and needed input in your final message, then end your turn.";
 
 export const GOAL_UNREADABLE_REASON = "`ask` is unavailable: goal state could not be read";
 
