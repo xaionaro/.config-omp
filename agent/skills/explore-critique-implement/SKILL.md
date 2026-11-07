@@ -61,7 +61,7 @@ Before any Worker spawn, apply the spawn rule in [Initial admission](references/
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The dispatcher fills one Routing line per unit: the Orchestrator (current Job owner) for its Job's spawns, or the publisher for an Orchestrator spawn:
+Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The dispatcher is the Orchestrator (current Job owner) for its Job's spawns and resumes, the publisher for an Orchestrator spawn or resume, and the spawning Worker for its Helpers. The dispatcher fills one Routing line per unit:
 
 - `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
 - A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
@@ -74,7 +74,7 @@ At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the p
 
 | Profile | Activities |
 | --- | --- |
-| `max` | Solution design, meaning the design-winner decision, not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
+| `max` | Solution design, meaning the design-winner selection, not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E; explorers, including Step 1 exploration. |
 
