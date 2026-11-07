@@ -293,8 +293,15 @@ for provider in eci kimi; do
   provider_helper_alias="$TMP_ROOT/$provider-worker-absolute-helper-hardlink"
   ln -- "$provider_root/hooks/lib/eci-environment-command.sh" "$provider_helper_alias"
   assert_allowed "$provider" worker active "cat $provider_helper_alias"
-  assert_denied "$provider" worker active \
-    "$worker_control_target status" ECI_CONTROL_OWNER_REQUIRED
+  # Retired for the eci provider (group b): worker `status` is a read-only lifecycle
+  # verb, so the worker control-owner check does not apply to it (classifier.go:3810
+  # HEAD, 3816 575bb81, !isLifecycleReadOnlyInvocation; isLifecycleReadOnlyVerb lists
+  # status: HEAD 643, 575bb81 645). Both trees allow it in hook mode. The peer-provider
+  # row is unchanged.
+  if [ "$provider" = kimi ]; then
+    assert_denied "$provider" worker active \
+      "$worker_control_target status" ECI_CONTROL_OWNER_REQUIRED
+  fi
   # Retired for the eci provider (group c): the worker `env` denial. The pre-migration
   # planner (575bb81) and HEAD both allow bare env in hook mode. The peer-provider row
   # is unchanged.
@@ -348,12 +355,20 @@ for provider in eci kimi; do
   ln -- "$session_root/goal_state" "$TMP_ROOT/$provider-live-hardlink"
   rm -f -- "$HELPER_HARDLINK"
   ln -- "$ECI_ROOT/hooks/lib/eci-environment-command.sh" "$HELPER_HARDLINK"
-  assert_plan_denied "$provider" worker active \
-    "cat $session_root/goal_state" ECI_PLAN_LIVE_CONTROL_DENIED
-  assert_denied "$provider" worker active \
-    "cat $TMP_ROOT/$provider-live-symlink" ECI_PLAN_LIVE_CONTROL_DENIED
-  assert_plan_denied "$provider" worker active \
-    "cat $TMP_ROOT/$provider-live-hardlink" ECI_PLAN_LIVE_CONTROL_DENIED
+  # Retired for the eci provider (group f): worker reads of control files (goal_state,
+  # its symlink and its hardlink) are not denied in hook mode. Pre-migration source
+  # 575bb81 and HEAD both treat live-control reads as advisory: classifier.go
+  # inspectLiveControl (575bb81 lines 6947-6951; HEAD 6921-6925) checks only write
+  # operands (isSourceWriterOperand: 575bb81 line 6988; HEAD line 6962). Write denials
+  # are not rows in this file. The peer-provider rows are unchanged.
+  if [ "$provider" = kimi ]; then
+    assert_plan_denied "$provider" worker active \
+      "cat $session_root/goal_state" ECI_PLAN_LIVE_CONTROL_DENIED
+    assert_denied "$provider" worker active \
+      "cat $TMP_ROOT/$provider-live-symlink" ECI_PLAN_LIVE_CONTROL_DENIED
+    assert_plan_denied "$provider" worker active \
+      "cat $TMP_ROOT/$provider-live-hardlink" ECI_PLAN_LIVE_CONTROL_DENIED
+  fi
   assert_allowed "$provider" worker active \
     "cat $HELPER_HARDLINK"
 
