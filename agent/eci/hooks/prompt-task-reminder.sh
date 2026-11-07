@@ -12,26 +12,34 @@ hook_deny() {
   fi
   exit 0
 }
+# A marker verdict may exit 0 only when the marker predicate is defined and
+# reports the marker absent.  An undefined predicate, or an active or unknown
+# marker, is a deny.
+eci_prompt_marker_verified_absent() {
+  declare -F eci_marker_active_or_unknown >/dev/null 2>&1 || return 1
+  ! eci_marker_active_or_unknown
+}
+
 # Pre-helper denies: with no active or unknown marker the prompt is not under
 # ECI control, so exit 0 as the source does; otherwise deny.
 prompt_skip_or_deny() {
-  if ! eci_marker_active_or_unknown; then
+  if eci_prompt_marker_verified_absent; then
     exit 0
   fi
   hook_deny "$1"
 }
 if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
-  declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0
+  eci_prompt_marker_verified_absent && exit 0
   hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null; then
-  declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0
+  eci_prompt_marker_verified_absent && exit 0
   hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: lib/eci-proof-state.sh failed to load; reinstall the ECI hooks and retry"
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_runtime_open_verified eci_marker_active_or_unknown eci_proof_root eci_valid_session_id eci_ensure_cwd_state_dir; do
-  declare -F "$fn" >/dev/null 2>&1 || { declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn"; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { eci_prompt_marker_verified_absent && exit 0; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn"; exit 0; }
 done
 if ! command -v jq >/dev/null 2>&1; then
   prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
@@ -109,7 +117,7 @@ prompt_fail_closed() {
   # With no active marker this prompt is not under ECI control, so exit 0 as
   # the source does.  An unknown marker scan, or a proof-state library that did
   # not load, counts as active and denies below.
-  if declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown; then
+  if eci_prompt_marker_verified_absent; then
     exit 0
   fi
   hook_deny "[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"

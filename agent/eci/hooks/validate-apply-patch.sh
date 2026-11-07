@@ -10,6 +10,11 @@ deny_write_failed() {
   printf '%s\n' "$1: could not write the deny decision to stdout; the tool call is blocked" >&2 || true
   exit 2
 }
+# bash replaces a closed stdout with /dev/null, so a decision written there is
+# lost.  That case is caught here and the tool call is blocked with a stderr message.
+if [ /proc/self/fd/1 -ef /dev/null ] 2>/dev/null; then
+  deny_write_failed validate-apply-patch
+fi
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
@@ -19,7 +24,7 @@ fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
-  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn"; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
 done
 eci_init_tmp || true
 eci_require_jq_or_deny validate-apply-patch
@@ -43,15 +48,29 @@ deny() {
     subject="tool=apply_patch,path=$(eci_diagnostic_value "${patch_paths:-<unparsed>}"),session=$(eci_diagnostic_value "${session_id:-<missing>}"),cwd=$(eci_diagnostic_value "${cwd:-<missing>}")"
     reason="$(eci_diagnostic_reason "$(eci_diagnostic_code_for_reason "$reason")" "PreToolUse" "patch-validation" "$subject" "$reason" "correct the reported patch target or route the change through the approved source/coordinator path, then retry")"
   fi
-  jq -n --arg reason "$reason" '{
+  local json
+  json="$(jq -n --arg reason "$reason" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: $reason
     }
-  }' || deny_write_failed validate-apply-patch
+  }')" || deny_write_failed validate-apply-patch
+  printf '%s\n' "$json" || deny_write_failed validate-apply-patch
   exit 0
 }
+
+# A relative ECI_PROOF_ROOT cannot be verified as a proof root, so the marker
+# state is unknown.  While the marker check reports active or unknown, the patch
+# is denied.
+case "${ECI_PROOF_ROOT:-}" in
+  ""|/*) ;;
+  *)
+    if eci_marker_active_or_unknown; then
+      deny "[ECI_PROOF_ROOT_RELATIVE] ECI_PROOF_ROOT is not an absolute path, so the proof root cannot be verified while the marker is active or unknown; the patch is denied; set ECI_PROOF_ROOT to an absolute path and retry"
+    fi
+    ;;
+esac
 
 # An apply_patch callback with no patch text cannot be checked for targets.
 # While an active marker exists it is denied; with no marker the ordinary path exits 0.
@@ -122,13 +141,9 @@ ownership_failure_deny() {
     exit "$code"
   fi
   # Unconditional deny, as source 575bb81:hooks/validate-apply-patch.sh:95-97.
-  # deny() exits 0 after writing its decision, or exits 2 if that write fails.
-  # It runs in a || list, where errexit and this ERR trap do not fire inside it,
-  # so a failure before its write returns here and one constant deny is written.
-  deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})" || {
-    _eci_fail_closed_constant validate-apply-patch || deny_write_failed validate-apply-patch
-    exit 0
-  }
+  # deny() exits 0 after writing its decision, or exits 2 if that write fails,
+  # so it never returns here.
+  deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})"
 }
 trap 'ownership_failure_deny "$?"' ERR
 # Session ownership applies to every target under a proof or context root.  An
