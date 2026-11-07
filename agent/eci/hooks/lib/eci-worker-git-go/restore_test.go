@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -54,7 +55,7 @@ func restoreRead(
 	}
 }
 
-// TestRestoreOpaqueVisibilityRecheck executes the literal owned correction before alias movement.
+// TestRestoreOpaqueVisibilityRecheck executes the advised owned correction before the fresh recheck.
 //
 // Example: a hidden consumed alias becomes protected while an independent sharing alias remains movable.
 func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
@@ -108,9 +109,18 @@ func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
 				if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
 					t.Fatal("frontier refusal changed alias")
 				}
-				// Apply the owned lookup correction directly; the advised command text is not pinned here.
-				if err := os.Chmod(hooks, 0500); err != nil {
-					t.Fatal(err)
+				// The owned branch applies only to a directory that lacks owner r-x.
+				info, err := os.Stat(hooks)
+				if err != nil || info.Mode().Perm()&0500 == 0500 {
+					t.Fatalf("owned correction precondition unmet: %v %v", info, err)
+				}
+				// Execute the advised owned correction with the operand shellLiteral emits for it.
+				if output, err := exec.Command("/bin/sh", "-c", "chmod -- u+rx "+shellLiteral(hooks)).CombinedOutput(); err != nil {
+					t.Fatalf("advised correction failed: %v %s", err, output)
+				}
+				info, err = os.Stat(hooks)
+				if err != nil || info.Mode().Perm() != 0500 {
+					t.Fatalf("advised correction left unexpected mode: %v %v", info, err)
 				}
 				_, err = restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
 				if err == nil || strings.Contains(err.Error(), "protected live") != consumed || strings.Contains(err.Error(), "mv --") == consumed {
