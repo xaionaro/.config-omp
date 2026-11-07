@@ -9,7 +9,9 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // plannerFixture is a canonical-root layout with three tiny planner modules and a bin/ for the pair.
@@ -406,4 +408,63 @@ func TestPlannerEnvPinsGOFLAGSAndInheritsModulePolicy(t *testing.T) {
 			t.Errorf("%s = %q, want unset", key, got)
 		}
 	}
+}
+
+// TestPlannerApplyBuildHelper is the child process of TestPlannerApplyInterruptedDuringBuildLeavesNoTransaction.
+// It runs plannerApply on the fixture named by the environment and records the outcome in the result file.
+func TestPlannerApplyBuildHelper(t *testing.T) {
+	root := os.Getenv("ECI_PLANNER_BUILD_HELPER_ROOT")
+	if root == "" {
+		t.Skip("runs only as the child of TestPlannerApplyInterruptedDuringBuildLeavesNoTransaction")
+	}
+	_, err := plannerApply(root, os.Getenv("ECI_PLANNER_BUILD_HELPER_GO"), runtime.GOOS, runtime.GOARCH)
+	outcome := "ok"
+	if err != nil {
+		outcome = err.Error()
+	}
+	if err := os.WriteFile(os.Getenv("ECI_PLANNER_BUILD_HELPER_RESULT"), []byte(outcome+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPlannerApplyInterruptedDuringBuildLeavesNoTransaction sends SIGTERM to a child process while it builds the
+// pair. The child must return from plannerApply, so its transaction is removed and the previous pair is kept.
+func TestPlannerApplyInterruptedDuringBuildLeavesNoTransaction(t *testing.T) {
+	fx := newPlannerFixture(t)
+	before := fx.seedPreviousPair(t)
+	result := filepath.Join(t.TempDir(), "outcome")
+
+	child := exec.Command(os.Args[0], "-test.run=^TestPlannerApplyBuildHelper$")
+	child.Env = append(os.Environ(),
+		"ECI_PLANNER_BUILD_HELPER_ROOT="+fx.root,
+		"ECI_PLANNER_BUILD_HELPER_GO="+fx.goTool,
+		"ECI_PLANNER_BUILD_HELPER_RESULT="+result,
+	)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// plannerApply creates its transaction before the first build, so the transaction marks the build phase.
+	deadline := time.Now().Add(time.Minute)
+	for len(fx.transactions(t)) == 0 {
+		if time.Now().After(deadline) {
+			child.Process.Kill()
+			child.Wait()
+			t.Fatal("the child never created its transaction")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := child.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Errorf("child did not return from plannerApply after SIGTERM: %v", err)
+	}
+	outcome, err := os.ReadFile(result)
+	if err != nil || !strings.Contains(string(outcome), "[ECI_PLANNER_INTERRUPTED]") {
+		t.Errorf("child outcome = %q, %v; want the interruption", outcome, err)
+	}
+	if left := fx.transactions(t); len(left) != 0 {
+		t.Errorf("transactions left: %v", left)
+	}
+	fx.assertPair(t, before)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -112,16 +114,24 @@ func plannerEnv(tmp, goos, goarch string) []string {
 	)
 }
 
-// plannerBuildTool builds one planner module into the transaction and checks the output's host format.
-func plannerBuildTool(root, goTool, txn, name, goos, goarch string) (string, error) {
+// plannerBuildTool builds one planner module into the transaction and checks the output's host format. The go
+// command runs in its own process group, which cancelling ctx kills, so no compiler or linker outlives the build
+// and writes into the transaction after it is removed.
+func plannerBuildTool(ctx context.Context, root, goTool, txn, name, goos, goarch string) (string, error) {
 	module := filepath.Join(root, "hooks", "lib", name+"-go")
 	out := filepath.Join(txn, "built", name)
-	cmd := exec.Command(goTool, "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags=-buildid=", "-o", out, ".")
+	cmd := exec.CommandContext(ctx, goTool, "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags=-buildid=", "-o", out, ".")
 	cmd.Dir = module
 	cmd.Env = plannerEnv(filepath.Join(txn, "tmp"), goos, goarch)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	err := cmd.Run()
+	if cmd.Process != nil {
+		plannerWaitForGroup(cmd.Process.Pid)
+	}
+	if err != nil {
 		return "", fmt.Errorf("[ECI_PLANNER_BUILD_FAILED] build of %s failed: %v; no planner state was changed", name, err)
 	}
 	if err := os.Chmod(out, 0o755); err != nil {
@@ -131,6 +141,27 @@ func plannerBuildTool(root, goTool, txn, name, goos, goarch string) (string, err
 		return "", fmt.Errorf("[ECI_PLANNER_BUILD_FAILED] incompatible host executable %s: %v; no planner state was changed", name, err)
 	}
 	return out, nil
+}
+
+// plannerWaitForGroup returns once no process is left in process group pgid, or after a bounded wait. A cancelled
+// build's compiler or linker can still run after the go command has exited.
+func plannerWaitForGroup(pgid int) {
+	for range 500 {
+		if syscall.Kill(-pgid, 0) != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// plannerInterrupted returns the publication exit for a termination signal that arrived during stage, or nil.
+func plannerInterrupted(interrupt <-chan os.Signal, stage string) error {
+	select {
+	case s := <-interrupt:
+		return exitError{code: 128 + int(s.(syscall.Signal)), msg: fmt.Sprintf("[ECI_PLANNER_INTERRUPTED] %v during %s; no planner state was changed", s, stage)}
+	default:
+		return nil
+	}
 }
 
 // Header bytes the native-binary loader (hooks/lib/eci-native-binary.sh) accepts.
@@ -251,6 +282,24 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		return "", err
 	}
 	defer lock.Close()
+	// The first termination signal cancels the builds and is handed to publication. The handler exists before the
+	// transaction does, so an interrupt at any later point reaches the cleanup below.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	interrupt := make(chan os.Signal, 1)
+	watched := make(chan struct{})
+	defer close(watched)
+	go func() {
+		select {
+		case s := <-signals:
+			interrupt <- s
+			cancel()
+		case <-watched:
+		}
+	}()
 	txn, err := os.MkdirTemp(binDir, plannerTxnPrefix)
 	if err != nil {
 		return "", err
@@ -270,8 +319,11 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 
 	leaves := make([]*plannerLeaf, 0, 2*len(plannerPairTools))
 	for _, name := range plannerPairTools {
-		built, err := plannerBuildTool(root, goTool, txn, name, goos, goarch)
+		built, err := plannerBuildTool(ctx, root, goTool, txn, name, goos, goarch)
 		if err != nil {
+			if interruption := plannerInterrupted(interrupt, "the build of "+name); interruption != nil {
+				return "", interruption
+			}
 			return "", err
 		}
 		digest, err := digestFile(built)
@@ -284,7 +336,10 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		}
 		leaves = append(leaves, &plannerLeaf{name: name, install: built}, &plannerLeaf{name: name + ".sha256", install: receipt})
 	}
-	retained, err = publishPlannerLeaves(binDir, txn, leaves)
+	if interruption := plannerInterrupted(interrupt, "the builds"); interruption != nil {
+		return "", interruption
+	}
+	retained, err = publishPlannerLeaves(binDir, txn, leaves, interrupt)
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +352,7 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 // leaf still has the state observed before publication. A failure, or a termination signal, before every
 // leaf has its staged state restores the previous leaves. A leaf that changed under the transaction is left
 // in place and reported; the transaction directory is then retained for recovery and retained is true.
-func publishPlannerLeaves(binDir, txn string, leaves []*plannerLeaf) (retained bool, err error) {
+func publishPlannerLeaves(binDir, txn string, leaves []*plannerLeaf, interrupt <-chan os.Signal) (retained bool, err error) {
 	for _, l := range leaves {
 		path := filepath.Join(binDir, l.name)
 		if l.old, err = plannerLeafState(path); err != nil {
@@ -318,13 +373,10 @@ func publishPlannerLeaves(binDir, txn string, leaves []*plannerLeaf) (retained b
 		}
 	}
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(signals)
 	failure := renamePlannerLeaves(binDir, leaves)
 	if failure == nil {
 		select {
-		case s := <-signals:
+		case s := <-interrupt:
 			failure = exitError{code: 128 + int(s.(syscall.Signal)), msg: fmt.Sprintf("[ECI_PLANNER_PUBLISH_FAILED] %v during publication; the previous planner pair is restored", s)}
 		default:
 			return false, nil
