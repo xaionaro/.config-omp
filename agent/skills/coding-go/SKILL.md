@@ -136,3 +136,17 @@ func (n *NodeWithCustomData[C, T]) RemovePushTo(
 
 - Local filesystem `replace` directives are forbidden in `go.mod` and must live in `go.work`. Every local `use` or `replace` path in `go.work` must be relative to that `go.work` file; absolute local filesystem paths are forbidden. Remote module-version replacements remain allowed.
 - In Git repos, activate `hooks/install-pre-commit-go-mod.sh` to enforce this invariant against staged `go.mod` files and to keep local overrides in `go.work`.
+
+## Build cache
+
+Use the global build cache only. Its path comes from `go env GOCACHE`.
+
+| Situation | Action |
+|---|---|
+| Caller set a non-empty `GOCACHE` | Inherit it. Never overwrite it. |
+| Code sets `GOCACHE` for a child process | Use `go env GOCACHE` run from the parent environment, before any `HOME` override. Never a temp, isolated, or project path. |
+| Deriving the cache path | Use `go env GOCACHE`. Never `os.UserCacheDir()`, `$HOME`, or a temp path. |
+| `go env GOCACHE` fails or is not an absolute path | Fail. Never fall back to a path under an isolated `HOME`. |
+| Removing cache data | Never run `go clean -cache` or delete the cache directory. Exception: a one-time removal the user explicitly approves, with a stated justification. |
+
+Example: `if os.Getenv("GOCACHE") == "" { env = append(env, "GOCACHE="+cache) }`, where `cache` comes from `go env GOCACHE`.
