@@ -10,33 +10,46 @@ trap 'rm -rf -- "$TEST_ROOT"' EXIT HUP INT TERM
 
 TEST_HOME="$TEST_ROOT/home"
 ECI_HOME="$TEST_HOME/.omp/agent/eci"
-PLANNER_DIR="$ECI_HOME/hooks/lib/eci-command-plan-go"
-PLANNER_BINARY="$PLANNER_DIR/eci-command-plan"
-PLANNER_RECEIPT="$PLANNER_DIR/.eci-command-plan.provenance"
+BIN="$ECI_HOME/bin"
+MODULE_PLANNER="$ECI_HOME/hooks/lib/eci-command-plan-go/eci-command-plan"
 OUTPUT="$TEST_ROOT/maintain-planner-output"
 
-# There deliberately is no $TEST_HOME/.kimi-code. The local ECI planner is
-# the maintenance operation; an optional peer cannot prevent its repair.
+# There deliberately is no Kimi home under TEST_HOME. The local planner pair in
+# bin/ is the maintenance operation; an optional peer cannot prevent its repair.
 mkdir -p -- "$TEST_HOME/tmp" "$ECI_HOME"
-cp -a -- "$ROOT/bin" "$ECI_HOME/"
-cp -a -- "$ROOT/hooks" "$ECI_HOME/"
+cp -a -- "$ROOT/bin" "$ROOT/hooks" "$ROOT/tools" "$ECI_HOME/"
 cp -- "$ROOT/hooks.json" "$ECI_HOME/hooks.json"
+chmod -R go-w -- "$TEST_HOME"
 
-printf '%s\n' 'stale local planner' >"$PLANNER_BINARY"
-chmod 600 -- "$PLANNER_BINARY"
-rm -f -- "$PLANNER_RECEIPT"
+# A stale pair the native gate refuses: not an executable, receipts that name no digest.
+for name in eci-command-plan eci-safe-import eci-hook-helper; do
+  printf 'stale %s\n' "$name" >"$BIN/$name"
+  chmod 600 -- "$BIN/$name"
+  printf '%064d  %s\n' 0 "$name" >"$BIN/$name.sha256"
+done
+printf '%s\n' 'stale module planner' >"$MODULE_PLANNER"
 
-if ! HOME="$TEST_HOME" "$ECI_HOME/bin/eci-active" maintain-planner >"$OUTPUT" 2>&1; then
-  printf '%s\n' 'maintain-planner should repair the local ECI planner when Kimi is unavailable:' >&2
+if ! HOME="$TEST_HOME" KIMI_CODE_HOME="$TEST_HOME/.kimi-code" \
+  "$BIN/eci-active" maintain-planner >"$OUTPUT" 2>&1; then
+  printf '%s\n' 'maintain-planner should repair the local ECI planner pair when Kimi is unavailable:' >&2
   cat -- "$OUTPUT" >&2
   exit 1
 fi
 
-[ -f "$PLANNER_BINARY" ] && [ ! -L "$PLANNER_BINARY" ]
-[ "$(stat -c '%a' -- "$PLANNER_BINARY")" = 755 ]
-[ "$(head -c 4 -- "$PLANNER_BINARY")" = $'\x7fELF' ]
-[ -f "$PLANNER_RECEIPT" ] && [ ! -L "$PLANNER_RECEIPT" ]
-grep -Fq 'PLANNER_LOCAL_SYNCED' "$OUTPUT"
-grep -Fq 'ECI planner peer synchronization advisory:' "$OUTPUT"
+for name in eci-command-plan eci-safe-import eci-hook-helper; do
+  [ -f "$BIN/$name" ] && [ ! -L "$BIN/$name" ]
+  [ "$(stat -c '%a' -- "$BIN/$name")" = 755 ]
+  [ "$(cat -- "$BIN/$name.sha256")" = "$(sha256sum -- "$BIN/$name" | cut -d ' ' -f 1)  $name" ]
+done
+cmp -- "$BIN/eci-command-plan" "$MODULE_PLANNER"
+(
+  HOME="$TEST_HOME"
+  source "$ECI_HOME/hooks/lib/eci-native-binary.sh"
+  eci_runtime_open_verified eci-command-plan || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
+  eci_runtime_close_verified
+)
+[ -z "$(find "$BIN" -maxdepth 1 -name '.planner-importer.txn.*')" ]
+grep -Fq "PLANNER_LOCAL_SYNCED $BIN" "$OUTPUT"
+grep -Fq 'ECI pair complete: local=true peer=false requested=eci' "$OUTPUT"
 
 printf '%s\n' 'eci-maintain-planner local-first: PASS'
