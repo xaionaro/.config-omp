@@ -10,7 +10,7 @@ Use this module as the ECI Supervisor or the owning outer-workflow Coordinator/L
 - Keep a repair in its current lane when the record shows it is necessary to meet or prove the requested outcome. Do not relabel that repair as a substitute user requirement.
 - Record a discovered concern whose remedy serves an unadmitted separate outcome as an observation or follow-up suggestion after current ECI. It does not create current lane, assignment, code change, review, deadline, forecast, or proof work.
 - Keep prompts and handoffs as readable coordination records. They may support review, but no proof-directory artifact, hash, receipt, ledger prefix, or serialized field list is a prerequisite for normal spawn, followup, exploration, implementation, or verification.
-- Spawning a subagent creates a role; `write agent://<id>` messages a live agent and starts a new turn when the reusable role is idle; `interrupt_agent` cancels exact active work only. Never shell-launch agents or close terminal agents.
+- Spawning a subagent creates a role; `write agent://<id>` messages a live agent and starts a new turn when the reusable role is idle; `write proc://<id>/kill` cancels exact active work only. Never shell-launch agents or close terminal agents.
 - Name reusable ordinary producers by stable semantic role. Every blind critic and every special role uses a fresh `task` spawn with a unique `name`. A `write agent://<id>` message never upgrades an ordinary role to special.
 - Keep at most one outstanding `wait` per undelivered expected completion. A timeout is non-terminal: do not poll, retry, or infer a crash. Use `read proc://` only for roster maintenance or documented crash recovery.
 - Include scoped verification and recovery duties in every subagent prompt.
