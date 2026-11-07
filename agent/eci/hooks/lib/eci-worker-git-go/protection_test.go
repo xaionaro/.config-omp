@@ -106,6 +106,43 @@ func TestProofRootIdentitiesProtectPhysicalWrites(t *testing.T) {
 	}
 }
 
+// TestDefaultKimiRootIsLiveProtected protects $HOME/.kimi-code when KIMI_CODE_HOME is unset.
+//
+// Example: a live hook under the default Kimi root stays in the protected set.
+func TestDefaultKimiRootIsLiveProtected(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_CONFIGURED_HOME", "")
+	t.Setenv("ECI_HOME", "")
+	t.Setenv("ECI_PROOF_ROOT", "")
+	t.Setenv("KIMI_PROOF_ROOT", "")
+	if err := os.Unsetenv("KIMI_CODE_HOME"); err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(home, ".kimi-code", "hooks", "validate-bash.sh")
+	if err := os.MkdirAll(filepath.Dir(hook), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("live\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	protection, err := liveProtectedPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(hook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, path := range protection.Paths {
+		found = found || path == hook || path == resolved
+	}
+	if !found {
+		t.Fatalf("default kimi hook %q not protected: %v", hook, protection.Paths)
+	}
+}
+
 // TestRestoreAliasHatchAndSelectedSymlinkLeaves preserves owned explicit leaf restoration.
 //
 // Example: moving an unnamed ancestor aside allows exact restoration without changing its referent.

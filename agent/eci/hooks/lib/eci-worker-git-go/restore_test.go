@@ -607,7 +607,7 @@ func TestRestoreAncestorDiagnosisAndRecovery(t *testing.T) {
 //
 // Example: a symlink-spelled configured provider root must not be offered as a movable ancestor.
 func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
-	for _, kind := range []string{"proof-root-alias", "kimi-proof-root-alias", "provider-root-alias", "configured-provider-root-alias", "kimi-provider-root-alias", "hook-parent-alias"} {
+	for _, kind := range []string{"proof-root-alias", "kimi-proof-root-alias", "provider-root-alias", "configured-provider-root-alias", "kimi-provider-root-alias", "default-kimi-root-alias", "hook-parent-alias"} {
 		// Each configured control alias is owned by a private provider fixture.
 		t.Run(kind, func(t *testing.T) {
 			root := fixtureRepository(t)
@@ -649,6 +649,27 @@ func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
 					variable = "KIMI_CODE_HOME"
 				}
 				t.Setenv(variable, filepath.Join(root, alias))
+			case "default-kimi-root-alias":
+				path, alias, target = ".kimi-code/hooks/validate-bash.sh", ".kimi-code", "physical-kimi"
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, path), []byte("live\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				fixtureGit(t, root, "add", "--", path)
+				fixtureGit(t, root, "commit", "-qm", "default kimi root alias control")
+				if err := os.Rename(filepath.Join(root, alias), filepath.Join(root, target)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, filepath.Join(root, alias)); err != nil {
+					t.Fatal(err)
+				}
+				// With KIMI_CODE_HOME unset, the default Kimi root is $HOME/.kimi-code.
+				t.Setenv("HOME", root)
+				if err := os.Unsetenv("KIMI_CODE_HOME"); err != nil {
+					t.Fatal(err)
+				}
 			case "hook-parent-alias":
 				path, alias, target = "hooks/validate-bash.sh", "hooks", "physical-hooks"
 				if err := os.Rename(filepath.Join(root, alias), filepath.Join(root, target)); err != nil {
