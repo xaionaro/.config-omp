@@ -379,7 +379,7 @@ func (r Repository) checkRestoreAncestors(
 		if len(protection.Frontiers) != 0 {
 			frontier := protection.Frontiers[0]
 			if frontier.OwnedVisibility {
-				return fmt.Errorf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; restore exact owned lookup visibility (chmod u+rx -- %s), then rerun this exact restore; use an owned move route only if the fresh check offers it; index-only restore remains available", name, ancestor, frontier.Hook, frontier.Path, shellLiteral(frontier.Directory))
+				return fmt.Errorf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; restore exact owned lookup visibility (chmod -- u+rx %s), then rerun this exact restore; use an owned move route only if the fresh check offers it; index-only restore remains available", name, ancestor, frontier.Hook, frontier.Path, shellLiteral(frontier.Directory))
 			}
 			return fmt.Errorf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; resolve that exact lookup frontier in place, then rerun this exact restore before moving the alias; index-only restore remains available", name, ancestor, frontier.Hook, frontier.Path)
 		}

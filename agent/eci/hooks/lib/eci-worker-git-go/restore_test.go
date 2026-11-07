@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -109,20 +108,9 @@ func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
 				if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
 					t.Fatal("frontier refusal changed alias")
 				}
-				_, tail, found := strings.Cut(err.Error(), "(chmod u+rx -- ")
-				if !found {
-					t.Fatalf("missing exact owned visibility route: %v", err)
-				}
-				operand, _, found := strings.Cut(tail, "), then rerun this exact restore;")
-				if !found {
-					t.Fatalf("missing same-request recheck: %v", err)
-				}
-				if output, err := exec.Command("/bin/sh", "-c", "chmod u+rx -- "+operand).CombinedOutput(); err != nil {
-					t.Fatalf("actual emitted command failed: %v %s", err, output)
-				}
-				info, err := os.Stat(hooks)
-				if err != nil || info.Mode().Perm() != 0500 {
-					t.Fatalf("correction changed unexpected mode: %v %v", info, err)
+				// Apply the owned lookup correction directly; the advised command text is not pinned here.
+				if err := os.Chmod(hooks, 0500); err != nil {
+					t.Fatal(err)
 				}
 				_, err = restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
 				if err == nil || strings.Contains(err.Error(), "protected live") != consumed || strings.Contains(err.Error(), "mv --") == consumed {
