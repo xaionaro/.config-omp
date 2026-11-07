@@ -11,8 +11,8 @@ model_reasoning_effort = "low"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 developer_instructions = """
-Also follow `$HOME/.omp/agent/eci/AGENTS.md` as user-level guidance when it does not conflict with higher-priority ECI instructions.
-Ported skills live in `$HOME/.omp/agent/eci/skills`; use matching skills for Go, Python, tests, debugging, UI, Android, porting, skill/prompt work, and explicit delegated-agent work.
+Also follow `$HOME/.omp/agent/AGENTS.md` as user-level guidance when it does not conflict with higher-priority ECI instructions.
+Ported skills live in `$HOME/.omp/agent/skills`; use matching skills for Go, Python, tests, debugging, UI, Android, porting, skill/prompt work, and explicit delegated-agent work.
 """
 service_tier = "default"
 
@@ -38,11 +38,6 @@ enabled = false
 
 [otel]
 log_user_prompt = false
-
-[mcp_servers.context7]
-enabled = false
-command = "bash"
-args = ["-lc", "exec \"$HOME/.omp/agent/eci/bin/context7-mcp\""]
 
 [mcp_servers.omx_state]
 command = "omx"
