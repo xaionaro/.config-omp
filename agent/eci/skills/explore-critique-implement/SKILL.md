@@ -59,14 +59,13 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 For a new root package, record the Job and publish its Orchestrator as described in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain), then spawn Workers.
 
-The trigger table in `~/.omp/agent/eci-binding-contract.md` (lines 213-226) is the single authority for skill routing. Before every spawn or resume, including read-only explorer briefs and follow-up briefs to a reused agent, match the task against that table and read each matched skill.
+Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Every brief includes:
+Match the task against the trigger table in `~/.omp/agent/eci-binding-contract.md#eci-supervisor-repository-edit-routing`, the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
 
-- One Routing line per trigger row, every time: `match: <skill>` (naming the triggering files or task kind) or `no match: <reason>` (citing what it was judged against).
-- `Skills:` lists exactly the `match:` entries from the Routing lines, or `none, <reason>` when there are none. Derive it from the Routing lines; do not write it independently.
-
-The Supervisor fills the Routing lines before any spawn or resume. Treat independent review of them as advisory.
+- `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
+- A skill that the role's module (Module routing) restricts to a predicate the task does not meet is `no match: <module predicate not met>`. Example: `debugging-discipline` for an explorer matches only for assigned bug investigation.
+- The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The Supervisor derives it from the Routing lines.
 
 ## Model selection
 
