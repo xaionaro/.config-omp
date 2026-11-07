@@ -23,6 +23,11 @@ umask 077
 account_home="$(realpath -e -- "${HOME:?HOME must be set}")"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 runtime_root="$(cd "$here/../.." && pwd -P)"
+# The source repository that owns runtime_root. Tests that compare against the
+# source HEAD read it from ECI_SOURCE_REPO; a runtime outside a repository leaves it unset.
+if source_repo="$(git -C "$runtime_root" rev-parse --show-toplevel 2>/dev/null)"; then
+  export ECI_SOURCE_REPO="$source_repo"
+fi
 test_name="${1:?usage: run-isolated.sh <test-file-in-this-dir> [args...]}"
 shift
 
