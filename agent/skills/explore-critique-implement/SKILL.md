@@ -74,7 +74,7 @@ At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the p
 
 | Profile | Activities |
 | --- | --- |
-| `max` | Solution design, meaning the design-winner decision (Step 2 / design selection), not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
+| `max` | Solution design, meaning the design-winner decision, not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E; explorers, including Step 1 exploration. |
 
