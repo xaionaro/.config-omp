@@ -287,6 +287,8 @@ type Provider string
 const (
 	// ProviderOmp identifies the omp adapter.
 	ProviderOmp Provider = "omp"
+	// ProviderKimi identifies the Kimi adapter.
+	ProviderKimi Provider = "kimi"
 )
 
 // Role identifies the owner of a finalizer request.
@@ -415,7 +417,7 @@ func parseMode(value string) (Mode, bool) {
 // Example: parseProvider("omp") returns ProviderOmp and true.
 func parseProvider(value string) (Provider, bool) {
 	switch Provider(value) {
-	case ProviderOmp:
+	case ProviderOmp, ProviderKimi:
 		return Provider(value), true
 	default:
 		return "", false

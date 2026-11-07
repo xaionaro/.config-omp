@@ -24,7 +24,7 @@ mkdir -p -- "$TEST_HOME/tmp" "$ECI_HOME" "$KIMI_HOME/bin" "$KIMI_HOME/hooks/lib"
 # copies of the shared hook/bin surface.
 cp -a -- "$ROOT/bin" "$ECI_HOME/bin"
 cp -a -- "$ROOT/hooks" "$ECI_HOME/hooks"
-cp -a -- "$ROOT/AGENTS.md" "$ROOT/config.toml" "$ROOT/hooks.json" "$ECI_HOME/"
+cp -a -- "$ROOT/config.toml" "$ROOT/hooks.json" "$ECI_HOME/"
 
 printf '%s\n' 'provider = "kimi"' 'model = "preserve-this-kimi-config"' >"$KIMI_HOME/config.toml"
 cp -- "$KIMI_HOME/config.toml" "$TEST_ROOT/kimi-config.before"
@@ -46,10 +46,6 @@ planner_target="$KIMI_HOME/$planner_binary_relative"
   printf 'peer-sync test: source planner binary is missing or unsafe\n' >&2
   exit 1
 }
-[ -f "$ECI_HOME/$planner_receipt_relative" ] && [ ! -L "$ECI_HOME/$planner_receipt_relative" ] || {
-  printf 'peer-sync test: source planner provenance receipt is missing or unsafe\n' >&2
-  exit 1
-}
 mkdir -p -- "${planner_target%/*}"
 ln -- "$planner_source" "$planner_target"
 
@@ -61,6 +57,7 @@ shared_runtime_paths() {
       ! -path 'hooks/lib/eci-command-plan-go/eci-command-plan' \
       ! -path 'hooks/lib/eci-command-plan-go/.eci-command-plan.provenance' \
       ! -path 'hooks/lib/eci-command-plan-go/.eci-command-plan.publish.lock' \
+      ! -path 'bin/.planner-importer.publish.lock' \
       ! -path '*/__pycache__/*' \
       ! -name '*.pyc' ! -name '*.pyo' ! -name '*.go' ! -name '*.bak*' \
       -print | LC_ALL=C sort

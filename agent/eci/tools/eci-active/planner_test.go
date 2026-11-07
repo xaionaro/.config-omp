@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -467,4 +469,143 @@ func TestPlannerApplyInterruptedDuringBuildLeavesNoTransaction(t *testing.T) {
 		t.Errorf("transactions left: %v", left)
 	}
 	fx.assertPair(t, before)
+}
+
+// plannerStartChild starts the child that runs plannerApply on fx, using the named helper test and the extra
+// environment, and waits until the child's transaction exists, which means its build phase has begun.
+func plannerStartChild(t *testing.T, fx plannerFixture, helper, result string, env ...string) *exec.Cmd {
+	t.Helper()
+	child := exec.Command(os.Args[0], "-test.run=^"+helper+"$")
+	child.Env = append(append(os.Environ(),
+		"ECI_PLANNER_BUILD_HELPER_ROOT="+fx.root,
+		"ECI_PLANNER_BUILD_HELPER_GO="+fx.goTool,
+		"ECI_PLANNER_BUILD_HELPER_RESULT="+result,
+	), env...)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Minute)
+	for len(fx.transactions(t)) == 0 {
+		if time.Now().After(deadline) {
+			child.Process.Kill()
+			child.Wait()
+			t.Fatal("the child never created its transaction")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// go creates its work directory under the transaction's tmp before it starts compiling. Once that directory
+	// exists, a signal reaches a compiler that is still running rather than go's startup.
+	txn := fx.transactions(t)[0]
+	for {
+		if work, _ := filepath.Glob(filepath.Join(txn, "tmp", "go-build*", "b*")); len(work) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			child.Process.Kill()
+			child.Wait()
+			t.Fatal("the child never started compiling")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	return child
+}
+
+// plannerWaitChild waits for the child to exit and fails the test if it takes longer than limit.
+func plannerWaitChild(t *testing.T, child *exec.Cmd, limit time.Duration) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- child.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(limit):
+		child.Process.Kill()
+		<-done
+		t.Fatalf("the child did not return within %v after its signal", limit)
+		return nil
+	}
+}
+
+// TestPlannerApplyIgnoredHangupHelper is the child of TestPlannerApplyIgnoredHangupDoesNotAbort. It starts with
+// SIGHUP ignored, as under nohup, and runs plannerApply.
+func TestPlannerApplyIgnoredHangupHelper(t *testing.T) {
+	root := os.Getenv("ECI_PLANNER_BUILD_HELPER_ROOT")
+	if root == "" {
+		t.Skip("runs only as the child of TestPlannerApplyIgnoredHangupDoesNotAbort")
+	}
+	signal.Ignore(syscall.SIGHUP)
+	_, err := plannerApply(root, os.Getenv("ECI_PLANNER_BUILD_HELPER_GO"), runtime.GOOS, runtime.GOARCH)
+	outcome := "ok"
+	if err != nil {
+		outcome = err.Error()
+	}
+	if err := os.WriteFile(os.Getenv("ECI_PLANNER_BUILD_HELPER_RESULT"), []byte(outcome+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// plannerSlowSource returns a main package large enough that compiling it takes seconds, so a signal sent when
+// the build starts reaches a compiler that is still running.
+func plannerSlowSource(functions int) string {
+	var b strings.Builder
+	b.WriteString("package main\n\n")
+	for i := range functions {
+		fmt.Fprintf(&b, "func f%d(x int) int { return x*%d + %d }\n", i, i+1, i)
+	}
+	b.WriteString("\nfunc main() {\n\tx := 0\n")
+	for i := range functions {
+		fmt.Fprintf(&b, "\tx = f%d(x)\n", i)
+	}
+	b.WriteString("\t_ = x\n}\n")
+	return b.String()
+}
+
+// TestPlannerApplyInterruptCancelsSlowBuild interrupts a build that is still compiling. The build must be cancelled
+// and its process group killed, so the child returns within the deadline with the build-phase message.
+func TestPlannerApplyInterruptCancelsSlowBuild(t *testing.T) {
+	fx := newPlannerFixture(t)
+	before := fx.seedPreviousPair(t)
+	fx.writeModule(t, "eci-command-plan", plannerSlowSource(40000))
+	result := filepath.Join(t.TempDir(), "outcome")
+	child := plannerStartChild(t, fx, "TestPlannerApplyBuildHelper", result)
+	if err := child.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := plannerWaitChild(t, child, 2*time.Second); err != nil {
+		t.Errorf("child exit after SIGTERM: %v", err)
+	}
+	outcome, err := os.ReadFile(result)
+	if err != nil || !strings.Contains(string(outcome), "during the build of ") {
+		t.Errorf("child outcome = %q, %v; want an interruption during the build of a module", outcome, err)
+	}
+	if left := fx.transactions(t); len(left) != 0 {
+		t.Errorf("transactions left: %v", left)
+	}
+	fx.assertPair(t, before)
+}
+
+// TestPlannerApplyIgnoredHangupDoesNotAbort runs the build with SIGHUP ignored, as under nohup. A SIGHUP during the
+// build must not abort it: the run completes and publishes the pair.
+func TestPlannerApplyIgnoredHangupDoesNotAbort(t *testing.T) {
+	fx := newPlannerFixture(t)
+	before := fx.seedPreviousPair(t)
+	result := filepath.Join(t.TempDir(), "outcome")
+	child := plannerStartChild(t, fx, "TestPlannerApplyIgnoredHangupHelper", result)
+	if err := child.Process.Signal(syscall.SIGHUP); err != nil {
+		t.Fatal(err)
+	}
+	if err := plannerWaitChild(t, child, time.Minute); err != nil {
+		t.Errorf("child exit after SIGHUP: %v", err)
+	}
+	outcome, err := os.ReadFile(result)
+	if err != nil || strings.TrimSpace(string(outcome)) != "ok" {
+		t.Errorf("child outcome = %q, %v; want the build to complete", outcome, err)
+	}
+	if fx.snapshot(t)["eci-command-plan"] == before["eci-command-plan"] {
+		t.Errorf("the pair was not published after an ignored SIGHUP")
+	}
+	if left := fx.transactions(t); len(left) != 0 {
+		t.Errorf("transactions left: %v", left)
+	}
 }

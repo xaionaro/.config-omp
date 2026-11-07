@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,8 +13,8 @@ import (
 
 // Runtime synchronization ports the local publication of the pre-migration source's eci_runtime_sync_run
 // (hooks/lib/eci-runtime-sync.sh at 575bb81). The canonical source is the running omp ECI home. Its managed
-// surface is the hooks/ tree plus the bin/ entries the pre-migration source publishes. Its peer-apply step accepts only the
-// canonical pre-migration home as its source, so it is reported as an advisory rather than copied.
+// surface is the hooks/ tree plus the bin/ entries the pre-migration source publishes. After the local publish,
+// the source's own bin/eci-runtime-sync runs peer-apply against the Kimi peer home; the peer is advisory on failure.
 const (
 	runtimeSyncProvider    = "eci"
 	runtimeSyncHomeSuffix  = "/.omp/agent/eci"
@@ -42,7 +43,8 @@ func runtimeSyncFail(code, format string, args ...any) error {
 	return exitError{code: 1, msg: fmt.Sprintf("[%s] ECI runtime synchronization denied: %s", code, fmt.Sprintf(format, args...))}
 }
 
-// syncRuntime publishes the canonical ECI runtime to every resolved target home and refreshes the source receipt.
+// syncRuntime publishes the canonical ECI runtime to every resolved target home, refreshes the source receipt, and
+// applies the runtime to the Kimi peer home.
 func syncRuntime(args []string) error {
 	if len(args) != 1 {
 		return usageError()
@@ -82,8 +84,12 @@ func syncRuntime(args []string) error {
 	publishRuntimeSourceReceipt(source, manifest)
 	fmt.Fprintf(os.Stdout, "ECI runtime synchronization complete: provider=%s source=%s targets=%d staging=cleaned\n",
 		runtimeSyncProvider, source, len(targets))
-	fmt.Fprintf(os.Stderr, "ECI runtime peer synchronization advisory: local runtime synchronization succeeded; the Kimi peer runtime was not synchronized.\n")
-	fmt.Fprintf(os.Stderr, "[ECI_RUNTIME_SYNC_PROVIDER] peer synchronization skipped: no peer is configured; sync-runtime does not run peer apply in omp: %s\n", source)
+	peer := exec.Command(filepath.Join(source, "bin", "eci-runtime-sync"), "peer-apply", "--target", kimiHome())
+	peer.Stdout = os.Stderr
+	peer.Stderr = os.Stderr
+	if err := peer.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "ECI runtime peer synchronization advisory: local runtime synchronization succeeded; the Kimi peer runtime was not synchronized: %v\n", err)
+	}
 	return nil
 }
 

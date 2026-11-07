@@ -21,7 +21,7 @@ Usage: owned-command [guard flags] -- command args...
 Builds ECI tools/owned-command automatically and forwards arguments/status.
 OWNED_COMMAND_SOURCE: Go module directory override (default ~/.omp/agent/eci/tools/owned-command).
 OWNED_COMMAND_CACHE: generated executable cache (default ${XDG_CACHE_HOME:-$HOME/.cache}/eci/owned-command).
-Linux only. Source changes rebuild before the next invocation. Requires Go, the file-lock and
+Linux (cgroup v2 custody) and macOS (process-group backend with a narrower guarantee; see the source README.md). Source changes rebuild before the next invocation. Requires Go, the file-lock and
 build helpers in ~/.omp/agent/eci/hooks/lib, and sha256sum or shasum.
 Cache versions belong to this wrapper; remove old versions only after their callers exit.
 --resolve-executable prepares without executing and prints one absolute cache path.
@@ -31,10 +31,14 @@ Guard flags and receipt semantics: owned-command -help and the source README.md.
 EOF
   exit 0
 fi
-[ "$(uname -s)" = Linux ] || {
-  printf 'owned-command: Linux-only (cgroup v2 and pidfd custody); %s is not supported\n' "$(uname -s)" >&2
-  exit 1
-}
+kernel=$(uname -s)
+case $kernel in
+  Linux | Darwin) ;;
+  *)
+    printf 'owned-command: supported on Linux and macOS only; %s is not supported\n' "$kernel" >&2
+    exit 1
+    ;;
+esac
 # The libraries come from the canonical ECI tree only; a caller-relative path is not trusted.
 case ${HOME:-} in
   /*) ;;

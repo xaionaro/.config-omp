@@ -101,7 +101,7 @@ The `<profile level>` is the profile's `reasoning_effort` field.
 
 ## Module routing
 
-For bounded Linux host process families needing deadline/interruption cleanup or exact PID/birth cancellation, use [owned-command](../owned-command/SKILL.md); keep ordinary foreground inspection such as `rg --files` direct. owned-command is Linux-only (cgroup v2 and pidfd custody); on macOS it refuses with an explicit message.
+For bounded host process families needing deadline/interruption cleanup or exact PID/birth cancellation, use [owned-command](../owned-command/SKILL.md); keep ordinary foreground inspection such as `rg --files` direct. owned-command has a Linux backend (cgroup v2 and pidfd custody; exact PID/birth cancellation) and a macOS darwin-pgroup backend (deadline and interrupt cleanup of the command's process group only: no subreaper, so a descendant that calls setsid or setpgid escapes; no PID cancellation).
 
 Supervisor routes begin with [coordinator runtime](../references/workflow-runtime/coordinator-runtime.md). Use [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for governed writing/admission, [review policy](../references/workflow-runtime/review-policy.md) only for review/impact routing, [pause-all-work](../references/workflow-runtime/pause-all-work.md) only for its exact direct-user predicate, [stop recovery](../references/workflow-runtime/stop-recovery.md) only for recognized Stop diagnostics, and [policy pressure tests](../references/workflow-runtime/policy-pressure-tests.md) only for workflow-policy changes.
 

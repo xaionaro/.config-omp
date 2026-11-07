@@ -70,7 +70,7 @@ func Run(input io.Reader, output io.Writer) int {
 }
 
 func validRequest(request Request) bool {
-	validProvider := request.Provider == ProviderOmp
+	validProvider := request.Provider == ProviderOmp || request.Provider == ProviderKimi
 	validRole := request.Role == RoleCoordinator || request.Role == RoleWorker
 	validMarker := request.Marker == MarkerActive || request.Marker == MarkerInactive
 	if !validProvider || !validRole || !validMarker || request.CWD == "" {

@@ -164,6 +164,23 @@ func plannerInterrupted(interrupt <-chan os.Signal, stage string) error {
 	}
 }
 
+// plannerNotifySignals registers the termination signals that the process does not ignore when it starts. Calling
+// signal.Notify for an ignored signal would un-ignore it, so a process started under nohup would be aborted by SIGHUP.
+// It reports whether any signal was registered.
+func plannerNotifySignals(c chan<- os.Signal) bool {
+	var watched []os.Signal
+	for _, s := range []os.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM} {
+		if !signal.Ignored(s) {
+			watched = append(watched, s)
+		}
+	}
+	if len(watched) == 0 {
+		return false
+	}
+	signal.Notify(c, watched...)
+	return true
+}
+
 // Header bytes the native-binary loader (hooks/lib/eci-native-binary.sh) accepts.
 var (
 	elfMagic     = []byte{0x7f, 'E', 'L', 'F'}
@@ -285,7 +302,7 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 	// The first termination signal cancels the builds and is handed to publication. The handler exists before the
 	// transaction does, so an interrupt at any later point reaches the cleanup below.
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	plannerNotifySignals(signals)
 	defer signal.Stop(signals)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

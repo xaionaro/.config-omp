@@ -55,6 +55,8 @@ type Provider string
 const (
 	// ProviderOmp selects the omp adapter contract.
 	ProviderOmp Provider = "omp"
+	// ProviderKimi selects the Kimi adapter contract.
+	ProviderKimi Provider = "kimi"
 )
 
 // Role identifies whether the callback belongs to the coordinator or a worker.
@@ -825,11 +827,15 @@ func eciLifecycleDispatcherDiagnostic(command string, word lifecycleLexicalWord)
 	}
 }
 
-// ledgerAppendRemediation returns copy-paste-safe ledger guidance.
+// ledgerAppendRemediation returns copy-paste-safe ledger guidance for a provider.
 //
-// Example: the remediation names the native eci-active ledger-append command, not a direct ledger edit.
-func ledgerAppendRemediation() string {
-	return "append the entry with \"$HOME/.omp/agent/eci/bin/eci-active\" ledger-append --json <event-object>; do not edit the ledger directly"
+// Example: an omp denial names the literal current-home lifecycle executable.
+func ledgerAppendRemediation(provider Provider) string {
+	if provider == ProviderOmp {
+		return "append the entry with \"$HOME/.omp/agent/eci/bin/eci-active\" ledger-append --json <event-object>; do not edit the ledger directly"
+	}
+	// Kimi does not share omp's literal current-home lifecycle grammar.
+	return "use eci-active ledger-append --json"
 }
 
 // reviewedScriptTraceTopology recognizes exactly the coordinator diagnostic
@@ -1358,7 +1364,7 @@ func rejectedSegment(current segment, code DiagnosticCode) string {
 }
 
 func canonicalLifecycleTildePrefix(command string, offset int) bool {
-	for _, alias := range []string{"~/.omp/agent/eci/bin/eci-active"} {
+	for _, alias := range []string{"~/.omp/agent/eci/bin/eci-active", "~/.kimi-code/bin/eci-active"} {
 		if !strings.HasPrefix(command[offset:], alias) {
 			continue
 		}
@@ -4079,14 +4085,16 @@ func isExactGateModeArguments(argv []token) bool {
 // gateModeProviderPath returns the exact canonical command-gate path selected
 // by the provider whose callback is being classified.
 //
-// Example: ProviderOmp selects the omp command-gate path.
+// Example: ProviderOmp selects the omp path and never its Kimi peer.
 func gateModeProviderPath(provider Provider, identity gateModeIdentity) (string, bool) {
-	if len(identity.canonicalPaths) != 1 {
+	if len(identity.canonicalPaths) != 2 {
 		return "", false
 	}
 	switch provider {
 	case ProviderOmp:
 		return identity.canonicalPaths[0], true
+	case ProviderKimi:
+		return identity.canonicalPaths[1], true
 	default:
 		return "", false
 	}
@@ -4271,28 +4279,48 @@ func originalTokenIndex(original []token, target token) int {
 
 func gateModeIdentityForEnvironment() gateModeIdentity {
 	home := os.Getenv("HOME")
-	root := filepath.Join(home, ".omp", "agent", "eci")
-	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
-		return gateModeIdentity{failure: "canonical-path-invalid"}
+	roots := []string{
+		filepath.Join(home, ".omp", "agent", "eci"),
+		firstNonEmpty(os.Getenv("KIMI_CODE_HOME"), filepath.Join(home, ".kimi-code")),
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil || filepath.Clean(resolvedRoot) != root {
-		return gateModeIdentity{failure: "canonical-path-invalid"}
+	paths := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
+			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil || filepath.Clean(resolvedRoot) != root {
+			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
+		}
+		paths = append(paths, filepath.Join(root, "bin", "eci-command-gate-mode"))
 	}
-	path := filepath.Join(root, "bin", "eci-command-gate-mode")
-	info, err := os.Lstat(path)
+	if len(paths) != 2 {
+		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
+	}
+	infos := make([]os.FileInfo, 0, len(paths))
+	for _, path := range paths {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-missing"}
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() ||
+			!fileOwnedByCurrentUser(info) || info.Mode().Perm()&0111 == 0 {
+			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-metadata-invalid"}
+		}
+		infos = append(infos, info)
+	}
+	if !os.SameFile(infos[0], infos[1]) {
+		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-hardlink-split"}
+	}
+	digest, err := digestRegularFile(paths[0], infos[0])
 	if err != nil {
-		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-path-missing"}
+		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-read-race"}
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() ||
-		!fileOwnedByCurrentUser(info) || info.Mode().Perm()&0111 == 0 {
-		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-metadata-invalid"}
+	peerDigest, err := digestRegularFile(paths[1], infos[1])
+	if err != nil || digest != peerDigest {
+		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-digest-mismatch"}
 	}
-	// Race check: the digest read must still match the regular file whose metadata was just validated.
-	if _, err := digestRegularFile(path, info); err != nil {
-		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-read-race"}
-	}
-	return gateModeIdentity{canonicalPaths: []string{path}}
+	return gateModeIdentity{canonicalPaths: paths}
 }
 
 func firstNonEmpty(value, fallback string) string {
@@ -4412,6 +4440,7 @@ func canonicalLifecycleRoots() []string {
 	home := os.Getenv("HOME")
 	values := []string{
 		filepath.Join(home, ".omp", "agent", "eci"),
+		firstNonEmpty(os.Getenv("KIMI_CODE_HOME"), filepath.Join(home, ".kimi-code")),
 	}
 	roots := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -4656,7 +4685,7 @@ func inspectProofPathOwnershipExact(
 					code = CodeLedgerAppendOnly
 					reason = "active-session high-level ledger files are append-only coordinator artifacts"
 					predicate = "append-only-ledger"
-					remediation = ledgerAppendRemediation()
+					remediation = ledgerAppendRemediation(request.Provider)
 				}
 				diagnostic := diagnosticForToken(code, reason, segmentIndex, argumentIndex, pathArgument, remediation, predicate)
 				diagnostic.Path = controlPath
@@ -4677,7 +4706,7 @@ func inspectProofPathOwnershipExact(
 					segmentIndex,
 					argumentIndex,
 					pathArgument,
-					ledgerAppendRemediation(),
+					ledgerAppendRemediation(request.Provider),
 					"append-only-ledger",
 				)
 				diagnostic.Path = lexical
@@ -7638,6 +7667,8 @@ func protectedHookModeRoots() []string {
 	home := os.Getenv("HOME")
 	candidates := []string{
 		filepath.Join(home, ".omp", "agent", "eci"),
+		os.Getenv("KIMI_CODE_HOME"),
+		filepath.Join(home, ".kimi-code"),
 	}
 	if executable, err := os.Executable(); err == nil {
 		// Only the source-module layout identifies a provider root; managed artifacts do not.

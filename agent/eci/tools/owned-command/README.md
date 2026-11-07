@@ -1,6 +1,6 @@
 # owned-command
 
-Shared ECI Linux command-family supervisor, maintained at
+Shared ECI command-family supervisor for Linux and macOS, maintained at
 `~/.omp/agent/eci/tools/owned-command` independently of application checkouts.
 The installed `~/.omp/agent/eci/bin/owned-command` wrapper builds this canonical
 module into an external cache and forwards arguments and status. Manual build:
@@ -32,6 +32,7 @@ PID and BIRTH must be positive for cancellation; BIRTH is the separately recorde
 A mismatched cancellation identity returns 125 without signaling.
 
 ## Command launch
+This section through Status and receipts describes the Linux backend; macOS uses the darwin-pgroup section below.
 
 Launch requires Linux cgroup v2, pidfds, clone-bound cgroup placement, procfs in the
 supervisor's PID namespace, and a reachable systemd user manager supporting
@@ -99,6 +100,37 @@ The enclosing scope containing the receipt writer is never stopped or killed;
 systemd collects it after exit
 when empty. Live descendants prevent a claim of collection or settlement.
 
+## macOS darwin-pgroup backend
+
+On Darwin the wrapper builds the same module and runs the `darwin-pgroup` backend
+(`main_darwin.go` and `pgroup.go`). The backend has a narrower guarantee than Linux.
+It starts the command in a new process group (`Setpgid`, so the group ID equals the
+command PID). Retirement begins at the first of command exit, the `-deadline` measured
+from launch, or SIGINT, SIGTERM or SIGHUP to owned-command. Retirement sends SIGTERM
+and SIGCONT to `kill(-pgid, ...)`, sends SIGKILL one `-grace` later, and makes its
+final settlement check at twice `-grace`. The group is settled only when the command
+has been reaped and `kill(-pgid, 0)` reports ESRCH.
+
+Iteration 1 guarantees, stated in every receipt's `Guarantee` field:
+- deadline, interrupt, and command-exit cleanup of the command's process group;
+- the native exit status of an ordinary settled command, or 125 otherwise.
+
+Gaps, stated in `Guarantee` and `FamilyCoverage`:
+- No subreaper and no cgroup. A descendant that calls `setsid` or `setpgid` leaves
+  the group. It is neither signaled nor waited for, and it survives retirement. A
+  receipt with `HostChildrenSettled` true then describes only the group.
+- No birth identity and no PID-reuse guard. `-cancel-pid` and `-cancel-birth` are
+  refused with status 125 before any receipt is written, and nothing is signaled.
+- If owned-command itself is killed with SIGKILL, nothing retires the group.
+- The receipt has no `Cgroup`. `Survivors` and `Events` are absent, because the group
+  is not enumerated. Read `HostChildrenSettled`, `Errors` and `Cause` instead.
+- The command runs in a background process group. If it reads or writes the terminal,
+  job-control signals can stop it, and the deadline or interrupt then ends it. Use this
+  backend for non-interactive command families only.
+- Settlement assumes that the kernel reaps orphaned group members and that XNU reports
+  an empty group with ESRCH. Neither is verified on macOS yet; the macOS run is the check.
+- Host settlement proves nothing about phone, camera, media or remote cleanup, as on Linux.
+
 ## Foreign PID cancellation
 
 `-cancel-pid/-cancel-birth` uses a separate compatibility driver with
@@ -155,6 +187,15 @@ guard_checks_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-command-checks.XXXXXXXX")
 GOWORK=off go build -o "$guard_checks_dir/owned-command" .
 GUARD_TEST_BINARY="$guard_checks_dir/owned-command" GOWORK=off \
   go test -count=1 -timeout 2m -v .
+```
+
+Darwin checks: the cross-builds run on any host; the tests run on macOS natively and on Linux with the build tag.
+
+```sh
+GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null .
+GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet .
+GOWORK=off go test -count=1 -v -run '^TestPgroup' .                    # macOS
+GOWORK=off go test -tags pgroupcheck -count=1 -v -run '^TestPgroup' .  # Linux
 ```
 
 Tests distinguish deterministic synthetic kernel schedules from native CLI

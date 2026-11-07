@@ -11,6 +11,8 @@
 # The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
 # a scratch copy of the Kimi peer (KIMI_CODE_HOME), not a link: the peer sync and
 # some tests write into it, and a write through a link would reach the account.
+# The copied runtime's peer-apply then refreshes that scratch peer's shared hooks/bin
+# surface, the same step sync-runtime runs, so the peer matches the copied runtime.
 # ~/.omp/agent/AGENTS.md is a
 # symlink to the account's global instructions (read by the reviewer prompt) and
 # ~/.omp/agent/skills to the account's skills tree (read by tests).
@@ -72,6 +74,10 @@ export ECI_ACCOUNT_KIMI_CODE_HOME="$kimi_account"
 ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 ln -s "$account_home/.omp/agent/skills" "$work/home/.omp/agent/skills"
 ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/eci-binding-contract.md"
+# Refresh the scratch peer through the copied runtime's own peer-apply, as sync-runtime does.
+# HOME is the work home here (the export below is later); set -e aborts on failure.
+HOME="$work/home" "$work/home/.omp/agent/eci/bin/eci-runtime-sync" peer-apply --target "$kimi_home" >/dev/null
+ln -f -- "$work/home/.omp/agent/eci/bin/eci-command-gate-mode" "$kimi_home/bin/eci-command-gate-mode"
 
 # config.toml keys trust state by the account's canonical hooks.json path. This
 # per-host rewrite points the copy's hooks.state keys at the copied hooks.json,
