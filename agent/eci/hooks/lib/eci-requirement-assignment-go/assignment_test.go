@@ -97,13 +97,32 @@ func newCLIFixture(t *testing.T) cliFixture {
 }
 
 // env isolates HOME so ledger and log writes never reach the real ~/.agent.
+// The CLI runs `go run` for status refresh; Go derives its module cache, GOPATH,
+// and build cache from HOME, so those are pinned to the account locations to keep
+// module downloads and read-only cache files out of the temporary HOME.
 //
 // Example: every CLI invocation of one fixture shares the same temporary HOME.
 func (f cliFixture) env() []string {
-	return append(os.Environ(),
+	env := append(os.Environ(),
 		"HOME="+f.Home,
 		"ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"),
 		"ECI_SESSION_ID=test-capture")
+	realHome, err := os.UserHomeDir()
+	if err != nil {
+		return env
+	}
+	if _, ok := os.LookupEnv("GOPATH"); !ok {
+		env = append(env, "GOPATH="+filepath.Join(realHome, "go"))
+	}
+	if _, ok := os.LookupEnv("GOMODCACHE"); !ok {
+		env = append(env, "GOMODCACHE="+filepath.Join(realHome, "go", "pkg", "mod"))
+	}
+	if _, ok := os.LookupEnv("GOCACHE"); !ok {
+		if cache, err := os.UserCacheDir(); err == nil {
+			env = append(env, "GOCACHE="+filepath.Join(cache, "go-build"))
+		}
+	}
+	return env
 }
 
 // invoke captures actual stdout separately so failed operations cannot hide assignment output.
