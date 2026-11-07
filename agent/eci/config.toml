@@ -1,13 +1,10 @@
 #model = "qwen3.8:27b-mlx"
 #model_provider = "ollama"
-#model_reasoning_effort = "xhigh"
 #oss_provider = "ollama"
 model = "gpt-6.1-terra"
-model_reasoning_effort = "low"
 #model = "flint"
 #model_provider = "flint"
 #review_model = "flint"
-#model_reasoning_effort = "low"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 developer_instructions = """
@@ -136,32 +133,26 @@ wire_api = "responses"
 [profiles.deepseek-v4-pro]
 model = "deepseek-v4-pro"
 model_provider = "deepseek_direct"
-model_reasoning_effort = "xhigh"
 
 [profiles.deepseek-v4-flash]
 model = "deepseek-v4-flash"
 model_provider = "deepseek_direct"
-model_reasoning_effort = "xhigh"
 
 [profiles.gpt]
 model = "gpt-5.6-sol"
 model_provider = "openai"
-model_reasoning_effort = "high"
 
 [profiles.kimi-k3]
 model = "k3"
 model_provider = "kimi_api"
-model_reasoning_effort = "max"
 
 [profiles.kimi-k2-code]
 model = "kimi-for-coding-highspeed"
 model_provider = "kimi_api"
-model_reasoning_effort = "max"
 
 [profiles.glm]
 model = "zai-coding-plan/glm-5.2"
 model_provider = "zai"
-model_reasoning_effort = "max"
 
 [projects."/home/pheona"]
 trust_level = "trusted"
