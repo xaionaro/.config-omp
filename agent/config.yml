@@ -9,3 +9,4 @@ theme:
 update:
   auto: false
 setupVersion: 3
+extendedContext: true
