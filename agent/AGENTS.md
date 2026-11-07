@@ -1,5 +1,7 @@
 # omp native ECI hooks
 
+@~/.omp/agent/eci-binding-contract.md
+
 This file maps omp tool names to the tools ECI hooks expect, and states where native hooks and state live.
 
 ## Tool glossary
