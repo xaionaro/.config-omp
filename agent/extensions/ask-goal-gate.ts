@@ -58,7 +58,10 @@ export default function askGoalGate(pi: ExtensionAPI): void {
       // never reaches a clean update, so its ask stays blocked for the life of the
       // process (fail closed).
       if (ctx.agent.kind !== "main") return;
-      if (event.state?.enabled === true) engagedSessions.add(id);
+      // An absent state means engagement cannot be read, so throw into the catch,
+      // which marks the session unreadable.
+      if (event.state === undefined) throw new Error("goal_updated carries no state");
+      if (event.state.enabled === true) engagedSessions.add(id);
       else engagedSessions.delete(id);
       unreadableSessions.delete(id);
     } catch {

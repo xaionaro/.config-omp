@@ -140,6 +140,18 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main()), undefined);
   });
 
+  test("goal_updated with no state fails closed: ask stays blocked until a clean update", () => {
+    const { fire } = setup();
+    fire("goal_updated", goalUpdated(true, "active"), main());
+    fire("goal_updated", { type: "goal_updated", goal: null }, main());
+    assert.deepEqual(fire("tool_call", askCall, main()), {
+      block: true,
+      reason: GOAL_UNREADABLE_REASON,
+    });
+    fire("goal_updated", goalUpdated(false, "complete"), main());
+    assert.equal(fire("tool_call", askCall, main()), undefined);
+  });
+
   test("unreadable goal_updated stays blocked across session_switch until a clean update", () => {
     const { fire } = setup();
     const unreadable = {
