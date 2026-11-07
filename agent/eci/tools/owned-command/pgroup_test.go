@@ -591,14 +591,16 @@ func TestPgroupMainWritesReceiptWithGuarantee(t *testing.T) {
 	if err := json.Unmarshal(data, &receipt); err != nil {
 		t.Fatalf("receipt is not JSON: %v", err)
 	}
-	if receipt.Backend != pgroupBackend || receipt.Guarantee != pgroupGuarantee || receipt.FamilyCoverage != pgroupFamilyCoverage || receipt.CommandExit != 3 || !receipt.HostChildrenSettled {
+	if receipt.Backend != pgroupBackend || receipt.Guarantee != pgroupGuarantee || receipt.CommandExit != 3 || !receipt.HostChildrenSettled {
 		t.Fatalf("receipt=%+v", receipt)
 	}
-	if !strings.Contains(receipt.Guarantee, "setsid") {
-		t.Fatalf("Guarantee must name the setsid gap: %q", receipt.Guarantee)
+	if receipt.FamilyCoverage != "command process group only" {
+		t.Fatalf("FamilyCoverage = %q, want %q", receipt.FamilyCoverage, "command process group only")
 	}
-	if !strings.Contains(receipt.Guarantee, "no subreaper") {
-		t.Fatalf("Guarantee must name the missing subreaper: %q", receipt.Guarantee)
+	for _, phrase := range []string{"no subreaper", "setsid", "setpgid", "-cancel-pid returns 125"} {
+		if !strings.Contains(receipt.Guarantee, phrase) {
+			t.Fatalf("Guarantee must state %q: %q", phrase, receipt.Guarantee)
+		}
 	}
 	text := string(data)
 	if !strings.Contains(text, `"Survivors": []`) || !strings.Contains(text, `"Events": [`) {

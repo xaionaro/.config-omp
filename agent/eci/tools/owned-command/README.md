@@ -116,7 +116,10 @@ Every receipt's `Guarantee` field states the guarantee verbatim:
 
 > deadline and cleanup only: on deadline, interrupt (SIGINT, SIGTERM or SIGHUP to owned-command) or command exit, SIGTERM and SIGCONT, then SIGKILL after -grace, go to the command's own process group (pgid = command PID); no birth identity, so -cancel-pid returns 125 and signals nothing; no PID-reuse guard; no subreaper, so descendants that leave the group (setsid or setpgid) are not cleaned up and can outlive HostChildrenSettled=true, which means only that the command was reaped and its process group is empty
 
-The gaps are stated in `Guarantee`:
+`Guarantee` states the subreaper gap (setsid and setpgid escapes), the missing birth
+identity and PID-reuse guard, and that `-cancel-pid` returns 125. The cgroup, terminal
+(background process group), Survivors and Events, and XNU and launchd limits are
+documented only in the bullets below:
 - No subreaper and no cgroup. A descendant that calls `setsid` or `setpgid` leaves
   the group. It is neither signaled nor waited for, and it survives retirement. A
   receipt with `HostChildrenSettled` true then describes only the group.
