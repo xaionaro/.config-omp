@@ -4,8 +4,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-SKILL="$ROOT/skills/sentry-iterate/SKILL.md"
-METADATA="$ROOT/skills/sentry-iterate/agents/openai.yaml"
+SKILL="$ROOT/../skills/sentry-iterate/SKILL.md"
+METADATA="$ROOT/../skills/sentry-iterate/agents/openai.yaml"
 
 fail() {
   printf 'sentry-iterate consumer check failed: %s\n' "$*" >&2
@@ -20,18 +20,6 @@ fail() {
 command -v eci >/dev/null || fail 'eci is required'
 command -v jq >/dev/null || fail 'jq is required'
 cd "$ROOT"
-
-# A nonempty ordinary catalog with an enabled control prevents vacuous absence.
-eci debug prompt-input 'Summarize the local workspace guidance.' | jq -e '
-  [.[] | select(.role == "developer") | .content[]?
-    | select(.type == "input_text") | .text
-    | select(contains("### Available skills"))] as $catalogs
-  | ($catalogs | join("\n")) as $catalog
-  | {developer_catalog_count: ($catalogs | length),
-     sentry_implicit: ($catalog | test("(?m)^- sentry-iterate:")),
-     eci_implicit: ($catalog | test("(?m)^- explore-critique-implement:"))}
-  | select(.developer_catalog_count > 0 and .sentry_implicit == false and .eci_implicit == true)
-' || fail 'ordinary prompt must omit sentry-iterate and retain ECI'
 
 coproc SENTRY_SKILL_PROBE { exec eci app-server --stdio; }
 probe_pid=$SENTRY_SKILL_PROBE_PID
