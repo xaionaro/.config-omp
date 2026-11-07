@@ -236,3 +236,22 @@ Limitations and UNVERIFIED:
 - UNVERIFIED: commit 16e911d (G11).
 - UNVERIFIED: which harness sets `ECI_ROLE` (G21).
 - Not run: test-eci-maintain-planner.sh, test-eci-review-gate.sh, test-eci-coordinator-edit-hatch.sh, test-eci-repository-allow.sh, the aggregate lifecycle tests, test-session-snapshot-refresh.sh, test-eci-structured-log.sh, test-lifecycle-source-authority.sh and test-validate-bash-classifier.sh. Their rows cite the lines but record no result.
+
+## FastParity follow-up record (ECIPARITY)
+
+This section records the FastParity dispositions and corrections. Where an older row above conflicts with it, this section wins. The older rows for maintain-planner, sync-runtime, the section 5 items and the T1-T4 lines are not yet rewritten in place.
+
+- Gap 1, approve-commit: ported in 921f8d8 (compatibility notice, exit 0).
+- Gap 3, repository-allow-status: ported in e8c5229 (an invalid record fails closed with exit 1).
+- Gap 4, repository-allow-on: ported in ce76026 (refuses a cwd outside a worktree); test hardening in 0e87005.
+- Gap 16, sync-runtime peer step: recorded, not ported. No skill, reference or hook names the peer step (agent/skills, agent/eci/skills, agent/*.md, and agent/eci/hooks outside tests: no hit). The tests that touch it are hooks/lib/eci-command-plan-go/classifier_test.go (routing only), hooks/tests/test-eci-kimi-peer-sync.sh:110-168 (PORT's bin/eci-runtime-sync peer-apply, run directly), and test-eci-active-sync-runtime-local-first.sh (requires local sync success and the advisory line "ECI runtime peer synchronization advisory:").
+- Gaps 17 and 18, maintain-planner: ported in 7ec6785 (transactional publish of the pair into bin/, with rollback), c72b398 (absolute PATH go, the AD4 build environment, loader-identical host checks) and b99a6f3 (a signal during the build cancels it and removes the transaction). The TEST-DISPOSITION row is f2c2a72.
+- Gap 20, session identity: ported in 54d9550 (ECI_THREAD_ID is used when ECI_SESSION_ID is unset; an invalid ECI_SESSION_ID is not replaced).
+- T1: test-eci-active-normal-git.sh failed on c113fea (gap 1). It passes since 921f8d8.
+- T2: the wrong status assertions are deleted (84ad19d); the help assertions and the PASS line are kept; the comment is corrected in e02764a.
+- T3: fixture repaired (4f55e53). T4: the scratch HOME is provisioned with the real build and a main-session transcript (53ecb9a).
+- Five provenance-dependent tests, run through run-isolated.sh at 835e4c8 and 7ec6785 (rc at each): test-eci-repository-allow.sh 2/2; test-normal-git-admission.sh 1/1; test-validate-bash-git-normalization.sh 1/1; test-eci-kimi-peer-sync.sh 1/1; test-eci-maintain-planner.sh 1/1. Each fails at setup, before any assertion, identically at both commits. Causes: generated files absent from a git export; "unknown provider" in test-normal-git-admission.sh; bin/eci-active-dispatch missing in test-eci-maintain-planner.sh (OnDemand's C3). No failure is new.
+- Follow-up, not fixed here: test-eci-repository-allow.sh:40 and test-validate-bash-git-normalization.sh:44 edit .eci-command-plan.provenance, which nothing writes now. They will break once their setup is fixed; the fix must check the .sha256 receipts instead.
+- Correction, not amended: 84ad19d's body cites main.go:60-62 for the status line. The status case is at main.go:63-65.
+- Correction, not amended: 54d9550's body names test line 24 for the marker-retirement call. The failing call is line 28.
+- port-coverage.tsv rows 19-21: applied by OrchAudit in 41e5605.
