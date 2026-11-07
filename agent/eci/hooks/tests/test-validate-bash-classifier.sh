@@ -120,12 +120,17 @@ grep -Fq 'ECI high-level log append rejected a marker bound to another session o
 [ "$(sha256sum -- "$high_level_log" | awk '{print $1}')" = "$wrong_cwd_log_sha256" ]
 
 # The runtime route validates the same marker/cwd binding and advances the
-# bounded prefix anchor under the mutation lock.
+# bounded prefix anchor under the mutation lock.  Entries are written to the
+# HOME context root, not the proof root: tools/eci-active ledger.go
+# appendLedgerEntry resolves contextSessionDir (proof.go), the same ledger
+# location (pre-migration source 575bb81 moved ledgers to the context root).  The proof-root
+# $high_level_log above remains a control-path fixture only.
+context_ledger="$HOME/.agent/context/sessions/t00-session/high_level_log.jsonl"
 ledger_append_from_marker_cwd "$proof_root" t00-session 'coordinator entry' >/dev/null
-first_timestamp_line="$(tail -n 1 -- "$high_level_log")"
+first_timestamp_line="$(tail -n 1 -- "$context_ledger")"
 jq -e '.schema == "eci-high-level-log/v1" and .event == "decision" and .summary == "coordinator entry" and (.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' <<<"$first_timestamp_line" >/dev/null
 ledger_append_from_marker_cwd "$proof_root" t00-session 'second timestamp entry' >/dev/null
-second_timestamp_line="$(tail -n 1 -- "$high_level_log")"
+second_timestamp_line="$(tail -n 1 -- "$context_ledger")"
 jq -e '.schema == "eci-high-level-log/v1" and .event == "decision" and .summary == "second timestamp entry" and (.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' <<<"$second_timestamp_line" >/dev/null
 first_timestamp="$(jq -r '.timestamp' <<<"$first_timestamp_line")"
 second_timestamp="$(jq -r '.timestamp' <<<"$second_timestamp_line")"
@@ -149,7 +154,7 @@ run_hook() {
   local command="$1" output
   output="${2:-$TMP_ROOT/output}"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -159,7 +164,7 @@ run_hook_with_canonical_tmpdir() {
   local command="$1" output
   output="$TMP_ROOT/output-with-canonical-tmpdir"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     TMPDIR="$classifier_tmp_parent" ECI_TMPDIR="$classifier_tmp_parent" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -169,7 +174,7 @@ run_hook_with_tmpdir_home_alias() {
   local command="$1" output
   output="$TMP_ROOT/output-with-tmpdir-home-alias"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     HOME="$tmpdir_alias_home" TMPDIR="$tmpdir_alias_home/tmp" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -254,8 +259,16 @@ prepare_stale_copied_home() {
   COPIED_OUT="$TMP_ROOT/copied-output-$copied_home_fixture_index.json"
   COPIED_OTHER_CWD="$COPIED_HOME/other-cwd"
 
-  mkdir -p -- "$COPIED_HOME" "$COPIED_PROOF_ROOT" "$COPIED_OTHER_CWD" \
+  mkdir -p -- "$COPIED_HOME" "$COPIED_ROOT" "$COPIED_PROOF_ROOT" "$COPIED_OTHER_CWD" \
     "$COPIED_HOME/.kimi-code/bin" "$COPIED_HOME/xdg-config/eci" "$COPIED_HOME/xdg-state"
+  # An absent transcript resolves to the worker role (hook_context.go
+  # hookTranscriptRole; fail-closed by e1ce6f5).  These lifecycle cases are
+  # coordinator-owned, so the callback names a depth-two main transcript under
+  # the copied HOME's sessions root.
+  COPIED_TRANSCRIPT="$COPIED_HOME/.omp/agent/sessions/-copied-project-/main.jsonl"
+  mkdir -p -- "$(dirname -- "$COPIED_TRANSCRIPT")"
+  printf '%s\n' '{"type":"session","version":3,"id":"copied-home-main","cwd":"/work"}' \
+    '{"type":"message","message":{"role":"user","content":"hello"}}' >"$COPIED_TRANSCRIPT"
   cp -a -- "$ROOT"/. "$COPIED_ROOT"/
   sed -i '2{/^exit 0$/d;}' -- "$COPIED_ROOT/hooks/validate-bash.sh"
   cmp -- "$COPIED_ROOT/hooks/validate-bash.sh" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh") || {
@@ -285,7 +298,8 @@ run_copied_home_hook() {
   local command="$1" callback_session="${2:-$COPIED_SESSION}" callback_cwd="${3:-$COPIED_ROOT}" output="${4:-$COPIED_OUT}"
 
   jq -cn --arg cwd "$callback_cwd" --arg command "$command" --arg session "$callback_session" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' |
+    --arg transcript "$COPIED_TRANSCRIPT" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     (
       cd "$COPIED_ROOT"
       HOME="$COPIED_HOME" ECI_HOME="$COPIED_ROOT" ECI_PROOF_ROOT="$COPIED_PROOF_ROOT" \
@@ -341,7 +355,7 @@ run_hook_without_marker() {
   local command="$1" output
   output="$TMP_ROOT/output-without-marker"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-no-marker",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-no-marker",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$TMP_ROOT/no-marker-proof" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -560,7 +574,7 @@ run_deferred_planner_fixture_hook() {
   (
     cd "$ROOT"
     jq -cn --arg cwd "$ROOT" --arg command "$command" --arg session "$session" \
-      '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' |
+      '{session_id:$session,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
       HOME="$defer_fixture_home" XDG_CONFIG_HOME="$defer_fixture_home/xdg-config" \
         XDG_STATE_HOME="$defer_fixture_home/xdg-state" ECI_PROOF_ROOT="$proof" \
         ECI_HOME="$ROOT" KIMI_CODE_HOME="$defer_fixture_home/.kimi-code" \
@@ -600,7 +614,7 @@ run_hook_with_kimi_home() {
   companion_home="$(dirname -- "$companion_root")"
   output="${3:-$TMP_ROOT/output-with-kimi-home}"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     HOME="$companion_home" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$companion_root" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -618,7 +632,7 @@ run_hook_without_kimi_home() {
   local command="$1" output
   output="$TMP_ROOT/output-without-kimi-home"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     env -u KIMI_CODE_HOME HOME="$kimi_home" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -630,7 +644,7 @@ run_hook_with_transcript() {
   transcript="$TMP_ROOT/main-transcript.jsonl"
   printf '%s\n' '{"timestamp":"2026-08-18T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session"}}' >"$transcript"
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
-    '{session_id:"t00-session",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -642,7 +656,7 @@ run_hook_with_transcript_pager() {
   transcript="$TMP_ROOT/main-transcript-pager.jsonl"
   printf '%s\n' '{"timestamp":"2026-08-18T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session"}}' >"$transcript"
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
-    '{session_id:"t00-session",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" GIT_PAGER=cat PATH="$ROOT/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
   printf '%s\n' "$output"
@@ -669,7 +683,7 @@ run_subagent_hook() {
       ;;
   esac
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
-    '{session_id:"t00-session",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" HOME="$subagent_home" ECI_HOME="$subagent_eci_home" KIMI_CODE_HOME="$kimi_root" \
       PATH="$subagent_eci_home/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
@@ -885,7 +899,7 @@ run_subagent_hook_at_root() {
   subagent_transcript="$transcript"
   printf '%s\n' '{"timestamp":"2026-08-15T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Test","agent_role":"default"}}}}}' >"$transcript"
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
-    '{session_id:"t00-session",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$alternate_root" HOME="$alternate_home" ECI_HOME="$subagent_eci_home" \
       ECI_HOOK_IS_SUBAGENT=true ECI_ROLE=worker PATH="$subagent_eci_home/bin:$PATH" \
       bash "$classifier_hook_fixture" >"$output"
@@ -1208,13 +1222,13 @@ assert_archive_legacy_git_route() {
   output="$TMP_ROOT/archive-legacy-$name.output"
   if [ -n "$git_dir" ]; then
     jq -cn --arg cwd "$ROOT" --arg command "$command" \
-      '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+      '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
       GIT_DIR="$git_dir" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$path_value" \
         strace -f -qq -e trace=process -o "$trace" \
           bash "$classifier_hook_fixture" >"$output"
   else
     jq -cn --arg cwd "$ROOT" --arg command "$command" \
-      '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+      '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
       ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$path_value" \
         strace -f -qq -e trace=process -o "$trace" \
           bash "$classifier_hook_fixture" >"$output"
@@ -1523,7 +1537,7 @@ assert_kimi_lifecycle_identity_case() {
 # strace-based execution restriction merely because no transcript was supplied.
 no_transcript_output="$TMP_ROOT/no-transcript-ordinary.output"
 jq -cn --arg cwd "$ROOT" --arg command 'go test ./...' \
-  '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+  '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
   env -u ECI_HOOK_IS_SUBAGENT -u ECI_ROLE \
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
     bash "$classifier_hook_fixture" >"$no_transcript_output"
@@ -2529,7 +2543,7 @@ run_isolated_worker_hook() {
     cd "$isolated_worker_root"
     jq -cn --arg cwd "$isolated_worker_root" --arg command "$command" \
       --arg transcript "$isolated_worker_transcript" --arg session "$isolated_worker_session" \
-      '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
+      '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
       HOME="$isolated_worker_home" ECI_PROOF_ROOT="$isolated_worker_proof_root" \
         ECI_HOME="$isolated_worker_root" PATH="$isolated_worker_root/bin:$PATH" \
         bash "$classifier_hook_fixture" >"$output"
@@ -2690,7 +2704,7 @@ run_isolated_coordinator_hook() {
     cd "$isolated_coordinator_root"
     jq -cn --arg cwd "$isolated_coordinator_root" --arg command "$command" \
       --arg session "$isolated_coordinator_session" \
-      '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' |
+      '{session_id:$session,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
       HOME="$isolated_coordinator_home" TMPDIR="$classifier_tmp_parent" ECI_TMPDIR="$classifier_tmp_parent" \
         ECI_PROOF_ROOT="$isolated_coordinator_proof_root" ECI_HOME="$isolated_coordinator_root" \
         KIMI_CODE_HOME="$isolated_coordinator_peer" \
@@ -3398,7 +3412,7 @@ run_subagent_matrix_parallel allowed worker-environment-allowed \
   "rg -n 'env | sort' hooks/validate-bash.sh"
 inherited_node_options_output="$TMP_ROOT/inherited-node-options-output"
 jq -cn --arg cwd "$ROOT" --arg command 'node literal.js' \
-  '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+  '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
   NODE_OPTIONS=--require=/dev/null ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
     bash "$classifier_hook_fixture" >"$inherited_node_options_output"
 jq -e '
