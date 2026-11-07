@@ -7,15 +7,15 @@ AGENTS="$ROOT/../AGENTS.md"
 ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 # Engineering priorities and security follow-up rules are canonical in the binding contract; the ECI skill keeps no copy.
 ECI_BINDING_CONTRACT="$ROOT/../eci-binding-contract.md"
-TESTING_DISCIPLINE="$ROOT/skills/testing-discipline/SKILL.md"
+TESTING_DISCIPLINE="$ROOT/../skills/testing-discipline/SKILL.md"
 DEBUGGING="$ROOT/skills/debugging-discipline/SKILL.md"
 STATUS_REPORT="$ROOT/../skills/writing-status-reports/SKILL.md"
 LEDGER="$ROOT/../skills/context-ledger/SKILL.md"
 LINEAGE="$ROOT/../skills/references/requirement-lineage.md"
-ATE="$ROOT/skills/agent-teams-execution/SKILL.md"
+ATE="$ROOT/../skills/agent-teams-execution/SKILL.md"
 ECI_COVERAGE="$ROOT/../skills/explore-critique-implement/references/coverage-map.md"
 STYLE_ADMISSION="$ROOT/../skills/references/workflow-runtime/coding-style-admission.md"
-ATE_COVERAGE="$ROOT/skills/agent-teams-execution/references/coverage-map.md"
+ATE_COVERAGE="$ROOT/../skills/agent-teams-execution/references/coverage-map.md"
 FAST_PATH="$ROOT/../skills/explore-critique-implement/references/fast-path.md"
 PAUSE="$ROOT/../skills/references/workflow-runtime/pause-all-work.md"
 POLICY="$ROOT/../skills/references/workflow-runtime/policy-pressure-tests.md"
@@ -26,13 +26,13 @@ COORDINATOR="$ROOT/../skills/explore-critique-implement/references/coordinator.m
 COORDINATOR_RUNTIME="$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
 REVIEW_POLICY="$ROOT/../skills/references/workflow-runtime/review-policy.md"
 GATE_CATALOG="$ROOT/hooks/gate-escape-hatches.md"
-SNITCH="$ROOT/skills/agent-teams-execution/references/snitch.md"
-ATE_ORCHESTRATION="$ROOT/skills/agent-teams-execution/references/orchestration.md"
-ATE_RESEARCH="$ROOT/skills/agent-teams-execution/references/research.md"
-ATE_DESIGN="$ROOT/skills/agent-teams-execution/references/design.md"
-ATE_EXECUTION="$ROOT/skills/agent-teams-execution/references/execution.md"
-ATE_REVIEW="$ROOT/skills/agent-teams-execution/references/review.md"
-ATE_TESTING="$ROOT/skills/agent-teams-execution/references/testing-and-qa.md"
+SNITCH="$ROOT/../skills/agent-teams-execution/references/snitch.md"
+ATE_ORCHESTRATION="$ROOT/../skills/agent-teams-execution/references/orchestration.md"
+ATE_RESEARCH="$ROOT/../skills/agent-teams-execution/references/research.md"
+ATE_DESIGN="$ROOT/../skills/agent-teams-execution/references/design.md"
+ATE_EXECUTION="$ROOT/../skills/agent-teams-execution/references/execution.md"
+ATE_REVIEW="$ROOT/../skills/agent-teams-execution/references/review.md"
+ATE_TESTING="$ROOT/../skills/agent-teams-execution/references/testing-and-qa.md"
 
 fail() {
   printf 'workflow routing assertion failed: %s\n' "$*" >&2
@@ -173,13 +173,13 @@ assert_local_links_resolve() {
     "$ROOT/../skills/explore-critique-implement/references/explore.md"
     "$ROOT/../skills/explore-critique-implement/references/implement.md"
     "$ROOT/../skills/explore-critique-implement/references/review.md"
-    "$ROOT/skills/agent-teams-execution/references/design.md"
-    "$ROOT/skills/agent-teams-execution/references/execution.md"
-    "$ROOT/skills/agent-teams-execution/references/orchestration.md"
-    "$ROOT/skills/agent-teams-execution/references/research.md"
-    "$ROOT/skills/agent-teams-execution/references/review.md"
+    "$ROOT/../skills/agent-teams-execution/references/design.md"
+    "$ROOT/../skills/agent-teams-execution/references/execution.md"
+    "$ROOT/../skills/agent-teams-execution/references/orchestration.md"
+    "$ROOT/../skills/agent-teams-execution/references/research.md"
+    "$ROOT/../skills/agent-teams-execution/references/review.md"
     "$SNITCH"
-    "$ROOT/skills/agent-teams-execution/references/testing-and-qa.md"
+    "$ROOT/../skills/agent-teams-execution/references/testing-and-qa.md"
     "$ROOT/../skills/references/workflow-runtime/coding-style-admission.md"
     "$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
     "$ROOT/../skills/references/workflow-runtime/pause-all-work.md"
@@ -3401,10 +3401,10 @@ assert_ate_explicit_only() {
   local eci_source ate_source policy_source mutation output
   eci_source="$(<"$ECI")"
   ate_source="$(<"$ATE")"
-  policy_source="$(<"$ROOT/skills/agent-teams-execution/agents/openai.yaml")"
+  policy_source="$(<"$ROOT/../skills/agent-teams-execution/agents/openai.yaml")"
   assert_ate_explicit_only_contract "$eci_source" "$ate_source" "$policy_source"
   require_text "$ECI" 'Starts only on explicit user request; once active, may route bounded work through ECI.'
-  require_text "$ROOT/skills/code-porting/SKILL.md" 'Starts only on explicit user request; when already outer, routes each bounded Phase 7 task through ECI and remains outer.'
+  require_text "$ROOT/../skills/code-porting/SKILL.md" 'Starts only on explicit user request; when already outer, routes each bounded Phase 7 task through ECI and remains outer.'
   require_text "$ECI" '| `ATE` receives bounded `ECI` | Nest normal ECI;'
 
   for mutation in '' "${policy_source/false/true}"; do
