@@ -1,13 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,17 +19,19 @@ const (
 	plannerTxnPrefix   = ".planner-importer.txn."
 )
 
-// plannerPairTools are the native gate binaries built and published as one pair. Each tool is published beside
-// its <name>.sha256 receipt in the canonical bin/, the files hooks/lib/eci-native-binary.sh verifies before it
-// runs a tool.
+// plannerPairTools are the native gate binaries built and published as one pair. Each tool is published
+// beside its <name>.sha256 receipt in the canonical bin/, the files hooks/lib/eci-native-binary.sh verifies
+// before it runs a tool.
 var plannerPairTools = []string{"eci-command-plan", "eci-safe-import", "eci-hook-helper"}
 
-// plannerScrubbedEnv are variables that must not steer the planner build.
+// plannerScrubbedEnv are inherited variables that must not steer the planner build. GOPROXY, GOSUMDB,
+// GONOSUMDB, GOMODCACHE and GOCACHE stay inherited: modules download through the caller's proxy and go.sum
+// verifies them under -mod=readonly.
 var plannerScrubbedEnv = map[string]bool{
-	"GOCACHEPROG": true, "GOARM": true, "GOARM64": true, "GOAMD64": true,
-	"GOOS": true, "GOARCH": true, "GOFLAGS": true, "GOWORK": true,
-	"GOTOOLCHAIN": true, "GOROOT": true, "GOTMPDIR": true, "TMPDIR": true,
-	"CGO_ENABLED": true, "GOPROXY": true, "GOMODCACHE": true,
+	"GOCACHEPROG": true, "GO386": true, "GOAMD64": true, "GOARM": true, "GOARM64": true,
+	"GOMIPS": true, "GOMIPS64": true, "GOPPC64": true, "GORISCV64": true, "GOWASM": true,
+	"GOOS": true, "GOARCH": true, "GOFLAGS": true, "GOWORK": true, "GOTOOLCHAIN": true,
+	"GOROOT": true, "GOTMPDIR": true, "TMPDIR": true, "CGO_ENABLED": true,
 }
 
 // plannerEvent is a no-op rendezvous before and after each publication step. Tests replace it to inject a
@@ -38,9 +40,9 @@ var plannerScrubbedEnv = map[string]bool{
 var plannerEvent = func(step, path string) error { return nil }
 
 // maintainPlanner rebuilds the planner pair from source with the go command on PATH and publishes it, with its
-// receipts, into the canonical bin/ as one transaction. It then refreshes the module-directory planner that the
-// eci-command-plan tests execute, and runs bin/eci-runtime-sync planner-apply for the optional Kimi peer. Peer
-// failure is advisory.
+// receipts, into the canonical bin/ as one transaction. It then refreshes the module-directory planner that
+// the eci-command-plan tests execute, and runs bin/eci-runtime-sync planner-apply for the optional Kimi peer.
+// Peer failure is advisory.
 func maintainPlanner(args []string) error {
 	if len(args) != 1 {
 		return usageError()
@@ -53,7 +55,7 @@ func maintainPlanner(args []string) error {
 	if err != nil {
 		return err
 	}
-	built, err := plannerApply(root, goTool)
+	built, err := plannerApply(root, goTool, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
 	}
@@ -81,31 +83,23 @@ func kimiHome() string {
 	return filepath.Join(homeDir(), ".kimi-code")
 }
 
-// plannerGoTool returns the go command on PATH.
+// plannerGoTool returns the go command on PATH, which must resolve to an absolute path, as
+// hooks/build-native-binaries.sh selects it.
 func plannerGoTool() (string, error) {
 	path, err := exec.LookPath("go")
-	if err != nil {
+	switch {
+	case errors.Is(err, exec.ErrDot) || (err == nil && !filepath.IsAbs(path)):
+		return "", exitError{code: 1, msg: fmt.Sprintf("[ECI_PLANNER_TOOLCHAIN_MISSING] go resolves to %q, not an absolute path; no planner state was changed.", path)}
+	case err != nil:
 		return "", exitError{code: 1, msg: "[ECI_PLANNER_TOOLCHAIN_MISSING] go not found on PATH; install Go and retry; no planner state was changed."}
 	}
 	return path, nil
 }
 
-// plannerModCache is the module cache holding the planner's pinned dependencies. The account home is used
-// rather than $HOME so an isolated HOME still reads the operator's cache. GOPROXY=off prevents downloads.
-func plannerModCache() string {
-	if v := os.Getenv("GOMODCACHE"); v != "" {
-		return v
-	}
-	if u, err := user.Current(); err == nil && u.HomeDir != "" {
-		return filepath.Join(u.HomeDir, "go", "pkg", "mod")
-	}
-	return filepath.Join(homeDir(), "go", "pkg", "mod")
-}
-
-// plannerEnv is the caller's environment without plannerScrubbedEnv, plus the fixed build settings. GOROOT is not
-// pinned: the builder is the go command found on PATH, and the toolchain it runs must supply its own GOROOT.
-func plannerEnv(tmp string) []string {
-	env := make([]string, 0, len(os.Environ())+12)
+// plannerEnv is the caller's environment without plannerScrubbedEnv, plus the fixed build settings. GOFLAGS is
+// one space: an empty GOFLAGS lets a GOFLAGS entry in the user's go env file apply.
+func plannerEnv(tmp, goos, goarch string) []string {
+	env := make([]string, 0, len(os.Environ())+8)
 	for _, kv := range os.Environ() {
 		key, _, _ := strings.Cut(kv, "=")
 		if !plannerScrubbedEnv[key] {
@@ -113,20 +107,18 @@ func plannerEnv(tmp string) []string {
 		}
 	}
 	return append(env,
-		"CGO_ENABLED=0", "GOFLAGS=", "GOWORK=off", "GOTOOLCHAIN=local",
-		"GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH,
-		"GOMODCACHE="+plannerModCache(), "GOPROXY=off",
-		"GOTMPDIR="+tmp, "TMPDIR="+tmp,
+		"CGO_ENABLED=0", "GOFLAGS= ", "GOWORK=off", "GOTOOLCHAIN=local",
+		"GOOS="+goos, "GOARCH="+goarch, "GOTMPDIR="+tmp, "TMPDIR="+tmp,
 	)
 }
 
-// plannerBuildTool builds one planner module into the transaction and checks that the output is an ELF executable.
-func plannerBuildTool(root, goTool, txn, name string) (string, error) {
+// plannerBuildTool builds one planner module into the transaction and checks the output's host format.
+func plannerBuildTool(root, goTool, txn, name, goos, goarch string) (string, error) {
 	module := filepath.Join(root, "hooks", "lib", name+"-go")
 	out := filepath.Join(txn, "built", name)
 	cmd := exec.Command(goTool, "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags=-buildid=", "-o", out, ".")
 	cmd.Dir = module
-	cmd.Env = plannerEnv(filepath.Join(txn, "tmp"))
+	cmd.Env = plannerEnv(filepath.Join(txn, "tmp"), goos, goarch)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -135,24 +127,78 @@ func plannerBuildTool(root, goTool, txn, name string) (string, error) {
 	if err := os.Chmod(out, 0o755); err != nil {
 		return "", err
 	}
-	if !isELFFile(out) {
-		return "", fmt.Errorf("[ECI_PLANNER_BUILD_FAILED] incompatible host executable: %s", name)
+	if err := checkHostExecutable(out, goos, goarch); err != nil {
+		return "", fmt.Errorf("[ECI_PLANNER_BUILD_FAILED] incompatible host executable %s: %v; no planner state was changed", name, err)
 	}
 	return out, nil
 }
 
-// isELFFile reports whether path starts with the ELF magic.
-func isELFFile(path string) bool {
+// Header bytes the native-binary loader (hooks/lib/eci-native-binary.sh) accepts.
+var (
+	elfMagic     = []byte{0x7f, 'E', 'L', 'F'}
+	machoMagic64 = []byte{0xcf, 0xfa, 0xed, 0xfe}
+	machoExecute = []byte{0x02, 0x00, 0x00, 0x00}
+	machoCPU     = map[string][]byte{"amd64": {0x07, 0x00, 0x00, 0x01}, "arm64": {0x0c, 0x00, 0x00, 0x01}}
+)
+
+// linuxHostHeader returns the first 20 bytes of the running executable, the reference the loader takes from
+// /proc/$$/exe.
+var linuxHostHeader = func() ([]byte, error) { return readHeader("/proc/self/exe", 20) }
+
+// readHeader returns exactly n leading bytes of path.
+func readHeader(path string, n int) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false
+		return nil, err
 	}
 	defer f.Close()
-	var magic [4]byte
-	if _, err := io.ReadFull(f, magic[:]); err != nil {
-		return false
+	h := make([]byte, n)
+	if _, err := io.ReadFull(f, h); err != nil {
+		return nil, fmt.Errorf("header of %s is shorter than %d bytes", path, n)
 	}
-	return magic == [4]byte{0x7f, 'E', 'L', 'F'}
+	return h, nil
+}
+
+// checkHostExecutable reports whether path has the executable format the loader accepts for goos/goarch.
+// linux: ELF magic; class (byte 4), byte order (byte 5) and machine (bytes 18-19) equal to the running
+// executable's; OS ABI (byte 7) none or Linux. darwin: thin 64-bit Mach-O (bytes 0-3), the CPU type of goarch
+// (bytes 4-7) and MH_EXECUTE (bytes 12-15); a universal binary fails the magic check. Other hosts are refused.
+func checkHostExecutable(path, goos, goarch string) error {
+	switch goos {
+	case "linux":
+		h, err := readHeader(path, 20)
+		if err != nil {
+			return err
+		}
+		host, err := linuxHostHeader()
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(h[0:4], elfMagic) {
+			return errors.New("not an ELF executable")
+		}
+		if h[4] != host[4] || h[5] != host[5] || h[18] != host[18] || h[19] != host[19] || (h[7] != 0x00 && h[7] != 0x03) {
+			return errors.New("ELF class, byte order, OS ABI or machine does not match this host")
+		}
+	case "darwin":
+		cpu, ok := machoCPU[goarch]
+		if !ok {
+			return fmt.Errorf("unsupported host %s/%s", goos, goarch)
+		}
+		h, err := readHeader(path, 16)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(h[0:4], machoMagic64) {
+			return errors.New("not a thin 64-bit Mach-O executable")
+		}
+		if !bytes.Equal(h[4:8], cpu) || !bytes.Equal(h[12:16], machoExecute) {
+			return fmt.Errorf("Mach-O CPU type or file type is not an %s executable", goarch)
+		}
+	default:
+		return fmt.Errorf("unsupported host %s/%s", goos, goarch)
+	}
+	return nil
 }
 
 // plannerLeaf is one published file under bin/: a tool or its receipt.
@@ -194,8 +240,8 @@ func copyLeaf(src, dst string) error {
 }
 
 // plannerApply builds the pair into a transaction under <root>/bin and publishes the three tools and their
-// receipts there. It returns the published planner. It holds the publication lock shared with bin/eci-runtime-sync.
-func plannerApply(root, goTool string) (string, error) {
+// receipts there. It returns the built planner. Under the publication lock shared with bin/eci-runtime-sync.
+func plannerApply(root, goTool, goos, goarch string) (string, error) {
 	binDir := filepath.Join(root, "bin")
 	if info, err := os.Lstat(binDir); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] bin directory is missing or not a plain directory: %s; no planner state was changed", binDir)
@@ -220,10 +266,11 @@ func plannerApply(root, goTool string) (string, error) {
 			return "", err
 		}
 	}
+	fmt.Fprintf(os.Stderr, "ECI build: original modules; GOCACHEPROG cleared; scratch=%s\n", txn)
 
 	leaves := make([]*plannerLeaf, 0, 2*len(plannerPairTools))
 	for _, name := range plannerPairTools {
-		built, err := plannerBuildTool(root, goTool, txn, name)
+		built, err := plannerBuildTool(root, goTool, txn, name, goos, goarch)
 		if err != nil {
 			return "", err
 		}
