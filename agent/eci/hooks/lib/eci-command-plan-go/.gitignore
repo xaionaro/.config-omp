@@ -1,0 +1,4 @@
+# Built by `go build -trimpath -buildvcs=false -o eci-command-plan .` for the
+# module-path tests (classifier_test.go resolves "eci-command-plan" relative to
+# this directory). Never tracked.
+/eci-command-plan
