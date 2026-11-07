@@ -10,7 +10,7 @@ This file maps omp tool names to the tools ECI hooks expect, and states where na
 - `apply_patch` → `edit`
 
 ## Skills
-`~/.omp/agent/skills` links to the skills directory. Load a matching skill with its `SKILL.md` before acting.
+`~/.omp/agent/skills` is a real directory. Load a matching skill with its `SKILL.md` before acting.
 
 ## Hooks
 Native hook adapters are tracked in git under `~/.omp/agent/hooks/` (`pre/`, `post/`, and `lib/eci-hook-runner.ts`). They run the native scripts in `~/.omp/agent/eci/hooks/`. In the current working tree they are DISABLED: the directory is moved to `~/.omp/agent/hooks-disabled/`, so omp does not discover or run them until the user re-enables them. Until then, no ECI hook gate is enforced.
