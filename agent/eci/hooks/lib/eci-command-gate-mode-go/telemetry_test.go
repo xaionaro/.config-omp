@@ -1,0 +1,423 @@
+//go:build linux
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"syscall"
+	"testing"
+)
+
+// TestParseDenialReducesToClosedFields checks that raw diagnostics never cross the telemetry boundary.
+//
+// Example: an unknown denial code and operation become the two closed fallback values.
+func TestParseDenialReducesToClosedFields(t *testing.T) {
+	secret := "OPENAI_API_KEY=must-not-persist"
+	raw := []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_UNREGISTERED] ECI gate denied (phase=PreToolUse, operation=unregistered, token=` + secret + `); reason: sample"}}`)
+
+	denial, err := ParseDenial(raw)
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if denial.Code != TelemetryCodeOther {
+		t.Fatalf("code = %q, want %q", denial.Code, TelemetryCodeOther)
+	}
+	if denial.Operation != TelemetryOperationOther {
+		t.Fatalf("operation = %q, want %q", denial.Operation, TelemetryOperationOther)
+	}
+	if bytes.Contains(denial.TelemetryBytes(), []byte(secret)) {
+		t.Fatal("reduced denial retained the raw secret")
+	}
+}
+
+// TestParseDenialUsesThePublishedRegistries checks every registered identity path.
+//
+// Example: a current command-syntax denial stays specific instead of collapsing to ECI_OTHER_DENIAL.
+func TestParseDenialUsesThePublishedRegistries(t *testing.T) {
+	raw := []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_COMMAND_SYNTAX_DENIED] ECI gate denied (phase=PreToolUse, operation=acceptance-boundary, token=opaque); reason: syntax"}}`)
+	denial, err := ParseDenial(raw)
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if denial.Code != TelemetryCodeCommandSyntaxDenied {
+		t.Fatalf("code = %q, want %q", denial.Code, TelemetryCodeCommandSyntaxDenied)
+	}
+	if denial.Operation != TelemetryOperationAcceptanceBoundary {
+		t.Fatalf("operation = %q, want %q", denial.Operation, TelemetryOperationAcceptanceBoundary)
+	}
+	if string(denial.Raw) != string(raw) {
+		t.Fatalf("raw = %q, want original denial bytes", denial.Raw)
+	}
+
+	knownCodes := []TelemetryCode{
+		TelemetryCodeBroadDestructiveDenied,
+		TelemetryCodeCommandDynamicIndirectionDenied,
+		TelemetryCodeCommandNonliteralDenied,
+		TelemetryCodeCommandNotAllowlisted,
+		TelemetryCodeCommandSyntaxDenied,
+		TelemetryCodeCommandWrapperUnsupported,
+		TelemetryCodeCommitAdmissionRequired,
+		TelemetryCodeControlIdentityDenied,
+		TelemetryCodeControlOwnerRequired,
+		TelemetryCodeCoordinatorCleanupPipelineDenied,
+		TelemetryCodeCoordinatorControlPipelineDenied,
+		TelemetryCodeCoordinatorRouteArgumentsDenied,
+		TelemetryCodeCoordinatorSourceWriteDenied,
+		TelemetryCodeEnvironmentContextDenied,
+		TelemetryCodeEnvironmentEnumerationDenied,
+		TelemetryCodeEnvironmentNameDenied,
+		TelemetryCodeEnvironmentOptionDenied,
+		TelemetryCodeGitBranchRemoteDenied,
+		TelemetryCodeGitDynamicExecutionDenied,
+		TelemetryCodeGitExecutionContextDenied,
+		TelemetryCodeGitMutationDenied,
+		TelemetryCodeHookIdentityMalformed,
+		TelemetryCodeLifecycleArgumentsDenied,
+		TelemetryCodeLifecycleIdentityDenied,
+		TelemetryCodeLifecycleOwnerRequired,
+		TelemetryCodeMarkerMalformed,
+		TelemetryCodeMarkerMissingCurrent,
+		TelemetryCodeMarkerOwnershipAmbiguous,
+		TelemetryCodeMarkerOwnershipInvalid,
+		TelemetryCodeMarkerScopeMismatch,
+		TelemetryCodeMarkerUnsafePath,
+		TelemetryCodePlanDynamicLaunchDenied,
+		TelemetryCodePlanInternalDenied,
+		TelemetryCodePlanLifecycleIdentityDenied,
+		TelemetryCodePlanLimitDenied,
+		TelemetryCodePlanLiveControlDenied,
+		TelemetryCodePlanSyntaxDenied,
+		TelemetryCodePlanWrapperDenied,
+		TelemetryCodePlanWrapperDepthDenied,
+		TelemetryCodeProofPathEscapeDenied,
+		TelemetryCodeReviewGateArgumentsDenied,
+		TelemetryCodeWorkerAcceptanceDenied,
+		TelemetryCodeWorkerCommandNotAllowlisted,
+		TelemetryCodeWorkerControlReadDenied,
+		TelemetryCodeWorkerControlScriptDenied,
+		TelemetryCodeWorkerCoordinatorRouteDenied,
+		TelemetryCodeWorkerGitOwnershipDenied,
+		TelemetryCodeWorkerInstructionReadDenied,
+		TelemetryCodeWorkerLauncherDenied,
+		TelemetryCodeWorkerReviewGateDenied,
+		TelemetryCodeOther,
+	}
+	for _, code := range knownCodes {
+		if _, ok := telemetryCodeRegistry[code]; !ok {
+			t.Errorf("code %q is missing from the parser registry", code)
+		}
+	}
+	if len(telemetryCodeRegistry) != len(knownCodes) {
+		t.Fatalf("code registry has %d entries, want %d", len(telemetryCodeRegistry), len(knownCodes))
+	}
+
+	knownOperations := []TelemetryOperation{
+		TelemetryOperationAcceptanceBoundary,
+		TelemetryOperationBroadDestructive,
+		TelemetryOperationCommitBoundary,
+		TelemetryOperationCoordinatorCleanupRoute,
+		TelemetryOperationCoordinatorMktemp,
+		TelemetryOperationCoordinatorRoute,
+		TelemetryOperationCoordinatorSourceWrite,
+		TelemetryOperationCoordinatorStaticPipeline,
+		TelemetryOperationDirectArgv,
+		TelemetryOperationECIControl,
+		TelemetryOperationECILifecycle,
+		TelemetryOperationECIOff,
+		TelemetryOperationEnvironmentBoundary,
+		TelemetryOperationGitBranchRemote,
+		TelemetryOperationGitExecutionContext,
+		TelemetryOperationHookIdentity,
+		TelemetryOperationPlanSegment,
+		TelemetryOperationProofPathOwnership,
+		TelemetryOperationReviewGate,
+		TelemetryOperationWorkerAcceptance,
+		TelemetryOperationWorkerCommand,
+		TelemetryOperationWorkerControl,
+		TelemetryOperationWorkerControlRead,
+		TelemetryOperationWorkerControlScript,
+		TelemetryOperationWorkerGitOwnership,
+		TelemetryOperationWorkerInstructionRead,
+		TelemetryOperationWorkerLauncher,
+		TelemetryOperationWorkerReviewGate,
+		TelemetryOperationOther,
+	}
+	for _, operation := range knownOperations {
+		if _, ok := telemetryOperationRegistry[operation]; !ok {
+			t.Errorf("operation %q is missing from the parser registry", operation)
+		}
+	}
+	if len(telemetryOperationRegistry) != len(knownOperations) {
+		t.Fatalf("operation registry has %d entries, want %d", len(telemetryOperationRegistry), len(knownOperations))
+	}
+}
+
+// TestParseDenialRetainsCompilerLikeErrorCategories protects compatibility diagnostics.
+//
+// Example: malformed JSON is a document error, while a valid denial without identities is an identity error.
+func TestParseDenialRetainsCompilerLikeErrorCategories(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{name: "empty", raw: nil, want: "denial size rejected"},
+		{name: "malformed document", raw: []byte("not-json"), want: "denial document rejected"},
+		{name: "missing document field", raw: []byte(`{"hookSpecificOutput":{}}`), want: "denial document rejected"},
+		{name: "wrong shape", raw: []byte(`{"hookSpecificOutput":{"permissionDecision":"allow","permissionDecisionReason":"[ECI_X] operation=other"}}`), want: "denial shape rejected"},
+		{name: "missing identity", raw: []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"denied"}}`), want: "diagnostic identity rejected"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ParseDenial(test.raw)
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("ParseDenial() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+// TestParseDenialRejectsMalformedAndOversizeInput checks bounded reduction failures.
+//
+// Example: malformed JSON and an over-limit document are rejected before telemetry writes.
+func TestParseDenialRejectsMalformedAndOversizeInput(t *testing.T) {
+	for _, raw := range [][]byte{
+		nil,
+		[]byte("{}\n"),
+		[]byte("not-json\n"),
+		bytes.Repeat([]byte("x"), MaxDenialBytes+1),
+	} {
+		if _, err := ParseDenial(raw); err == nil {
+			t.Fatalf("ParseDenial(%d bytes) unexpectedly succeeded", len(raw))
+		}
+	}
+}
+
+// TestTelemetryStoreAppendsRedactedEvent checks the exact event shape and state binding.
+//
+// Example: a valid denial produces one compact would-deny record without the command payload.
+func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	denial, err := ParseDenial(sampleTelemetryDenial("private-token"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{
+		Provider:    ProviderOmp,
+		Role:        RoleWorker,
+		Marker:      MarkerActive,
+		Source:      SourceParser,
+		ConfigState: ConfigStateMissing,
+	}); err != nil {
+		t.Fatalf("AppendEvent(): %v", err)
+	}
+
+	path := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName)
+	records, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read telemetry: %v", err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(records), &event); err != nil {
+		t.Fatalf("decode telemetry: %v", err)
+	}
+	wantKeys := map[string]bool{
+		"schema": true, "event": true, "at_utc": true, "provider": true,
+		"role": true, "marker": true, "source": true, "code": true,
+		"operation": true, "config_state": true,
+	}
+	if len(event) != len(wantKeys) {
+		t.Fatalf("event keys = %#v, want exactly %#v", event, wantKeys)
+	}
+	for key := range event {
+		if !wantKeys[key] {
+			t.Fatalf("unexpected event key %q", key)
+		}
+	}
+	if event["schema"] != EventSchema || event["event"] != "would-deny" {
+		t.Fatalf("event identity = %#v", event)
+	}
+	if event["provider"] != string(ProviderOmp) || event["role"] != string(RoleWorker) || event["marker"] != string(MarkerActive) || event["source"] != string(SourceParser) {
+		t.Fatalf("event context = %#v", event)
+	}
+	if event["code"] != string(TelemetryCodeOther) || event["operation"] != string(TelemetryOperationOther) {
+		t.Fatalf("event reduction = %#v", event)
+	}
+	if bytes.Contains(records, []byte("private-token")) {
+		t.Fatal("telemetry retained raw denial data")
+	}
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("stat telemetry: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 || !info.Mode().IsRegular() || info.Sys().(*syscall.Stat_t).Nlink != 1 {
+		t.Fatalf("telemetry metadata = mode=%04o regular=%v nlink=%d", info.Mode().Perm(), info.Mode().IsRegular(), info.Sys().(*syscall.Stat_t).Nlink)
+	}
+}
+
+// TestTelemetryStoreRotatesOnlyFixedGenerations checks bounded rotation and preservation of unrelated names.
+//
+// Example: a full active generation rotates through `.1` to `.4` and never probes `.5`.
+func TestTelemetryStoreRotatesOnlyFixedGenerations(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	denial, err := ParseDenial(sampleTelemetryDenial("secret"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err != nil {
+		t.Fatalf("seed AppendEvent(): %v", err)
+	}
+	logPath := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName)
+	seed, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+	full := bytes.Repeat(seed, MaxLogBytes/len(seed)+1)
+	if err := os.WriteFile(logPath, full, 0o600); err != nil {
+		t.Fatalf("fill log: %v", err)
+	}
+	sentinel := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName+".5")
+	if err := os.WriteFile(sentinel, []byte("untouched\n"), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err != nil {
+		t.Fatalf("rotating AppendEvent(): %v", err)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched\n" {
+		t.Fatalf("sentinel changed: %q err=%v", got, err)
+	}
+	rotated := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName+".1")
+	if _, err := os.Stat(rotated); err != nil {
+		t.Fatalf("missing first rotated generation %s: %v", rotated, err)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched\n" {
+		t.Fatalf("fifth generation sentinel changed: %q err=%v", got, err)
+	}
+}
+
+// TestTelemetryStoreContendedRotationDoesNotWait checks the nonblocking lock fallback.
+//
+// Example: a held rotation lock still appends one event without waiting for a lock release.
+func TestTelemetryStoreContendedRotationDoesNotWait(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	denial, err := ParseDenial(sampleTelemetryDenial("secret"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err != nil {
+		t.Fatalf("seed AppendEvent(): %v", err)
+	}
+	lockPath := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, RotationLockName)
+	lockFD, err := syscall.Open(lockPath, syscall.O_RDWR|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatalf("open rotation lock: %v", err)
+	}
+	defer syscall.Close(lockFD)
+	if err := syscall.Flock(lockFD, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("hold rotation lock: %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err != nil {
+		t.Fatalf("contended AppendEvent(): %v", err)
+	}
+}
+
+// TestTelemetryStoreRejectsAliasesWithoutTouchingTargets checks fail-closed special-file handling.
+//
+// Example: a symlink at the active log name yields an error and leaves its target unchanged.
+func TestTelemetryStoreRejectsAliasesWithoutTouchingTargets(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	logDirectory := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName)
+	if err := os.MkdirAll(logDirectory, 0o700); err != nil {
+		t.Fatalf("create telemetry directory: %v", err)
+	}
+	outside := filepath.Join(store.Root, "outside-log")
+	if err := os.WriteFile(outside, []byte("unchanged\n"), 0o600); err != nil {
+		t.Fatalf("write outside: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(logDirectory, TelemetryFileName)); err != nil {
+		t.Fatalf("create log symlink: %v", err)
+	}
+	denial, err := ParseDenial(sampleTelemetryDenial("secret"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err == nil {
+		t.Fatal("AppendEvent accepted a symlink log")
+	}
+	if got, err := os.ReadFile(outside); err != nil || string(got) != "unchanged\n" {
+		t.Fatalf("outside target changed: %q err=%v", got, err)
+	}
+}
+
+// TestTelemetryStoreRejectsStateRootAlias checks explicit state roots cannot traverse symlinks.
+//
+// Example: an explicit alias is rejected before descendant directories are created.
+func TestTelemetryStoreRejectsStateRootAlias(t *testing.T) {
+	base := newTestTelemetryRoot(t)
+	target := filepath.Join(base, "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(target, alias); err != nil {
+		t.Fatalf("create alias: %v", err)
+	}
+	store := TelemetryStore{Root: alias}
+	denial, err := ParseDenial(sampleTelemetryDenial("secret"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing}); err == nil {
+		t.Fatal("AppendEvent accepted an explicit symlink root")
+	}
+	if _, err := os.Stat(filepath.Join(target, TelemetryParentDirectoryName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("aliased target received telemetry directory: %v", err)
+	}
+}
+
+// sampleTelemetryDenial creates a bounded hook denial containing a caller-selected secret.
+//
+// Example: sampleTelemetryDenial("token") supplies a valid reduction input.
+func sampleTelemetryDenial(secret string) []byte {
+	return []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_SAMPLE_DENIED] ECI gate denied (phase=PreToolUse, operation=sample-boundary, token=` + secret + `); reason: sample"}}`)
+}
+
+// newTestTelemetryStore creates a state root beneath the canonical user temporary directory.
+//
+// Example: telemetry tests never allocate runtime state under `/tmp`.
+func newTestTelemetryStore(t *testing.T) TelemetryStore {
+	return TelemetryStore{Root: newTestTelemetryRoot(t)}
+}
+
+// newTestTelemetryRoot creates an owner-only canonical state root for telemetry tests.
+//
+// Example: the returned root is removed automatically after the test.
+func newTestTelemetryRoot(t *testing.T) string {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("resolve home: %v", err)
+	}
+	base, err := filepath.EvalSymlinks(filepath.Join(home, "tmp"))
+	if err != nil {
+		t.Fatalf("resolve home temporary directory: %v", err)
+	}
+	root, err := os.MkdirTemp(base, "eci-command-gate-state.")
+	if err != nil {
+		t.Fatalf("create telemetry root: %v", err)
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("chmod telemetry root: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("remove telemetry root: %v", err)
+		}
+	})
+	return root
+}

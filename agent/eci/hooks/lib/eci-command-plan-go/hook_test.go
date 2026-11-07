@@ -1,0 +1,443 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	// manySessionFixtureEntries exercises immediate directory observation past 128 entries.
+	//
+	// Example: this many controls plus one marker must retain all 129 inode facts.
+	manySessionFixtureEntries = 128
+)
+
+// TestRunHookScratchScript verifies execution admission in an active Worker callback.
+//
+// Example: an unchanged HOME/tmp script is inspected without running its body.
+func TestRunHookScratchScript(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	contextMarker(t, filepath.Join(home, "proof"), "scratch-owner", cwd)
+	script := filepath.Join(home, "tmp", "proof", "run.sh")
+	sentinel := filepath.Join(home, "script-executed")
+	requireHookDirectory(t, filepath.Dir(script))
+	requireHookFile(t, script, "#!/bin/sh\nprintf executed > '"+sentinel+"'\n")
+	input := HookInput{SessionID: "scratch-owner", CWD: cwd, ToolName: "Bash"}
+	input.ToolInput.Command = "bash '" + script + "'"
+	request, err := hookRequest(input)
+	require.NoError(t, err)
+	require.Equal(t, MarkerActive, request.Marker)
+	require.Equal(t, RoleWorker, request.Role)
+	require.Equal(t, []string{resolvePathIdentity(cwd)}, request.ApprovedRoots)
+	callback, err := json.Marshal(input)
+	require.NoError(t, err)
+	var output bytes.Buffer
+	require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+	_, err = os.Stat(sentinel)
+	require.ErrorIs(t, err, os.ErrNotExist, "hook must never execute the inspected script")
+	require.Empty(t, output.String(), "active scratch script callback denied: %s", &output)
+}
+
+// TestRunHookScratchAliases binds resolved scratch admission to real callback roles.
+//
+// Example: a transcript child inherits its parent's marker without changing repository roots.
+func TestRunHookScratchAliases(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	volume := t.TempDir()
+	proof := filepath.Join(home, "proof")
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", proof)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	contextMarker(t, proof, "scratch-parent", cwd)
+	require.NoError(t, os.Symlink(volume, filepath.Join(home, "tmp")))
+	script := filepath.Join(volume, "run.sh")
+	sentinel := filepath.Join(volume, "executed")
+	requireHookFile(t, script, "#!/bin/sh\nprintf executed > '"+sentinel+"'\n")
+	alias := filepath.Join(home, "tmp", "alias.sh")
+	require.NoError(t, os.Symlink(script, alias))
+	for _, actor := range []string{"direct-worker", "coordinator"} {
+		input := HookInput{SessionID: "scratch-parent", CWD: cwd, ToolName: "Bash"}
+		t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
+		role := RoleCoordinator
+		switch actor {
+		case "direct-worker":
+			t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+			role = RoleWorker
+		}
+		for _, command := range []string{"bash '" + script + "'", "bash '" + alias + "'", "'" + alias + "'"} {
+			input.ToolInput.Command = command
+			request, err := hookRequest(input)
+			require.NoError(t, err)
+			require.Equal(t, role, request.Role, actor)
+			require.Equal(t, MarkerActive, request.Marker, actor)
+			require.Equal(t, "scratch-parent", request.ActiveSession, actor)
+			require.Equal(t, input.SessionID, request.HookSessionID, actor)
+			require.Equal(t, []string{resolvePathIdentity(cwd)}, request.ApprovedRoots, actor)
+			callback, err := json.Marshal(input)
+			require.NoError(t, err)
+			var output bytes.Buffer
+			require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+			require.Empty(t, output.String(), "%s: %s", actor, command)
+		}
+	}
+	_, err := os.Stat(sentinel)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// TestRunHookEnvelope verifies silent allows and a valid callback denial envelope.
+//
+// Example: root removal emits one denial while an ordinary read emits nothing.
+func TestRunHookEnvelope(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
+	markerDir := filepath.Join(home, "proof", "hook-envelope")
+	require.NoError(t, os.MkdirAll(markerDir, 0700))
+	marker := "scope: hook envelope\ncwd: /tmp\nsession_id: hook-envelope\ncreated_utc: 2026-10-04T00:00:00Z\n"
+	require.NoError(t, os.WriteFile(filepath.Join(markerDir, "eci_active"), []byte(marker), 0600))
+	tests := []struct {
+		name, input string
+		denied      bool
+	}{
+		{"ordinary allow", `{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"cat ordinary"}}`, false},
+		{"concrete root removal", `{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"rm -rf /"}}`, true},
+		{"malformed identity denied under active scope", `{`, true},
+		{"other tool", `{"tool_name":"Read","tool_input":{"command":"rm -rf /"}}`, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name,
+			// Verify one callback keeps the hook transport contract.
+			//
+			// Example: malformed callback metadata produces no denial envelope.
+			func(t *testing.T) {
+				var output bytes.Buffer
+				{
+					status := RunHook(strings.NewReader(test.input), &output)
+					require.Falsef(t, status != 0, "hook status=%d, want0", status)
+				}
+				if !test.denied {
+					require.Falsef(t, output.Len() != 0, "allow output=%q", output.String())
+					return
+				}
+				var envelope struct {
+					HookSpecificOutput HookSpecificOutput `json:"hookSpecificOutput"`
+				}
+				require.NoError(t, json.Unmarshal(output.Bytes(), &envelope))
+				require.Falsef(t, envelope.HookSpecificOutput.HookEventName != "PreToolUse" || envelope.HookSpecificOutput.PermissionDecision != "deny" || envelope.HookSpecificOutput.PermissionDecisionReason == "", "invalid hook denial: %s", &output)
+			})
+	}
+}
+
+// TestHookGitDefaultsPreserveAllCommandEffects retains native verbs and siblings.
+//
+// Example: a native diff cannot hide a later concrete root removal.
+func TestHookGitDefaultsPreserveAllCommandEffects(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		denied  bool
+	}{
+		{"diff options", "git diff --output=ordinary.patch", false},
+		{"log options", "git log --all --format=%H", false},
+		{"other verb", "git fsck --lost-found", false},
+		{"harmless find action", "find . -exec cat '{}' ';'", false},
+		{"long concrete effect", "printf '%s' '" + strings.Repeat("x", maxCommandBytes) + "'; rm -rf /", true},
+		{"many concrete effects", strings.Repeat("printf ok;", maxSegments+1) + "rm -rf /", true},
+		{"compound concrete effect", "git diff --output=ordinary.patch; rm -rf /", true},
+		{"nested concrete effect", "git diff; bash -c 'rm -rf /'", true},
+	}
+	for _, test := range tests {
+		t.Run(test.name,
+			// Verify native defaults preserve every established command effect.
+			//
+			// Example: a nested destructive child remains a concrete denial.
+			func(t *testing.T) {
+				request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: t.TempDir(), Marker: MarkerActive, ActiveSession: "hook-test", Command: test.command, HookMode: true, CollectShellCommands: true}
+				result := Classify(request)
+				{
+					got := result.Decision == DecisionDeny
+					require.Falsef(t, got != test.denied, "denied=%v, want %v: %#v", got, test.denied, result)
+				}
+				require.False(t, !test.denied && (result.ShellAnalysis == nil || len(result.ShellAnalysis.Commands) == 0), "callback lost command records for native effect routing")
+			})
+	}
+}
+
+// TestHookOutputWritesReuseParsedEffects distinguishes output writes from data.
+//
+// Example: descriptor duplication is not a filesystem output write.
+func TestHookOutputWritesReuseParsedEffects(t *testing.T) {
+	for _, test := range []struct {
+		command string
+		writes  bool
+	}{
+		{"cat 'a>b'", false},
+		{"printf note > ordinary", true},
+		{"cat ordinary 2>&1", false},
+		{"bash -c 'printf note >> ordinary'", true},
+	} {
+		request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: t.TempDir(), Marker: MarkerInactive, Command: test.command, HookMode: true, CollectShellCommands: true}
+		result := Classify(request)
+		require.Falsef(t, result.ShellAnalysis == nil || result.ShellAnalysis.OutputWrites != test.writes, "command=%q output writes=%#v want %v", test.command, result.ShellAnalysis, test.writes)
+	}
+}
+
+// TestHookInactivePermissiveFinalization verifies optional compiled mode handling.
+//
+// Example: inactive permissive mode suppresses a denial; enforcing mode emits it.
+func TestHookInactivePermissiveFinalization(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	gate := filepath.Join(home, ".omp", "agent", "eci", "bin", "eci-command-gate-mode")
+	require.NoError(t, os.MkdirAll(filepath.Dir(gate), 0700))
+	build := exec.Command("go", "build", "-o", gate, ".")
+	build.Dir = filepath.Join("..", "eci-command-gate-mode-go")
+	{
+		output, err := build.CombinedOutput()
+		require.NoErrorf(t, err, "build optional finalizer: %v: %s", err, output)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	config := filepath.Join(home, "config", "eci", "command-gate-mode")
+	require.NoError(t, os.MkdirAll(filepath.Dir(config), 0700))
+	require.NoError(t, os.WriteFile(config, []byte("permissive\n"), 0600))
+	input := HookInput{SessionID: "inactive", CWD: home, ToolName: "Bash"}
+	input.ToolInput.Command = "'" + gate + "' set enforcing"
+	callback, err := json.Marshal(input)
+	require.NoError(t, err)
+	var output bytes.Buffer
+	{
+		status := RunHook(bytes.NewReader(callback), &output)
+		require.Falsef(t, status != 0 || output.Len() != 0, "inactive permissive callback status=%d output=%s", status, &output)
+	}
+	require.NoError(t, os.WriteFile(config, []byte("enforcing\n"), 0600))
+	{
+		status := RunHook(bytes.NewReader(callback), &output)
+		require.Falsef(t, status != 0 || !strings.Contains(output.String(), `"permissionDecision":"deny"`), "inactive enforcing callback status=%d output=%s", status, &output)
+	}
+	require.Falsef(t, !strings.Contains(output.String(), string(CodeControlOwnerRequired)), "resolved worker control effect lost its ownership diagnostic: %s", &output)
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
+	output.Reset()
+	{
+		status := RunHook(bytes.NewReader(callback), &output)
+		require.Falsef(t, status != 0 || output.Len() != 0, "quoted coordinator control target denied: status=%d output=%s", status, &output)
+	}
+}
+
+// TestHookAnalysisNeverExecutesTimeout retains child facts without wrapper execution.
+//
+// Example: timeout around git add keeps ownership routing without creating a sentinel.
+func TestHookAnalysisNeverExecutesTimeout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	t.Setenv("PATH", home+":/usr/bin:/bin")
+	sentinel := filepath.Join(home, "wrapper-executed")
+	require.NoError(t, os.WriteFile(filepath.Join(home, "timeout"), []byte("#!/bin/sh\nprintf called > '"+sentinel+"'\nexec /usr/bin/timeout \"$@\"\n"), 0700))
+	markerDir := filepath.Join(home, "proof", "timeout-owner")
+	require.NoError(t, os.MkdirAll(markerDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(markerDir, "eci_active"), []byte("scope: callback\ncwd: "+home+"\nsession_id: timeout-owner\n"), 0600))
+	input := HookInput{SessionID: "timeout-owner", CWD: home, ToolName: "Bash"}
+	input.ToolInput.Command = "timeout 5 git add ordinary"
+	callback, err := json.Marshal(input)
+	require.NoError(t, err)
+	var output bytes.Buffer
+	{
+		status := RunHook(bytes.NewReader(callback), &output)
+		require.Falsef(t, status != 0 || !strings.Contains(output.String(), string(CodeWorkerGitOwnershipDenied)), "finite timeout child lost ownership effect: status=%d output=%s", status, &output)
+	}
+	{
+		_, err := os.Stat(sentinel)
+		require.Falsef(t, !os.IsNotExist(err), "callback executed inspected timeout wrapper: %v", err)
+	}
+}
+
+// TestHookBookkeepingUsesNativeGit isolates queries from the inspected PATH.
+//
+// Example: a PATH Git wrapper is never invoked while recording a touched baseline.
+func TestHookBookkeepingUsesNativeGit(t *testing.T) {
+	home := t.TempDir()
+	{
+		output, err := exec.Command("/usr/bin/git", "-C", home, "init").CombinedOutput()
+		require.NoErrorf(t, err, "init fixture: %v: %s", err, output)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	t.Setenv("PATH", home+":/usr/bin:/bin")
+	sentinel := filepath.Join(home, "git-wrapper-executed")
+	require.NoError(t, os.WriteFile(filepath.Join(home, "git"), []byte("#!/bin/sh\nprintf called > '"+sentinel+"'\nexec /usr/bin/git \"$@\"\n"), 0700))
+	input := HookInput{SessionID: "mutation", CWD: home, ToolName: "Bash"}
+	input.ToolInput.Command = "printf data > ordinary"
+	callback, err := json.Marshal(input)
+	require.NoError(t, err)
+	var output bytes.Buffer
+	{
+		status := RunHook(bytes.NewReader(callback), &output)
+		require.Falsef(t, status != 0 || output.Len() != 0, "owned write denied: status=%d output=%s", status, &output)
+	}
+	{
+		_, err := os.Stat(sentinel)
+		require.Falsef(t, !os.IsNotExist(err), "bookkeeping executed PATH git wrapper: %v", err)
+	}
+}
+
+// TestHookOwnedLinkCleanup distinguishes removing aliases from changing controls.
+//
+// Example: unlinking an owned marker alias is allowed; writing through it is denied.
+func TestHookOwnedLinkCleanup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	markerDir := filepath.Join(home, "proof", "cleanup")
+	require.NoError(t, os.MkdirAll(markerDir, 0700))
+	marker := filepath.Join(markerDir, "eci_active")
+	require.NoError(t, os.WriteFile(marker, []byte("scope: callback\ncwd: "+home+"\nsession_id: cleanup\n"), 0600))
+	link := filepath.Join(home, "marker-link")
+	hardlink := filepath.Join(home, "marker-hardlink")
+	require.NoError(t, os.Symlink(marker, link))
+	require.NoError(t, os.Link(marker, hardlink))
+	for _, test := range []struct {
+		command string
+		denied  bool
+	}{
+		{"rm '" + link + "'", false},
+		{"rm '" + hardlink + "'", false},
+		{"unlink '" + link + "'", false},
+		{"unlink '" + hardlink + "'", false},
+		{"mv '" + link + "' '" + filepath.Join(home, "moved-link") + "'", false},
+		{"tee '" + link + "'", true},
+		{"tee '" + hardlink + "'", true},
+		{"rm '" + marker + "'", true},
+		{"unlink '" + marker + "'", true},
+	} {
+		input := HookInput{SessionID: "cleanup", CWD: home, ToolName: "Bash"}
+		input.ToolInput.Command = test.command
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		RunHook(bytes.NewReader(callback), &output)
+		{
+			got := output.Len() != 0
+			require.Falsef(t, got != test.denied, "command=%s denied=%v want=%v output=%s", test.command, got, test.denied, &output)
+		}
+	}
+}
+
+// TestRunHookLargeCallback preserves all effects in a complete valid callback.
+//
+// Example: a large inert string cannot hide a later concrete root removal.
+func TestRunHookLargeCallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
+	contextMarker(t, filepath.Join(home, "proof"), "large", home)
+	command := "printf '%s' '" + strings.Repeat("x", maxRequestBytes+1) + "'"
+	for _, test := range []struct {
+		command  string
+		trailing string
+		denied   bool
+	}{
+		{command, "", false},
+		{command + "; rm -rf /", "", true},
+		{command + "; rm -rf /", "{}", false},
+		{command + "; rm -rf /", "{", false},
+	} {
+		input := HookInput{SessionID: "large", CWD: home, ToolName: "Bash"}
+		input.ToolInput.Command = test.command
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.Zero(t, RunHook(strings.NewReader(string(callback)+test.trailing), &output))
+		require.Equal(t, test.denied, output.Len() != 0, "trailing=%q", test.trailing)
+	}
+	var plannerOutput bytes.Buffer
+	require.Equal(t, StatusInternal, Run(strings.NewReader(strings.Repeat(" ", maxRequestBytes+1)+"{}"), &plannerOutput))
+}
+
+// TestHookControlIndexKeepsAllObservedAliases retains immediate control inode facts.
+//
+// Example: 129 controls cannot erase a marker alias or a later control alias.
+func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	contextMarker(t, filepath.Join(home, "proof"), "controls", home)
+	marker := filepath.Join(home, "proof", "controls", "eci_active")
+	markerAlias := filepath.Join(home, "marker-alias")
+	require.NoError(t, os.Link(marker, markerAlias))
+	late := ""
+	for index := 0; index < manySessionFixtureEntries; index++ {
+		late = filepath.Join(filepath.Dir(marker), fmt.Sprintf("eci_wait.%03d", index))
+		require.NoError(t, os.WriteFile(late, []byte("control\n"), 0600))
+	}
+	lateAlias := filepath.Join(home, "late-alias")
+	require.NoError(t, os.Link(late, lateAlias))
+	ordinary := filepath.Join(home, "ordinary")
+	require.NoError(t, os.WriteFile(ordinary, []byte("ordinary\n"), 0600))
+	require.NoError(t, os.Link(ordinary, filepath.Join(home, "ordinary-alias")))
+	for _, target := range []string{markerAlias, lateAlias, marker, ordinary} {
+		input := HookInput{SessionID: "controls", CWD: home, ToolName: "Bash"}
+		input.ToolInput.Command = "tee '" + target + "'"
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Equal(t, target != ordinary, output.Len() != 0, "target=%s", target)
+	}
+}
+
+// TestHookMalformedIdentityFailsClosedOnlyWithActiveScope verifies that a
+// malformed callback identity denies under an active marker and stays advisory
+// without one.
+//
+// Example: session_id [] under an active marker emits malformed hook identity.
+func TestHookMalformedIdentityFailsClosedOnlyWithActiveScope(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ECI_PROOF_ROOT", root)
+	malformed := `{"session_id":[],"tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"true"}}`
+	var output bytes.Buffer
+	require.Zero(t, RunHook(strings.NewReader(malformed), &output))
+	require.Empty(t, output.String())
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "scratch-owner"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "scratch-owner", "eci_active"), []byte("scope: x\ncwd: /tmp\nsession_id: scratch-owner\n"), 0600))
+	output.Reset()
+	require.Zero(t, RunHook(strings.NewReader(malformed), &output))
+	require.Contains(t, output.String(), "malformed hook identity")
+}
