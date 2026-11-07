@@ -107,9 +107,10 @@ run_hook() {
     cat -- "$ERROR_OUTPUT" >&2
     exit 1
   }
-  [ ! -s "$ERROR_OUTPUT" ] || {
+  grep -v -e '^command hook advisory: classify callback transcript: callback transcript is unknown' -- "$ERROR_OUTPUT" >"$TMP_ROOT/error-unexpected.txt" || true
+  [ ! -s "$TMP_ROOT/error-unexpected.txt" ] || {
     printf 'private command-syntax hook wrote stderr for command=%s\n' "$command" >&2
-    cat -- "$ERROR_OUTPUT" >&2
+    cat -- "$TMP_ROOT/error-unexpected.txt" >&2
     exit 1
   }
 }

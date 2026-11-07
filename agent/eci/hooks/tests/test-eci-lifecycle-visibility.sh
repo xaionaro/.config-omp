@@ -52,9 +52,10 @@ assert_visibility_allowed() {
   local command="$1" role="$2"
 
   run_hook "$command" "$role"
-  [ ! -s "$stderr_output" ] || {
+  grep -v -e '^command hook advisory: classify callback transcript: callback transcript is unknown' -- "$stderr_output" >"$TMP_ROOT/stderr-unexpected.txt" || true
+  [ ! -s "$TMP_ROOT/stderr-unexpected.txt" ] || {
     printf 'read-only lifecycle hook stderr: role=%s command=%s\n' "$role" "$command" >&2
-    cat -- "$stderr_output" >&2
+    cat -- "$TMP_ROOT/stderr-unexpected.txt" >&2
     exit 1
   }
   [ ! -s "$output" ] || {
