@@ -19,6 +19,7 @@ if [ -n "${NORMAL_GIT_ADMISSION_HOOK_SOURCE:-}" ]; then
 fi
 cp -- "$SOURCE_ROOT/hooks.json" "$RUNTIME_ROOT/hooks.json"
 mkdir -p -- "$RUNTIME_ROOT/bin"
+cp -- "$SOURCE_ROOT/bin/eci-runtime-sync" "$RUNTIME_ROOT/bin/eci-runtime-sync"
 # Build the disposable runtime from its copied sources. Clean archives contain
 # neither ignored executables nor optional planner provenance.
 source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
