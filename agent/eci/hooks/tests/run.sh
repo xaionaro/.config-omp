@@ -24,6 +24,10 @@ chmod 600 "$XDG_CONFIG_HOME/eci/command-gate-mode"
 # Tests isolate HOME; the published Go helper lives under the real $HOME/tmp/eci-runtime.
 mkdir -p "$TMP_ROOT/home/tmp" || exit 1
 ln -s -- "$HOME/tmp/eci-runtime" "$TMP_ROOT/home/tmp/eci-runtime" || exit 1
+# The state helpers look up $HOME/.omp/agent/eci/bin (eci-native-binary.sh:22-28) with
+# HOME=$TMP_ROOT/home. Link that directory to this runtime's bin so the verified helper resolves.
+mkdir -p "$TMP_ROOT/home/.omp/agent/eci" || exit 1
+ln -s -- "$ROOT/bin" "$TMP_ROOT/home/.omp/agent/eci/bin" || exit 1
 
 PASS_COUNT=0
 FAIL_COUNT=0
