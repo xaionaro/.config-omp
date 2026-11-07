@@ -1,14 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // repoAllowFixture isolates the proof root, session identity, and git repositories used by the repository-allow tests.
@@ -22,10 +20,14 @@ type repoAllowFixture struct {
 func newRepoAllowFixture(t *testing.T) repoAllowFixture {
 	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("resolve temporary directory: %v", err)
+	}
 	fx := repoAllowFixture{base: base, sid: "repo-allow-test"}
 	fx.session = filepath.Join(base, "proof", fx.sid)
-	require.NoError(t, os.MkdirAll(fx.session, 0o700))
+	if err := os.MkdirAll(fx.session, 0o700); err != nil {
+		t.Fatalf("create session directory: %v", err)
+	}
 	t.Setenv("HOME", base)
 	t.Setenv(envProofRoot, filepath.Join(base, "proof"))
 	t.Setenv(envSessionID, fx.sid)
@@ -36,11 +38,16 @@ func newRepoAllowFixture(t *testing.T) repoAllowFixture {
 func (fx repoAllowFixture) makeRepo(t *testing.T, name string) string {
 	t.Helper()
 	dir := filepath.Join(fx.base, name)
-	require.NoError(t, os.MkdirAll(dir, 0o700))
-	out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput()
-	require.NoError(t, err, string(out))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create repository directory %s: %v", name, err)
+	}
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init %s: %v: %s", name, err, out)
+	}
 	root, err := filepath.EvalSymlinks(dir)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("resolve repository %s: %v", name, err)
+	}
 	return root
 }
 
@@ -54,8 +61,12 @@ func (fx repoAllowFixture) writeRecord(t *testing.T, cwd, repo string, mode os.F
 	t.Helper()
 	content := fmt.Sprintf("schema: eci-additional-repository/v1\nsession_id: %s\ncwd: %s\nrepository: %s\nreason: test reason\nstate: active\n",
 		fx.sid, cwd, repo)
-	require.NoError(t, os.WriteFile(fx.recordPath(), []byte(content), 0o600))
-	require.NoError(t, os.Chmod(fx.recordPath(), mode))
+	if err := os.WriteFile(fx.recordPath(), []byte(content), 0o600); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	if err := os.Chmod(fx.recordPath(), mode); err != nil {
+		t.Fatalf("set record mode %o: %v", mode, err)
+	}
 }
 
 // TestRepositoryAllowStatusReportsActiveOrInactive prints the allowance of a valid record and inactive when no record exists.
@@ -66,13 +77,21 @@ func TestRepositoryAllowStatusReportsActiveOrInactive(t *testing.T) {
 	t.Chdir(work)
 
 	out, err := captureStdout(t, func() error { return repositoryAllowStatus([]string{"repository-allow-status"}) })
-	require.NoError(t, err)
-	assert.Equal(t, "ECI additional repository inactive\n", out)
+	if err != nil {
+		t.Fatalf("status without record: unexpected error: %#v", err)
+	}
+	if want := "ECI additional repository inactive\n"; out != want {
+		t.Errorf("status without record: stdout = %q, want %q", out, want)
+	}
 
 	fx.writeRecord(t, work, repo, 0o600)
 	out, err = captureStdout(t, func() error { return repositoryAllowStatus([]string{"repository-allow-status"}) })
-	require.NoError(t, err)
-	assert.Equal(t, "ECI additional repository active: "+repo+"\nreason: test reason\n", out)
+	if err != nil {
+		t.Fatalf("status with valid record: unexpected error: %#v", err)
+	}
+	if want := "ECI additional repository active: " + repo + "\nreason: test reason\n"; out != want {
+		t.Errorf("status with valid record: stdout = %q, want %q", out, want)
+	}
 }
 
 // TestRepositoryAllowStatusFailsClosedOnInvalidRecord exits 1 with the invalid-state diagnostic instead of reporting inactive.
@@ -88,7 +107,9 @@ func TestRepositoryAllowStatusFailsClosedOnInvalidRecord(t *testing.T) {
 			mode: 0o600,
 			breaks: func(t *testing.T, repo string) {
 				t.Helper()
-				require.NoError(t, os.RemoveAll(filepath.Join(repo, ".git")))
+				if err := os.RemoveAll(filepath.Join(repo, ".git")); err != nil {
+					t.Fatalf("remove repository metadata: %v", err)
+				}
 			},
 		},
 	}
@@ -105,9 +126,15 @@ func TestRepositoryAllowStatusFailsClosedOnInvalidRecord(t *testing.T) {
 
 			out, err := captureStdout(t, func() error { return repositoryAllowStatus([]string{"repository-allow-status"}) })
 			var ee exitError
-			require.ErrorAs(t, err, &ee)
-			assert.Equal(t, exitError{code: 1, msg: "ECI additional repository state is invalid: " + fx.recordPath()}, ee)
-			assert.Empty(t, out)
+			if !errors.As(err, &ee) {
+				t.Fatalf("status: want exitError, got %#v", err)
+			}
+			if want := (exitError{code: 1, msg: "ECI additional repository state is invalid: " + fx.recordPath()}); ee != want {
+				t.Errorf("status: exitError = %#v, want %#v", ee, want)
+			}
+			if out != "" {
+				t.Errorf("status: stdout = %q, want empty", out)
+			}
 		})
 	}
 }

@@ -3,9 +3,6 @@ package main
 import (
 	"os"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestApproveCommitPrintsNoticeAndSucceeds keeps the approve-commit spelling at exit 0 with the exact notice on stdout, whatever the arguments.
@@ -16,8 +13,12 @@ func TestApproveCommitPrintsNoticeAndSucceeds(t *testing.T) {
 		{"approve-commit", "/repo", "env GIT_EDITOR=true git -C /repo commit -am 'ordinary commit'"},
 	} {
 		out, err := captureStdout(t, func() error { return run(args) })
-		require.NoError(t, err, "args %q", args)
-		assert.Equal(t, notice, out, "args %q", args)
+		if err != nil {
+			t.Fatalf("run %q: unexpected error: %#v", args, err)
+		}
+		if out != notice {
+			t.Errorf("run %q: stdout = %q, want %q", args, out, notice)
+		}
 	}
 }
 
@@ -25,13 +26,19 @@ func TestApproveCommitPrintsNoticeAndSucceeds(t *testing.T) {
 func captureStdout(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "stdout")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("create stdout capture: %v", err)
+	}
 	saved := os.Stdout
 	os.Stdout = f
 	defer func() { os.Stdout = saved }()
 	runErr := fn()
-	require.NoError(t, f.Close())
+	if err := f.Close(); err != nil {
+		t.Fatalf("close stdout capture: %v", err)
+	}
 	out, err := os.ReadFile(f.Name())
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("read stdout capture: %v", err)
+	}
 	return string(out), runErr
 }
