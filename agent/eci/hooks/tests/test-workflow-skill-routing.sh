@@ -3399,13 +3399,14 @@ assert_ate_explicit_only_contract() {
 
 assert_ate_explicit_only() {
   local eci_source ate_source policy_source mutation output
-  eci_source="$(<"$ECI")"
+  # The ATE activation and inference sentences are canonical in the binding contract.
+  eci_source="$(<"$ECI_BINDING_CONTRACT")"
   ate_source="$(<"$ATE")"
   policy_source="$(<"$ROOT/../skills/agent-teams-execution/agents/openai.yaml")"
   assert_ate_explicit_only_contract "$eci_source" "$ate_source" "$policy_source"
   require_text "$ECI" 'Starts only on explicit user request; once active, may route bounded work through ECI.'
   require_text "$ROOT/../skills/code-porting/SKILL.md" 'Starts only on explicit user request; when already outer, routes each bounded Phase 7 task through ECI and remains outer.'
-  require_text "$ECI" '| `ATE` receives bounded `ECI` | Nest normal ECI;'
+  require_text "$ECI_BINDING_CONTRACT" '| `ATE` receives bounded `ECI` | Nest normal ECI;'
 
   for mutation in '' "${policy_source/false/true}"; do
     if output="$(assert_ate_explicit_only_contract "$eci_source" "$ate_source" "$mutation" 2>&1)"; then
