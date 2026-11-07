@@ -233,6 +233,7 @@ func ledgerEnsureAnchor(sessionDir string) error {
 		return fmt.Errorf("unsafe session directory")
 	}
 	log := filepath.Join(sessionDir, ledgerLogName)
+	created := false
 	if !exists(log) {
 		f, err := os.OpenFile(log, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
@@ -246,9 +247,13 @@ func ledgerEnsureAnchor(sessionDir string) error {
 			}
 		} else {
 			f.Close()
+			created = true
 		}
 	}
 	if !ledgerPathSafe(sessionDir) {
+		if created {
+			_ = os.Remove(log)
+		}
 		return fmt.Errorf("unsafe ledger")
 	}
 	anchor := filepath.Join(sessionDir, ledgerAnchorName)
@@ -302,14 +307,17 @@ func ledgerMarkerCwdBound(sessionDir string) error {
 	if err != nil {
 		return err
 	}
+	declared := ""
 	for _, line := range strings.Split(string(data), "\n") {
-		if declared, ok := strings.CutPrefix(line, "cwd: "); ok {
-			if canonicalCwd(declared) == cwd {
-				return nil
-			}
+		if d, ok := strings.CutPrefix(line, "cwd: "); ok {
+			declared = d
 			break
 		}
 	}
+	if declared != "" && canonicalCwd(declared) == cwd {
+		return nil
+	}
+	mismatch.msg += fmt.Sprintf(" Marker cwd %q does not match the current cwd %q.", declared, cwd)
 	return mismatch
 }
 
