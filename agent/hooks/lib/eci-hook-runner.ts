@@ -100,7 +100,7 @@ export async function runEciHook(
 	timeoutSec: number,
 ): Promise<HookRun> {
 	const env: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("CODEX_")) env[k] = v;
+	for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
 	env.ECI_SESSION_ID = id.sessionId;
 	env.ECI_THREAD_ID = id.sessionId;
 	env.ECI_HOOK_IS_SUBAGENT = id.isSubagent ? "1" : "0";
