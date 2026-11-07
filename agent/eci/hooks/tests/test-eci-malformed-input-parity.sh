@@ -27,6 +27,9 @@ printf '%s\n' \
   '{"timestamp":"2026-08-19T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Parity","agent_role":"default"}}}}}' \
   >"$eci_transcript"
 
+# The Kimi hook under test is the scratch peer's copy: run-isolated.sh exports KIMI_CODE_HOME
+# for it. The account's file is never run. run_hook gives the hook its own fixture KIMI_CODE_HOME.
+kimi_hook="${KIMI_CODE_HOME:?run-isolated.sh must export KIMI_CODE_HOME}/hooks/validate-bash.sh"
 kimi_home="$TMP_ROOT/kimi-home"
 kimi_wire="$kimi_home/.kimi-code/sessions/wd_probe_0000000000000000/t00-session/agents/main/wire.jsonl"
 mkdir -p "$(dirname "$kimi_wire")"
@@ -52,7 +55,7 @@ run_hook() {
         ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_home/.kimi-code" \
         KIMI_HOOK_IS_SUBAGENT=true KIMI_VALIDATE_CWD="$ROOT" \
         KIMI_VALIDATE_SESSION_ID=t00-session PATH="$ROOT/bin:$PATH" \
-        bash "/home/pheona/.kimi-code/hooks/validate-bash.sh" >"$output"
+        bash "$kimi_hook" >"$output"
       ;;
     *)
       return 1
