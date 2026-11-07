@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
-# The three gate binaries (eci-command-plan, eci-safe-import, eci-hook-helper) are executed through lib/eci-native-binary.sh, which verifies each receipt before running it.
+# eci-command-plan and eci-hook-helper are executed through lib/eci-native-binary.sh, which verifies each receipt before running it; eci-safe-import is allowlisted there but has no launcher caller in this tree.
 # eci-worker-git is built and installed with a receipt, but it is NOT run through that launcher. The skill runs it directly, so its receipt is informational and is not verified at runtime.
 set -euo pipefail
 
