@@ -282,6 +282,37 @@ func appendToFile(path string, data []byte) error {
 	return err
 }
 
+// ledgerMarkerCwdBound rejects an append when the session's marker declares a
+// cwd other than the current one. A session without a marker is not bound.
+func ledgerMarkerCwdBound(sessionDir string) error {
+	mismatch := exitError{code: 1, msg: "ECI high-level log append rejected a marker bound to another session or cwd."}
+	path := filepath.Join(sessionDir, "eci_active")
+	fi, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || !fi.Mode().IsRegular() {
+		return mismatch
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return mismatch
+	}
+	cwd, err := currentCwd()
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if declared, ok := strings.CutPrefix(line, "cwd: "); ok {
+			if canonicalCwd(declared) == cwd {
+				return nil
+			}
+			break
+		}
+	}
+	return mismatch
+}
+
 func ledgerAppend(args []string) error {
 	if len(args) < 2 || args[1] != "--json" {
 		return usageError()
@@ -306,6 +337,9 @@ func appendLedgerEntry(raw string, announce bool) error {
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {
 		return exitError{code: 1, msg: "eci-active: no current session directory found under the proof root."}
+	}
+	if err := ledgerMarkerCwdBound(sessionDir); err != nil {
+		return err
 	}
 	ledgerDir, err := contextSessionDir(filepath.Base(sessionDir))
 	if err != nil {
