@@ -22,8 +22,6 @@ var (
 	aggregateRepoIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
 	// errGateDenied means the gate already printed its denial diagnostic.
 	errGateDenied = errors.New("review gate denied")
-	// errGateRefresh means the gate is unmet until the required-critic manifest is refreshed; no acceptance is granted.
-	errGateRefresh = errors.New("review refresh needed")
 )
 
 // aggregateRepo is one plan member.
@@ -336,11 +334,7 @@ func aggregateReview(args []string) error {
 	if _, err := aggregatePlanSelect(plan, sid, outer, repoID); err != nil {
 		return exitError{code: 1, msg: "aggregate-review rejected an unknown or invalid aggregate repository ID."}
 	}
-	err = aggregateReviewGate(phase, sid, repoID, outer)
-	if errors.Is(err, errGateRefresh) {
-		return exitError{code: 1, msg: fmt.Sprintf("ECI aggregate required-critic review gate unmet: phase=%s repo=%s needs a current %s; its producer (aggregate-manifest-write) is deferred, so no acceptance is granted.", phase, repoID, fmt.Sprintf(aggregateManifestFmt, repoID))}
-	}
-	if err != nil {
+	if err := aggregateReviewGate(phase, sid, repoID, outer); err != nil {
 		return exitError{code: 1, msg: fmt.Sprintf("ECI aggregate required-critic review gate rejected phase=%s repo=%s.", phase, repoID)}
 	}
 	return nil
@@ -409,7 +403,7 @@ func gitPlainOutput(args ...string) string {
 }
 
 // aggregateReviewGate ports the aggregate branch of hooks/eci-review-gate.sh. It returns errGateDenied after
-// printing a denial, errGateRefresh after printing a refresh reminder, or nil only for a pass.
+// printing a denial, or nil for pass and refresh outcomes (refresh is advisory, as in codex).
 func aggregateReviewGate(phase, sid, repoID, outer string) error {
 	if outer != canonicalCwd(outer) {
 		return errGateDenied
@@ -445,12 +439,12 @@ func (g reviewGate) allowAggregate(parentRaw, repoID, plan, manifest string) err
 	}
 	if !g.metadataOrRefresh(plan, "no current aggregate repository metadata exists",
 		"historical aggregate repository metadata is not a regular local file", parent) {
-		return errGateRefresh
+		return nil
 	}
 	doc, err := readJSONValue(plan)
 	if err != nil || !jqTruthy(doc) {
 		g.refresh("historical aggregate repository metadata is not parseable", parent)
-		return errGateRefresh
+		return nil
 	}
 	repoRoot := ""
 	for _, entry := range jqIterate(doc, "repositories") {
@@ -468,17 +462,17 @@ func (g reviewGate) allowAggregate(parentRaw, repoID, plan, manifest string) err
 	}
 	if repoRoot == "" {
 		g.refresh("aggregate metadata has no current selected repository", parent)
-		return errGateRefresh
+		return nil
 	}
 	repoRoot, ok = resolvedExistingDir(repoRoot)
 	if !ok {
 		g.refresh("the selected aggregate repository no longer exists", parent)
-		return errGateRefresh
+		return nil
 	}
 	top := gitPlainOutput("-C", repoRoot, "rev-parse", "--show-toplevel")
 	if top == "" {
 		g.refresh("the selected aggregate repository is no longer a current Git worktree", repoRoot)
-		return errGateRefresh
+		return nil
 	}
 	actual, ok := resolvedExistingDir(top)
 	if !ok {
@@ -502,7 +496,7 @@ func (g reviewGate) allowCurrent(reviewCwdRaw, manifest, repoRootHint string) er
 	top := gitPlainOutput("-C", repoRoot, "rev-parse", "--show-toplevel")
 	if top == "" {
 		g.refresh("no current repository is available for review", repoRoot)
-		return errGateRefresh
+		return nil
 	}
 	repoRoot, ok = resolvedExistingDir(top)
 	if !ok {
@@ -510,12 +504,12 @@ func (g reviewGate) allowCurrent(reviewCwdRaw, manifest, repoRootHint string) er
 	}
 	if !g.metadataOrRefresh(manifest, "no current review metadata exists",
 		"historical review metadata is not a regular local file", manifest) {
-		return errGateRefresh
+		return nil
 	}
 	doc, err := readJSONValue(manifest)
 	if err != nil || !jqTruthy(doc) {
 		g.refresh("historical review metadata is not parseable", "<unresolved>")
-		return errGateRefresh
+		return nil
 	}
 	target := ""
 	if obj, ok := doc.(map[string]any); ok {
@@ -523,7 +517,7 @@ func (g reviewGate) allowCurrent(reviewCwdRaw, manifest, repoRootHint string) er
 	}
 	if target == "" {
 		g.refresh("review metadata has no current target", "<unresolved>")
-		return errGateRefresh
+		return nil
 	}
 	candidate := target
 	if !filepath.IsAbs(target) {
@@ -533,20 +527,20 @@ func (g reviewGate) allowCurrent(reviewCwdRaw, manifest, repoRootHint string) er
 	if err != nil {
 		targetPath = filepath.Clean(candidate)
 		g.refresh("the current target no longer exists", targetPath)
-		return errGateRefresh
+		return nil
 	}
 	if !strings.HasPrefix(targetPath, repoRoot+"/") {
 		return g.deny(fmt.Sprintf("ECI required-critic review gate rejected a current target outside the current repository: %s", target))
 	}
 	if fi, err := os.Stat(targetPath); err != nil || !fi.Mode().IsRegular() {
 		g.refresh("the current target is not a regular file", targetPath)
-		return errGateRefresh
+		return nil
 	}
 	relative := strings.TrimPrefix(targetPath, repoRoot+"/")
 	if gitPlainZero("-C", repoRoot, "diff", "--quiet", "--", relative) &&
 		gitPlainZero("-C", repoRoot, "diff", "--cached", "--quiet", "--", relative) {
 		g.refresh("the target is no longer part of the current diff", targetPath)
-		return errGateRefresh
+		return nil
 	}
 	fmt.Fprintf(os.Stdout, "ECI review gate passed: phase=%s target=%s; ordinary work continues; workflow must route one fresh named least-restriction critic for the current diff.\n",
 		g.phase, targetPath)
