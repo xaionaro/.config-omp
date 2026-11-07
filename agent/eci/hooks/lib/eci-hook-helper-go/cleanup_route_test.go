@@ -126,7 +126,7 @@ func newKimiCleanupFixture(t *testing.T) (home, kimi, elsewhere string) {
 
 // TestCleanupRouteKimiHomeApprovedAndRefused checks the Kimi home as a cleanup root.
 //
-// Source anchors (codex 575bb81 hooks/lib/eci-hook-helper-go/cleanup_route.go):
+// Source anchors (pre-migration source 575bb81 hooks/lib/eci-hook-helper-go/cleanup_route.go):
 // KIMI_CODE_HOME pair 343-348; rm checks 115-134; mv checks 425-437; approved
 // tables 32-35; escape 401; outside-home 421. The 575bb81 tree has no cleanup
 // route test, so each expectation is derived from that source.
