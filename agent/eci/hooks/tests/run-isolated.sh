@@ -46,6 +46,28 @@ ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 ln -s "$account_home/.omp/agent/skills" "$work/home/.omp/agent/skills"
 ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/eci-binding-contract.md"
 
+# config.toml keys trust state by the account's canonical hooks.json path. This
+# per-host rewrite points the copy's hooks.state keys at the copied hooks.json,
+# so the copy names the hooks.json the test runs. Only headers starting with the
+# account key prefix change, and only in the copy; the real tree is never
+# written. The runtime sync will own this rewrite.
+rewrite_copied_hooks_state_prefix() {
+  local config="$1" from_prefix="$2" to_prefix="$3" line tmp
+  [ -f "$config" ] || return 0
+  tmp="$(mktemp "$work/config-rewrite.XXXXXX")"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "$from_prefix"*) printf '%s%s\n' "$to_prefix" "${line#"$from_prefix"}" ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done <"$config" >"$tmp"
+  cat -- "$tmp" >"$config"
+  rm -f -- "$tmp"
+}
+rewrite_copied_hooks_state_prefix "$work/home/.omp/agent/eci/config.toml" \
+  "[hooks.state.\"$account_home/.omp/agent/eci/hooks.json:" \
+  "[hooks.state.\"$work/home/.omp/agent/eci/hooks.json:"
+
 export HOME="$work/home"
 export TMPDIR="$HOME/tmp/mtlog"
 export ECI_PROOF_ROOT="$HOME/tmp/agent/proof"
