@@ -109,7 +109,10 @@ eci_runtime_verify_fd() {
 
   [ -f "$receipt_path" ] && [ ! -L "$receipt_path" ] || { eci_runtime_denial "$name" "has no sha256 receipt"; return 1; }
   IFS= read -r receipt_line <"$receipt_path" || true
-  [[ "$receipt_line" =~ ^([0-9a-f]{64})"  $name"$ ]] || { eci_runtime_denial "$name" "has a malformed sha256 receipt"; return 1; }
+  local name_re='^[a-z0-9-]+$' receipt_re
+  [[ "$name" =~ $name_re ]] || { eci_runtime_denial "$name" "is not an allowed artifact name"; return 1; }
+  receipt_re="^([0-9a-f]{64})  ${name}\$"
+  [[ "$receipt_line" =~ $receipt_re ]] || { eci_runtime_denial "$name" "has a malformed sha256 receipt"; return 1; }
   expected="${BASH_REMATCH[1]}"
   sha256sum -- "$fdpath" >"$scratch/sha256" 2>/dev/null || { eci_runtime_denial "$name" "cannot be hashed"; return 1; }
   IFS= read -r hash_line <"$scratch/sha256" || true
