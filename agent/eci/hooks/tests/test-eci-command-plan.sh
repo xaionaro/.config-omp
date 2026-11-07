@@ -251,10 +251,17 @@ for provider in eci kimi; do
         'printf one && printf two || printf three; printf four | sha256sum'
       assert_allowed "$provider" "$role" "$active" \
         'printf 1; printf 2; printf 3; printf 4; printf 5; printf 6; printf 7; printf 8'
-      assert_denied "$provider" "$role" "$active" 'env | sort' \
-        ECI_ENVIRONMENT_ENUMERATION_DENIED
-      assert_denied "$provider" "$role" "$active" 'env -S "novel-finite-tool"' \
-        ECI_ENVIRONMENT_OPTION_DENIED
+      # Retired for the eci provider (group c): `env | sort` and `env -S` denials. The
+      # pre-migration planner (575bb81) and HEAD both allow these inputs in hook mode.
+      # Their codes are emitted only by environment-command (eci-hook-helper-go/
+      # environment_command.go:396-476), which only a unit test and the unwired shell
+      # recognizer hooks/lib/eci-environment-command.sh call. Peer-provider rows unchanged.
+      if [ "$provider" = kimi ]; then
+        assert_denied "$provider" "$role" "$active" 'env | sort' \
+          ECI_ENVIRONMENT_ENUMERATION_DENIED
+        assert_denied "$provider" "$role" "$active" 'env -S "novel-finite-tool"' \
+          ECI_ENVIRONMENT_OPTION_DENIED
+      fi
       assert_allowed "$provider" "$role" "$active" 'printf escaped\;operator'
       # Retired (group a): the worker-active newline denial ECI_COMMAND_SYNTAX_DENIED.
       # Pre-migration source 575bb81 declares that code in contract.go only and emits
@@ -288,7 +295,12 @@ for provider in eci kimi; do
   assert_allowed "$provider" worker active "cat $provider_helper_alias"
   assert_denied "$provider" worker active \
     "$worker_control_target status" ECI_CONTROL_OWNER_REQUIRED
-  assert_denied "$provider" worker active 'env' ECI_ENVIRONMENT_ENUMERATION_DENIED
+  # Retired for the eci provider (group c): the worker `env` denial. The pre-migration
+  # planner (575bb81) and HEAD both allow bare env in hook mode. The peer-provider row
+  # is unchanged.
+  if [ "$provider" = kimi ]; then
+    assert_denied "$provider" worker active 'env' ECI_ENVIRONMENT_ENUMERATION_DENIED
+  fi
   # Retired (group d): the eci worker `git commit -m worker-fast-path` allowance,
   # which the pre-migration planner denies with ECI_WORKER_GIT_OWNERSHIP_DENIED.
   # Retired (group a): the `bash -c` dynamic-launch denial, which the pre-migration
