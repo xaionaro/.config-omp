@@ -298,7 +298,6 @@ describe("ask goal gate", () => {
         "If you cannot progress, do not call `ask`; state the exact blocker and needed input in your final message, then end your turn.",
       ),
     );
-    assert.ok(reason.includes("end your turn"));
   });
 
   test("blocked ask result says ask is disabled and asks for the needed input", () => {

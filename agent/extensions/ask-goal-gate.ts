@@ -43,9 +43,12 @@ function sessionIdOf(ctx: unknown): string {
 
 export default function askGoalGate(pi: ExtensionAPI): void {
   // Intended behavior for kind !== "main": a non-main agent never writes this cache.
-  // Its ask is gated only if its own session id has an engaged entry, so subagent
-  // gating depends on the session id. A subagent id that matches no engaged main
-  // session is not blocked by the main goal.
+  // A subagent context never writes the engaged set: its goal_updated returns at the
+  // kind check. It writes the unreadable set only if reading its kind throws. Its ask
+  // is blocked if its session id is engaged or unreadable, or if its sessionModes
+  // overlay reports an active goal. The overlay check is not kind-gated, so the overlay
+  // can block a subagent. Overlay behavior for a subagent context is unverified in the
+  // installed build.
   pi.on("goal_updated", (event, ctx) => {
     let id: string | undefined;
     try {
