@@ -67,6 +67,7 @@ type cliFixture struct {
 	Ledger  string
 	Request string
 	Root    string
+	Home    string
 	CLI     string
 }
 
@@ -75,9 +76,16 @@ type cliFixture struct {
 // Example: prepare a changed assignment using the existing metrics requirement identity.
 func newCLIFixture(t *testing.T) cliFixture {
 	t.Helper()
-	root := t.TempDir()
-	session := filepath.Join(root, "proof", "test-capture")
+	// The CLI rejects ledgers whose resolved path differs from the lexical path,
+	// so the fixture root must be canonical even when TMPDIR crosses a symlink.
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	home := filepath.Join(root, "home")
+	// The canonical ledger lives in <HOME>/.agent/context/sessions/<sid>, as in codex;
+	// the proof root only names the session.
+	session := filepath.Join(home, ".agent", "context", "sessions", "test-capture")
 	require.NoError(t, os.MkdirAll(session, 0700))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "proof", "test-capture"), 0700))
 	ledger := filepath.Join(session, "project-understanding.yaml")
 	require.NoError(t, os.WriteFile(ledger, []byte(snapshotFixture), 0640))
 	cli, err := filepath.Abs("../../../bin/eci-active")
@@ -85,7 +93,17 @@ func newCLIFixture(t *testing.T) cliFixture {
 	request := filepath.Join(root, "request.json")
 	contents := `{"edits":[{"old":"User: old compactness","new":"User: 0.4A is more compact than 443 mA"}],"requirements":["requirement:metrics"],"outcome":"outcome:metrics","target":"/root/receiver","instructions":"Implement locally; preserve every binding condition.","actor":{"id":"/root","role":"Supervisor"},"reason":"material correction"}`
 	require.NoError(t, os.WriteFile(request, []byte(contents), 0600))
-	return cliFixture{Ledger: ledger, Request: request, Root: root, CLI: cli}
+	return cliFixture{Ledger: ledger, Request: request, Root: root, Home: home, CLI: cli}
+}
+
+// env isolates HOME so ledger and log writes never reach the real ~/.agent.
+//
+// Example: every CLI invocation of one fixture shares the same temporary HOME.
+func (f cliFixture) env() []string {
+	return append(os.Environ(),
+		"HOME="+f.Home,
+		"ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"),
+		"ECI_SESSION_ID=test-capture")
 }
 
 // invoke captures actual stdout separately so failed operations cannot hide assignment output.
@@ -94,7 +112,7 @@ func newCLIFixture(t *testing.T) cliFixture {
 func (f cliFixture) invoke(t *testing.T) (string, string, error) {
 	t.Helper()
 	command := exec.Command(f.CLI, "requirement-assignment", "--request", f.Request)
-	command.Env = append(os.Environ(), "ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"), "ECI_SESSION_ID=test-capture")
+	command.Env = f.env()
 	var stderr strings.Builder
 	command.Stderr = &stderr
 	output, err := command.Output()
@@ -253,7 +271,7 @@ func TestLogFailureReportsSavedSnapshot(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(filepath.Dir(f.Ledger), "high_level_log.jsonl")))
 	recoveryEvent := `{"event":"requirement_change","actor":{"id":"/root","role":"Supervisor"},"summary":"Recovered original material requirement capture before reuse","change":{"before":"User: old compactness","after":"User: 0.4A is more compact than 443 mA"},"reason":"Snapshot saved while log append failed","evidence":["Current snapshot and failed request exact native edits"]}`
 	recovery := exec.Command(f.CLI, "ledger-append", "--json", recoveryEvent)
-	recovery.Env = append(os.Environ(), "ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"), "ECI_SESSION_ID=test-capture")
+	recovery.Env = f.env()
 	recoveryOutput, err := recovery.CombinedOutput()
 	require.NoError(t, err, string(recoveryOutput))
 	history, err := os.ReadFile(filepath.Join(filepath.Dir(f.Ledger), "high_level_log.jsonl"))

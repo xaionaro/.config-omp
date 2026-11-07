@@ -52,8 +52,8 @@ making the fix verifiable; the production fix remains open.’
 For ECI/ATE, these records live at:
 
 ```text
-${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/project-understanding.yaml   # the ledger
-${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/high_level_log.jsonl          # the log
+$HOME/.agent/context/sessions/$SESSION_ID/project-understanding.yaml   # the ledger
+$HOME/.agent/context/sessions/$SESSION_ID/high_level_log.jsonl          # the log
 ${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/forecasts.yaml                # current forecasts, when applicable
 ${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/latest-status-report.yaml    # the report
 ${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID/forecast-target-history.tsv # target history

@@ -37,7 +37,7 @@ timeline:
   - {job: root, parent_chain: root, start: '2026-11-02T14:54:00Z', end: '2026-11-02T15:24:00Z', fast: old proof, normal: old work}
 `
 	require.NoError(t, os.WriteFile(reportPath, []byte(report), 0600))
-	env := append(os.Environ(), "ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"), "ECI_SESSION_ID=test-capture")
+	env := f.env()
 	command := exec.Command(f.CLI, "ledger-append", "--json", `{"event":"decision","summary":"Ready for review","details":{"status_update":{"updates":[{"target":"report","id":"current","fields":{"state":"Reviewing"}}]}}}`)
 	command.Env = env
 	output, err := command.CombinedOutput()

@@ -77,7 +77,7 @@ records:
 	ctx, cancel := context.WithTimeout(context.Background(), cyclicTestDeadline)
 	defer cancel()
 	command := boundedECICommand(ctx, f.CLI, "ledger-append", "--json", `{"event":"forecast_change","summary":"Forecast updated"}`)
-	command.Env = append(os.Environ(), "ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"), "ECI_SESSION_ID=test-capture")
+	command.Env = f.env()
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	stdout, err := command.Output()
