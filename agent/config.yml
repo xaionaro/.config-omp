@@ -1,5 +1,8 @@
 modelRoles:
   default: anthropic/claude-haiku-5-5
+contextFiles:
+  extra:
+    - CODEX.md
 symbolPreset: nerd
 composer:
   shape: band

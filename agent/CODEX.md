@@ -1,0 +1,1 @@
+/home/pheona/.codex/CODEX.md
