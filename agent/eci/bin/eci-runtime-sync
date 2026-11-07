@@ -1,0 +1,533 @@
+#!/usr/bin/env bash
+# ECI runtime maintenance: synchronizes the managed hooks/ and bin/ surface of
+# the canonical ECI home ($HOME/.omp/agent/eci) into explicit provider homes,
+# and provisions the command planner pair into the optional Kimi peer.
+#
+# The planner pair (eci-command-plan, eci-safe-import, eci-hook-helper) is
+# compiled only by hooks/build-native-binaries.sh into the canonical bin/ with
+# <name>.sha256 receipts. This tool verifies that canonical pair and copies it;
+# it never compiles it.
+#
+# Synchronization resolves ordinary mount and symlink spellings, then errors
+# only when the resolved target has the wrong provider shape or publication
+# cannot proceed.
+
+set -euo pipefail
+
+# Use the system utility locations consistently. This is for predictable
+# maintenance behavior, not a condition for admitting ordinary work.
+PATH='/usr/bin:/bin'
+export PATH
+
+source "${BASH_SOURCE[0]%/*}/../hooks/lib/eci-native-binary.sh"
+source "${BASH_SOURCE[0]%/*}/../hooks/lib/eci-file-lock.sh"
+
+usage() {
+  printf '%s\n' \
+    'usage: eci-runtime-sync {check|apply} --target ECI_HOME' \
+    '       eci-runtime-sync {planner-check|planner-apply} --target KIMI_CODE_HOME' \
+    '       eci-runtime-sync {peer-check|peer-apply} --target KIMI_CODE_HOME' \
+    '' \
+    'Synchronize AGENTS.md, config.toml, hooks.json, hooks/, and bin/ from' \
+    'the canonical ECI home to an explicit runtime provider home.' \
+    '' \
+    'planner-apply verifies the canonical command planner pair built by' \
+    'hooks/build-native-binaries.sh, then provisions it into the Kimi home when' \
+    'that optional peer is available. peer-apply copies only the canonical' \
+    'hooks/bin runtime surface into a Kimi provider home and preserves Kimi' \
+    'config.toml.' >&2
+}
+
+fail() {
+  local code="$1"
+  shift
+  printf '[%s] runtime synchronization denied: %s\n' "$code" "$*" >&2
+  exit 2
+}
+
+hash_file() {
+  local digest
+  digest="$(sha256sum -- "$1" 2>/dev/null)" || return 1
+  digest="${digest%% *}"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s' "$digest"
+}
+
+PEER_RECEIPT_NAME='.eci-kimi-peer-sync-manifest'
+PLANNER_LOCK_NAME='.planner-importer.publish.lock'
+PLANNER_TOOLS=(eci-command-plan eci-safe-import eci-hook-helper)
+# A tool and its receipt move together. The native gate refuses a binary whose
+# bin/<name>.sha256 does not name its current digest.
+PLANNER_LEAVES=()
+for name in "${PLANNER_TOOLS[@]}"; do
+  PLANNER_LEAVES+=("$name" "$name.sha256")
+done
+readonly -a PLANNER_TOOLS PLANNER_LEAVES
+readonly PEER_RECEIPT_NAME PLANNER_LOCK_NAME
+
+# Private no-op rendezvous, overridden only in an owned proof child.
+if ! declare -F planner_publication_event >/dev/null; then
+  planner_publication_event() { :; }
+fi
+
+planner_leaf_state() {
+  local path="$1" mode digest
+  if [ -L "$path" ]; then printf 'symlink\n'
+  elif [ -f "$path" ]; then
+    if ! mode="$(stat -c %a -- "$path")" || ! [[ "$mode" =~ ^[0-7]{1,4}$ ]]; then
+      printf 'ECI observation uncertain: stat/mode unavailable: %s\n' "$path" >&2
+      printf 'unknown\n'; return 1
+    fi
+    if ! digest="$(hash_file "$path")"; then
+      printf 'ECI observation uncertain: digest unavailable: %s\n' "$path" >&2
+      printf 'unknown\n'; return 1
+    fi
+    printf 'regular:%s:%s\n' "$mode" "$digest"
+  elif [ -e "$path" ]; then printf 'other\n'
+  else printf 'absent\n'
+  fi
+}
+
+planner_rename() {
+  local source_device target_device
+  source_device="$(stat -c %d -- "$1")" && [[ "$source_device" =~ ^[0-9]+$ ]] || {
+    printf 'ECI observation uncertain: source device unavailable: %s\n' "$1" >&2; return 1;
+  }
+  target_device="$(stat -c %d -- "${2%/*}")" && [[ "$target_device" =~ ^[0-9]+$ ]] || {
+    printf 'ECI observation uncertain: destination device unavailable: %s\n' "${2%/*}" >&2; return 1;
+  }
+  [ "$source_device" = "$target_device" ] || return 1
+  /usr/bin/mv --no-copy -fT -- "$1" "$2"
+}
+
+# A tool is ready when this host can execute it and its receipt names its
+# current digest, the same condition the native gate enforces before running it.
+planner_tool_ready() {
+  local dir="$1" name="$2" digest
+  eci_runtime_binary_is_native "$dir/$name" || return 1
+  digest="$(hash_file "$dir/$name")" || return 1
+  [ -f "$dir/$name.sha256" ] && [ ! -L "$dir/$name.sha256" ] || return 1
+  [ "$(cat -- "$dir/$name.sha256")" = "$digest  $name" ]
+}
+
+# Planner tools live in the bin/ of the provider home that executes them. A
+# symlinked bin/ is refused so provisioning cannot write through an alias.
+planner_prepare_bin_dir() {
+  local home="$1" bin="$1/bin"
+  [ ! -L "$bin" ] || return 1
+  mkdir -p -- "$bin" || return 1
+  [ "$(realpath -e -- "$bin")" = "$bin" ] || return 1
+  printf '%s\n' "$bin"
+}
+
+# Restores every peer member, even if a signal followed rename before bookkeeping.
+planner_restore_peer() {
+  local bin_dir="$1" leaf path state wanted restore ok=true
+  for leaf in "${PLANNER_LEAVES[@]}"; do
+    path="$bin_dir/$leaf"
+    wanted="${old_states[peer/$leaf]}"
+    state="$(planner_leaf_state "$path")" || { ok=false; continue; }
+    [ "$state" != "$wanted" ] || continue
+    if [ "$state" != "${new_states[peer/$leaf]}" ]; then
+      printf 'ECI recovery retained foreign state: %s=%s\n' "$path" "$state" >&2
+      ok=false
+      continue
+    fi
+    planner_publication_event "before-restore:peer:$leaf" "$path" || { ok=false; continue; }
+    if [ "$wanted" = absent ]; then
+      rm -- "$path" || { ok=false; continue; }
+    else
+      restore="$transaction/peer/$leaf.restore"
+      cp -p -- "$transaction/peer/$leaf.backup" "$restore" &&
+        planner_rename "$restore" "$path" || { ok=false; continue; }
+    fi
+    state="$(planner_leaf_state "$path")" && [ "$state" = "$wanted" ] || ok=false
+  done
+  for leaf in "${PLANNER_LEAVES[@]}"; do
+    path="$bin_dir/$leaf"
+    state="$(planner_leaf_state "$path")" || { state=unknown; ok=false; }
+    printf 'ECI recovery state: %s=%s\n' "$path" "$state" >&2
+  done
+  [ "$ok" = true ]
+}
+
+# Copies the verified canonical pair and its receipts into the peer's bin/. Each
+# member is staged in the transaction and renamed only after its predecessor
+# matches; a failure part way is undone by planner_restore_peer.
+planner_provision_peer() {
+  local bin_dir="$1" leaf path state
+  transaction="$(mktemp -d "$local_bin/.planner-importer.txn.XXXXXX")" || return 1
+  mkdir -- "$transaction/peer" || return 1
+  for leaf in "${PLANNER_LEAVES[@]}"; do
+    path="$bin_dir/$leaf"
+    state="$(planner_leaf_state "$path")" || return 1
+    case "$state" in
+      regular:*) cp -p -- "$path" "$transaction/peer/$leaf.backup" || return 1 ;;
+      absent) ;;
+      *) printf 'ECI pair target retained: %s (%s)\n' "$path" "$state" >&2; return 1 ;;
+    esac
+    old_states["peer/$leaf"]="$state"
+    cp -p -- "$local_bin/$leaf" "$transaction/peer/$leaf.install" || return 1
+    new_states["peer/$leaf"]="$(planner_leaf_state "$transaction/peer/$leaf.install")" || return 1
+  done
+  peer_bin="$bin_dir"
+  peer_in_progress=1
+  for leaf in "${PLANNER_LEAVES[@]}"; do
+    path="$bin_dir/$leaf"
+    planner_publication_event "before-rename:peer:$leaf" "$path" || return 1
+    state="$(planner_leaf_state "$path")" && [ "$state" = "${old_states[peer/$leaf]}" ] || return 1
+    planner_rename "$transaction/peer/$leaf.install" "$path" || return 1
+    planner_publication_event "after-rename:peer:$leaf" "$path" || return 1
+  done
+  for leaf in "${PLANNER_LEAVES[@]}"; do
+    state="$(planner_leaf_state "$bin_dir/$leaf")" && [ "$state" = "${new_states[peer/$leaf]}" ] || return 1
+  done
+  peer_in_progress=''
+}
+
+# The peer is optional: its failure keeps the verified local pair. A failed
+# restore is the only peer outcome that fails the request.
+planner_refresh_peer() {
+  local peer_dir
+  if peer_dir="$(planner_prepare_bin_dir "$1")" && planner_provision_peer "$peer_dir"; then
+    peer_complete=true
+    return 0
+  fi
+  printf 'ECI peer advisory: completed local pair preserved\n' >&2
+  if [ -n "$peer_in_progress" ]; then
+    planner_restore_peer "$peer_bin" || return 1
+    peer_in_progress=''
+  fi
+}
+
+planner_finish() {
+  local status="$1" retained=false resolved_transaction
+  trap - EXIT HUP INT TERM
+  if [ -n "$peer_in_progress" ]; then planner_restore_peer "$peer_bin" || retained=true; fi
+  if [ "$retained" = true ]; then
+    printf 'ECI recovery transaction retained: %s; local_complete=%s peer_complete=%s\n' "$transaction" "$local_complete" "$peer_complete" >&2
+    status=1
+  elif [ -n "$transaction" ]; then
+    if [ ! -L "$transaction" ] && resolved_transaction="$(realpath -e -- "$transaction")" &&
+      [ "$resolved_transaction" = "$transaction" ] && [ "${transaction%/*}" = "$local_bin" ] &&
+      [[ "${transaction##*/}" = .planner-importer.txn.* ]] &&
+      [ "$(stat -c %u -- "$transaction")" = "$(id -u)" ]; then
+      rm -rf -- "$transaction" || status=1
+    else
+      printf 'ECI cleanup retained unverified transaction: %s\n' "$transaction" >&2
+      status=1
+    fi
+  fi
+  exit "$status"
+}
+
+# An owned child contains options, traps, PATH and lock descriptors.
+planner_sync() (
+  local planner_mode="$1" source_root="$2" peer_root="$3" requested_provider="$4"
+  shift 4
+  local name local_bin requested_home lock_fd lock_type transaction='' peer_bin='' peer_in_progress=''
+  local local_complete=false peer_complete=false requested_ok=true
+  local -A old_states=() new_states=()
+  set -euo pipefail
+  [ "$source_root" = "$(realpath -e -- "$HOME/.omp/agent/eci")" ] || return 1
+  [ -z "$peer_root" ] || [ "$peer_root" = "$(realpath -e -- "${KIMI_CODE_HOME:-$HOME/.kimi-code}")" ] || return 1
+  case "$requested_provider" in
+    eci) requested_home="$source_root" ;;
+    kimi) [ -n "$peer_root" ] || return 1; requested_home="$peer_root" ;;
+    *) return 1 ;;
+  esac
+  [ "$#" -gt 0 ] || set -- "${PLANNER_TOOLS[@]}"
+  for name in "$@"; do case "$name" in eci-command-plan|eci-safe-import|eci-hook-helper) ;; *) return 1 ;; esac; done
+  local_bin="$(planner_prepare_bin_dir "$source_root")" || return 1
+  if [ -L "$local_bin/$PLANNER_LOCK_NAME" ] || { [ -e "$local_bin/$PLANNER_LOCK_NAME" ] && [ ! -f "$local_bin/$PLANNER_LOCK_NAME" ]; }; then
+    if [ -L "$local_bin/$PLANNER_LOCK_NAME" ]; then lock_type=symlink
+    else lock_type="$(stat -c %F -- "$local_bin/$PLANNER_LOCK_NAME")" || lock_type=unknown; fi
+    printf 'ECI publication lock retained: %s (type=%s); ask the owner of this bin/ to preserve or move only this conflicting leaf, then retry.\n' "$local_bin/$PLANNER_LOCK_NAME" "$lock_type" >&2
+    return 1
+  fi
+  trap 'planner_finish "$?"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  exec {lock_fd}<>"$local_bin/$PLANNER_LOCK_NAME" || return 1
+  planner_publication_event before-lock "$local_bin/$PLANNER_LOCK_NAME" || return 1
+  eci_file_lock_acquire_fd "$lock_fd" blocking || return 1
+  planner_publication_event after-lock "$local_bin/$PLANNER_LOCK_NAME" || return 1
+  for name in "$@"; do
+    planner_tool_ready "$requested_home/bin" "$name" || requested_ok=false
+  done
+  case "$planner_mode" in
+    planner-check) [ "$requested_ok" = true ] || return 1; printf 'OK\tmanaged pair\t%s\n' "$requested_provider"; return 0 ;;
+    ensure) [ "$requested_ok" != true ] || return 0 ;;
+    planner-apply) ;;
+    *) return 1 ;;
+  esac
+  for name in "${PLANNER_TOOLS[@]}"; do
+    planner_tool_ready "$local_bin" "$name" || {
+      printf 'ECI runtime: canonical native tool %s is missing or unverified; provision the native tools with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry\n' "$name" >&2
+      return 1
+    }
+  done
+  local_complete=true
+  [ -z "$peer_root" ] || planner_refresh_peer "$peer_root" || return 1
+  for name in "$@"; do
+    planner_tool_ready "$requested_home/bin" "$name" || return 1
+  done
+  printf 'ECI pair complete: local=%s peer=%s requested=%s\n' "$local_complete" "$peer_complete" "$requested_provider" >&2
+)
+
+# Callability for owned children; ordinary CLI behavior remains below.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
+
+mode=""
+target_arg=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    check|apply|planner-check|planner-apply|peer-check|peer-apply)
+      [ -z "$mode" ] || fail ECI_RUNTIME_SYNC_ARGUMENTS 'mode was supplied more than once'
+      mode="$1"
+      ;;
+    --target)
+      shift
+      [ "$#" -gt 0 ] || fail ECI_RUNTIME_SYNC_ARGUMENTS '--target requires one provider-home path'
+      [ -z "$target_arg" ] || fail ECI_RUNTIME_SYNC_ARGUMENTS '--target was supplied more than once'
+      target_arg="$1"
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      fail ECI_RUNTIME_SYNC_ARGUMENTS "unrecognized argument: $1"
+      ;;
+  esac
+  shift
+done
+[ -n "$mode" ] || { usage; exit 2; }
+[ -n "$target_arg" ] || fail ECI_RUNTIME_SYNC_ARGUMENTS 'an explicit --target is required'
+
+launcher_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd -P)" ||
+  fail ECI_RUNTIME_SYNC_SOURCE_UNRESOLVED 'unable to resolve the runtime launcher home'
+# The launcher must be an ECI provider home. Its spelling is otherwise
+# diagnostic: maintenance repairs from the canonical home below, never from a
+# stale or mounted launcher copy.
+case "$launcher_root" in
+  */.omp/agent/eci) ;;
+  *) fail ECI_RUNTIME_SYNC_PROVIDER "runtime launcher home is not the ECI provider home: $launcher_root" ;;
+esac
+
+canonical_source_root="${HOME:?HOME must be set}/.omp/agent/eci"
+canonical_source_root_real="$(realpath -e -- "$canonical_source_root" 2>/dev/null || true)"
+[ -n "$canonical_source_root_real" ] && [ -d "$canonical_source_root_real" ] ||
+  fail ECI_RUNTIME_SYNC_SOURCE_UNRESOLVED "provider=eci selected source is unavailable: $canonical_source_root"
+source_root="$canonical_source_root_real"
+
+mode_of() { stat -Lc '%a' -- "$1" 2>/dev/null || true; }
+
+write_peer_receipt() {
+  local peer_source_root="$1" peer_target_root="$2"
+  local receipt receipt_tmp relative source_path source_hash source_mode
+
+  receipt="$peer_target_root/$PEER_RECEIPT_NAME"
+  if [ -L "$receipt" ]; then
+    fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "peer receipt is a symlink: $receipt"
+  fi
+  if [ -e "$receipt" ] || [ -L "$receipt" ]; then
+    # A receipt is status from an earlier run. Refresh it when it is a
+    # replaceable leaf; otherwise keep the metadata residue and let the
+    # already-published runtime files stand.
+    if [ -f "$receipt" ]; then
+      if ! rm -f -- "$receipt"; then
+        printf 'ECI runtime maintenance advisory: could not replace peer receipt: %s\n' "$receipt" >&2
+        return 0
+      fi
+    else
+      printf 'ECI runtime maintenance advisory: peer receipt is not a replaceable file: %s\n' "$receipt" >&2
+      return 0
+    fi
+  fi
+  receipt_tmp="$receipt.eci-runtime-sync.$$"
+  if [ -e "$receipt_tmp" ] || [ -L "$receipt_tmp" ]; then
+    printf 'ECI runtime maintenance advisory: peer receipt temporary path already exists: %s\n' "$receipt_tmp" >&2
+    return 0
+  fi
+  if ! (
+    for relative in "${manifest[@]}"; do
+      source_path="$peer_source_root/$relative"
+      source_hash="$(hash_file "$source_path")" ||
+        exit 1
+      source_mode="$(mode_of "$source_path")"
+      printf '%s\t%s\t%s\n' "$relative" "$source_hash" "$source_mode"
+    done
+  ) >"$receipt_tmp"; then
+    printf 'ECI runtime maintenance advisory: could not stage peer receipt: %s\n' "$receipt_tmp" >&2
+    rm -f -- "$receipt_tmp" 2>/dev/null || true
+    return 0
+  fi
+  if ! chmod 600 -- "$receipt_tmp"; then
+    printf 'ECI runtime maintenance advisory: could not set peer receipt mode: %s\n' "$receipt_tmp" >&2
+  fi
+  if ! mv -f -- "$receipt_tmp" "$receipt"; then
+    printf 'ECI runtime maintenance advisory: could not publish peer receipt: %s\n' "$receipt" >&2
+    rm -f -- "$receipt_tmp" 2>/dev/null || true
+  fi
+}
+
+[ -d "$source_root" ] ||
+  fail ECI_RUNTIME_SYNC_SOURCE_UNSAFE "canonical ECI home is not a regular directory: $source_root"
+if [[ "$mode" == planner-* ]]; then
+  # Planner maintenance has a local verification that is useful on its own. A
+  # nonexistent peer is not a target failure until a peer operation is
+  # actually attempted; an existing wrong-provider target remains concrete.
+  target_root="$(realpath -e -- "$target_arg" 2>/dev/null || true)"
+  if [ -n "$target_root" ] && [ -d "$target_root" ]; then
+    [ "$target_root" != "$source_root" ] ||
+      fail ECI_RUNTIME_SYNC_TARGET 'target resolves to the canonical ECI home'
+  else
+    target_root=''
+  fi
+  planner_sync "$mode" "$source_root" "$target_root" eci
+  exit 0
+fi
+case "$target_arg" in
+  /*) ;;
+  *) fail ECI_RUNTIME_SYNC_TARGET 'target must be an absolute provider-home path' ;;
+esac
+# Declared provider targets may be mounted or symlinked. Resolve the actual
+# directory and validate its provider shape below; the caller's spelling is
+# diagnostic only.
+target_root="$(realpath -e -- "$target_arg" 2>/dev/null || true)"
+[ -n "$target_root" ] && [ -d "$target_root" ] ||
+  fail ECI_RUNTIME_SYNC_TARGET 'target provider home is unavailable'
+[ "$target_root" != "$source_root" ] || fail ECI_RUNTIME_SYNC_TARGET 'target resolves to the canonical ECI home'
+case "$mode" in
+  peer-check|peer-apply)
+    [ "${target_root##*/}" = .kimi-code ] ||
+      fail ECI_RUNTIME_SYNC_PROVIDER "peer synchronization target basename must be .kimi-code: $target_root"
+    ;;
+  *)
+    case "$target_root" in
+      */.omp/agent/eci) ;;
+      *) fail ECI_RUNTIME_SYNC_PROVIDER "target must be an ECI provider home ending in .omp/agent/eci: $target_root" ;;
+    esac
+    ;;
+esac
+
+manifest=()
+fixed_files=()
+if [[ "$mode" != peer-* ]]; then
+  fixed_files=(AGENTS.md config.toml hooks.json)
+fi
+for fixed in "${fixed_files[@]}"; do
+  [ -f "$source_root/$fixed" ] && [ ! -L "$source_root/$fixed" ] ||
+    fail ECI_RUNTIME_SYNC_SOURCE_MISSING "canonical managed file is unavailable: $source_root/$fixed"
+  manifest+=("$fixed")
+done
+# Keep Go production sources so a deployed runtime can rebuild missing tools.
+# Tests, bytecode caches, build staging, planner transactions, and editor
+# backups are not runtime inputs.
+while IFS= read -r -d '' source_path; do
+  [ -f "$source_path" ] && [ ! -L "$source_path" ] ||
+    fail ECI_RUNTIME_SYNC_SOURCE_UNSAFE "canonical managed path is not a regular file: $source_path"
+  relative="${source_path#"$source_root/"}"
+  manifest+=("$relative")
+done < <(find "$source_root/hooks" "$source_root/bin" \
+  \( -path "$source_root/hooks/tests" -o -path "$source_root/hooks/tests/*" \
+     -o -type d -name '.eci-command-plan.txn.*' \
+     -o -type d -name '.planner-importer.txn.*' -o -name "$PLANNER_LOCK_NAME" \
+     -o -name '.eci-go-build.*' -o -name '.eci-go-build.lock' \
+     -o -name '.eci-command-plan.lock' -o -name '.eci-command-plan.publish.lock' \
+     -o -name '__pycache__' -o -name '*.pyc' -o -name '*_test.go' -o -name '*.bak*' \) -prune \
+  -o -type f -print0 2>/dev/null | sort -z)
+[ "${#manifest[@]}" -gt 3 ] || fail ECI_RUNTIME_SYNC_SOURCE_MISSING 'canonical hooks/bin surface is empty'
+
+if [[ "$mode" == peer-* ]] && [ -L "$target_root/$PEER_RECEIPT_NAME" ]; then
+  # The receipt is a managed target too. Do not replace a link whose resolved
+  # destination is outside the declared provider home.
+  fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "peer receipt is a symlink: $target_root/$PEER_RECEIPT_NAME"
+fi
+
+path_parent_is_safe() {
+  local path="$1" parent
+  parent="${path%/*}"
+  while [ "$parent" != "$target_root" ] && [ "$parent" != "/" ]; do
+    [ ! -L "$parent" ] || return 1
+    parent="${parent%/*}"
+  done
+  [ "$parent" = "$target_root" ]
+}
+
+drift=0
+declare -A needs_sync=()
+for relative in "${manifest[@]}"; do
+  source_path="$source_root/$relative"
+  target_path="$target_root/$relative"
+  path_parent_is_safe "$target_path" ||
+    fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "managed target parent contains a symlink: $target_path"
+  if [ -L "$target_path" ]; then
+    # A managed leaf link is an ambiguous target even when `mv` would usually
+    # replace it. Reject it before staging so publication cannot follow an
+    # accidental link into another directory.
+    fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "managed target is a symlink: $target_path"
+  fi
+  if [ -e "$target_path" ]; then
+    [ -f "$target_path" ] ||
+      fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "managed target is not a replaceable file: $target_path"
+    source_hash="$(hash_file "$source_path")" || fail ECI_RUNTIME_SYNC_HASH "cannot hash source: $source_path"
+    target_hash="$(hash_file "$target_path")" || fail ECI_RUNTIME_SYNC_HASH "cannot hash target: $target_path"
+    source_mode="$(mode_of "$source_path")"
+    target_mode="$(mode_of "$target_path")"
+    if [ "$source_hash" = "$target_hash" ] && [ "$source_mode" = "$target_mode" ]; then
+      printf 'OK\t%s\t%s\n' "$relative" "$source_hash"
+      continue
+    fi
+    drift=1
+    needs_sync["$relative"]=1
+    printf 'DRIFT\t%s\tsource=%s\ttarget=%s\tmode=%s/%s\n' \
+      "$relative" "$source_hash" "$target_hash" "$source_mode" "$target_mode"
+  else
+    drift=1
+    needs_sync["$relative"]=1
+    printf 'MISSING\t%s\n' "$relative"
+  fi
+done
+
+case "$mode" in
+  check|peer-check) exit "$drift" ;;
+esac
+
+lock_name=eci
+if [[ "$mode" == peer-* ]]; then
+  lock_name=eci-kimi-peer
+fi
+lock_dir="$(mktemp -d "${HOME:?HOME must be set}/tmp/eci-runtime-sync-$lock_name.XXXXXX")" ||
+  fail ECI_RUNTIME_SYNC_BUSY "could not create a temporary $lock_name synchronization workspace"
+trap 'rmdir -- "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+
+for relative in "${manifest[@]}"; do
+  [ "${needs_sync[$relative]:-0}" = 1 ] || continue
+  source_path="$source_root/$relative"
+  target_path="$target_root/$relative"
+  path_parent_is_safe "$target_path" ||
+    fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "managed target parent changed to a symlink: $target_path"
+  [ ! -L "$target_path" ] ||
+    fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "managed target is a symlink: $target_path"
+  target_parent="${target_path%/*}"
+  mkdir -p -- "$target_parent"
+  [ ! -L "$target_parent" ] || fail ECI_RUNTIME_SYNC_TARGET_UNSAFE "target parent is a symlink: $target_parent"
+  target_tmp="$(mktemp -- "$target_path.eci-runtime-sync.XXXXXX")" ||
+    fail ECI_RUNTIME_SYNC_WRITE "unable to stage a temporary target for $relative"
+  cp -- "$source_path" "$target_tmp" || fail ECI_RUNTIME_SYNC_WRITE "unable to stage $relative"
+  chmod -- "$(mode_of "$source_path")" "$target_tmp" || fail ECI_RUNTIME_SYNC_WRITE "unable to preserve mode for $relative"
+  mv -- "$target_tmp" "$target_path" || fail ECI_RUNTIME_SYNC_WRITE "unable to publish $relative"
+  source_hash="$(hash_file "$source_path")" || fail ECI_RUNTIME_SYNC_HASH "cannot hash published source: $source_path"
+  target_hash="$(hash_file "$target_path")" || fail ECI_RUNTIME_SYNC_HASH "cannot hash published target: $target_path"
+  [ "$source_hash" = "$target_hash" ] || fail ECI_RUNTIME_SYNC_VERIFY "published digest differs for $relative"
+  printf 'SYNCED\t%s\t%s\n' "$relative" "$target_hash"
+done
+
+if [ "$mode" = peer-apply ]; then
+  write_peer_receipt "$source_root" "$target_root"
+fi
+
+exit 0
