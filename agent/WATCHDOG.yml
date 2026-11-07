@@ -4,12 +4,12 @@
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
-# scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
+# scope: all, so subagent transcripts reach the Activity table's Code row (bash commit). Cost grows with subagent count (OPEN).
 # tools: [read, grep, glob]; grep and glob are used only on Rule files paths.
-# reviewMode turn + reviewInterval 20: every 20th turn [unverified: whether tool-loop continuations count].
+# reviewMode turn + reviewInterval 5: every 5th turn [unverified: whether tool-loop continuations count].
 # reviewInterval schema text: "Skipped updates are sent with the next scheduled review." [unverified]
-# includeReasoning false: see instructions, Cadence.
-# check 3 checks spawn parameters and refusal handling; profile tiers are outside the rule table.
+# includeReasoning false: see instructions, "Judge actions and claims, never reasoning."
+# The router `## Model selection` example row checks spawn parameters and refusal handling; profile tiers are outside the rule table.
 # OPEN (unverified):
 #  - global advisor.enabled default (last checked: no advisor key in config.yml; default off per scout, medium)
 #  - eci-active activation subcommand: none verified; eci-active is not an evidence row
