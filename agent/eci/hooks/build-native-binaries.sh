@@ -2,7 +2,7 @@
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # eci-command-plan, eci-safe-import and eci-hook-helper are gate binaries; lib/eci-native-binary.sh runs them only after verifying their receipts. eci-safe-import has no launcher caller in this tree.
-# eci-worker-git is built with a receipt, but the skill runs it directly, so the receipt is informational and not verified at runtime.
+# eci-worker-git is built with a receipt but not launcher-wired: the typed Worker Git route is unavailable during active ECI, so Workers use native Git, and the receipt is not verified at runtime.
 # eci-active and owned-command are on-demand wrappers in bin/ that build from source on first use; this script does not build them.
 # eci-command-gate-mode is built only on Linux hosts; its sources carry //go:build linux.
 # Every built binary must pass eci_runtime_binary_is_native for this host before any file is installed. That check is ELF-only until the loader gains Mach-O support.
