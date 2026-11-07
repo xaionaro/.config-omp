@@ -187,15 +187,29 @@ test_baseline_pair_recovers_after_publication_boundary() {
   [ -f "$baseline" ] && [ -f "$binding" ]
 }
 
+# The ledger commands run with HOME=$TMP_ROOT/home, and the launcher resolves its runtime as
+# $HOME/.omp/agent/eci. Link that path to ROOT unless the provisioning fixture already made a copy.
+link_fixture_runtime() {
+  mkdir -p "$TMP_ROOT/home/.omp/agent"
+  [ -e "$TMP_ROOT/home/.omp/agent/eci" ] || ln -s "$ROOT" "$TMP_ROOT/home/.omp/agent/eci"
+}
+
 test_eci_active_mutations_fail_closed_when_lock_is_busy() {
   local proof_root="$TMP_ROOT/mutation-lock-proof" session_dir log_path lock_fd entry
   session_dir="$proof_root/t00-session"
   mkdir -p "$session_dir" "$TMP_ROOT/home/tmp" "$TMP_ROOT/home/.agent/context/sessions/t00-session"
-  printf 'scope: lock test\n' >"$session_dir/eci_active"
+  # Bind the marker to ROOT, the cwd the append runs from. The omp guard denies a
+  # marker without a matching cwd (ECI-ACTIVE-PARITY.md:183, G11); it is asserted separately.
+  printf 'scope: lock test\ncwd: %s\n' "$ROOT" >"$session_dir/eci_active"
   log_path="$TMP_ROOT/home/.agent/context/sessions/t00-session/high_level_log.jsonl"
   entry='{"event":"checkpoint","summary":"append after lock release"}'
   printf '%s\n' '{"event":"checkpoint","summary":"existing entry"}' >"$log_path"
   cp "$log_path" "$TMP_ROOT/log-before-lock"
+  # The ledger commands run with HOME=$TMP_ROOT/home, so the launcher builds the tool under
+  # that HOME. Build it before the lock is held: a cold build prints a notice on stderr, and
+  # the exact comparison below would capture it.
+  link_fixture_runtime
+  HOME="$TMP_ROOT/home" "$ROOT/bin/eci-active" status >/dev/null 2>&1
   exec {lock_fd}>>"$proof_root/.eci-active.lock"
   eci_file_lock_acquire_fd "$lock_fd" nonblocking
 
@@ -213,6 +227,28 @@ test_eci_active_mutations_fail_closed_when_lock_is_busy() {
   jq -se 'length == 2 and (.[1] | .schema == "eci-high-level-log/v1" and
     .event == "checkpoint" and .summary == "append after lock release" and
     .session_id == "t00-session")' "$log_path" >/dev/null
+}
+
+# omp-only guard (ECI-ACTIVE-PARITY.md:183, G11): ledger-append refuses a marker that
+# names another cwd before the lock gate. The pre-migration source has no such check.
+test_eci_active_ledger_append_denies_marker_naming_another_cwd() {
+  local proof_root="$TMP_ROOT/marker-cwd-proof" session_dir log_path entry
+  session_dir="$proof_root/t00-session"
+  mkdir -p "$session_dir" "$TMP_ROOT/home/tmp" "$TMP_ROOT/home/.agent/context/sessions/t00-session"
+  link_fixture_runtime
+  printf 'scope: marker cwd test\ncwd: %s\n' "$TMP_ROOT/other-cwd" >"$session_dir/eci_active"
+  log_path="$TMP_ROOT/home/.agent/context/sessions/t00-session/high_level_log.jsonl"
+  entry='{"event":"checkpoint","summary":"append from another cwd"}'
+  printf '%s\n' '{"event":"checkpoint","summary":"existing entry"}' >"$log_path"
+  cp "$log_path" "$TMP_ROOT/log-before-marker-cwd"
+
+  if HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session \
+      "$ROOT/bin/eci-active" ledger-append --json "$entry" >"$TMP_ROOT/append-marker-cwd.out" 2>"$TMP_ROOT/append-marker-cwd.err"; then
+    return 1
+  fi
+  grep -Fq 'ECI high-level log append rejected a marker bound to another session or cwd.' \
+    "$TMP_ROOT/append-marker-cwd.err"
+  cmp "$TMP_ROOT/log-before-marker-cwd" "$log_path"
 }
 
 test_session_start_skips_pruning_when_mutation_lock_is_busy() {
@@ -361,6 +397,7 @@ test_session_start_rejects_root_and_session_symlinks
 test_baseline_uses_fixed_git_and_resolves_head
 test_baseline_pair_recovers_after_publication_boundary
 test_eci_active_mutations_fail_closed_when_lock_is_busy
+test_eci_active_ledger_append_denies_marker_naming_another_cwd
 test_session_start_skips_pruning_when_mutation_lock_is_busy
 test_old_uuid_session_with_active_eci_marker_survives_cleanup
 test_old_marker_dir_with_symlink_eci_marker_is_pruned
