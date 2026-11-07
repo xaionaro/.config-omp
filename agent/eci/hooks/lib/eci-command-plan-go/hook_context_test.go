@@ -38,6 +38,107 @@ func contextMarker(
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "eci_active"), []byte("scope: test\ncwd: "+cwd+"\nsession_id: "+sid+"\n"), 0600))
 }
 
+// sessionsFixture points HOME at a temporary omp home and returns a project directory under its sessions root.
+//
+// Example: transcripts in the returned directory sit two levels below the sessions root, like an omp main transcript.
+func sessionsFixture(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	project := filepath.Join(home, ".omp", "agent", "sessions", "project")
+	require.NoError(t, os.MkdirAll(project, 0700))
+	return project
+}
+
+// writeSubagentTranscript writes a title record, a line-two session header that declares parentSession, and tail records.
+//
+// Example: {"type":"session","parentSession":...} on line two marks a subagent transcript.
+func writeSubagentTranscript(t *testing.T, path, id, parentSession, tail string) {
+	t.Helper()
+	header := `{"type":"session","version":3,"id":"` + id + `","parentSession":"` + parentSession + `"}`
+	require.NoError(t, os.WriteFile(path, []byte(`{"type":"title","v":1,"title":""}`+"\n"+header+"\n"+tail), 0600))
+}
+
+// TestHookContextParentPrefix inherits a declared parent marker before a large history tail.
+//
+// Example: a child whose line-two header names parentSession inherits the parent's active marker.
+func TestHookContextParentPrefix(t *testing.T) {
+	root, cwd := contextFixture(t)
+	sessions := sessionsFixture(t)
+	contextMarker(t, root, "parent", cwd)
+	parent := filepath.Join(sessions, "parent.jsonl")
+	require.NoError(t, os.WriteFile(parent, []byte(`{"type":"session","version":3,"id":"parent"}`+"\n"), 0600))
+	transcript := filepath.Join(sessions, "child.jsonl")
+	writeSubagentTranscript(t, transcript, "child", parent, `{"type":"message","pad":"`+strings.Repeat("x", 2<<20)+`"}`)
+	got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession != "parent" || got.Marker != MarkerActive || len(got.ActiveMarkers) != 1, "context=%+v", got)
+}
+
+// TestHookContextOversizedFirstRecordTail fails closed when the session header exceeds the bounded prefix before parentSession.
+//
+// Example: an oversized header is unknown, so it keeps the worker role and inherits no marker.
+func TestHookContextOversizedFirstRecordTail(t *testing.T) {
+	root, cwd := contextFixture(t)
+	sessions := sessionsFixture(t)
+	contextMarker(t, root, "parent", cwd)
+	parent := filepath.Join(sessions, "parent.jsonl")
+	require.NoError(t, os.WriteFile(parent, []byte(`{"type":"session","version":3,"id":"parent"}`+"\n"), 0600))
+	transcript := filepath.Join(sessions, "child.jsonl")
+	header := `{"type":"session","version":3,"id":"child","tail":"` + strings.Repeat("x", 2<<20) + `","parentSession":"` + parent + `"}`
+	require.NoError(t, os.WriteFile(transcript, []byte(header+"\n"), 0600))
+	got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
+	require.Error(t, err)
+	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession == "parent" || got.Marker == MarkerActive, "context=%+v", got)
+}
+
+// TestHookContextUnresolvableParentIsWorker grants no inherited marker when the declared parent is not a regular sessions-root transcript.
+//
+// Example: a parentSession that is missing, outside the root, or a symlink fails closed to worker.
+func TestHookContextUnresolvableParentIsWorker(t *testing.T) {
+	root, cwd := contextFixture(t)
+	sessions := sessionsFixture(t)
+	contextMarker(t, root, "parent", cwd)
+	outside := filepath.Join(t.TempDir(), "parent.jsonl")
+	require.NoError(t, os.WriteFile(outside, []byte(`{"type":"session","version":3,"id":"parent"}`+"\n"), 0600))
+	linked := filepath.Join(sessions, "linked.jsonl")
+	require.NoError(t, os.Symlink(outside, linked))
+	for name, declared := range map[string]string{"missing": filepath.Join(sessions, "missing.jsonl"), "outside": outside, "symlink": linked} {
+		transcript := filepath.Join(sessions, "child-"+name+".jsonl")
+		writeSubagentTranscript(t, transcript, "child", declared, "")
+		got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
+		require.Error(t, err, name)
+		require.Equal(t, RoleWorker, got.Role, name)
+		require.Falsef(t, got.Marker == MarkerActive || got.ActiveSession == "parent", "%s: context=%+v", name, got)
+	}
+}
+
+// TestHookContextUnknownTranscriptIsWorker runs unverifiable callbacks as restricted workers.
+//
+// Example: an empty or missing transcript path is unknown and therefore a worker.
+func TestHookContextUnknownTranscriptIsWorker(t *testing.T) {
+	_, cwd := contextFixture(t)
+	sessionsFixture(t)
+	for name, path := range map[string]string{"empty": "", "missing": filepath.Join(t.TempDir(), "missing.jsonl")} {
+		got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: path})
+		require.NoError(t, err, name)
+		require.Equal(t, RoleWorker, got.Role, name)
+	}
+}
+
+// TestHookContextMainTranscriptIsCoordinator keeps a verified main transcript on the coordinator role.
+//
+// Example: a depth-two transcript without parentSession is main.
+func TestHookContextMainTranscriptIsCoordinator(t *testing.T) {
+	_, cwd := contextFixture(t)
+	sessions := sessionsFixture(t)
+	mainTranscript := filepath.Join(sessions, "main.jsonl")
+	require.NoError(t, os.WriteFile(mainTranscript, []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: mainTranscript})
+	require.NoError(t, err)
+	require.Equal(t, RoleCoordinator, got.Role)
+}
+
 // TestHookContextMarkerAliasAndInvalid checks supported aliases and invalid records.
 //
 // Example: owner resolves session_owner, while a broken marker grants no authority.

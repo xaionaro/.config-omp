@@ -136,6 +136,66 @@ func TestTranscriptFirstRecord(t *testing.T) {
 	}
 }
 
+func TestFirstRecordPrefixBound(t *testing.T) {
+	budget := inputBudget
+	cases := []struct {
+		name string
+		in   string
+		ok   bool
+		want int
+	}{
+		{name: "oversize without newline", in: strings.Repeat("x", budget+1)},
+		{name: "oversize with newline beyond bound", in: strings.Repeat("x", budget+1) + "\n"},
+		{name: "newline inside bound", in: strings.Repeat("x", 1000) + "\n" + strings.Repeat("y", budget), ok: true, want: 1000},
+		{name: "record exactly at limit", in: strings.Repeat("x", budget) + "\nz", ok: true, want: budget},
+		{name: "record exactly at limit at EOF", in: strings.Repeat("x", budget), ok: true, want: budget},
+		{name: "short record at EOF", in: "abc", ok: true, want: 3},
+		{name: "empty input", in: "", ok: true, want: 0},
+	}
+	for _, tc := range cases {
+		rec, ok := readFirstRecord(strings.NewReader(tc.in))
+		if ok != tc.ok {
+			t.Fatalf("%s: ok=%v want %v", tc.name, ok, tc.ok)
+		}
+		if ok && len(rec) != tc.want {
+			t.Fatalf("%s: len=%d want %d", tc.name, len(rec), tc.want)
+		}
+	}
+}
+
+func TestMetadataParentIDInsideBound(t *testing.T) {
+	const head = `{"type":"session","version":3,"id":"child","parentSession":"/x/parent.jsonl","padding":"`
+	const tail = `"}`
+	history := `{"padding":"` + strings.Repeat("h", 1<<20) + `"}` + "\n"
+	for _, padding := range []int{4000, inputBudget - len(head) - len(tail) - 1} {
+		record := head + strings.Repeat("p", padding) + tail
+		path := filepath.Join(t.TempDir(), "m.jsonl")
+		if err := os.WriteFile(path, []byte(record+"\n"+history), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		status, out := runMode(t, []string{"hook-transcript-first-record", filepath.Dir(path)},
+			`{"transcript_path":"`+path+`"}`)
+		if status != 0 || out != record {
+			t.Fatalf("padding %d: status=%d out=%q", padding, status, out)
+		}
+	}
+}
+
+func TestMetadataRejectsOversizeWithoutFinalNewline(t *testing.T) {
+	const head = `{"type":"session","version":3,"id":"child","parentSession":"/x/parent.jsonl","padding":"`
+	const tail = `"}`
+	record := head + strings.Repeat("p", 1<<20) + tail
+	path := filepath.Join(t.TempDir(), "big.jsonl")
+	if err := os.WriteFile(path, []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, out := runMode(t, []string{"hook-transcript-first-record", filepath.Dir(path)},
+		`{"transcript_path":"`+path+`"}`)
+	if status != 2 || out != "" {
+		t.Fatalf("oversize without newline: status=%d out=%q", status, out)
+	}
+}
+
 func TestTranscriptStatus(t *testing.T) {
 	sessions := t.TempDir()
 	write := func(rel, content string) string {

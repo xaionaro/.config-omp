@@ -71,7 +71,15 @@ func TestRunHookScratchAliases(t *testing.T) {
 	requireHookFile(t, script, "#!/bin/sh\nprintf executed > '"+sentinel+"'\n")
 	alias := filepath.Join(home, "tmp", "alias.sh")
 	require.NoError(t, os.Symlink(script, alias))
-	for _, actor := range []string{"direct-worker", "coordinator"} {
+	sessions := filepath.Join(home, ".omp", "agent", "sessions", "project")
+	require.NoError(t, os.MkdirAll(sessions, 0700))
+	parentTranscript := filepath.Join(sessions, "parent.jsonl")
+	require.NoError(t, os.WriteFile(parentTranscript, []byte(`{"type":"session","version":3,"id":"scratch-parent"}`+"\n"), 0600))
+	childTranscript := filepath.Join(sessions, "child.jsonl")
+	require.NoError(t, os.WriteFile(childTranscript, []byte(`{"type":"title","v":1,"title":""}`+"\n"+`{"type":"session","version":3,"id":"scratch-child","parentSession":"`+parentTranscript+`"}`+"\n"), 0600))
+	mainTranscript := filepath.Join(sessions, "main.jsonl")
+	require.NoError(t, os.WriteFile(mainTranscript, []byte(`{"type":"session","version":3,"id":"scratch-parent"}`+"\n"), 0600))
+	for _, actor := range []string{"direct-worker", "parent-worker", "coordinator"} {
 		input := HookInput{SessionID: "scratch-parent", CWD: cwd, ToolName: "Bash"}
 		t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
 		role := RoleCoordinator
@@ -79,6 +87,12 @@ func TestRunHookScratchAliases(t *testing.T) {
 		case "direct-worker":
 			t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
 			role = RoleWorker
+		case "parent-worker":
+			input.SessionID = "scratch-child"
+			input.TranscriptPath = childTranscript
+			role = RoleWorker
+		case "coordinator":
+			input.TranscriptPath = mainTranscript
 		}
 		for _, command := range []string{"bash '" + script + "'", "bash '" + alias + "'", "'" + alias + "'"} {
 			input.ToolInput.Command = command
@@ -239,6 +253,12 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 	}
 	require.Falsef(t, !strings.Contains(output.String(), string(CodeControlOwnerRequired)), "resolved worker control effect lost its ownership diagnostic: %s", &output)
 	t.Setenv("ECI_HOOK_IS_SUBAGENT", "false")
+	mainTranscript := filepath.Join(home, ".omp", "agent", "sessions", "project", "main.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(mainTranscript), 0700))
+	require.NoError(t, os.WriteFile(mainTranscript, []byte(`{"type":"session","version":3,"id":"inactive"}`+"\n"), 0600))
+	input.TranscriptPath = mainTranscript
+	callback, err = json.Marshal(input)
+	require.NoError(t, err)
 	output.Reset()
 	{
 		status := RunHook(bytes.NewReader(callback), &output)

@@ -4274,32 +4274,28 @@ func originalTokenIndex(original []token, target token) int {
 
 func gateModeIdentityForEnvironment() gateModeIdentity {
 	home := os.Getenv("HOME")
-	roots := []string{
-		filepath.Join(home, ".omp", "agent", "eci"),
+	root := filepath.Join(home, ".omp", "agent", "eci")
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return gateModeIdentity{failure: "canonical-path-invalid"}
 	}
-	paths := make([]string, 0, len(roots))
-	for _, root := range roots {
-		if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
-			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
-		}
-		resolvedRoot, err := filepath.EvalSymlinks(root)
-		if err != nil || filepath.Clean(resolvedRoot) != root {
-			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
-		}
-		paths = append(paths, filepath.Join(root, "bin", "eci-command-gate-mode"))
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil || filepath.Clean(resolvedRoot) != root {
+		return gateModeIdentity{failure: "canonical-path-invalid"}
 	}
-	info, err := os.Lstat(paths[0])
+	path := filepath.Join(root, "bin", "eci-command-gate-mode")
+	info, err := os.Lstat(path)
 	if err != nil {
-		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-missing"}
+		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-path-missing"}
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() ||
 		!fileOwnedByCurrentUser(info) || info.Mode().Perm()&0111 == 0 {
-		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-metadata-invalid"}
+		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-metadata-invalid"}
 	}
-	if _, err := digestRegularFile(paths[0], info); err != nil {
-		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-read-race"}
+	// Race check: the digest read must still match the regular file whose metadata was just validated.
+	if _, err := digestRegularFile(path, info); err != nil {
+		return gateModeIdentity{canonicalPaths: []string{path}, failure: "canonical-read-race"}
 	}
-	return gateModeIdentity{canonicalPaths: paths}
+	return gateModeIdentity{canonicalPaths: []string{path}}
 }
 
 func firstNonEmpty(value, fallback string) string {

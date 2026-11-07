@@ -27,6 +27,10 @@ const (
 	//
 	// Example: the direct session is checked before observing up to 64 markers.
 	maxHookObservedMarkers = 64
+	// maxHookTranscriptPrefixBytes bounds the transcript prefix read for session header lookup.
+	//
+	// Example: a session header inside the first 64 KiB resolves its parentSession.
+	maxHookTranscriptPrefixBytes = 64 << 10
 )
 
 // HookInput contains the callback fields needed to resolve command ownership.
@@ -57,9 +61,13 @@ func hookRequest(input HookInput) (Request, error) {
 	}
 	request.CommandPath, request.CommandPathSet = os.LookupEnv("PATH")
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
-	worker := hookTranscriptStatus(input.TranscriptPath) == "subagent"
+	role, parent, transcriptErr := hookTranscriptRole(input.TranscriptPath)
+	request.Role = role
 	var advisoryErrors []error
-	if worker || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "1" || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "true" {
+	if transcriptErr != nil {
+		advisoryErrors = append(advisoryErrors, fmt.Errorf("resolve transcript parent: %w", transcriptErr))
+	}
+	if os.Getenv("ECI_HOOK_IS_SUBAGENT") == "1" || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "true" {
 		request.Role = RoleWorker
 	}
 	root, err := hookProofRoot()
@@ -73,11 +81,11 @@ func hookRequest(input HookInput) (Request, error) {
 	if err != nil {
 		return request, err
 	}
-	// Direct callback identity must survive the advisory peer cap.
+	// Direct callback identity and inherited parent identity must survive the advisory peer cap.
 	direct := make([]os.DirEntry, 0, 4)
 	peers := make([]os.DirEntry, 0, len(entries))
 	for _, entry := range entries {
-		if hookSessionAlias(entry.Name()) == hookSessionAlias(input.SessionID) {
+		if hookCallbackOwner(entry.Name(), input.SessionID, parent) {
 			direct = append(direct, entry)
 		} else {
 			peers = append(peers, entry)
@@ -114,7 +122,7 @@ func hookRequest(input HookInput) (Request, error) {
 			continue
 		}
 		request.ActiveMarkers = append(request.ActiveMarkers, marker)
-		matches := hookSessionAlias(entry.Name()) == hookSessionAlias(input.SessionID)
+		matches := hookCallbackOwner(entry.Name(), input.SessionID, parent)
 		if !matches || request.Marker == MarkerActive {
 			continue
 		}
@@ -247,19 +255,18 @@ func hookAdditionalRepository(
 }
 
 // hookTranscriptStatus classifies the callback transcript as main, subagent,
-// or unknown. Every failure is unknown; only subagent earns the worker role.
+// or unknown. Every failure is unknown, and unknown fails closed to the worker role.
 //
 // Example: a second-line session header with a string parentSession is a subagent.
 func hookTranscriptStatus(path string) string {
-	home := os.Getenv("HOME")
-	if path == "" || home == "" {
+	if path == "" {
 		return "unknown"
 	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return "unknown"
 	}
-	root, err := filepath.EvalSymlinks(filepath.Join(home, ".omp", "agent", "sessions"))
+	root, err := hookSessionsRoot()
 	if err != nil {
 		return "unknown"
 	}
@@ -279,13 +286,16 @@ func hookTranscriptStatus(path string) string {
 	if err != nil || !valid {
 		return "unknown"
 	}
-	if strings.Count(relative, string(filepath.Separator))+1 >= 3 {
+	depth := strings.Count(relative, string(filepath.Separator)) + 1
+	switch {
+	case depth == 2 && !signal:
+		return "main"
+	case depth >= 2 && signal:
 		return "subagent"
+	default:
+		// Depth below two, or depth three or more without a parentSession header, is ambiguous.
+		return "unknown"
 	}
-	if signal {
-		return "subagent"
-	}
-	return "main"
 }
 
 // hookTranscriptScan reads every transcript line once. valid is false when any
@@ -336,6 +346,159 @@ func hookTranscriptSignal(value any) bool {
 	}
 	_, hasParent := object["parentSession"].(string)
 	return recordType == "session" && hasParent
+}
+
+// hookSessionsRoot resolves the omp sessions root that bounds every transcript.
+//
+// Example: HOME=/home/u resolves /home/u/.omp/agent/sessions.
+func hookSessionsRoot() (string, error) {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return "", errors.New("HOME is unset")
+	}
+	return filepath.EvalSymlinks(filepath.Join(home, ".omp", "agent", "sessions"))
+}
+
+// hookTranscriptRole maps the callback transcript to a planner role and the
+// parent session a subagent inherits. Only a verified main transcript (depth 2,
+// no parentSession) is the coordinator. Every other outcome is unknown and fails
+// closed to worker: a subagent, a missing or empty transcript path, a missing or
+// unreadable file, an unparseable header, or an unresolvable parent.
+//
+// Example: an empty transcript path is unknown, so the callback runs as a worker.
+func hookTranscriptRole(path string) (Role, string, error) {
+	if path == "" {
+		return RoleWorker, "", nil
+	}
+	switch hookTranscriptStatus(path) {
+	case "main":
+		return RoleCoordinator, "", nil
+	case "subagent":
+		parent, err := hookTranscriptParent(path)
+		return RoleWorker, parent, err
+	default:
+		return RoleWorker, "", nil
+	}
+}
+
+// hookTranscriptParent returns the parent session declared by a verified
+// subagent transcript. A declared parent that cannot be resolved is an error,
+// never a silent drop.
+//
+// Example: parentSession naming a sessions-root transcript whose header id is
+// parent yields parent.
+func hookTranscriptParent(path string) (string, error) {
+	header, truncated, err := hookTranscriptHeader(path)
+	if err != nil {
+		return "", err
+	}
+	if header == nil {
+		if truncated {
+			return "", errors.New("transcript session header lies beyond the bounded prefix")
+		}
+		return "", nil
+	}
+	declared, _ := header["parentSession"].(string)
+	if declared == "" {
+		return "", nil
+	}
+	return hookParentSessionID(declared)
+}
+
+// hookParentSessionID resolves a declared parent transcript to the session id
+// in its header. The parent must be a regular non-symlink .jsonl file whose
+// physical path stays under the sessions root.
+//
+// Example: a symlinked parent transcript is rejected even when its target is
+// under the sessions root.
+func hookParentSessionID(declared string) (string, error) {
+	if !filepath.IsAbs(declared) || !strings.HasSuffix(declared, ".jsonl") {
+		return "", errors.New("parent transcript is not an absolute .jsonl path")
+	}
+	info, err := os.Lstat(declared)
+	if err != nil {
+		return "", fmt.Errorf("parent transcript: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("parent transcript is not a regular non-symlink file")
+	}
+	root, err := hookSessionsRoot()
+	if err != nil {
+		return "", err
+	}
+	physical, err := filepath.EvalSymlinks(declared)
+	if err != nil {
+		return "", fmt.Errorf("parent transcript: %w", err)
+	}
+	relative, err := filepath.Rel(root, physical)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("parent transcript is outside the sessions root")
+	}
+	header, _, err := hookTranscriptHeader(physical)
+	if err != nil {
+		return "", err
+	}
+	if header == nil {
+		return "", errors.New("parent transcript has no session header in its bounded prefix")
+	}
+	id, ok := header["id"].(string)
+	if !ok || !hookSessionID(id) {
+		return "", errors.New("parent transcript header has no valid session id")
+	}
+	return id, nil
+}
+
+// hookTranscriptHeader returns the first session record within the bounded
+// transcript prefix. truncated reports that the prefix ended before the end of
+// the file, so a missing header may lie beyond the bound.
+//
+// Example: a title record on line one and a session header on line two are
+// found within the first 64 KiB.
+func hookTranscriptHeader(path string) (map[string]any, bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+	prefix, err := io.ReadAll(io.LimitReader(file, maxHookTranscriptPrefixBytes+1))
+	if err != nil {
+		return nil, false, err
+	}
+	truncated := len(prefix) > maxHookTranscriptPrefixBytes
+	if truncated {
+		prefix = prefix[:maxHookTranscriptPrefixBytes]
+	}
+	lines := bytes.Split(prefix, []byte{'\n'})
+	if truncated {
+		// The final segment may end mid-record; only complete lines are decoded.
+		lines = lines[:len(lines)-1]
+	}
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal(line, &value); err != nil {
+			return nil, truncated, fmt.Errorf("malformed transcript header line: %w", err)
+		}
+		object, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if recordType, _ := object["type"].(string); recordType == "session" {
+			return object, truncated, nil
+		}
+	}
+	return nil, truncated, nil
+}
+
+// hookCallbackOwner reports whether a marker directory is the callback session
+// or the parent session it inherits.
+//
+// Example: a child callback is owned by its parent's marker directory.
+func hookCallbackOwner(name, session, parent string) bool {
+	alias := hookSessionAlias(name)
+	return alias == hookSessionAlias(session) || (parent != "" && alias == hookSessionAlias(parent))
 }
 
 // recordHookActivity preserves coordinator activity and callback-session writes.
