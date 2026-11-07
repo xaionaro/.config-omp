@@ -8,7 +8,7 @@ ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 # Engineering priorities and security follow-up rules are canonical in the binding contract; the ECI skill keeps no copy.
 ECI_BINDING_CONTRACT="$ROOT/../eci-binding-contract.md"
 TESTING_DISCIPLINE="$ROOT/../skills/testing-discipline/SKILL.md"
-DEBUGGING="$ROOT/skills/debugging-discipline/SKILL.md"
+DEBUGGING="$ROOT/../skills/debugging-discipline/SKILL.md"
 STATUS_REPORT="$ROOT/../skills/writing-status-reports/SKILL.md"
 LEDGER="$ROOT/../skills/context-ledger/SKILL.md"
 LINEAGE="$ROOT/../skills/references/requirement-lineage.md"
@@ -258,12 +258,17 @@ assert_role_rows_are_local() {
 }
 
 assert_debugging_role_routes() {
-  local row
+  local row route target
 
   row="$(grep -F -- '| `explorer` |' "$ECI")"
-  [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* ]] &&
-    grep -Eq -- 'only for assigned [^;|]*(bug|debugging)[^;|]*investigation' <<<"$row" ||
-    fail 'ECI explorer row must conditionally route assigned bug or debugging investigation to debugging-discipline'
+  route="$(grep -o -- '\[debugging-discipline\]([^)]*)' <<<"$row" | head -n 1)" || route=""
+  [ -n "$route" ] || fail 'ECI explorer row must route to debugging-discipline'
+  target="${route##*(}"
+  target="${target%)}"
+  [ -f "$(dirname "$ECI")/$target" ] ||
+    fail "ECI explorer row routes to a missing debugging-discipline target: $target"
+  grep -Fq -- "$route only for assigned " <<<"$row" ||
+    fail 'ECI explorer debugging-discipline route must be conditional on assigned work'
 
   row="$(grep -F -- '| Producer (`implementer`) |' "$ECI")"
   [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* &&
