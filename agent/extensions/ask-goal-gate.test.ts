@@ -21,7 +21,7 @@ function setup() {
     return result;
   };
   askGoalGate(pi as unknown as ExtensionAPI);
-  // Each test gets a fresh session id, so cache state never crosses tests.
+  // Each setup gets a fresh session id. Cache entries are keyed by id, so state from earlier tests is not visible here.
   currentId = `session-${++sessionCounter}`;
   return { fire };
 }
@@ -89,8 +89,11 @@ describe("ask goal gate", () => {
     });
   });
 
-  test("blocks ask when live overlay reports budget-limited but cache is false (restore case)", () => {
+  // Residual: the overlay branch does not check budget-limited (the declared overlay
+  // type omits it). Budget-limited coverage comes from the goal_updated cache.
+  test("budget-limited overlay status is a residual; the cache keeps ask blocked", () => {
     const { fire } = setup();
+    fire("goal_updated", goalUpdated(true, "budget-limited"), main());
     assert.deepEqual(fire("tool_call", askCall, main(overlay("budget-limited"))), {
       block: true,
       reason: GOAL_BLOCK_REASON,
@@ -129,6 +132,25 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main()), undefined);
   });
 
+  test("unreadable goal_updated stays blocked across session_switch until a clean update", () => {
+    const { fire } = setup();
+    const unreadable = {
+      type: "goal_updated",
+      goal: null,
+      get state(): never {
+        throw new Error("boom");
+      },
+    };
+    fire("goal_updated", unreadable, main());
+    fire("session_switch", { type: "session_switch" }, main());
+    assert.deepEqual(fire("tool_call", askCall, main()), {
+      block: true,
+      reason: GOAL_UNREADABLE_REASON,
+    });
+    fire("goal_updated", goalUpdated(false, "complete"), main());
+    assert.equal(fire("tool_call", askCall, main()), undefined);
+  });
+
   test("leaves non-ask tools untouched and never reads sessionModes", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
@@ -147,6 +169,17 @@ describe("ask goal gate", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), sub());
     assert.equal(fire("tool_call", askCall, main(undefined)), undefined);
+  });
+
+  // Intended: a non-main agent never writes the main session's cache, and its ask
+  // is gated only by its own session entry. The main session's goal does not gate it.
+  test("subagent ask is not gated by the main session's goal (kind !== main)", () => {
+    const { fire } = setup();
+    const subCtx = sessionCtx(`${currentId}-sub`, "sub");
+    fire("goal_updated", goalUpdated(true, "active"), main());
+    assert.equal(fire("tool_call", askCall, subCtx), undefined);
+    fire("goal_updated", goalUpdated(true, "active"), subCtx);
+    assert.equal(fire("tool_call", askCall, subCtx), undefined);
   });
 
   test("session_switch resets the cache so ask is allowed in the new session", () => {
@@ -168,8 +201,8 @@ describe("ask goal gate", () => {
 
   test("goal engaged in one session does not gate ask in another session", () => {
     const { fire } = setup();
-    const a = sessionCtx("session-a", "main");
-    const b = sessionCtx("session-b", "main");
+    const a = sessionCtx(`${currentId}-a`, "main");
+    const b = sessionCtx(`${currentId}-b`, "main");
     fire("goal_updated", goalUpdated(true, "active"), a);
     assert.equal(fire("tool_call", askCall, b), undefined);
     assert.deepEqual(fire("tool_call", askCall, a), {
@@ -180,8 +213,8 @@ describe("ask goal gate", () => {
 
   test("session_switch in another session does not clear this session's goal", () => {
     const { fire } = setup();
-    const a = sessionCtx("session-a", "main");
-    const b = sessionCtx("session-b", "main");
+    const a = sessionCtx(`${currentId}-a`, "main");
+    const b = sessionCtx(`${currentId}-b`, "main");
     fire("goal_updated", goalUpdated(true, "active"), a);
     fire("session_switch", { type: "session_switch" }, b);
     assert.deepEqual(fire("tool_call", askCall, a), {
