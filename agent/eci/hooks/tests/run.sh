@@ -30,6 +30,7 @@ FAIL_COUNT=0
 XFAIL_COUNT=0
 XPASS_COUNT=0
 TODO_COUNT=0
+CASE_RECORDED=0
 
 cleanup() {
   local status=$?
@@ -49,11 +50,13 @@ note() {
 
 pass() {
   PASS_COUNT=$((PASS_COUNT + 1))
+  CASE_RECORDED=1
   note "PASS $1"
 }
 
 fail() {
   FAIL_COUNT=$((FAIL_COUNT + 1))
+  CASE_RECORDED=1
   note "FAIL $1"
   if [ "${2:-}" ]; then
     note "     $2"
@@ -62,11 +65,13 @@ fail() {
 
 xfail() {
   XFAIL_COUNT=$((XFAIL_COUNT + 1))
+  CASE_RECORDED=1
   note "XFAIL $1"
 }
 
 xpass() {
   XPASS_COUNT=$((XPASS_COUNT + 1))
+  CASE_RECORDED=1
   note "XPASS $1"
   if [ "${2:-}" ]; then
     note "      $2"
@@ -75,16 +80,18 @@ xpass() {
 
 todo() {
   TODO_COUNT=$((TODO_COUNT + 1))
+  CASE_RECORDED=1
   note "TODO $1"
 }
 
 run_case() {
   local name="$1"
   shift
+  CASE_RECORDED=0
   if "$@"; then
-    pass "$name"
+    [ "$CASE_RECORDED" -eq 1 ] || pass "$name"
   else
-    fail "$name"
+    [ "$CASE_RECORDED" -eq 1 ] || fail "$name"
   fi
 }
 
