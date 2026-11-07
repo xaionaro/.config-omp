@@ -270,12 +270,22 @@ assert_receipt_drift_admitted 'planner transaction residue' "$quoted_exact_comma
 rm -f -- "$planner_transaction_dir/eci-command-plan"
 rmdir -- "$planner_transaction_dir"
 
-# Match the runtime-sync source-root contract exactly: the root itself may
-# not be world-writable, but group-writable managed directories remain valid.
+# The native gate's bin-chain check (eci-native-binary.sh:168) rejects any
+# group- or other-writable directory on the bin path or above it. Both cases
+# below are therefore expected to be denied by that check, and the exact-route
+# admission earlier in this file is the baseline they are compared against.
 restore_full_runtime_receipt
 fixture_root_mode="$(stat -c '%a' -- "$FIXTURE_HOME")"
 chmod o+w -- "$FIXTURE_HOME"
-assert_receipt_drift_admitted 'world-writable runtime root' "$exact_command"
+world_writable_output="$(run_hook "$exact_command" "$MAIN_TRANSCRIPT")"
+jq -e '
+  .hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
+' "$world_writable_output" >/dev/null || {
+  printf '%s\n' 'world-writable runtime root was not denied by the native gate:' >&2
+  cat -- "$world_writable_output" >&2
+  exit 1
+}
 chmod "$fixture_root_mode" -- "$FIXTURE_HOME"
 restore_full_runtime_receipt
 chmod g+w -- "$FIXTURE_HOME/bin" "$FIXTURE_HOME/hooks"
