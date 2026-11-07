@@ -261,9 +261,9 @@ assert_debugging_role_routes() {
   local row
 
   row="$(grep -F -- '| `explorer` |' "$ECI")"
-  [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* &&
-     "$row" == *'only for assigned bug investigation'* ]] ||
-    fail 'ECI explorer row must conditionally route assigned bug investigation to debugging-discipline'
+  [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* ]] &&
+    grep -Eq -- 'only for assigned [^;|]*(bug|debugging)[^;|]*investigation' <<<"$row" ||
+    fail 'ECI explorer row must conditionally route assigned bug or debugging investigation to debugging-discipline'
 
   row="$(grep -F -- '| Producer (`implementer`) |' "$ECI")"
   [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* &&
