@@ -92,7 +92,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 func TestProviderValidatorsDoNotExposeArchiveOrPathGitFastCapabilities(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			validator := filepath.Join(providerHome(provider), "hooks", "validate-bash.sh")
@@ -129,7 +129,7 @@ func TestInstalledBinaryProviderParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve installed binary: %v", err)
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		request := activeWorker("printf before | env | printf after")
 		request.Provider = provider
 		input, err := json.Marshal(request)
@@ -196,7 +196,7 @@ func TestInstalledBinaryRoutesReadOnlyLifecycleStateByRole(t *testing.T) {
 			decision: DecisionDefer,
 		},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -313,7 +313,7 @@ func TestInstalledBinaryRoutesActiveGitByRole(t *testing.T) {
 		{name: "environment sudo archive", command: "env FOO=bar sudo -n git archive HEAD"},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -406,7 +406,7 @@ func TestInstalledBinaryRoutesActiveGitByRole(t *testing.T) {
 			allRoles: true,
 		},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, testCase := range counterexamples {
 			testCase := testCase
@@ -456,7 +456,7 @@ func TestInstalledBinaryRoutesActivePreCommitHookModeRepairByRole(t *testing.T) 
 		t.Fatalf("resolve installed binary: %v", err)
 	}
 	const command = "chmod 755 hooks/pre-commit-go-mod.sh"
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -578,7 +578,7 @@ func TestInstalledBinaryDeniesActiveWorkerProtectedHookModeMutations(t *testing.
 	if err != nil {
 		t.Fatalf("resolve installed binary: %v", err)
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -675,7 +675,7 @@ func TestInstalledBinaryDefersActiveCoordinatorProtectedHookModeMutations(t *tes
 	if err != nil {
 		t.Fatalf("resolve installed binary: %v", err)
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -753,7 +753,7 @@ func TestInstalledBinaryAllowsSameNamedHookPathOutsideProviderRoot(t *testing.T)
 	if err != nil {
 		t.Fatalf("resolve installed binary: %v", err)
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -797,7 +797,7 @@ func TestInstalledBinaryAllowsActiveWorkerOrdinaryChmod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve installed binary: %v", err)
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -871,7 +871,7 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 		t.Fatalf("write ordinary file: %v", err)
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()

@@ -72,7 +72,7 @@ func TestParseArgumentsAcceptsEveryPublishedCommandShape(t *testing.T) {
 		})
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, role := range []Role{RoleCoordinator, RoleWorker} {
 			role := role

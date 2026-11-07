@@ -2072,7 +2072,7 @@ func TestLedgerHardlinkAliasesKeepConcreteDiagnostics(t *testing.T) {
 func TestCurrentSessionLedgerRedirectsResolveEffectAndOwnership(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2307,7 +2307,7 @@ func TestActiveBareGitCloneSourceAcquisitionCapability(t *testing.T) {
 		},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2362,7 +2362,7 @@ func TestActiveBareGitCloneSourceAcquisitionCapability(t *testing.T) {
 		t.Run("no-capability/"+testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			for _, provider := range []Provider{ProviderOmp} {
+			for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 				for _, role := range []Role{RoleCoordinator, RoleWorker} {
 					request := activeWorker(testCase.command)
 					request.Provider = provider
@@ -2400,7 +2400,7 @@ func TestActiveBareGitCloneSourceAcquisitionCapability(t *testing.T) {
 		t.Run("changed-launch-context/"+testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			for _, provider := range []Provider{ProviderOmp} {
+			for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 				for _, role := range []Role{RoleCoordinator, RoleWorker} {
 					request := activeWorker(testCase.command)
 					request.Provider = provider
@@ -2447,7 +2447,7 @@ func TestRawGitPlansHaveNoGenericCapability(t *testing.T) {
 		"git -C /tmp/root diff -- :(exclude)AGENTS.md",
 		"git -C /tmp/root diff -- ':(exclude)AGENTS.md'",
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2528,7 +2528,7 @@ func TestWorkerGitIndexOperationsDeferToResolvedTarget(t *testing.T) {
 	t.Parallel()
 
 	const repository = "/workspace"
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2604,7 +2604,7 @@ func TestRawGitPlansHaveNoCapabilityIncludingExecutionEscapes(t *testing.T) {
 		"git diff --check --no-index /etc/passwd /etc/hosts",
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2647,7 +2647,7 @@ func TestGitFsckLostFoundDefersWithoutReadOnlyCapability(t *testing.T) {
 		"env FOO=bar git fsck",
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2923,7 +2923,7 @@ func TestStatMetadataGrammarIsProviderParity(t *testing.T) {
 		{name: "dynamic path remains ordinary", command: "stat -c '%s' '$HOME/tmp/file'", decision: DecisionAllow},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -2975,7 +2975,7 @@ func TestFileInspectionGrammar(t *testing.T) {
 		{name: "unknown option remains ordinary", command: "file --extension hooks/validate-bash.sh", decision: DecisionAllow},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -3056,7 +3056,7 @@ func TestInstalledBinaryStatMetadataGrammar(t *testing.T) {
 		{name: "dynamic format", command: "stat -c '$(printf %s)' hooks/validate-bash.sh", status: StatusAllow},
 		{name: "context option", command: "stat --printf='%s' hooks/validate-bash.sh", status: StatusAllow},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, testCase := range testCases {
 			t.Run(string(provider)+"/"+testCase.name, func(t *testing.T) {
@@ -3208,7 +3208,7 @@ func TestNamedRuntimeFormsRemainOrdinary(t *testing.T) {
 		{name: "ordinary compiler short compile", command: "g++ -c source.cpp"},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, testCase := range testCases {
 			testCase := testCase
@@ -3234,7 +3234,7 @@ func TestCoordinatorApprovedGitReadContextsDeferToProvider(t *testing.T) {
 		t.Fatalf("resolve home directory: %v", err)
 	}
 	approvedRoot := filepath.Join(home, "tmp", "eci-approved-repository")
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -3570,8 +3570,8 @@ func TestGateModeSetRequiresExactProviderEnvelope(t *testing.T) {
 }
 
 // TestEciAuthorityRootsIgnoreECIHOME verifies that only HOME/.omp/agent/eci
-// supplies omp control identity. ECI_HOME may remain observable for
-// broad deny-only checks, but cannot select a control root.
+// and the configured Kimi root supply control identity. ECI_HOME may remain
+// observable for broad deny-only checks, but cannot select a control root.
 //
 // Example: ECI_HOME=/tmp/foreign cannot make its eci-active or gate-mode
 // binary canonical when HOME/.omp/agent/eci is present.
@@ -3590,7 +3590,8 @@ func TestEciAuthorityRootsIgnoreECIHOME(t *testing.T) {
 	home := filepath.Join(directory, "home")
 	eciRoot := filepath.Join(home, ".omp", "agent", "eci")
 	foreignRoot := filepath.Join(directory, "foreign-eci")
-	for _, root := range []string{eciRoot, foreignRoot} {
+	kimiRoot := filepath.Join(directory, "configured-kimi")
+	for _, root := range []string{eciRoot, foreignRoot, kimiRoot} {
 		if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
 			t.Fatalf("create %s bin: %v", root, err)
 		}
@@ -3608,14 +3609,16 @@ func TestEciAuthorityRootsIgnoreECIHOME(t *testing.T) {
 		}
 	}
 	eciGate := filepath.Join(eciRoot, "bin", "eci-command-gate-mode")
+	kimiGate := filepath.Join(kimiRoot, "bin", "eci-command-gate-mode")
 	foreignGate := filepath.Join(foreignRoot, "bin", "eci-command-gate-mode")
 	writeExecutable(eciGate, "#!/bin/sh\nexit 0\n")
-	for _, path := range []string{foreignGate} {
+	for _, path := range []string{kimiGate, foreignGate} {
 		if err := os.Link(eciGate, path); err != nil {
 			t.Fatalf("hardlink canonical gate binary at %s: %v", path, err)
 		}
 	}
 	writeExecutable(filepath.Join(eciRoot, "bin", "eci-active"), "#!/bin/sh\nexit canonical\n")
+	writeExecutable(filepath.Join(kimiRoot, "bin", "eci-active"), "#!/bin/sh\nexit kimi\n")
 	writeExecutable(filepath.Join(foreignRoot, "bin", "eci-active"), "#!/bin/sh\nexit foreign\n")
 	for _, root := range []string{eciRoot, foreignRoot} {
 		if err := os.WriteFile(filepath.Join(root, "hooks", "validate-bash.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -3629,6 +3632,7 @@ func TestEciAuthorityRootsIgnoreECIHOME(t *testing.T) {
 		"ECI_TEST_AUTHORITY_ROOTS=1",
 		"HOME="+home,
 		"ECI_HOME="+foreignRoot,
+		"KIMI_CODE_HOME="+kimiRoot,
 		"ECI_TEST_AUTHORITY_ROOTS_FOREIGN="+foreignRoot,
 	)
 	output, err := child.CombinedOutput()
@@ -3640,22 +3644,27 @@ func TestEciAuthorityRootsIgnoreECIHOME(t *testing.T) {
 func runEciAuthorityRootsIgnoreECIHOMEScenario(t *testing.T) {
 	home := os.Getenv("HOME")
 	foreignRoot := os.Getenv("ECI_TEST_AUTHORITY_ROOTS_FOREIGN")
-	if home == "" || foreignRoot == "" {
-		t.Fatalf("missing ECI_HOME authority fixture: home=%q foreign=%q", home, foreignRoot)
+	kimiRoot := os.Getenv("KIMI_CODE_HOME")
+	if home == "" || foreignRoot == "" || kimiRoot == "" {
+		t.Fatalf("missing poisoned ECI_HOME fixture: home=%q foreign=%q kimi=%q", home, foreignRoot, kimiRoot)
 	}
 	eciRoot := filepath.Join(home, ".omp", "agent", "eci")
 	eciGate := filepath.Join(eciRoot, "bin", "eci-command-gate-mode")
+	kimiGate := filepath.Join(kimiRoot, "bin", "eci-command-gate-mode")
 	foreignGate := filepath.Join(foreignRoot, "bin", "eci-command-gate-mode")
 
 	identity := gateModeIdentityForEnvironment()
 	if identity.failure != "" {
-		t.Errorf("gate-mode identity failure=%q, want lexical HOME/.omp/agent/eci root", identity.failure)
+		t.Errorf("gate-mode identity failure=%q, want lexical HOME/.omp/agent/eci and configured Kimi roots", identity.failure)
 	}
-	if len(identity.canonicalPaths) != 1 || identity.canonicalPaths[0] != eciGate {
-		t.Errorf("gate-mode canonical paths=%q, want [%q]", identity.canonicalPaths, eciGate)
+	if len(identity.canonicalPaths) != 2 || identity.canonicalPaths[0] != eciGate || identity.canonicalPaths[1] != kimiGate {
+		t.Errorf("gate-mode canonical paths=%q, want [%q %q]", identity.canonicalPaths, eciGate, kimiGate)
 	}
 	if canonical, ok := gateModeProviderPath(ProviderOmp, identity); !ok || canonical != eciGate {
 		t.Errorf("omp gate-mode canonical path=%q known=%t, want %q/true", canonical, ok, eciGate)
+	}
+	if canonical, ok := gateModeProviderPath(ProviderKimi, identity); !ok || canonical != kimiGate {
+		t.Errorf("Kimi gate-mode canonical path=%q known=%t, want %q/true", canonical, ok, kimiGate)
 	}
 
 	for _, testCase := range []struct {
@@ -3666,6 +3675,7 @@ func runEciAuthorityRootsIgnoreECIHOMEScenario(t *testing.T) {
 	}{
 		{name: "omp lexical gate", provider: ProviderOmp, command: eciGate + " get", want: DecisionAllow},
 		{name: "omp foreign gate read", provider: ProviderOmp, command: foreignGate + " get", want: DecisionAllow},
+		{name: "configured Kimi gate", provider: ProviderKimi, command: kimiGate + " get", want: DecisionAllow},
 	} {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
@@ -3692,8 +3702,8 @@ func runEciAuthorityRootsIgnoreECIHOMEScenario(t *testing.T) {
 		return false
 	}
 	lifecycleRoots := canonicalLifecycleRoots()
-	if !contains(lifecycleRoots, eciRoot) || contains(lifecycleRoots, foreignRoot) {
-		t.Errorf("lifecycle roots=%q, want lexical omp root without foreign ECI_HOME %q", lifecycleRoots, foreignRoot)
+	if !contains(lifecycleRoots, eciRoot) || !contains(lifecycleRoots, kimiRoot) || contains(lifecycleRoots, foreignRoot) {
+		t.Errorf("lifecycle roots=%q, want lexical omp and configured Kimi roots without foreign ECI_HOME %q", lifecycleRoots, foreignRoot)
 	}
 	foreignLifecycle := filepath.Join(foreignRoot, "bin", "eci-active")
 	lifecycleRequest := activeWorker(foreignLifecycle + " status")
@@ -3710,8 +3720,8 @@ func runEciAuthorityRootsIgnoreECIHOMEScenario(t *testing.T) {
 	if resolved, ok := protectedHookModeTargetPath(home, foreignHook); ok || resolved != "" {
 		t.Errorf("foreign ECI_HOME hook: resolved=%q protected=%t, want empty/false", resolved, ok)
 	}
-	if roots := protectedHookModeRoots(); !contains(roots, eciRoot) {
-		t.Errorf("protected hook roots=%q, want native root %q retained", roots, eciRoot)
+	if roots := protectedHookModeRoots(); !contains(roots, kimiRoot) {
+		t.Errorf("protected hook roots=%q, want configured Kimi root %q retained", roots, kimiRoot)
 	}
 }
 
@@ -3797,7 +3807,7 @@ func TestActiveGitDefersToProviderAdapters(t *testing.T) {
 		{name: "environment sudo archive", command: "env FOO=bar sudo -n git archive HEAD"},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -3883,7 +3893,7 @@ func TestActiveGitDefersToProviderAdapters(t *testing.T) {
 			allRoles: true,
 		},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, testCase := range counterexamples {
 			testCase := testCase
@@ -4593,7 +4603,7 @@ func TestTransparentWrappersPreserveChildClassification(t *testing.T) {
 		"prlimit --nofile=1024 novel-tool --flag value",
 		"chronic -- novel-tool --flag value",
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -4625,7 +4635,7 @@ func TestTransparentWrappersPreserveChildClassification(t *testing.T) {
 func TestBroadDestructionIsProviderNeutral(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -4661,7 +4671,7 @@ func TestBroadDestructionIsProviderNeutral(t *testing.T) {
 func TestGitExecutionContextSpellingDefersWithoutDiagnostic(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -4691,7 +4701,7 @@ func TestGitExecutionContextSpellingDefersWithoutDiagnostic(t *testing.T) {
 func TestProofPathOwnership(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -4890,7 +4900,7 @@ func TestProtectedOperationsRouteByRole(t *testing.T) {
 		{name: "coordinator source write", role: RoleCoordinator, command: "touch source.txt", decision: DecisionAllow},
 		{name: "coordinator outside-CWD source write", role: RoleCoordinator, cwd: "/workspace", command: "touch /tmp/source.txt", decision: DecisionAllow},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -4956,7 +4966,7 @@ func TestCurrentControlCopyOperandRoles(t *testing.T) {
 	}
 	ordinary := filepath.Join(directory, "ordinary")
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		for _, role := range []Role{RoleCoordinator, RoleWorker} {
 			for _, testCase := range []struct {
 				name       string
@@ -5105,7 +5115,7 @@ func TestFiniteWriterOperandPositionsPreserveInputs(t *testing.T) {
 func TestDDOutputDestinationsHonorControlOwnership(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -5195,7 +5205,7 @@ func TestDDOutputDestinationsHonorControlOwnership(t *testing.T) {
 func TestGitArchiveOutputsDeferToProvider(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -5270,7 +5280,7 @@ func TestGitArchiveOutputsDeferToProvider(t *testing.T) {
 func TestGenericOutputWriterProofOwnership(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -5578,7 +5588,7 @@ func TestReviewGateCapabilityDefersToProviderAdapters(t *testing.T) {
 		"bash -c eci-review-gate.sh commit test-session",
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -5647,7 +5657,7 @@ func TestLifecycleScriptCapabilityDefersToProviderAdapters(t *testing.T) {
 		"printf /opt/eci/bin/eci-active",
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -5836,7 +5846,7 @@ func runLifecycleIdentityHomeSymlinkScenario(t *testing.T) {
 		{name: "arbitrary eci review gate basename", command: arbitraryReviewGate + " status"},
 	}
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		for _, testCase := range protectedCommands {
 			testCase := testCase
@@ -6841,7 +6851,7 @@ func TestWorkerCompoundPlansRouteByOperator(t *testing.T) {
 		{name: "pipeline", command: "printf left | printf right", decision: DecisionAllow},
 		{name: "bounded read-only pipeline", command: "git diff --binary -- hooks/validate-bash.sh | sha256sum", decision: DecisionDefer, coordinatorDecision: DecisionDefer},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -6935,7 +6945,7 @@ func TestCoordinatorCompoundMutationRemainsProviderOwned(t *testing.T) {
 			command: "printf source | tee source.txt",
 		},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -6978,7 +6988,7 @@ func TestCoordinatorScriptBatchesDeferToProviderAdapters(t *testing.T) {
 		"bash hooks/eci-active-gate.sh && bash hooks/stop-gate.sh",
 		"sh -n hooks/eci-active-gate.sh && sh hooks/stop-gate.sh",
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7002,7 +7012,7 @@ func TestCoordinatorScriptBatchesDeferToProviderAdapters(t *testing.T) {
 func TestCoordinatorHookRepairDefersToProviderAdapters(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7045,7 +7055,7 @@ func TestActivePreCommitHookModeRepairRoutesByRole(t *testing.T) {
 		{name: "interpreter wrapper", command: "bash -c '" + command + "'", marker: MarkerActive},
 		{name: "inactive exact", command: command, marker: MarkerInactive},
 	}
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7118,7 +7128,7 @@ func TestActivePreCommitHookModeRepairRoutesByRole(t *testing.T) {
 func TestActiveWorkerProtectedHookModeMutationsUseGenericControlDenial(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7355,7 +7365,7 @@ func TestChmodMutationTargetsSeparatesGNUReferenceSources(t *testing.T) {
 func TestActiveCoordinatorProtectedHookModeMutationsDefer(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7417,7 +7427,7 @@ func TestActiveCoordinatorProtectedHookModeMutationsDefer(t *testing.T) {
 func TestActiveWorkerAllowsSameNamedHookPathOutsideProviderRoot(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7445,7 +7455,7 @@ func TestActiveWorkerAllowsSameNamedHookPathOutsideProviderRoot(t *testing.T) {
 func TestActiveWorkerOrdinaryChmodRemainsAllowed(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7488,7 +7498,7 @@ func TestActiveWorkerOrdinaryChmodRemainsAllowed(t *testing.T) {
 func TestActiveMktempDefersToProviderAdapters(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
@@ -7527,7 +7537,7 @@ func TestInactiveLeadingAssignmentRemainsOrdinary(t *testing.T) {
 func TestQuotedCommandSubstitutionRemainsOrdinary(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []Provider{ProviderOmp} {
+	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()

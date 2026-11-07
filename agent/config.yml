@@ -13,4 +13,6 @@ setupVersion: 3
 extendedContext: true
 task:
   perCallModel: "on"
+  softRequestBudget: 0
+  agentSoftRequestBudget: {}
 defaultThinkingLevel: max
