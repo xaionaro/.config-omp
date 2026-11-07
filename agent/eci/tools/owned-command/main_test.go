@@ -161,9 +161,11 @@ func TestSignalRetiresChildren(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	pidPath := filepath.Join(t.TempDir(), "pid")
 	childPath := filepath.Join(t.TempDir(), "child-pid")
-	cmd := exec.Command(binary, "-receipt", path, "--", "/bin/sh", "-c", `sleep 30 & echo $! > "$2"; echo $$ > "$1"; wait`, "guard", pidPath, childPath)
+	// The script renames the PID file into place, so the poll never reads a partial PID.
+	cmd := exec.Command(binary, "-receipt", path, "--", "/bin/sh", "-c", `sleep 30 & echo $! > "$2"; echo $$ > "$1.tmp" && mv "$1.tmp" "$1"; wait`, "guard", pidPath, childPath)
 	startControlledCommand(t, cmd)
-	until := time.Now().Add(time.Second)
+	// Guard startup can exceed a second under parallel load, so this bound only stops a hang.
+	until := time.Now().Add(10 * time.Second)
 	for {
 		if _, err := os.Stat(pidPath); err == nil {
 			break
@@ -178,15 +180,13 @@ func TestSignalRetiresChildren(t *testing.T) {
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
-	until = time.Now().Add(3 * time.Second)
-	for {
-		if _, err := os.Stat(path); err == nil {
-			break
-		}
-		if time.Now().After(until) {
-			t.Fatal("interrupted guard did not write receipt")
-		}
-		time.Sleep(time.Millisecond)
+	// The guard writes its receipt in place, so only its exit proves the file is complete.
+	watchdog := time.AfterFunc(10*time.Second, func() { _ = cmd.Process.Kill() })
+	waitErr := cmd.Wait()
+	watchdog.Stop()
+	var exit *exec.ExitError
+	if waitErr != nil && !errors.As(waitErr, &exit) {
+		t.Fatal(waitErr)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
