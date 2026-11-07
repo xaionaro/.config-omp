@@ -16,9 +16,9 @@ bin/eci-active-dispatch	-	reason-coded	-	source-path-dispatcher	AUDIT decision 1
 bin/eci-runtime-sync	build-planner-pair	mapped	agent/eci/tools/eci-active/planner.go	-	plannerBuildTool runs go build for eci-command-plan, eci-safe-import, and eci-hook-helper
 bin/eci-runtime-sync	install-peer-surface	reason-coded	-	no-peer-provider-root	port free of pre-migration source 575bb81; omp has no peer provider root (AUDIT decision 2)
 bin/eci-runtime-sync	install-runtime-surface	mapped	agent/eci/tools/eci-active/runtime_sync.go	-	publishRuntimeTarget installs the managed surface and verifies digest and mode
-bin/eci-runtime-sync	publish-planner-pair	mapped	agent/eci/tools/eci-active/planner.go	-	publishPlannerPair installs the pair into the runtime root
-bin/eci-runtime-sync	refresh-planner-peer	mapped	agent/eci/tools/eci-active/planner.go	-	syncPlannerPeer publishes the Kimi pair; a failure is advisory
-bin/eci-runtime-sync	refresh-planner-receipt	mapped	agent/eci/tools/eci-active/planner.go	-	plannerReceipt builds the .eci-command-plan.provenance content; publishPlannerPair writes it
+bin/eci-runtime-sync	publish-planner-pair	mapped	agent/eci/tools/eci-active/planner.go	-	plannerApply and publishPlannerLeaves publish the three tools and their <name>.sha256 receipts into the canonical bin/ as one transaction, with rollback
+bin/eci-runtime-sync	refresh-planner-peer	mapped	agent/eci/tools/eci-active/planner.go	-	maintainPlanner runs bin/eci-runtime-sync planner-apply --target <kimi home> as an advisory peer step
+bin/eci-runtime-sync	refresh-planner-receipt	mapped	agent/eci/tools/eci-active/planner.go	-	the receipts are <name>.sha256, staged in the transaction by plannerApply; the .eci-command-plan.provenance receipt is removed
 bin/git-dirty-watchdog	-	reason-coded	-	obsolete	AUDIT decision 1: obsolete; src-01 line 136 at 575bb81 names the obsolete git dirty cron watchdog
 bin/owned-command	on-demand-build	mapped	agent/eci/bin/owned-command	-	on-demand wrapper: builds the tool into a cache on first use; no explicit build step
 bin/owned-command	resolve-executable	open	-	-	owner AUTOBUILD: --resolve-executable (prepare and print the built path) is not ported; callers use the fixed path
