@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: emit the status-report reminder and write the /side stop marker; never scan transcript history.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
@@ -73,12 +73,24 @@ if [ "$helper_rc" -ne 0 ]; then
 fi
 input="$(cat -- "$helper_output")" || { rm -rf -- "$private_dir"; hook_deny "ECI prompt reminder denied: the native helper output was unreadable; reinstall the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"; }
 rm -rf -- "$private_dir"
-if [[ "$reminder" == true ]]; then
-  jq -n '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:"For the requested status report, load writing-status-reports; reconcile YAML, validate, render with status-report render, and publish the full rendered result. Correct known missing sections in YAML and rerender; use the documented incomplete fallback only if structural failure prevents rendering."}}'
-fi
 
-# Keep the independent, nonblocking reminder even if the steps below fail.
-trap 'exit 0' ERR
+# Fail closed once the helper gate has decided: an internal failure after that
+# point denies the prompt rather than exiting 0 with a partial result.  The busy
+# flag stops a failure inside the handler from re-entering it.
+prompt_busy=""
+prompt_fail_closed() {
+  local code="${1:-1}"
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$code"
+  fi
+  if [ -n "$prompt_busy" ]; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry","additionalContext":"ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
+    exit 0
+  fi
+  prompt_busy=1
+  hook_deny "ECI prompt reminder denied: an internal step failed after the native helper gate; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+}
+trap 'prompt_fail_closed "$?"' ERR
 rm -f "$input_file"
 trap - EXIT
 . "$HOOK_DIR/lib/eci-proof-state.sh"
@@ -115,4 +127,9 @@ if eci_valid_session_id "$session_id"; then
     fi
   fi
 
+fi
+
+# The reminder is the last output so a later failure cannot leave two JSON objects.
+if [[ "$reminder" == true ]]; then
+  jq -n '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:"For the requested status report, load writing-status-reports; reconcile YAML, validate, render with status-report render, and publish the full rendered result. Correct known missing sections in YAML and rerender; use the documented incomplete fallback only if structural failure prevents rendering."}}'
 fi

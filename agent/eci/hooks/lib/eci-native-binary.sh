@@ -28,16 +28,18 @@ eci_runtime_artifact_path() {
 }
 
 # The file at $1 must be an ELF executable whose class, byte order and machine match the host.
+# Headers are written into the private scratch directory $2 and read back, so no
+# command substitution runs while the verified descriptor path is being observed.
 eci_runtime_elf_matches_host() {
-  local path="$1" candidate_header host_header index
+  local path="$1" scratch="$2" index
   local -a candidate=() host=()
-  candidate_header="$(od -An -v -tx1 -w20 -N20 -- "$path" 2>/dev/null)" || return 1
+  od -An -v -tx1 -w20 -N20 -- "$path" >"$scratch/candidate" 2>/dev/null || return 1
   if [ -z "$eci_native_host_header" ]; then
-    eci_native_host_header="$(od -An -v -tx1 -w20 -N20 -- "/proc/$$/exe" 2>/dev/null)" || return 1
+    od -An -v -tx1 -w20 -N20 -- "/proc/$$/exe" >"$scratch/host" 2>/dev/null || return 1
+    IFS= read -r eci_native_host_header <"$scratch/host" || true
   fi
-  host_header="$eci_native_host_header"
-  read -r -a candidate <<<"$candidate_header"
-  read -r -a host <<<"$host_header"
+  read -r -a candidate <"$scratch/candidate" || true
+  read -r -a host <<<"$eci_native_host_header"
   [ "${#candidate[@]}" -eq 20 ] && [ "${#host[@]}" -eq 20 ] || return 1
   [ "${candidate[*]:0:4}" = '7f 45 4c 46' ] || return 1
   # ELF class, byte order and machine identify the host execution format.
@@ -63,36 +65,53 @@ eci_runtime_directory_chain_is_trusted() {
 }
 
 # Verify the open descriptor $2 for artifact $1 whose resolved path must be $3.
+# Every observation of /proc/self/fd/$2 is redirected into the private scratch
+# directory $4 and read back from there; no command or process substitution
+# runs while the descriptor is open.  Hashing reads the verified descriptor
+# through its path, so the bytes hashed are those of the opened inode.
 eci_runtime_verify_fd() {
-  local name="$1" fd="$2" expected_path="$3" fdpath="/proc/self/fd/$2"
-  local target owner mode kind receipt_path receipt_line expected actual
+  local name="$1" fd="$2" expected_path="$3" scratch="$4" fdpath="/proc/self/fd/$2"
+  local target owner mode kind receipt_path receipt_line expected actual hash_line
 
-  target="$(readlink -- "$fdpath" 2>/dev/null)" || { eci_runtime_denial "$name" "descriptor cannot be resolved"; return 1; }
+  readlink -- "$fdpath" >"$scratch/target" 2>/dev/null || { eci_runtime_denial "$name" "descriptor cannot be resolved"; return 1; }
+  IFS= read -r target <"$scratch/target" || true
   [ "$target" = "$expected_path" ] || { eci_runtime_denial "$name" "resolves outside the verified bin directory"; return 1; }
-  read -r owner mode kind < <(stat -L -c '%u %a %F' -- "$fdpath" 2>/dev/null) || { eci_runtime_denial "$name" "cannot be stat'ed"; return 1; }
+  stat -L -c '%u %a %F' -- "$fdpath" >"$scratch/stat" 2>/dev/null || { eci_runtime_denial "$name" "cannot be stat'ed"; return 1; }
+  read -r owner mode kind <"$scratch/stat" || true
   case "$kind" in 'regular file'|'regular empty file') ;; *) eci_runtime_denial "$name" "is not a regular file"; return 1 ;; esac
-  [ "$owner" = "$(id -u)" ] || { eci_runtime_denial "$name" "is not owned by the current user"; return 1; }
+  [ "$owner" = "$EUID" ] || { eci_runtime_denial "$name" "is not owned by the current user"; return 1; }
   [[ "$mode" =~ ^[0-7]{3,4}$ ]] || { eci_runtime_denial "$name" "has an unreadable mode"; return 1; }
   (( 8#$mode & 022 )) && { eci_runtime_denial "$name" "is group- or other-writable"; return 1; }
   (( 8#$mode & 0111 )) || { eci_runtime_denial "$name" "is not executable"; return 1; }
-  eci_runtime_elf_matches_host "$fdpath" || { eci_runtime_denial "$name" "is not an ELF binary for this host"; return 1; }
+  eci_runtime_elf_matches_host "$fdpath" "$scratch" || { eci_runtime_denial "$name" "is not an ELF binary for this host"; return 1; }
 
   receipt_path="$(eci_runtime_artifact_path "$name").sha256"
   [ -f "$receipt_path" ] && [ ! -L "$receipt_path" ] || { eci_runtime_denial "$name" "has no sha256 receipt"; return 1; }
   IFS= read -r receipt_line <"$receipt_path" || true
   [[ "$receipt_line" =~ ^([0-9a-f]{64})"  $name"$ ]] || { eci_runtime_denial "$name" "has a malformed sha256 receipt"; return 1; }
   expected="${BASH_REMATCH[1]}"
-  actual="$(sha256sum -- "$fdpath")" || { eci_runtime_denial "$name" "cannot be hashed"; return 1; }
-  actual="${actual%% *}"
+  sha256sum -- "$fdpath" >"$scratch/sha256" 2>/dev/null || { eci_runtime_denial "$name" "cannot be hashed"; return 1; }
+  IFS= read -r hash_line <"$scratch/sha256" || true
+  actual="${hash_line%% *}"
   [ "$actual" = "$expected" ] || { eci_runtime_denial "$name" "sha256 does not match its receipt"; return 1; }
 }
 
 # Open and verify $HOME/.omp/agent/eci/bin/<name>. On success the verified descriptor is
 # left open in ECI_RUNTIME_BINARY_FD. On failure ECI_RUNTIME_DENY_REASON is set.
+# The private scratch directory is created before the descriptor opens and removed before return.
 eci_runtime_open_verified() {
-  local name="${1:-}" path bin_dir real_bin fd
+  local name="${1:-}" scratch rc=0
   ECI_RUNTIME_BINARY_FD=''
   ECI_RUNTIME_DENY_REASON=''
+
+  scratch="$(mktemp -d -- "${TMPDIR:-/tmp}/eci-runtime-verify.XXXXXX" 2>/dev/null)" || { eci_runtime_denial "$name" "private verification directory cannot be created"; return 1; }
+  _eci_runtime_open_verified_in "$name" "$scratch" || rc=$?
+  rm -rf -- "$scratch"
+  return "$rc"
+}
+
+_eci_runtime_open_verified_in() {
+  local name="$1" scratch="$2" path bin_dir real_bin fd
 
   path="$(eci_runtime_artifact_path "$name")" || { eci_runtime_denial "$name" "not an allowed artifact name or HOME is not absolute"; return 1; }
   bin_dir="${path%/*}"
@@ -106,7 +125,7 @@ eci_runtime_open_verified() {
     eci_runtime_denial "$name" "cannot be opened"
     return 1
   fi
-  if ! eci_runtime_verify_fd "$name" "$fd" "$real_bin/$name"; then
+  if ! eci_runtime_verify_fd "$name" "$fd" "$real_bin/$name" "$scratch"; then
     exec {fd}<&-
     return 1
   fi

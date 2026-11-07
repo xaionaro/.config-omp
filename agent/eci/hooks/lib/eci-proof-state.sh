@@ -149,6 +149,15 @@ eci_marker_candidates_bounded() {
   done < <(find "$root" -mindepth 2 -maxdepth 2 -name eci_active -print0 2>/dev/null)
 }
 
+# Gate predicate shared by every PreToolUse gate: an active marker is any
+# candidate, including the unsafe-root and overflow tokens.  A failed scan is
+# unknown state and counts as active, so the caller denies rather than allows.
+eci_marker_active_or_unknown() {
+  local candidates
+  candidates="$(eci_marker_candidates_bounded 2>/dev/null)" || return 0
+  [ -n "$candidates" ]
+}
+
 # State writers use these no-follow final-component checks before mkdir or
 # marker mutation.  Ancestor cache symlinks are allowed when they resolve to
 # directories; the configured proof root and session directory themselves may

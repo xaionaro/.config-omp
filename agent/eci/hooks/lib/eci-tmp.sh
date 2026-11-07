@@ -37,20 +37,59 @@ eci_init_tmp() {
   return 0
 }
 
+_eci_fail_closed_constant() {
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_FAIL_CLOSED: hook %s failed after its gate decision point and denied the tool call; jq is unavailable or failed; inspect the hook log and available temporary-directory/disk state, then retry"}}\n' "$1"
+}
+
+# Up-front jq gate for PreToolUse validators.  Without jq no JSON deny can be
+# built, so while an active marker exists (eci_marker_active_or_unknown, which
+# needs no jq) a constant printf deny naming the hook and jq is printed.  With
+# no marker the ordinary path exits 0.  Callers source proof-state first.
+eci_require_jq_or_deny() {
+  local hook_name="$1"
+  if command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  if eci_marker_active_or_unknown; then
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_JQ_MISSING: hook %s denied the tool call while an active marker exists because jq is not installed; install jq and retry"}}\n' "$hook_name"
+  fi
+  exit 0
+}
+
 _eci_fail_closed_emit() {
   local hook_name="$1" line="$2" exit_code="$3" cmd="$4" reason
-  reason="$(eci_diagnostic_reason "ECI_HOOK_FAIL_CLOSED" "PreToolUse" "hook-fail-closed" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed after its gate decision point; denying the tool call" "inspect the failing command and available temporary-directory/disk state, then retry")"
+  reason="$(eci_diagnostic_reason "ECI_HOOK_FAIL_CLOSED" "PreToolUse" "hook-fail-closed" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed after its gate decision point; denying the tool call" "inspect the failing command and available temporary-directory/disk state, then retry")" ||
+    reason="ECI_HOOK_FAIL_CLOSED: hook $hook_name failed after its gate decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"
   if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ECI_HOOK_FAIL_CLOSED: a gate hook failed unexpectedly after its decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"}}'
+    _eci_fail_closed_constant "$hook_name"
   fi
 }
 
 # Gate hooks (PreToolUse) fail closed: an unexpected error emits an explicit
 # deny JSON first, and the hook exits 0 only after that JSON is printed.
+# With set -E the ERR trap is inherited by command substitutions and subshells.
+# A subshell failure must not print a deny into a captured value, so it exits
+# with its own status and the parent's || or errexit handles it.  The busy
+# flag stops a failure inside the handler from re-entering it.
+_eci_fail_closed_busy=""
+_eci_fail_closed_trap() {
+  local hook_name="$1" line="$2" exit_code="$3" cmd="$4"
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$exit_code"
+  fi
+  if [ -n "$_eci_fail_closed_busy" ]; then
+    _eci_fail_closed_constant "$hook_name"
+    exit 0
+  fi
+  _eci_fail_closed_busy=1
+  _eci_fail_closed_emit "$hook_name" "$line" "$exit_code" "$cmd"
+  exit 0
+}
+
 eci_install_fail_closed_trap() {
   local name="${1:-${BASH_SOURCE[1]##*/}}"
   # shellcheck disable=SC2064
-  trap '_eci_fail_closed_emit "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"; exit 0' ERR
+  trap '_eci_fail_closed_trap "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"' ERR
 }
 
 _eci_advisory_emit() {
@@ -58,10 +97,20 @@ _eci_advisory_emit() {
   printf '%s\n' "$(eci_diagnostic_reason "ECI_HOOK_FAIL_OPEN" "PreToolUse" "hook-fail-open" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed; failing open" "inspect the failing command and available temporary-directory/disk state before retrying")" >&2
 }
 
+# Advisory subshell failures propagate their status, as in the fail-closed trap.
+_eci_advisory_trap() {
+  local hook_name="$1" line="$2" exit_code="$3" cmd="$4"
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$exit_code"
+  fi
+  _eci_advisory_emit "$hook_name" "$line" "$exit_code" "$cmd"
+  exit 0
+}
+
 # Non-gate bookkeeping hooks (for example SessionStart) have no permission
 # decision to deny with; they keep the advisory diagnostic and exit 0.
 eci_install_advisory_fail_open_trap() {
   local name="${1:-${BASH_SOURCE[1]##*/}}"
   # shellcheck disable=SC2064
-  trap '_eci_advisory_emit "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"; exit 0' ERR
+  trap '_eci_advisory_trap "'"$name"'" "$LINENO" "$?" "$BASH_COMMAND"' ERR
 }

@@ -2,7 +2,7 @@
 # TODO: Retire ECI marker control-path handling while preserving concrete session ownership checks.
 # PreToolUse hook: protect active ECI control and ledger targets during edits.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-proof-state.sh"
@@ -10,23 +10,62 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 input=$(cat)
 
+# Constant deny used when jq is unavailable or failed.  It names this hook and
+# the code only; it carries no repair instruction for another hook.
+gate_fallback_deny() {
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s: hook eci-active-gate denied the tool call while an active marker exists because jq is unavailable or failed; restore jq and inspect the hook log, then retry"}}\n' "$1"
+}
+
 # A malformed typed callback is a repair task only while an ECI marker is
 # active; with no marker the ordinary tool call keeps its normal validation.
 malformed_identity_exit() {
   local detail="${1:-malformed hook identity: tool_name, session_id, and cwd must be typed strings while an active marker exists}"
   local reason
-  if [ -n "$(eci_marker_candidates_bounded 2>/dev/null)" ]; then
-    reason="$(eci_diagnostic_reason "ECI_HOOK_IDENTITY_MALFORMED" "PreToolUse" "edit-routing" "session=${session_id:-<missing>},cwd=${cwd:-<missing>}" "$detail" "provide typed tool_name, session_id, and cwd fields, then retry")"
-    jq -n --arg reason "$reason" '{
+  if eci_marker_active_or_unknown; then
+    reason="$(eci_diagnostic_reason "ECI_HOOK_IDENTITY_MALFORMED" "PreToolUse" "edit-routing" "session=${session_id:-<missing>},cwd=${cwd:-<missing>}" "$detail" "provide typed tool_name, session_id, and cwd fields, then retry")" ||
+      reason="ECI_HOOK_IDENTITY_MALFORMED: $detail; provide typed tool_name, session_id, and cwd fields, then retry"
+    if ! jq -n --arg reason "$reason" '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
         permissionDecisionReason: $reason
       }
-    }'
+    }'; then
+      gate_fallback_deny ECI_HOOK_IDENTITY_MALFORMED
+    fi
   fi
   exit 0
 }
+
+# Fail-closed ERR handler for this gate.  While an active marker exists (or its
+# scan is unknown) an unexpected failure denies the tool call; with no marker
+# the hook exits 0, as the source gate does.  With set -E the handler is also
+# inherited by subshells: a subshell failure exits with its own status so no
+# deny JSON is captured into a value.  The busy flag stops a failure inside the
+# handler from re-entering it, which would otherwise loop.
+_gate_error_busy=""
+_eci_gate_error_trap() {
+  local line="$1" code="$2" cmd="$3" reason
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$code"
+  fi
+  if [ -n "$_gate_error_busy" ]; then
+    if eci_marker_active_or_unknown; then
+      gate_fallback_deny ECI_HOOK_GATE_ERROR
+    fi
+    exit 0
+  fi
+  _gate_error_busy=1
+  if eci_marker_active_or_unknown; then
+    reason="$(eci_diagnostic_reason "ECI_HOOK_GATE_ERROR" "PreToolUse" "edit-routing" "hook=eci-active-gate,line=$line,exit=$code,command=$cmd" "gate hook failed while an active marker exists; denying the tool call" "inspect the hook log and available temporary-directory/disk state, then retry")" ||
+      reason="ECI_HOOK_GATE_ERROR: gate hook eci-active-gate failed while an active marker exists; inspect the hook log and available temporary-directory/disk state, then retry"
+    if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
+      gate_fallback_deny ECI_HOOK_GATE_ERROR
+    fi
+  fi
+  exit 0
+}
+trap '_eci_gate_error_trap "$LINENO" "$?" "$BASH_COMMAND"' ERR
 
 if ! printf '%s' "$input" | jq -e '
   type == "object" and (.tool_name | type) == "string" and
@@ -35,7 +74,7 @@ if ! printf '%s' "$input" | jq -e '
 ' >/dev/null 2>&1; then
   # Typed tool_name and session_id must be strings while an active marker
   # exists; a malformed callback is then a repair task, not a silent allow.
-  # An absent cwd is not identity evidence and keeps the ordinary path.
+  # An absent cwd is denied while an active marker exists; with no marker the ordinary path keeps.
   malformed_identity_exit
 fi
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name' 2>/dev/null || true)

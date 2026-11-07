@@ -2,7 +2,7 @@
 # TODO: Retire ECI marker-based refresh and cleanup decisions; native goals own lifecycle.
 # SessionStart hook: save git HEAD as the stop-hook baseline.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-proof-state.sh"

@@ -2,24 +2,20 @@
 # TODO: Replace the retired ECI marker activity check with ordinary callback bookkeeping.
 # PreToolUse hook: validate direct file edits made through Edit, Write, MultiEdit, and NotebookEdit.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-proof-state.sh"
 . "$HOOK_DIR/lib/eci-tmp.sh"
 . "$HOOK_DIR/lib/eci-diagnostic.sh"
 eci_init_tmp || true
+eci_require_jq_or_deny validate-edit-write
 eci_install_fail_closed_trap validate-edit-write
 
 input=$(cat)
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
-
-case "$tool_name" in
-  Edit|Write|MultiEdit|NotebookEdit) ;;
-  *) exit 0 ;;
-esac
 
 deny() {
   local reason="${1:-unspecified edit validation denial}"
@@ -38,9 +34,27 @@ deny() {
   exit 0
 }
 
+# A callback with no tool name cannot be classified.  While an active marker
+# exists it is denied; with no marker the ordinary path exits 0.
+case "$tool_name" in
+  Edit|Write|MultiEdit|NotebookEdit) ;;
+  "")
+    if eci_marker_active_or_unknown; then
+      deny "tool_name is empty while an active marker exists; the edit callback cannot be classified, so it is denied"
+    fi
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
+
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' 2>/dev/null || true)
 
-[ -n "$file_path" ] || exit 0
+if [ -z "$file_path" ]; then
+  if eci_marker_active_or_unknown; then
+    deny "edit target path is empty while an active marker exists; the edit cannot be attributed to a session-scoped path, so it is denied"
+  fi
+  exit 0
+fi
 
 # Thread ownership is resolved once.  "unknown" means the transcript could not
 # be verified; subagent-guarded control and ledger edits fail closed on it.
@@ -83,10 +97,22 @@ fi
 # Session-scoped targets fail closed.  An owner that resolves must match an
 # allowed session, and a session-scoped target with no resolvable session id
 # is denied rather than allowed through.
+ownership_busy=""
 ownership_failure_deny() {
+  local code="${1:-1}"
+  # Under set -E a subshell failure exits with its own status, so no deny JSON
+  # is printed into a captured value.  The busy flag stops re-entry.
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$code"
+  fi
+  if [ -n "$ownership_busy" ]; then
+    _eci_fail_closed_constant validate-edit-write
+    exit 0
+  fi
+  ownership_busy=1
   deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})"
 }
-trap 'ownership_failure_deny' ERR
+trap 'ownership_failure_deny "$?"' ERR
 owner_probe="${lexical_file_path:-$file_path}"
 owner_session_id="$(eci_path_owner_session_id "$owner_probe" 2>/dev/null || true)"
 [ -n "$owner_session_id" ] || owner_session_id="$(eci_path_owner_session_id "${resolved_file_path:-$file_path}" 2>/dev/null || true)"

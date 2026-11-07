@@ -2,13 +2,14 @@
 # TODO: Replace the retired ECI marker activity check with ordinary callback bookkeeping.
 # PreToolUse hook: validate file edits made through apply_patch.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HOOK_DIR/lib/eci-proof-state.sh"
 . "$HOOK_DIR/lib/eci-tmp.sh"
 . "$HOOK_DIR/lib/eci-diagnostic.sh"
 eci_init_tmp || true
+eci_require_jq_or_deny validate-apply-patch
 eci_install_fail_closed_trap validate-apply-patch
 
 input=$(cat)
@@ -21,8 +22,6 @@ patch_text=$(printf '%s' "$input" | jq -r '.tool_input.command // .tool_input.pa
 # be verified; subagent-guarded control and ledger edits fail closed on it.
 eci_hook_subagent_status "$input"
 hook_subagent_status="$ECI_HOOK_SUBAGENT_STATUS"
-
-[ -n "$patch_text" ] || exit 0
 
 deny() {
   local reason="${1:-unspecified patch validation denial}"
@@ -40,6 +39,15 @@ deny() {
   }'
   exit 0
 }
+
+# An apply_patch callback with no patch text cannot be checked for targets.
+# While an active marker exists it is denied; with no marker the ordinary path exits 0.
+if [ -z "$patch_text" ]; then
+  if eci_marker_active_or_unknown; then
+    deny "patch text is empty while an active marker exists; the patch cannot be checked for session-scoped targets, so it is denied"
+  fi
+  exit 0
+fi
 
 patch_paths=$(printf '%s\n' "$patch_text" | awk '
   /^\*\*\* (Add|Update|Delete) File: / {
@@ -93,10 +101,22 @@ if [ "$hook_subagent_status" != main ]; then
   done <<<"$patch_paths"
 fi
 
+ownership_busy=""
 ownership_failure_deny() {
+  local code="${1:-1}"
+  # Under set -E a subshell failure exits with its own status, so no deny JSON
+  # is printed into a captured value.  The busy flag stops re-entry.
+  if [ "$BASHPID" != "$$" ]; then
+    exit "$code"
+  fi
+  if [ -n "$ownership_busy" ]; then
+    _eci_fail_closed_constant validate-apply-patch
+    exit 0
+  fi
+  ownership_busy=1
   deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})"
 }
-trap 'ownership_failure_deny' ERR
+trap 'ownership_failure_deny "$?"' ERR
 # Session ownership applies to every target under a proof or context root.  An
 # owner that resolves must match an allowed session; a session-scoped target
 # with no resolvable session id is denied rather than allowed through.

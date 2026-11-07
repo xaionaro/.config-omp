@@ -210,9 +210,10 @@ append_repo_context() {
     redact_sensitive_text
 }
 
-rules_file=$(mktemp "$TMPDIR/eci-system-rules.XXXXXX")
-body_file=$(mktemp "$TMPDIR/eci-system-body.XXXXXX")
-trap 'rm -f "$rules_file" "$body_file"' EXIT
+private_dir="$(mktemp -d -- "${TMPDIR:-/tmp}/eci-system-reviewer.XXXXXX")" || exit 0
+trap 'rm -rf -- "$private_dir"' EXIT
+rules_file="$private_dir/rules"
+body_file="$private_dir/body"
 
 compose_reviewer_prompt "$HOOK_DIR/reviewer-rules.md" >"$rules_file" || exit 0
 
@@ -226,7 +227,7 @@ transcript=$(find_transcript || true)
   append_repo_context "$cwd"
 } >"$body_file"
 
-redacted_body=$(mktemp "$TMPDIR/eci-system-redacted.XXXXXX")
+redacted_body="$private_dir/redacted"
 if redact_sensitive_text <"$body_file" >"$redacted_body" 2>/dev/null; then
   mv "$redacted_body" "$body_file"
 else
