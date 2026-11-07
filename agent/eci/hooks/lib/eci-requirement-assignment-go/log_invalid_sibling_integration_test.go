@@ -35,7 +35,7 @@ priority_estimates:
 completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24:00Z', basis: guess, assumptions: none, dependencies: none, critical_path: work}
 `
 	require.NoError(t, os.WriteFile(reportPath, []byte(report), 0600))
-	env := f.env()
+	env := f.env(t)
 	payload := `{"event":"verification_result","summary":"Accepted with malformed sibling","details":{"status_update":{"updates":[{"target":42,"id":"bad","fields":{"owner":"x"}},{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted safe sibling"}}]}}}`
 	command := exec.Command(f.CLI, "ledger-append", "--json", payload)
 	command.Env = env

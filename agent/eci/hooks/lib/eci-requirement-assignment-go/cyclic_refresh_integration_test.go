@@ -89,7 +89,7 @@ lanes: [&a {<<: *a}]
 	ctx, cancel := context.WithTimeout(context.Background(), cyclicTestDeadline)
 	defer cancel()
 	command := boundedECICommand(ctx, f.CLI, "ledger-append", "--json", `{"event":"requirement_change","summary":"Scope extended"}`)
-	command.Env = f.env()
+	command.Env = f.env(t)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	stdout, err := command.Output()

@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -100,13 +102,20 @@ func newCLIFixture(t *testing.T) cliFixture {
 // The CLI runs `go run` for status refresh; Go derives its module cache, GOPATH,
 // and build cache from HOME, so those are pinned to the account locations to keep
 // module downloads and read-only cache files out of the temporary HOME.
+// A GOCACHE the caller set is inherited unchanged.
 //
 // Example: every CLI invocation of one fixture shares the same temporary HOME.
-func (f cliFixture) env() []string {
+func (f cliFixture) env(t *testing.T) []string {
+	t.Helper()
 	env := append(os.Environ(),
 		"HOME="+f.Home,
 		"ECI_PROOF_ROOT="+filepath.Join(f.Root, "proof"),
 		"ECI_SESSION_ID=test-capture")
+	if os.Getenv("GOCACHE") == "" {
+		cache, err := globalGoCache()
+		require.NoError(t, err, "pin GOCACHE to the global build cache")
+		env = append(env, "GOCACHE="+cache)
+	}
 	realHome, err := os.UserHomeDir()
 	if err != nil {
 		return env
@@ -117,13 +126,28 @@ func (f cliFixture) env() []string {
 	if _, ok := os.LookupEnv("GOMODCACHE"); !ok {
 		env = append(env, "GOMODCACHE="+filepath.Join(realHome, "go", "pkg", "mod"))
 	}
-	if _, ok := os.LookupEnv("GOCACHE"); !ok {
-		if cache, err := os.UserCacheDir(); err == nil {
-			env = append(env, "GOCACHE="+filepath.Join(cache, "go-build"))
-		}
-	}
 	return env
 }
+
+// resolveGoCache returns the absolute build cache directory that `go env GOCACHE` reports.
+//
+// Example: resolve the account build cache from the parent environment before a fixture isolates HOME.
+func resolveGoCache() (string, error) {
+	out, err := exec.Command("go", "env", "GOCACHE").Output()
+	if err != nil {
+		return "", fmt.Errorf("go env GOCACHE: %w", err)
+	}
+	cache := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(cache) {
+		return "", fmt.Errorf("go env GOCACHE returned %q; want an absolute path", cache)
+	}
+	return cache, nil
+}
+
+// globalGoCache memoizes resolveGoCache so every fixture in the test process shares one `go env` run.
+//
+// Example: env calls globalGoCache to pin a child CLI's GOCACHE to the account cache.
+var globalGoCache = sync.OnceValues(resolveGoCache)
 
 // invoke captures actual stdout separately so failed operations cannot hide assignment output.
 //
@@ -131,7 +155,7 @@ func (f cliFixture) env() []string {
 func (f cliFixture) invoke(t *testing.T) (string, string, error) {
 	t.Helper()
 	command := exec.Command(f.CLI, "requirement-assignment", "--request", f.Request)
-	command.Env = f.env()
+	command.Env = f.env(t)
 	var stderr strings.Builder
 	command.Stderr = &stderr
 	output, err := command.Output()
@@ -290,7 +314,7 @@ func TestLogFailureReportsSavedSnapshot(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(filepath.Dir(f.Ledger), "high_level_log.jsonl")))
 	recoveryEvent := `{"event":"requirement_change","actor":{"id":"/root","role":"Supervisor"},"summary":"Recovered original material requirement capture before reuse","change":{"before":"User: old compactness","after":"User: 0.4A is more compact than 443 mA"},"reason":"Snapshot saved while log append failed","evidence":["Current snapshot and failed request exact native edits"]}`
 	recovery := exec.Command(f.CLI, "ledger-append", "--json", recoveryEvent)
-	recovery.Env = f.env()
+	recovery.Env = f.env(t)
 	recoveryOutput, err := recovery.CombinedOutput()
 	require.NoError(t, err, string(recoveryOutput))
 	history, err := os.ReadFile(filepath.Join(filepath.Dir(f.Ledger), "high_level_log.jsonl"))

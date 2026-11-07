@@ -35,7 +35,7 @@ priority_estimates:
 completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24:00Z', basis: guess, assumptions: none, dependencies: none, critical_path: work}
 `
 	require.NoError(t, os.WriteFile(reportPath, []byte(report), 0600))
-	env := f.env()
+	env := f.env(t)
 	appendEvent := func(payload string) {
 		t.Helper()
 		command := exec.Command(f.CLI, "ledger-append", "--json", payload)
@@ -78,7 +78,7 @@ func TestLedgerAppendRetryReplaysEventsInOrder(t *testing.T) {
 	dir := filepath.Dir(f.Ledger)
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(reportPath, []byte("[malformed"), 0600))
-	env := f.env()
+	env := f.env(t)
 	for _, payload := range []string{
 		`{"event":"decision","summary":"Started","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"IN PROGRESS"}}]}}}`,
 		`{"event":"verification_result","summary":"Accepted","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"later proof"}}]}}}`,

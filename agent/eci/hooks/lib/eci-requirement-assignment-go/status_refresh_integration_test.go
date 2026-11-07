@@ -43,7 +43,7 @@ completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24
 `
 	require.NoError(t, os.WriteFile(reportPath, []byte(report), 0600))
 	command := exec.Command(f.CLI, "status-refresh", "--event", "requirement_change")
-	command.Env = f.env()
+	command.Env = f.env(t)
 	combined, err := command.CombinedOutput()
 	require.NoError(t, err, string(combined))
 	after, err := os.ReadFile(logPath)
