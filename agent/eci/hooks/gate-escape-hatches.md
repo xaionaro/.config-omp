@@ -41,7 +41,7 @@ The effect checks below remain applicable in other contexts.
 | Go module/workspace validation (`GO_*`, `ECI_GO_*`) | A commit or install operation with malformed module/workspace state, unsafe replacement, missing required tool, or wrong destination | Fix the named module/workspace/config/tool/path issue, or use the normal relative replacement and default hook destination. These checks do not gate unrelated commands. |
 | Runtime/setup and advisory diagnostics (`ECI_TMPDIR_*`, `ECI_HOOK_FAIL_OPEN`, reminders) | No ordinary-work effect; these report unavailable or failed maintenance context | Continue harmless work and repair the runtime/setup alongside it. |
 | Gate hook failure after its decision point (`ECI_HOOK_FAIL_CLOSED`, `ECI_HOOK_GATE_ERROR`), jq absent while an active ECI marker exists (`ECI_HOOK_JQ_MISSING`), an empty tool name, edit path, or patch while an active ECI marker exists, or a missing `session_id`/`cwd` while an active ECI marker exists | The Edit/Write/apply_patch or Bash call is denied; the reason names the failing hook, line, and command, or the missing identity field or jq | Inspect the named hook command and the temporary-directory/disk state, install jq if it is reported missing, then retry the call. |
-| Native gate binaries (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`) | A missing, symlinked, non-native (ELF on Linux; on macOS a thin Mach-O for the host CPU type, with fat binaries denied), foreign-owned, group/other-writable, or receipt-mismatched binary under `$HOME/.omp/agent/eci/bin`. A missing command-plan artifact blocks Bash until the build step runs; prompt reminders deny until the hook helper verifies. On macOS the verified binary runs as a private copy. The loader itself runs under the stock `/bin/bash` 3.2; the rest of the hook suite needs bash 4.4 or newer (`mapfile -d`, `mapfile -t`, `exec {lock_fd}`), a known macOS limit outside this change. | Run `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh"`, then retry the command. On macOS, put bash 4.4 or newer first on `PATH` for the hooks. |
+| Native gate binaries (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`) | A missing, symlinked, non-native (ELF on Linux; on macOS a thin Mach-O for the host CPU type, with fat binaries denied), foreign-owned, group/other-writable, or receipt-mismatched binary under `$HOME/.omp/agent/eci/bin`. A missing command-plan artifact blocks Bash until the build step runs; prompt reminders deny until the hook helper verifies. On macOS the verified binary runs as a private copy. The loader itself runs under the stock `/bin/bash` 3.2; the rest of the hook suite needs bash 4.4 or newer (`mapfile -d`, `mapfile -t`, `exec {lock_fd}`), a known macOS limit outside this change. | Run any `eci` or `eci-active` command once (not `--help`): it builds missing or host-incompatible native tools; go 1.24 or newer must be on `PATH`. Or run `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh"`. Then retry the command. Clone `~/.omp` with `umask 022`: under `umask 002` its directories are 0775 and the loader denies them. On macOS, put bash 4.4 or newer first on `PATH` for the hooks. |
 | Relative proof root (`ECI_PROOF_ROOT_RELATIVE`) | An edit or patch whose target resolves under the proof root or a context root while `ECI_PROOF_ROOT` is a relative path, so the proof root cannot be verified and the marker state is unknown. Targets outside those roots are not affected. | Set `ECI_PROOF_ROOT` to an absolute path, then retry the call. |
 | Undeliverable deny decision (`could not write the deny decision to stdout`) | A gate is about to deny while stdout is `/dev/null` (closed by the caller), its target cannot be checked (no `/proc`), or the write fails. The call is blocked with exit 2 and a stderr message so the denial is never lost. Ordinary work with no active marker is unaffected when the call can be delivered; the deny path still blocks when delivery fails. | Run the call where stdout is a pipe or file the caller reads, then retry. |
 
@@ -89,3 +89,30 @@ A typed request does not authorize semantic ownership of already staged content.
 Every path is an exact file or symlink leaf; directory and sparse-directory
 selection is unsupported. Worktree-affecting gitlinks are rejected because
 native operations can alter unnamed administrative metadata. Observed live hook entries, referents and consumed aliases remain protected. An unresolved hook relationship stays advisory for a selected direct file; ancestor movement requires the stated visibility correction and fresh recheck. Configured proof roots' lexical entries, resolved-parent entries and existing referents, and the worktree `.git` pointer retain protection. Proof-root discovery applies only to physical writes; missing roots are supported and unexpected resolution errors name the root. Hunk preview compares complete native index stage records and preserves unrelated conflicts.
+
+## Native tools on first use
+
+The first `eci` or `eci-active` command after a checkout builds the native tools that the hooks verify. These are `eci-command-plan`, `eci-hook-helper`, `eci-safe-import` and `eci-worker-git`, built through `hooks/lib/eci-native-provision.sh` and `hooks/build-native-binaries.sh`. Most commands trigger it; the exceptions are `--help`, `-h`, no argument, and `maintain-planner`, which builds the pair itself. Expect one stderr line naming the tools, about 1-2 minutes of build time, then a line with the elapsed time. Only absent or host-incompatible tools are built. A tool whose bytes no longer match its receipt is not rebuilt: the hooks deny it, and `manifest-write` refuses to run it. Hooks never build.
+
+Prerequisites:
+- `go` 1.24 or newer on `PATH`, plus network access or a warm module cache for the first build. Without go, eci-active stops with exit 127 and names the Go version to install.
+- Clone `~/.omp` with `umask 022`, the macOS default. Under `umask 002` the clone's directories are mode 0775, and the loader denies them as group-writable ("bin directory or an ancestor is not owned by the current user or root, or is group/other-writable"). To repair an existing clone, run `chmod g-w` on `~/.omp` and on the directories down to `~/.omp/agent/eci/bin`.
+
+Check after the first use: run `manifest-write` against a scratch proof root. It builds the tools on a fresh checkout, verifies `eci-safe-import` through the loader, and runs it:
+
+```bash
+d="$(mktemp -d)" && mkdir -p "$d/proof/sess-1" && printf '{"required_critics":[]}\n' >"$d/src.json" &&
+ECI_PROOF_ROOT="$(cd -P -- "$d/proof" && pwd -P)" ECI_SESSION_ID=sess-1 \
+  "$HOME/.omp/agent/eci/bin/eci-active" manifest-write "$d/src.json"; echo "rc=$?"
+```
+
+Expected: `ECI required-critic manifest published: <proof>/sess-1/eci-required-critics.json`, then `rc=0`.
+
+To check `eci-worker-git`, use **only a disposable scratch repository that the command creates itself, never a real repository**. Every typed operation writes the index or the worktree, and every call appends a row to `$HOME/.cache/eci/eci-worker-git.jsonl`. `--help` exits 1 by design, so its exit status proves nothing.
+
+```bash
+r="$(mktemp -d)" && git init -q "$r" && echo hi >"$r/a.txt" &&
+"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo "$r" stage-content -- a.txt; echo "rc=$?"; git -C "$r" diff --cached --name-only
+```
+
+Expected (observed on Linux): `eci-worker-git: completed fixed operation; inspect the full staged result before checkpoint`, `rc=0`, then `a.txt`. Remove the scratch directory afterwards.
