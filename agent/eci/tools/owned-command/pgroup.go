@@ -230,10 +230,15 @@ func (run *pgroupRunner) supervise() {
 			run.killSent = true
 			run.signalGroup(syscall.SIGKILL, "group KILL")
 		case <-finalDue:
+			if !run.killSent {
+				run.killSent = true
+				run.signalGroup(syscall.SIGKILL, "group KILL")
+			}
 			run.final = true
 			run.reap()
 		case <-probeDue:
 		}
+		run.reap()
 		run.checkSettled()
 	}
 }

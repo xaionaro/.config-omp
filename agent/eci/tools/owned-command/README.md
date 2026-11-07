@@ -28,16 +28,18 @@ owned-command -cancel-pid PID -cancel-birth BIRTH -receipt receipt.json
 ```
 
 PID and BIRTH must be positive for cancellation; BIRTH is the separately recorded
-`/proc/PID/stat` field 22. PID zero selects launch and requires command arguments.
-A mismatched cancellation identity returns 125 without signaling.
+`/proc/PID/stat` field 22 (Linux only; on macOS `-cancel-pid` returns 125 with a receipt).
+PID zero selects launch and requires command arguments. A mismatched cancellation
+identity returns 125 without signaling.
 
 ## Command launch
-This section through Status and receipts describes the Linux backend; macOS uses the darwin-pgroup section below.
+Command launch and Foreign PID cancellation describe the Linux backend; macOS uses the darwin-pgroup section below.
 
 Launch requires Linux cgroup v2, pidfds, clone-bound cgroup placement, procfs in the
 supervisor's PID namespace, and a reachable systemd user manager supporting
-cgroup delegation. Missing facilities fail before the requested command launches;
-there is no process-group or host-scan launch fallback.
+cgroup delegation. On Linux, missing facilities fail before the requested command launches;
+there is no process-group or host-scan launch fallback. The macOS process-group backend is a
+separate darwin build, never a Linux fallback.
 
 The binary initializes receipts and TERM/INT/HUP notification before native
 setup. It proves a childless baseline with a nonconsuming native check returning
@@ -103,32 +105,34 @@ when empty. Live descendants prevent a claim of collection or settlement.
 ## macOS darwin-pgroup backend
 
 On Darwin the wrapper builds the same module and runs the `darwin-pgroup` backend
-(`main_darwin.go` and `pgroup.go`). The backend has a narrower guarantee than Linux.
-It starts the command in a new process group (`Setpgid`, so the group ID equals the
-command PID). Retirement begins at the first of command exit, the `-deadline` measured
-from launch, or SIGINT, SIGTERM or SIGHUP to owned-command. Retirement sends SIGTERM
-and SIGCONT to `kill(-pgid, ...)`, sends SIGKILL one `-grace` later, and makes its
-final settlement check at twice `-grace`. The group is settled only when the command
-has been reaped and `kill(-pgid, 0)` reports ESRCH.
+(`main_darwin.go` and `pgroup.go`). It starts the command in a new process group
+(`Setpgid`, so the group ID equals the command PID). Retirement begins at the first of
+command exit, the `-deadline` measured from launch, or SIGINT, SIGTERM or SIGHUP to
+owned-command. Retirement sends SIGTERM and then SIGCONT to `kill(-pgid, ...)`, sends
+SIGKILL one `-grace` later, and makes its final check at twice `-grace`. The group is
+settled only when the command has been reaped and `kill(-pgid, 0)` reports ESRCH.
 
-Iteration 1 guarantees, stated in every receipt's `Guarantee` field:
-- deadline, interrupt, and command-exit cleanup of the command's process group;
-- the native exit status of an ordinary settled command, or 125 otherwise.
+Every receipt's `Guarantee` field states the guarantee verbatim:
 
-Gaps, stated in `Guarantee` and `FamilyCoverage`:
+> deadline and cleanup only: on deadline, interrupt (SIGINT, SIGTERM or SIGHUP to owned-command) or command exit, SIGTERM and SIGCONT, then SIGKILL after -grace, go to the command's own process group (pgid = command PID); no birth identity, so -cancel-pid returns 125 and signals nothing; no PID-reuse guard; no subreaper, so descendants that leave the group (setsid or setpgid) are not cleaned up and can outlive HostChildrenSettled=true, which means only that the command was reaped and its process group is empty
+
+The gaps are stated in `Guarantee`:
 - No subreaper and no cgroup. A descendant that calls `setsid` or `setpgid` leaves
   the group. It is neither signaled nor waited for, and it survives retirement. A
   receipt with `HostChildrenSettled` true then describes only the group.
-- No birth identity and no PID-reuse guard. `-cancel-pid` and `-cancel-birth` are
-  refused with status 125 before any receipt is written, and nothing is signaled.
+- No birth identity and no PID-reuse guard. `-cancel-pid` with `-cancel-birth` returns
+  125 and signals nothing. It writes a receipt: `Cause` is `guard error`, `CommandPID`
+  is 0, `HostChildrenSettled` is false, and `Errors` holds one `cancel:` message. A
+  malformed cancellation request is refused without a receipt.
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
-- The receipt has no `Cgroup`. `Survivors` and `Events` are absent, because the group
-  is not enumerated. Read `HostChildrenSettled`, `Errors` and `Cause` instead.
-- The command runs in a background process group. If it reads or writes the terminal,
-  job-control signals can stop it, and the deadline or interrupt then ends it. Use this
-  backend for non-interactive command families only.
-- Settlement assumes that the kernel reaps orphaned group members and that XNU reports
-  an empty group with ESRCH. Neither is verified on macOS yet; the macOS run is the check.
+- The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
+  `Survivors` holds the root only when it is still unreaped at the final check, and it is
+  empty otherwise. `Events` is present and records the steps: started, command reaped,
+  group TERM, group CONT, group KILL, and group already empty.
+- The command runs in a background process group, so this backend is for non-interactive
+  command families only.
+- XNU's killpg and ESRCH behaviour, and launchd's reaping of orphaned group members, are
+  unverified until the macOS run.
 - Host settlement proves nothing about phone, camera, media or remote cleanup, as on Linux.
 
 ## Foreign PID cancellation
@@ -173,6 +177,7 @@ records native command launch separately from setup. `Survivors` reports known
 unresolved identities; empty known custody or an absent receipt cannot prove an
 unknown family empty. A zero birth value is unavailable metadata and supplies no
 cancellation authority. Receipt output errors also force 125.
+darwin-pgroup receipts add `Guarantee`, and their `Backend` and `FamilyCoverage` name process-group coverage.
 
 Host settlement proves no remote Android, camera, media or profile cleanup.
 Verify those resources separately. The reconstructed implementation does not
@@ -194,6 +199,8 @@ Darwin checks: the cross-builds run on any host; the tests run on macOS natively
 ```sh
 GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null .
 GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet .
+GOWORK=off GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null .
+GOWORK=off GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go vet .
 GOWORK=off go test -count=1 -v -run '^TestPgroup' .                    # macOS
 GOWORK=off go test -tags pgroupcheck -count=1 -v -run '^TestPgroup' .  # Linux
 ```

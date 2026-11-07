@@ -1,6 +1,5 @@
 //go:build darwin
 
-// The darwin entry point hands the command line to the darwin-pgroup backend. The Linux entry point is in main.go.
 package main
 
 import "os"
