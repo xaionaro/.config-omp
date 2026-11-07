@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the native ECI gate binaries into $HOME/.omp/agent/eci/bin and write their receipts.
+# Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # lib/eci-native-binary.sh executes a binary only when its sha256 matches this receipt.
 set -euo pipefail
@@ -17,7 +17,7 @@ chmod 0755 -- "$bin_dir"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
-names=(eci-command-plan eci-safe-import eci-hook-helper)
+names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git)
 for name in "${names[@]}"; do
   module="$hook_dir/lib/$name-go"
   [ -f "$module/go.mod" ] || { echo "build-native-binaries: missing Go module $module" >&2; exit 1; }
