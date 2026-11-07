@@ -3,8 +3,10 @@
 set -euo pipefail
 
 ROOT="${WORKFLOW_SKILL_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
-ECI="$ROOT/AGENTS.md"
+AGENTS="$ROOT/../AGENTS.md"
 ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
+# Engineering priorities and security follow-up rules are canonical in the binding contract; the ECI skill keeps no copy.
+ECI_BINDING_CONTRACT="$ROOT/../eci-binding-contract.md"
 TESTING_DISCIPLINE="$ROOT/skills/testing-discipline/SKILL.md"
 DEBUGGING="$ROOT/skills/debugging-discipline/SKILL.md"
 STATUS_REPORT="$ROOT/../skills/writing-status-reports/SKILL.md"
@@ -3532,8 +3534,10 @@ assert_delivery_contract() {
 
 assert_impact_delivery() {
   local eci fast policy clause output mutation
-  eci="$(<"$ECI")" fast="$(<"$FAST_PATH")" policy="$(<"$REVIEW_POLICY")"
+  eci="$(<"$ECI_BINDING_CONTRACT")" fast="$(<"$FAST_PATH")" policy="$(<"$REVIEW_POLICY")"
   assert_delivery_contract "$eci" "$fast" "$policy"
+  # The always-loaded AGENTS.md must import the contract that defines the engineering priorities.
+  require_line "$AGENTS" '@~/.omp/agent/eci-binding-contract.md'
   for clause in 'Achieve all applicable goals' 'An unfinished lower-priority improvement never blocks a higher-priority improvement' \
     'Security findings are always follow-up work' \
     'They never block provisional delivery or final functional acceptance' \

@@ -4,9 +4,9 @@ run/
 logs/
 cache/
 natives/
-agent/*.db
-agent/*.db-shm
-agent/*.db-wal
+*.db
+*.db-shm
+*.db-wal
 agent/last-changelog-version
 agent/cache/
 agent/predict/

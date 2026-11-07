@@ -5,12 +5,9 @@
 source "${BASH_SOURCE[0]%/*}/eci-native-binary.sh"
 source "${BASH_SOURCE[0]%/*}/eci-file-lock.sh"
 
-# Build absent or incompatible runtime tools from this provider's sources.
-# Compatible executables stay in place; explicit maintenance owns source refreshes.
-# The shell bootstrap runs before any compiled helper is available.
-eci_runtime_artifact_path() {
+eci_runtime_sync_artifact_path() {
   local provider="$1" name="$2" output_root="${3:-$HOME/tmp/eci-runtime}"
-  case "$provider" in codex|kimi) ;; *) return 1 ;; esac
+  case "$provider" in eci|kimi) ;; *) return 1 ;; esac
   case "$name" in eci-command-plan|eci-safe-import|eci-hook-helper) ;; *) return 1 ;; esac
   printf '%s/%s/%s\n' "$output_root" "$provider" "$name"
 }
@@ -20,7 +17,7 @@ eci_runtime_artifact_path() {
 eci_runtime_hook_helper_path() {
   local root="${HOME:-}" binary
   [ -n "$root" ] || return 1
-  binary="$(eci_runtime_artifact_path codex eci-hook-helper)" || return 1
+  binary="$(eci_runtime_artifact_path eci-hook-helper)" || return 1
   if ! eci_runtime_binary_is_native "$binary"; then
     eci_runtime_build_missing "$root/.omp/agent/eci" eci-hook-helper || return 1
     eci_runtime_binary_is_native "$binary" || return 1
@@ -31,14 +28,18 @@ eci_runtime_hook_helper_path() {
 # Source the original publisher only inside this owned child. The publisher
 # alone acquires its pair lock, and rechecks requested tools after waiting.
 eci_runtime_ensure_pair() (
-  local output_root="$1" provider="$2" source_root peer_root
-  shift 2
+  local provider="$1" source_root peer_root
+  shift
   source_root="$(realpath -e -- "$HOME/.omp/agent/eci")" || return 1
   peer_root="$(realpath -e -- "${KIMI_CODE_HOME:-$HOME/.kimi-code}" 2>/dev/null || true)"
   source "$source_root/bin/eci-runtime-sync" || return 1
-  planner_sync ensure "$source_root" "$peer_root" "$(id -u)" "$output_root" "$provider" "$@"
+  planner_sync ensure "$source_root" "$peer_root" "$provider" "$@"
 )
 
+# Build absent Go runtime tools from this provider's sources. Compatible
+# executables stay in place; explicit maintenance owns source refreshes.
+# The planner pair is not compiled here: hooks/build-native-binaries.sh
+# provisions it, and ensure only verifies or copies the canonical pair.
 eci_runtime_build_missing() (
   local root="$1" name module binary compiler lock_fd temporary='' provider resolved_root
   local -a pair_tools=()
@@ -54,14 +55,14 @@ eci_runtime_build_missing() (
   if [ "${#pair_tools[@]}" -gt 0 ]; then
     resolved_root="$(realpath -e -- "$root")" || return 1
     if [ "$resolved_root" = "$(realpath -e -- "$HOME/.omp/agent/eci")" ]; then
-      provider=codex
+      provider=eci
     elif [ "$resolved_root" = "$(realpath -e -- "${KIMI_CODE_HOME:-$HOME/.kimi-code}")" ]; then
       provider=kimi
     else
       printf 'ECI runtime build: unknown provider: %s\n' "$root" >&2
       return 1
     fi
-    eci_runtime_ensure_pair "$HOME/tmp/eci-runtime" "$provider" "${pair_tools[@]}" || return 1
+    eci_runtime_ensure_pair "$provider" "${pair_tools[@]}" || return 1
   fi
   trap '[ -z "$temporary" ] || rm -rf -- "$temporary"' EXIT
   for name in "$@"; do
@@ -133,7 +134,7 @@ eci_runtime_sync_provider_home() {
   # an admission condition for repair.
   : "$requested_root"
   case "$provider" in
-    codex) expected_root="$home/.omp/agent/eci" ;;
+    eci) expected_root="$home/.omp/agent/eci" ;;
     kimi) expected_root="${KIMI_CODE_HOME:-$home/.kimi-code}" ;;
     *) eci_runtime_sync_fail ECI_RUNTIME_SYNC_PROVIDER_UNKNOWN "provider=$provider"; return 1 ;;
   esac
@@ -154,7 +155,7 @@ eci_runtime_sync_resolve_target_root() {
     return 1
   }
   case "$provider:$root" in
-    codex:*/.omp/agent/eci|kimi:*/.kimi-code) ;;
+    eci:*/.omp/agent/eci|kimi:*/.kimi-code) ;;
     *) eci_runtime_sync_fail ECI_RUNTIME_SYNC_TARGET_PROVIDER_MISMATCH "provider=$provider target=$root has the wrong provider directory name"; return 1 ;;
   esac
   printf '%s\n' "$root"
@@ -168,7 +169,7 @@ eci_runtime_sync_validate_source_root() {
   local provider="$1" root="$2" required required_files
 
   case "$provider" in
-    codex) required_files='hooks.json bin/eci-active bin/eci-active-dispatch bin/eci-runtime-sync hooks/validate-bash.sh' ;;
+    eci) required_files='hooks.json bin/eci-active bin/eci-active-dispatch bin/eci-runtime-sync hooks/validate-bash.sh' ;;
     kimi) required_files='config.toml bin/eci-active bin/eci-active-dispatch bin/eci-runtime-sync hooks/validate-bash.sh' ;;
     *) eci_runtime_sync_fail ECI_RUNTIME_SYNC_PROVIDER_UNKNOWN "provider=$provider"; return 1 ;;
   esac
@@ -199,7 +200,7 @@ eci_runtime_sync_discover_targets() {
   eci_runtime_sync_roots=""
   eci_runtime_sync_add_root "$provider" "$source_root"
   case "$provider" in
-    codex) variable=CODEX_RUNTIME_ROOTS ;;
+    eci) variable=ECI_RUNTIME_ROOTS ;;
     kimi) variable=KIMI_RUNTIME_ROOTS ;;
   esac
   configured="${!variable:-${ECI_RUNTIME_ROOTS:-}}"
@@ -236,7 +237,7 @@ eci_runtime_sync_collect() {
   : >"$stage_root/manifest.tsv"
   {
     case "$provider" in
-      codex) printf '%s\n' hooks.json ;;
+      eci) printf '%s\n' hooks.json ;;
       kimi) printf '%s\n' config.toml ;;
       *) eci_runtime_sync_fail ECI_RUNTIME_SYNC_PROVIDER_UNKNOWN "provider=$provider has no registered configuration entrypoint"; return 1 ;;
     esac

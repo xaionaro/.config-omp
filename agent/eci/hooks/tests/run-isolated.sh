@@ -12,8 +12,11 @@
 # a symlink to the real peer tree (read by tests). ~/.omp/agent/AGENTS.md is a
 # symlink to the account's global instructions (read by the reviewer prompt) and
 # ~/.omp/agent/skills to the account's skills tree (read by tests).
+# ~/.omp/agent/eci-binding-contract.md is a symlink to the account's binding contract (read by tests).
 # (~/.agent, ~/tmp/agent) resolve under <work> and are removed on exit. Go caches
 # stay on account paths.
+# The copied launchers/install-launchers.sh links ~/.local/bin/{eci,eci-active} and
+# ~/bin/eci under <work>, so launcher lookups resolve the copy, not the account.
 set -euo pipefail
 umask 077
 
@@ -41,10 +44,14 @@ fi
 ln -s "$account_home/.kimi-code" "$work/home/.kimi-code"
 ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 ln -s "$account_home/.omp/agent/skills" "$work/home/.omp/agent/skills"
+ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/eci-binding-contract.md"
 
 export HOME="$work/home"
 export TMPDIR="$HOME/tmp/mtlog"
 export ECI_PROOF_ROOT="$HOME/tmp/agent/proof"
+# Launcher assertions read $HOME/.local/bin/eci and $HOME/bin/eci, which a fresh HOME lacks.
+# Install them from the copied tracked launchers (symlinks only); set -e stops the run on error.
+bash "$HOME/.omp/agent/eci/launchers/install-launchers.sh" >/dev/null
 
 rc=0
 cd "$HOME/.omp/agent/eci"
