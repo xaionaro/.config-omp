@@ -4,9 +4,10 @@
 # and provisions the command planner pair into the optional Kimi peer.
 #
 # The planner pair (eci-command-plan, eci-safe-import, eci-hook-helper) is
-# compiled only by hooks/build-native-binaries.sh into the canonical bin/ with
-# <name>.sha256 receipts. This tool verifies that canonical pair and copies it;
-# it never compiles it.
+# compiled into the canonical bin/ with <name>.sha256 receipts, by
+# hooks/build-native-binaries.sh or by maintain-planner, which publishes the
+# pair as one transaction under the publication lock this tool also takes.
+# This tool verifies that canonical pair and copies it; it never compiles it.
 #
 # Synchronization resolves ordinary mount and symlink spellings, then errors
 # only when the resolved target has the wrong provider shape or publication
