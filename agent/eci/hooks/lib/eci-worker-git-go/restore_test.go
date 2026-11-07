@@ -607,13 +607,13 @@ func TestRestoreAncestorDiagnosisAndRecovery(t *testing.T) {
 //
 // Example: a symlink-spelled configured provider root must not be offered as a movable ancestor.
 func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
-	for _, kind := range []string{"proof-root-alias", "provider-root-alias", "configured-provider-root-alias", "hook-parent-alias"} {
+	for _, kind := range []string{"proof-root-alias", "kimi-proof-root-alias", "provider-root-alias", "configured-provider-root-alias", "kimi-provider-root-alias", "hook-parent-alias"} {
 		// Each configured control alias is owned by a private provider fixture.
 		t.Run(kind, func(t *testing.T) {
 			root := fixtureRepository(t)
 			path, alias, target := "", "", ""
 			switch kind {
-			case "proof-root-alias":
+			case "proof-root-alias", "kimi-proof-root-alias":
 				var sentinel string
 				root, target, sentinel = fixtureRestoreAlias(t, "external")
 				if sentinel == "" {
@@ -621,8 +621,11 @@ func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
 				}
 				path, alias = "dir/nested/file", "dir"
 				variable := "ECI_PROOF_ROOT"
+				if kind == "kimi-proof-root-alias" {
+					variable = "KIMI_PROOF_ROOT"
+				}
 				t.Setenv(variable, filepath.Join(root, alias))
-			case "provider-root-alias", "configured-provider-root-alias":
+			case "provider-root-alias", "configured-provider-root-alias", "kimi-provider-root-alias":
 				path, alias, target = "runtime-link/hooks/validate-bash.sh", "runtime-link", "physical-runtime"
 				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0755); err != nil {
 					t.Fatal(err)
@@ -642,6 +645,8 @@ func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
 				switch kind {
 				case "configured-provider-root-alias":
 					variable = "ECI_CONFIGURED_HOME"
+				case "kimi-provider-root-alias":
+					variable = "KIMI_CODE_HOME"
 				}
 				t.Setenv(variable, filepath.Join(root, alias))
 			case "hook-parent-alias":

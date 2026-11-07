@@ -104,8 +104,8 @@ type LiveHookTrace struct {
 //
 // Example: hooks -> dir/private retains dir even when the final hook entry cannot be inspected.
 func liveProtectedPaths() (LiveProtection, error) {
-	roots := []string{os.Getenv("ECI_CONFIGURED_HOME"), os.Getenv("ECI_HOME"),
-		filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci")}
+	roots := []string{os.Getenv("ECI_CONFIGURED_HOME"), os.Getenv("ECI_HOME"), os.Getenv("KIMI_CODE_HOME"),
+		filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci"), filepath.Join(os.Getenv("HOME"), ".kimi-code")}
 	var paths []string
 	var frontiers []LiveFrontier
 	var diagnostics []error
@@ -143,7 +143,7 @@ func liveProtectedPaths() (LiveProtection, error) {
 			}
 		}
 	}
-	for _, name := range []string{"ECI_PROOF_ROOT"} {
+	for _, name := range []string{"ECI_PROOF_ROOT", "KIMI_PROOF_ROOT"} {
 		root := os.Getenv(name)
 		if filepath.IsAbs(root) {
 			paths = append(paths, filepath.Clean(root))

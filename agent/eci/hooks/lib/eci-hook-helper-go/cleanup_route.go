@@ -338,18 +338,28 @@ type cleanupHome struct {
 	canonical string
 }
 
-// cleanupProviderHomes returns the canonical ECI home. A non-empty
+// cleanupProviderHomes returns the canonical ECI and Kimi homes. A non-empty
 // reason means no home is usable.
 func cleanupProviderHomes() ([]cleanupHome, string) {
 	home := os.Getenv("HOME")
 	var homes []cleanupHome
 	eciHome := pyJoin(pyJoin(pyJoin(home, ".omp"), "agent"), "eci")
-	for _, pair := range [][2]string{
-		{os.Getenv("ECI_HOME"), eciHome},
+	for _, pair := range []struct {
+		env, fallback string
+		// aliasOK accepts a non-canonical root spelling for this provider only.
+		aliasOK func(root, canonicalRoot, home, canonicalHome string) bool
+	}{
+		{os.Getenv("ECI_HOME"), eciHome, func(root, canonicalRoot, home, canonicalHome string) bool {
+			return pyJoin(pyJoin(pyJoin(home, ".omp"), "agent"), "eci") == root &&
+				pyJoin(pyJoin(pyJoin(canonicalHome, ".omp"), "agent"), "eci") == canonicalRoot
+		}},
+		{os.Getenv("KIMI_CODE_HOME"), pyJoin(home, ".kimi-code"), func(root, canonicalRoot, home, canonicalHome string) bool {
+			return pyDirname(root) == home && pyRealpath(pyDirname(root)) == canonicalHome
+		}},
 	} {
-		root := pair[0]
+		root := pair.env
 		if root == "" {
-			root = pair[1]
+			root = pair.fallback
 		}
 		if root == "" || !pyIsAbs(root) || pyNormpath(root) != root {
 			continue
@@ -371,15 +381,14 @@ func cleanupProviderHomes() ([]cleanupHome, string) {
 			if home == "" || !pyIsAbs(home) || pyNormpath(home) != home ||
 				!pyIsDir(home) || pyIsLink(home) ||
 				canonicalHome == "" || pyRealpath(canonicalHome) != canonicalHome ||
-				pyJoin(pyJoin(pyJoin(home, ".omp"), "agent"), "eci") != root ||
-				pyJoin(pyJoin(pyJoin(canonicalHome, ".omp"), "agent"), "eci") != canonicalRoot {
+				!pair.aliasOK(root, canonicalRoot, home, canonicalHome) {
 				continue
 			}
 		}
 		homes = append(homes, cleanupHome{root: root, canonical: canonicalRoot})
 	}
 	if len(homes) == 0 {
-		return nil, "no canonical ECI home is available"
+		return nil, "no canonical ECI or Kimi home is available"
 	}
 	return homes, ""
 }
@@ -419,7 +428,7 @@ func cleanupApprovedPath(path string, homes []cleanupHome) (bool, string) {
 		}
 		return true, cleanupUnapproved
 	}
-	return false, "target is outside canonical ECI home"
+	return false, "target is outside canonical ECI/Kimi homes"
 }
 
 // cleanupMoveReason validates `mv -- <approved-artifact> <quarantine-destination>`.

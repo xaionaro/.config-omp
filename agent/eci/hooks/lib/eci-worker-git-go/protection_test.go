@@ -64,8 +64,8 @@ func TestRestorePreservesUnnamedAncestorAliases(t *testing.T) {
 //
 // Example: deleting physical-proof/eci_active cannot bypass a proof-link root.
 func TestProofRootIdentitiesProtectPhysicalWrites(t *testing.T) {
-	for _, variable := range []string{"ECI_PROOF_ROOT"} {
-		// Check the proof root with its runtime root.
+	for _, variable := range []string{"ECI_PROOF_ROOT", "KIMI_PROOF_ROOT"} {
+		// Check both providers with separate runtime roots.
 		t.Run(variable, func(t *testing.T) {
 			root := fixtureRepository(t)
 			if err := os.Mkdir(filepath.Join(root, "physical-proof"), 0755); err != nil {
