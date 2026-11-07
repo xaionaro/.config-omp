@@ -15,7 +15,7 @@ fi
 reviewer_filter_lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # Publishes the filtered reviewer result in REVIEWER_FILTER_RESULT and prints
-# nothing. The verified descriptor is opened and used in the caller's shell, so
+# nothing. The verified helper is opened and used in the caller's shell, so
 # callers read the global and must never capture this function in $(...).
 filter_violations() {
   local result_json="$1"
@@ -43,10 +43,9 @@ filter_violations() {
       printf '%s' "$result_json" >"$private_dir/input" || filter_rc=1
     fi
     if [ "$filter_rc" -eq 0 ]; then
-      "/proc/self/fd/$ECI_RUNTIME_BINARY_FD" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || filter_rc=$?
+      "$ECI_RUNTIME_BINARY_EXEC" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || filter_rc=$?
     fi
-    exec {ECI_RUNTIME_BINARY_FD}<&-
-    ECI_RUNTIME_BINARY_FD=''
+    eci_runtime_close_verified
     if [ "$filter_rc" -eq 0 ]; then
       filtered="$(cat -- "$private_dir/output")" && filter_ok=1
     fi

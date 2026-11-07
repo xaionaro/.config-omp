@@ -67,10 +67,10 @@ if ! eci_runtime_open_verified eci-command-plan; then
   native_gate_fail 0 "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] $ECI_RUNTIME_DENY_REASON"
 fi
 rc=0
-"/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook || rc=$?
-# The verified descriptor is needed only for the planner call; close it before
-# the exit-status classification so no later branch can hold it.
-exec {ECI_RUNTIME_BINARY_FD}<&-
+"$ECI_RUNTIME_BINARY_EXEC" --hook || rc=$?
+# The verified descriptor (Linux) or private copy (macOS) is needed only for the planner call;
+# release it before the exit-status classification so no later branch can hold it.
+eci_runtime_close_verified
 case "$rc" in
   0|2) ;;
   126|127) native_gate_fail "$rc" "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;

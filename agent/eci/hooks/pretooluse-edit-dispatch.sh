@@ -87,23 +87,23 @@ gates=(
   "$hook_dir/eci-active-gate.sh"
 )
 reminder_index=""
-reminder_fd=""
 if [ "${ENABLE_SECURITY_REMINDER:-0}" = 1 ] && security_reminder_candidate "$(<"$input_file")"; then
-  if . "$hook_dir/lib/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
-    # The verified descriptor stays open only until the reminder is launched below, which happens before any validator forks.
-    reminder_index="${#gates[@]}"
-    gates+=("security-reminder")
-    reminder_fd="$ECI_RUNTIME_BINARY_FD"
-  else
-    printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
-  fi
+  reminder_index="${#gates[@]}"
+  gates+=("security-reminder")
 fi
 pids=()
 if [ -n "$reminder_index" ]; then
-  # Launch the reminder on the verified descriptor, then release the descriptor so no validator inherits it.
-  "/proc/self/fd/$reminder_fd" security-reminder <"$input_file" >"$tmp_dir/output-$reminder_index" 2>"$tmp_dir/error-$reminder_index" &
+  # The subshell owns the whole open, exec and close lifecycle. This shell never holds the verified
+  # descriptor or copy, so no validator can inherit one, and the copy is removed only after the child
+  # that runs it exits. A verification failure reaches stderr through the error file.
+  ( . "$hook_dir/lib/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper ||
+      { printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2; exit 1; }
+    rc=0
+    "$ECI_RUNTIME_BINARY_EXEC" security-reminder || rc=$?
+    eci_runtime_close_verified
+    exit "$rc"
+  ) <"$input_file" >"$tmp_dir/output-$reminder_index" 2>"$tmp_dir/error-$reminder_index" &
   pids[$reminder_index]=$!
-  exec {reminder_fd}<&-
 fi
 for index in "${!gates[@]}"; do
   if [ "$index" = "$reminder_index" ]; then
