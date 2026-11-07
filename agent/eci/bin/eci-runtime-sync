@@ -33,10 +33,12 @@ usage() {
     'the canonical ECI home to an explicit runtime provider home.' \
     '' \
     'planner-apply verifies the canonical command planner pair built by' \
-    'hooks/build-native-binaries.sh, then provisions it into the Kimi home when' \
-    'that optional peer is available. peer-apply copies only the canonical' \
-    'hooks/bin runtime surface into a Kimi provider home and preserves Kimi' \
-    'config.toml.' >&2
+    'hooks/build-native-binaries.sh or by maintain-planner, which publishes it' \
+    'into bin/ under the publication lock this tool takes' \
+    '(bin/.planner-importer.publish.lock), then provisions it into the Kimi' \
+    'home when that optional peer is available. peer-apply copies only the' \
+    'canonical hooks/bin runtime surface into a Kimi provider home and' \
+    'preserves Kimi config.toml.' >&2
 }
 
 fail() {
