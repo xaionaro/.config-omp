@@ -269,7 +269,7 @@ test_source_checkout_provisions_native_tools_into_bin() {
   cp "$ROOT/bin/eci-active" "$ROOT/bin/eci-runtime-sync" "$fixture/bin/"
   cp "$ROOT/hooks/lib/"*.sh "$fixture/hooks/lib/"
   cp -a "$ROOT/tools" "$fixture/tools"
-  for module in eci-command-plan-go eci-safe-import-go eci-hook-helper-go eci-worker-git-go; do
+  for module in eci-command-gate-mode-go eci-command-plan-go eci-safe-import-go eci-hook-helper-go eci-worker-git-go; do
     cp -a "$ROOT/hooks/lib/$module" "$fixture/hooks/lib/$module"
   done
 
