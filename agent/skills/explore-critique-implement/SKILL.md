@@ -72,7 +72,7 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 ## Spawn skill routing
 
-For a new root package, record the Job and publish its Orchestrator as described in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain), then spawn Workers.
+Before the first Worker spawn for a new root package, complete the Job record and Orchestrator publication in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain).
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
@@ -112,6 +112,8 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 | Critic A/B/C, E2E | [review](references/review.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for reviewed governed scope; E2E follows [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing). |
 
 ## Step handoffs
+
+Before step 1, complete the first-spawn rule in [Spawn skill routing](#spawn-skill-routing).
 
 1. Explorer ranks tagged, evidence-backed options and required PoC/style-source proposal.
 2. The current Job owner dispatches a fresh Step 2 critic for the outcome. The critic independently baselines, admits scope, rejects bad options, and selects concrete winner text or returns bounded re-exploration.
