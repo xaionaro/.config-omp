@@ -125,6 +125,28 @@ eci_marker_file_is_bounded() {
   [ "$within" = true ]
 }
 
+# Succeeds only when PATH is provably absent: it does not exist, and the nearest
+# existing ancestor is a searchable directory, so the failed probe reflects real
+# absence.  A path hidden behind an unsearchable ancestor is unknown state; the
+# caller must treat that as unsafe rather than as absent.
+eci_path_is_confirmed_absent() {
+  local path="$1" ancestor
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    return 1
+  fi
+  ancestor="$path"
+  while :; do
+    case "$ancestor" in
+      */*) ancestor="${ancestor%/*}"; [ -n "$ancestor" ] || ancestor=/ ;;
+      *) return 1 ;;
+    esac
+    if [ -e "$ancestor" ] || [ -L "$ancestor" ]; then
+      [ -d "$ancestor" ] && [ -x "$ancestor" ]
+      return
+    fi
+  done
+}
+
 # Enumerate only a finite number of immediate-session eci_active candidates.
 # Unrelated proof files/directories do not consume marker capacity. Callers
 # treat the overflow token as unsafe control state; malformed or unsafe
@@ -138,7 +160,13 @@ eci_marker_candidates_bounded() {
     printf '%s\n' "$eci_marker_scan_unsafe_token"
     return 0
   fi
-  [ -d "$root" ] || return 0
+  if [ ! -d "$root" ]; then
+    # An absent root has no markers.  A root that cannot be stat'd behind an
+    # unsearchable ancestor is unknown state and reports as an unsafe scan.
+    eci_path_is_confirmed_absent "$root" && return 0
+    printf '%s\n' "$eci_marker_scan_unsafe_token"
+    return 0
+  fi
   # A failed listing (unreadable session directory, root removed mid-scan) is
   # unknown state, not an empty scan: report it as unsafe so every caller
   # treats the marker state as active and fails closed.
@@ -201,9 +229,13 @@ eci_proof_root_is_safe() {
   [ ! -L "$root" ] || return 1
   if [ -e "$root" ] || [ -L "$root" ]; then
     [ -d "$root" ] || return 1
+  elif ! eci_path_is_confirmed_absent "$root"; then
+    return 1
   fi
   if [ -e "$parent" ] || [ -L "$parent" ]; then
     [ -d "$parent" ] || return 1
+  elif ! eci_path_is_confirmed_absent "$parent"; then
+    return 1
   fi
   return 0
 }

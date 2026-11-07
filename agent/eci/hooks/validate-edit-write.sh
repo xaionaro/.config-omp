@@ -91,7 +91,7 @@ fi
 edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null || true)"
 if [[ "$file_path" == go.mod || "$file_path" == */go.mod ]] &&
    printf '%s\n' "$edit_text" | grep -Eq '=>[[:space:]]*(\.\./|\./)'; then
-  deny "Do not add local relative replace directives to go.mod. Use a workspace, module proxy, or explicit user-approved local override."
+  deny "$(eci_diagnostic_reason "ECI_GOMOD_LOCAL_REPLACE_DENIED" "PreToolUse" "edit-validation" "$file_path" "Do not add local relative replace directives to go.mod. Use a workspace, module proxy, or explicit user-approved local override." "use a workspace, module proxy, or explicit user-approved local override")"
 fi
 
 # Session-scoped targets fail closed.  An owner that resolves must match an
@@ -120,15 +120,16 @@ if [ -n "$owner_session_id" ]; then
   eci_hook_allowed_session_ids "$input" "$hook_subagent_status"
   allowed_session_ids=("${ECI_HOOK_ALLOWED_SESSION_IDS[@]}")
   if [ "${#allowed_session_ids[@]}" -eq 0 ]; then
-    deny "Session-scoped file ${file_path##*/} requires a current session id; none resolved. Refusing fail-open on a session-scoped path."
+    deny "$(eci_diagnostic_reason "ECI_SESSION_REQUIRED" "PreToolUse" "edit-validation" "$file_path" "Session-scoped file ${file_path##*/} requires a current session id; none resolved. Refusing fail-open on a session-scoped path." "use the current session's canonical path")"
   fi
   if ! eci_session_owner_allowed "$owner_session_id" "${allowed_session_ids[@]}"; then
-    deny "Refusing to edit ${file_path##*/}: file belongs to session $owner_session_id, allowed sessions are ${allowed_session_ids[*]}."
+    deny "$(eci_diagnostic_reason "ECI_SESSION_OWNERSHIP_DENIED" "PreToolUse" "edit-validation" "$file_path" "Refusing to edit ${file_path##*/}: file belongs to session $owner_session_id, allowed sessions are ${allowed_session_ids[*]}." "use the current session's canonical path")"
   fi
-elif eci_path_is_under_proof_root "$lexical_file_path" ||
-     eci_path_is_under_proof_root "$resolved_file_path" ||
-     eci_context_session_rest "$lexical_file_path" >/dev/null ||
-     eci_context_session_rest "$resolved_file_path" >/dev/null; then
+elif { eci_path_is_under_proof_root "$lexical_file_path" ||
+       eci_path_is_under_proof_root "$resolved_file_path" ||
+       eci_context_session_rest "$lexical_file_path" >/dev/null ||
+       eci_context_session_rest "$resolved_file_path" >/dev/null; } &&
+     eci_marker_active_or_unknown; then
   deny "$(eci_diagnostic_reason "ECI_SESSION_OWNER_UNRESOLVED" "PreToolUse" "edit-validation" "$file_path" "Session-scoped file ${file_path##*/} has no resolvable session owner; refusing fail-open on a session-scoped path." "use the current session's canonical path")"
 fi
 trap - ERR

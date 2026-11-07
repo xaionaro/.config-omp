@@ -18,12 +18,12 @@ fi
 if ! command -v jq >/dev/null 2>&1; then
   hook_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
 fi
+private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || { if . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null && ! eci_marker_active_or_unknown; then exit 0; fi; hook_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"; }
+trap 'rm -rf -- "$private_dir"' EXIT
 if ! eci_runtime_open_verified eci-hook-helper; then
   hook_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
 fi
 helper_fd="$ECI_RUNTIME_BINARY_FD"
-private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || { exec {helper_fd}<&-; hook_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"; }
-trap 'rm -rf -- "$private_dir"' EXIT
 input_file="$private_dir/input"
 helper_output="$private_dir/output"
 head -c 65537 >"$input_file" || exit 0
