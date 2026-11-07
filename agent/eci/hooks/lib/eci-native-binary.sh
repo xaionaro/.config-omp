@@ -153,7 +153,6 @@ eci_runtime_open_verified() {
 
 _eci_runtime_open_verified_in() {
   local name="$1" scratch="$2" path bin_dir real_bin fd receipt_path
-  ECI_RUNTIME_BINARY_EXEC=''
   case "$eci_runtime_platform" in
     Linux) ;;
     *) eci_runtime_denial "$name" "host OS ${eci_runtime_platform:-unknown} is not supported"; return 1 ;;
