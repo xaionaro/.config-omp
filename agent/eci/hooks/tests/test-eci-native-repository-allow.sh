@@ -22,15 +22,26 @@ fi
 "$runtime/bin/eci-active" repository-allow-off "$dependency"
 "$runtime/bin/eci-active" repository-allow-status | grep -Fq inactive
 
-mkdir -p "$scratch/home/.omp/agent/eci" "$scratch/home/tmp/eci-runtime/eci"
-cp -a "$runtime/hooks" "$scratch/home/.omp/agent/eci/"
-(cd "$runtime/hooks/lib/eci-command-plan-go" && go build -o "$scratch/home/tmp/eci-runtime/eci/eci-command-plan" .)
+
+# The hook runs under a scratch HOME. The native gate loads eci-command-plan only
+# from $HOME/.omp/agent/eci/bin with its .sha256 receipt, so provision that HOME
+# with the real build step. The coordinator role comes from a main-session
+# transcript under $HOME/.omp/agent/sessions; without one the hook classifies the
+# caller as a worker.
+scratch_home="$scratch/home"
+mkdir -p "$scratch_home/.omp/agent/eci" "$scratch_home/.omp/agent/sessions/-native-allow-"
+cp -a "$runtime/hooks" "$scratch_home/.omp/agent/eci/"
+GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" HOME="$scratch_home" \
+  bash "$scratch_home/.omp/agent/eci/hooks/build-native-binaries.sh" >/dev/null
+transcript="$scratch_home/.omp/agent/sessions/-native-allow-/main.jsonl"
+jq -cn --arg cwd "$work" '{type:"session",version:3,id:"session",cwd:$cwd}' >"$transcript"
+printf '%s\n' '{"type":"message","message":{"role":"user","content":"native allowance"}}' >>"$transcript"
 printf 'scope: test\ncwd: %s\nsession_id: session\n' "$work" > "$scratch/proof/session/eci_active"
 run_hook() {
-  jq -cn --arg cwd "$work" --arg command "bash $dependency/check.sh" \
-    '{session_id:"session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}' |
-    HOME="$scratch/home" ECI_PROOF_ROOT="$scratch/proof" ECI_HOOK_IS_SUBAGENT=false \
-      bash "$scratch/home/.omp/agent/eci/hooks/validate-bash.sh"
+  jq -cn --arg cwd "$work" --arg command "bash $dependency/check.sh" --arg transcript "$transcript" \
+    '{session_id:"session",cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}' |
+    HOME="$scratch_home" ECI_PROOF_ROOT="$scratch/proof" \
+      bash "$scratch_home/.omp/agent/eci/hooks/validate-bash.sh"
 }
 printf '#!/bin/sh\nexit 0\n' > "$dependency/check.sh"
 run_hook | grep -q ECI_COORDINATOR_SCRIPT_TARGET_DENIED
