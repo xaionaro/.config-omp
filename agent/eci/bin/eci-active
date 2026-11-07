@@ -10,6 +10,10 @@ case ${HOME:-} in
   *) printf 'eci-active: HOME must be an absolute path\n' >&2; exit 1 ;;
 esac
 eci_home=$HOME/.omp/agent/eci
+if [ ! -f "$eci_home/hooks/lib/eci-file-lock.sh" ] || [ ! -f "$eci_home/hooks/lib/eci-go-tool-build.sh" ] || [ ! -f "$eci_home/tools/eci-active/go.mod" ]; then
+  printf 'eci-active: ECI runtime not found at %s; check out ~/.omp and retry\n' "$eci_home" >&2
+  exit 1
+fi
 wrapper=${BASH_SOURCE[0]}
 while [ -L "$wrapper" ]; do
   link=$(readlink -- "$wrapper")

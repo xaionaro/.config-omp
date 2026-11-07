@@ -6,6 +6,10 @@ trap 'chmod -R u+w -- "$fixture" 2>/dev/null; rm -rf -- "$fixture"' EXIT
 export HOME="$fixture/home"
 export ECI_PROOF_ROOT="$fixture/proof" ECI_SESSION_ID=retirement_test
 mkdir -p "$ECI_PROOF_ROOT/$ECI_SESSION_ID" "$HOME/.agent/context/sessions/$ECI_SESSION_ID"
+# The wrapper loads its libraries from the canonical $HOME/.omp/agent/eci: point that root
+# at the source tree under test.
+mkdir -p "$HOME/.omp/agent"
+ln -s -- "$base_dir" "$HOME/.omp/agent/eci"
 for command in on off wait wait-repair resume nested-enter nested-accept nested-exit aggregate-off; do
   if output="$("$base_dir/bin/eci-active" "$command" ignored 2>&1)"; then
     echo "obsolete lifecycle command unexpectedly succeeded: $command" >&2; exit 1
@@ -91,4 +95,13 @@ done
 printf 'historic marker\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active"
 (cd -- "$repo_a" && "$base_dir/bin/eci-active" aggregate-review final repo-a >/dev/null)
 [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active")" = 'historic marker' ]
+# Falsification: without the canonical link the wrapper must refuse with its explicit message.
+nolink_home="$fixture/nolink-home"
+mkdir -p "$nolink_home"
+expected="eci-active: ECI runtime not found at $nolink_home/.omp/agent/eci; check out ~/.omp and retry"
+rc=0
+output="$(env HOME="$nolink_home" "$base_dir/bin/eci-active" --help 2>&1)" || rc=$?
+[ "$rc" -eq 1 ] || { echo "marker retirement: link-absent run returned $rc, expected 1" >&2; exit 1; }
+[ "$output" = "$expected" ] || { echo "marker retirement: link-absent message was: $output" >&2; exit 1; }
+echo 'PASS missing canonical runtime is refused with its explicit message'
 echo 'PASS marker-free aggregate review caller selection'

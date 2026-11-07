@@ -85,6 +85,12 @@ func newCLIFixture(t *testing.T) cliFixture {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	home := filepath.Join(root, "home")
+	// The wrapper loads its libraries from the canonical $HOME/.omp/agent/eci. The fixture HOME
+	// points that root at the tree under test, the tree this package's CLI path belongs to.
+	cli, err := filepath.Abs("../../../bin/eci-active")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".omp", "agent"), 0700))
+	require.NoError(t, os.Symlink(filepath.Dir(filepath.Dir(cli)), filepath.Join(home, ".omp", "agent", "eci")))
 	// The canonical ledger lives in <HOME>/.agent/context/sessions/<sid>, as in the pre-migration source;
 	// the proof root only names the session.
 	session := filepath.Join(home, ".agent", "context", "sessions", "test-capture")
@@ -92,8 +98,6 @@ func newCLIFixture(t *testing.T) cliFixture {
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "proof", "test-capture"), 0700))
 	ledger := filepath.Join(session, "project-understanding.yaml")
 	require.NoError(t, os.WriteFile(ledger, []byte(snapshotFixture), 0640))
-	cli, err := filepath.Abs("../../../bin/eci-active")
-	require.NoError(t, err)
 	request := filepath.Join(root, "request.json")
 	contents := `{"edits":[{"old":"User: old compactness","new":"User: 0.4A is more compact than 443 mA"}],"requirements":["requirement:metrics"],"outcome":"outcome:metrics","target":"/root/receiver","instructions":"Implement locally; preserve every binding condition.","actor":{"id":"/root","role":"Supervisor"},"reason":"material correction"}`
 	require.NoError(t, os.WriteFile(request, []byte(contents), 0600))
