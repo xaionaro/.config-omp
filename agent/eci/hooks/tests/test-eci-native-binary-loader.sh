@@ -482,6 +482,199 @@ darwin_open_case() {  # darwin_open_case <label> <cputype, or FAIL> <exact reaso
 darwin_open_case darwin-open-unsupported-cpu FAIL 'host CPU type is not supported'
 darwin_open_case darwin-open-copy-path '0c 00 00 01' ANY
 
+# Darwin copy path end to end. Each case is a child process with its own TMPDIR, so no state carries
+# between cases. Linux has no BSD stat, so a test-only stand-in answers the three stat forms the path
+# uses; the cases that need it run on Linux only. The temporary-directory denial runs on both hosts.
+dstand="$base/darwin-stand"
+dreal_stat="$(command -v stat)"
+mkdir -p -- "$dstand/bin"
+cat >"$dstand/bin/stat" <<'STAND'
+#!/bin/sh
+# Test-only stand-in for macOS `stat -f`, so the darwin copy path runs on Linux. It answers only the
+# forms the path uses and exits 2 on anything else:
+#   stat -f '%u %Lp' -- PATH        lstat: owner and octal mode
+#   stat -f '%d %i' -- PATH         lstat: device and inode
+#   stat -f '%d %i %u %Lp %HT' <&N  fstat of stdin: device, inode, owner, mode, type
+# NT_STAT_FAKE_PATH with NT_STAT_FAKE_UID or NT_STAT_FAKE_MODE overrides that path only.
+# NT_STAT_SWAP (symlink or rename) replaces NT_STAT_SWAP_PATH once, during the fstat, from NT_STAT_SWAP_TO.
+[ "${1:-}" = -f ] || exit 2
+fmt="$2"
+shift 2
+[ "${1:-}" = -- ] && shift
+real="${NT_REAL_STAT:?NT_REAL_STAT must name the real stat}"
+fake_uid=''
+fake_mode=''
+fake_apply() {
+  fake_uid=''
+  fake_mode=''
+  if [ -n "${NT_STAT_FAKE_PATH:-}" ] && [ "$1" = "$NT_STAT_FAKE_PATH" ]; then
+    fake_uid="${NT_STAT_FAKE_UID:-}"
+    fake_mode="${NT_STAT_FAKE_MODE:-}"
+  fi
+}
+if [ "$#" -gt 0 ]; then
+  path="$1"
+  case "$fmt" in
+    '%u %Lp')
+      line="$("$real" -c '%u %a' -- "$path")" || exit 2
+      set -- $line
+      uid="$1"
+      mode="$2"
+      fake_apply "$path"
+      [ -n "$fake_uid" ] && uid="$fake_uid"
+      [ -n "$fake_mode" ] && mode="$fake_mode"
+      printf '%s %s\n' "$uid" "$mode"
+      ;;
+    '%d %i') exec "$real" -c '%d %i' -- "$path" ;;
+    *) exit 2 ;;
+  esac
+else
+  [ "$fmt" = '%d %i %u %Lp %HT' ] || exit 2
+  target="$(readlink -f -- /dev/stdin)" || exit 2
+  if [ -n "${NT_STAT_SWAP:-}" ] && [ "$target" = "${NT_STAT_SWAP_PATH:-}" ]; then
+    case "$NT_STAT_SWAP" in
+      symlink) rm -f -- "$target" && ln -s -- "$NT_STAT_SWAP_TO" "$target" || exit 2 ;;
+      rename) cp -- "$NT_STAT_SWAP_TO" "$target.swap" && mv -f -- "$target.swap" "$target" || exit 2 ;;
+      *) exit 2 ;;
+    esac
+  fi
+  line="$("$real" -L -c '%d %i %u %a %F' -- /dev/stdin)" || exit 2
+  set -- $line
+  dev="$1"
+  ino="$2"
+  uid="$3"
+  mode="$4"
+  shift 4
+  kind="$*"
+  fake_apply "$target"
+  [ -n "$fake_uid" ] && uid="$fake_uid"
+  [ -n "$fake_mode" ] && mode="$fake_mode"
+  case "$kind" in
+    'regular file' | 'regular empty file') type='Regular File' ;;
+    directory) type='Directory' ;;
+    'symbolic link') type='Symbolic Link' ;;
+    *) type='Other' ;;
+  esac
+  printf '%s %s %s %s %s\n' "$dev" "$ino" "$uid" "$mode" "$type"
+fi
+STAND
+chmod 0755 -- "$dstand/bin/stat"
+cat >"$dstand/child.sh" <<'CHILD'
+#!/bin/bash
+# Child for the darwin cases: source the loader, force the Darwin route and the arm64 CPU type, open,
+# report what the open left behind, then close. $1 is the loader, $2 the installed binary.
+. "$1" || { echo 'child: loader did not source'; exit 90; }
+eci_runtime_platform=Darwin
+eci_runtime_darwin_host_cputype() { printf '%s\n' '0c 00 00 01'; }
+if eci_runtime_open_verified eci-hook-helper; then
+  printf 'OPEN rc=0\n'
+  printf 'EXEC=%s\n' "$ECI_RUNTIME_BINARY_EXEC"
+  printf 'COPY_MODE=%s\n' "$("$NT_REAL_STAT" -c %a -- "$ECI_RUNTIME_BINARY_EXEC")"
+  printf 'DIR_MODE=%s\n' "$("$NT_REAL_STAT" -c %a -- "$eci_runtime_copy_dir")"
+  if cmp -s -- "$ECI_RUNTIME_BINARY_EXEC" "$2"; then printf 'BYTES=equal\n'; else printf 'BYTES=differ\n'; fi
+  eci_runtime_close_verified
+  printf 'CLOSED\n'
+else
+  printf 'OPEN rc=1 reason=%s\n' "$ECI_RUNTIME_DENY_REASON"
+fi
+CHILD
+chmod 0755 -- "$dstand/child.sh"
+child_out=''
+child_st=0
+child_field() {  # child_field <key>: the value of the child's "<key>=" line
+  local line=''
+  while IFS= read -r line; do
+    case "$line" in "$1="*) printf '%s\n' "${line#"$1="}"; return 0 ;; esac
+  done <<<"$child_out"
+  return 1
+}
+darwin_child() {  # darwin_child <tmpdir> [VAR=value ...]: runs the child; sets child_out and child_st
+  local ctmp="$1" prefix=''
+  shift 1
+  if [ "$host_os" = Linux ]; then prefix="$dstand/bin:"; fi
+  child_st=0
+  child_out="$(env -i HOME="$home" TMPDIR="$ctmp" PATH="${prefix}/usr/bin:/bin" NT_REAL_STAT="$dreal_stat" "$@" "$BASH" "$dstand/child.sh" "$loader" "$bin/eci-hook-helper" 2>&1)" || child_st=$?
+}
+fresh_tmp() {  # fresh_tmp <name>: a new private TMPDIR, printed
+  local d="$dstand/tmp-$1"
+  rm -rf -- "$d"
+  mkdir -p -- "$d"
+  chmod 0700 -- "$d"
+  printf '%s\n' "$d"
+}
+darwin_accept_check() {  # darwin_accept_check <label> <tmpdir> <what>: accept, copy 0500, dir 0700, closed
+  local label="$1" ctmp="$2" copy='' dir=''
+  [ "$child_st" -eq 0 ] || fail "$label: child died (status $child_st): $child_out"
+  case "$child_out" in 'OPEN rc=0'*) ;; *) fail "$label: expected accept, got: $child_out" ;; esac
+  copy="$(child_field EXEC)" || fail "$label: no EXEC line in the child output"
+  dir="${copy%/*}"
+  [ "$(child_field COPY_MODE)" = 500 ] || fail "$label: copy mode is $(child_field COPY_MODE), expected 500"
+  [ "$(child_field DIR_MODE)" = 700 ] || fail "$label: copy directory mode is $(child_field DIR_MODE), expected 700"
+  [ "$(child_field BYTES)" = equal ] || fail "$label: copy bytes differ from the installed binary"
+  case "$child_out" in *CLOSED*) ;; *) fail "$label: close did not complete" ;; esac
+  [ ! -e "$copy" ] && [ ! -e "$dir" ] || fail "$label: close left the copy or its directory behind"
+  [ -z "$(ls -A -- "$ctmp")" ] || fail "$label: TMPDIR is not empty after close"
+  pass "$label: $3"
+}
+darwin_deny_check() {  # darwin_deny_check <label> <tmpdir> <reason>: exact deny, nothing left behind
+  local label="$1" ctmp="$2" want="$3"
+  [ "$child_st" -eq 0 ] || fail "$label: child died (status $child_st): $child_out"
+  [ "$child_out" = "OPEN rc=1 reason=$(deny_text eci-hook-helper "$want")" ] ||
+    fail "$label: expected deny [$want], got [$child_out]"
+  [ -z "$(ls -A -- "$ctmp")" ] || fail "$label: denial left files in TMPDIR"
+  pass "$label: deny with reason: $want"
+}
+if [ "$host_os" = Linux ]; then
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp accept)"
+  darwin_child "$ctmp"
+  darwin_accept_check darwin-copy-accept "$ctmp" 'copy mode 0500 in a 0700 directory, bytes equal, close removes both'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp owner)"
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_bin/eci-hook-helper" NT_STAT_FAKE_UID=4242
+  darwin_deny_check darwin-copy-wrong-owner "$ctmp" 'is not owned by the current user'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp group)"
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_bin/eci-hook-helper" NT_STAT_FAKE_MODE=775
+  darwin_deny_check darwin-copy-group-writable "$ctmp" 'is group- or other-writable'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp other)"
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_bin/eci-hook-helper" NT_STAT_FAKE_MODE=757
+  darwin_deny_check darwin-copy-other-writable "$ctmp" 'is group- or other-writable'
+  install_binary "$fixtures/macho-arm64"
+  printf 'tamper' >>"$bin/eci-hook-helper"
+  ctmp="$(fresh_tmp tampered)"
+  darwin_child "$ctmp"
+  darwin_deny_check darwin-copy-tampered "$ctmp" 'sha256 does not match its receipt'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp symlink)"
+  darwin_child "$ctmp" NT_STAT_SWAP=symlink NT_STAT_SWAP_PATH="$real_bin/eci-hook-helper" NT_STAT_SWAP_TO="$fixtures/macho-arm64"
+  darwin_deny_check darwin-copy-symlink-swap "$ctmp" 'resolves outside the verified bin directory'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp rename)"
+  darwin_child "$ctmp" NT_STAT_SWAP=rename NT_STAT_SWAP_PATH="$real_bin/eci-hook-helper" NT_STAT_SWAP_TO="$fixtures/macho-arm64"
+  darwin_deny_check darwin-copy-rename-swap "$ctmp" 'resolves outside the verified bin directory'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp sticky)"
+  real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0 NT_STAT_FAKE_MODE=1777
+  darwin_accept_check darwin-temp-root-sticky-accept "$ctmp" 'root-owned sticky TMPDIR accepted; copy under it, close removes it'
+  install_binary "$fixtures/macho-arm64"
+  ctmp="$(fresh_tmp root-777)"
+  real_ctmp="$(cd -P -- "$ctmp" && pwd -P)"
+  darwin_child "$ctmp" NT_STAT_FAKE_PATH="$real_ctmp" NT_STAT_FAKE_UID=0 NT_STAT_FAKE_MODE=777
+  darwin_deny_check darwin-temp-root-777-denied "$ctmp" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
+else
+  skip "darwin copy cases that need the BSD stat stand-in run on Linux only"
+fi
+install_binary "$fixtures/macho-arm64"
+temp777="$dstand/tmp-777"
+rm -rf -- "$temp777"
+mkdir -p -- "$temp777"
+chmod 0777 -- "$temp777"
+darwin_child "$temp777"
+darwin_deny_check darwin-temp-777-not-sticky-denied "$temp777" 'temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit'
+
 # Receipt-case table (Linux). Fixed descriptor 8 keeps it runnable under bash 3.2.
 if [ "$host_os" = Linux ]; then
   tbase="$base/table"
