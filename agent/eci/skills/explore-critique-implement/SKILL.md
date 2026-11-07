@@ -1,6 +1,6 @@
 ---
 name: explore-critique-implement
-description: Use when a non-mechanical task has decision uncertainty, behavior/routing/protocol/persistence/security/concurrency risk, or two plausible approaches; also when active ATE routes bounded work here
+description: Use when a non-mechanical task has decision uncertainty, meaning two reasonable resolutions materially change work, outcome, consequential risk, or acceptance; also when active ATE routes bounded work here
 ---
 
 # Explore-Critique-Implement
