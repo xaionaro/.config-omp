@@ -3444,7 +3444,7 @@ assert_recursive_job_contract() {
     'Each child has its own requirements and full ECI pipeline' \
     'The publisher is the root Supervisor for root Jobs and the current parent Job owner for child Jobs' \
     'For initial publication, the publisher is the named interim owner; during transfer, the outgoing owner remains effective until publication' \
-    'rechecks J, Job membership, current ownership, and the current parent owner before publishing' \
+    'rechecks Job membership, scope, current ownership, and the current parent owner before publishing' \
     'immediate child owners receive the new upward reporting route' \
     'Transfer held reports through the publisher' \
     'Former, withdrawn, and non-current owners relay reports through the current parent route' \
