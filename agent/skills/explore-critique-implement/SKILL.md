@@ -82,14 +82,16 @@ Choose the spawn path from the `task` tool description:
 
 | Path | Condition | Spawn call |
 | --- | --- | --- |
-| Default | The description lists no per-call models (`task.perCallModel` is `off`, the default). | Omit `model`. Record `profile <name> not applied: per-call model off` in the Job update. |
-| Enabled | The description lists approved per-call models (`task.perCallModel` is `on`). | Pass `model: <profile model>:<profile reasoning_effort>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model. |
+| Default | `task.perCallModel` is not `on`. | Omit `model`. Record `profile <name> not applied: per-call model off` in the Job update. |
+| Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model. |
+
+The `<profile level>` is the profile's `reasoning_effort` field.
 
 - A refusal is any `model` error: an unlisted selector, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
 - Do not pass `effort`; the `:level` suffix carries the profile level.
 - A refused spawn fails; the harness never substitutes another model.
-- After a refused `default` spawn, record the refusal text and respawn on the Default path.
-- After a refused `higher` or `max` spawn, send the refusal and profile to the Supervisor before any respawn. The Supervisor chooses a listed model, the Default path with the limitation recorded, or stops the activity.
+- A refused `default` spawn stops. Record the refusal text and report it to the Supervisor. Never respawn the same brief on another model or without a model.
+- After a refused `higher` or `max` spawn, send the refusal and profile to the Supervisor and do not respawn. The Supervisor either chooses a listed model for a new spawn decision or stops the activity. That choice is a new spawn decision, not a retry.
 - Keep existing launch settings and reusable owners.
 - Give an activity with a different profile its own spawn.
 - Keep independent reviewer assignments self-contained and blind to producer findings.

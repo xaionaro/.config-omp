@@ -26,9 +26,9 @@ Every assignment and roster entry names one category and one semantic role. Stat
 | `mixed` | combined / special | Only explicit `combined fact-and-authority`; never infer it. |
 | `implementation` | non-authoritative / ordinary | Producers (Implementers and Fast Owners), Helpers, executors, test/QA, Critic A/B, correctness reviewers. |
 
-Use stable role labels where available. An unfamiliar label or changed profile prompts a quick clarification or a reasonable available assignment; it does not block normal work or require profile hashing. Request the intended model and effort when the provider exposes them, and record unavailable selector fields plainly.
+Use stable role labels where available. An unfamiliar label or changed profile prompts a quick clarification or a reasonable available assignment; it does not block normal work or require profile hashing. Select models per [model selection](../../explore-critique-implement/SKILL.md#model-selection); record unavailable selector fields plainly.
 
-Send exposed selectors when they materially help the assignment. Treat unavailable or conflicting telemetry as a note for review, not a reason to halt, manufacture evidence, or reject ordinary worker progress.
+Send selectors as [model selection](../../explore-critique-implement/SKILL.md#model-selection) directs when they materially help the assignment. Treat unavailable or conflicting telemetry as a note for review, not a reason to halt, manufacture evidence, or reject ordinary worker progress.
 
 ### Closed role map
 
