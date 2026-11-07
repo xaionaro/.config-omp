@@ -18,4 +18,4 @@ elif [[ ${args[0]:-} == refresh && -n ${args[1]:-} && ${args[1]} != /* ]]; then
 	args[1]="$PWD/${args[1]}"
 fi
 cd "$module_dir"
-exec go run . "${args[@]}"
+exec go run . ${args[@]+"${args[@]}"}
