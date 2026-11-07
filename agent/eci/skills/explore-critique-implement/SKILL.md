@@ -1,6 +1,6 @@
 ---
 name: explore-critique-implement
-description: Use when omp selects ECI or active ATE routes bounded work through ECI
+description: Use when a non-mechanical task has decision uncertainty, behavior/routing/protocol/persistence/security/concurrency risk, or two plausible approaches; also when active ATE routes bounded work here
 ---
 
 # Explore-Critique-Implement

@@ -226,6 +226,8 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Project, context, `ECI`, or `ATE` ledgers | `context-ledger` |
 
 - Selecting `ECI`/`ATE` activates its full protocol and required spawned agents, never local-only. Use `task` (`spawn_agent` in the source) for ECI/ATE roles, including reusable Fast Owner Producers and one conditional Orchestrator per active Job when J > 1, never shell-wrapped agents.
+- At every `task` spawn for an ECI/ATE role: read `~/.omp/agent/eci/model-selection.yaml`; choose the profile by activity (`explore-critique-implement/SKILL.md`, Model selection); pass its `model` and `reasoning_effort` with `fork_turns: "none"`; name the router and the role's module paths (SKILL.md, Module routing) in the worker prompt.
+- If `task` rejects `model` at preflight, or the model or selector is unavailable, record the limitation and continue per SKILL.md, Model selection.
 - Label every spawned/resumed agent. Immediately print/update the roster after spawn/resume/reassignment/scope change: `<role label>: <runtime name> [type]`.
 - Every wait/status/close update uses `<role label> (<runtime name> [type])`, never a bare nickname after labeling.
 - Wait only for evidence or agents needed by the next action when advancing ECI outcomes; independently verify available results and continue independent ready work. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
