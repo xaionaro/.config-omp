@@ -216,11 +216,16 @@ func TestTranscriptStatus(t *testing.T) {
 		want    string
 	}{
 		{"plain session is main", "2024/main.jsonl", `{"type":"session","id":"s"}` + "\n" + `{"type":"message"}` + "\n", "main"},
-		{"string parentSession is subagent", "2024/sub.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "subagent"},
+		{"string parentSession at depth three is subagent", "2024/child/sub.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "subagent"},
+		{"string parentSession at depth two is unknown", "2024/parent-two.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "unknown"},
 		{"non-string parentSession is main", "2024/nonstring.jsonl", `{"type":"session","parentSession":5}` + "\n", "main"},
-		{"session_init type is subagent", "2024/init.jsonl", `{"type":"session_init"}` + "\n", "subagent"},
-		{"session_init customType is subagent", "2024/custom.jsonl", `{"type":"custom","customType":"session_init"}` + "\n", "subagent"},
-		{"depth three is subagent", "a/b/deep.jsonl", `{"type":"session","id":"s"}` + "\n", "subagent"},
+		{"session_init type at depth two is unknown", "2024/init.jsonl", `{"type":"session_init"}` + "\n", "unknown"},
+		{"session_init customType at depth two is unknown", "2024/custom.jsonl", `{"type":"custom","customType":"session_init"}` + "\n", "unknown"},
+		{"depth three without parentSession is unknown", "a/b/deep.jsonl", `{"type":"session","id":"s"}` + "\n", "unknown"},
+		{"depth three with parentSession is subagent", "a/b/deep-child.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "subagent"},
+		{"duplicate type is unknown", "2024/duptype.jsonl", `{"type":"session","parentSession":"/p.jsonl","type":"message"}` + "\n", "unknown"},
+		{"oversize header is unknown", "2024/oversize.jsonl", `{"type":"session","pad":"` + strings.Repeat("x", inputBudget) + `"}` + "\n", "unknown"},
+		{"long post-header record is main", "2024/longmsg.jsonl", `{"type":"session","id":"s"}` + "\n" + `{"type":"message","pad":"` + strings.Repeat("m", inputBudget) + `"}` + "\n", "main"},
 		{"invalid line is unknown", "2024/bad.jsonl", `{"type":"session"}` + "\nnot json\n", "unknown"},
 		{"empty file is unknown", "2024/empty.jsonl", "", "unknown"},
 	}
@@ -230,6 +235,9 @@ func TestTranscriptStatus(t *testing.T) {
 		if status != 0 || out != tc.want+"\n" {
 			t.Fatalf("%s: status=%d out=%q want %s", tc.name, status, out, tc.want)
 		}
+	}
+	if got := classifyTranscript(sessions, ""); got != "unknown" {
+		t.Fatalf("empty raw path: want unknown, got %s", got)
 	}
 	outside := filepath.Join(t.TempDir(), "outside.jsonl")
 	if err := os.WriteFile(outside, []byte(`{"type":"session"}`+"\n"), 0o644); err != nil {

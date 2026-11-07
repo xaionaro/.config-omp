@@ -184,12 +184,13 @@ func transcriptStatus(root, raw string, stdout io.Writer) int {
 	return statusOK
 }
 
-// classifyTranscript mirrors the shell omp transcript classifier: a regular,
-// non-empty transcript under the sessions root whose every line is JSON is a
-// subagent when it lies three or more levels below the root or carries an omp
-// session marker; otherwise it is main. Any failure is unknown.
+// classifyTranscript mirrors the command-plan transcript rule: a regular,
+// non-empty transcript under the sessions root is a subagent when it lies three or
+// more levels below the root and its header declares a string parentSession; it is
+// main when it lies two levels below, with no parentSession and no session_init
+// marker. Every other outcome is unknown, which fails closed to the worker role.
 //
-// Example: sessions/<a>/<b>/<c>.jsonl is a subagent by depth alone.
+// Example: sessions/<a>/<b>/<c>.jsonl with a parentSession header is a subagent.
 func classifyTranscript(root, raw string) string {
 	if !rawAbsolutePathAllowed(raw) {
 		return "unknown"
@@ -199,53 +200,129 @@ func classifyTranscript(root, raw string) string {
 		return "unknown"
 	}
 	defer file.Close()
-	signal, size, valid, err := scanTranscriptLines(file)
+	parentSession, sessionInit, size, valid, err := scanTranscriptLines(file)
 	if err != nil || !valid || size == 0 {
 		return "unknown"
 	}
-	if len(pathParts(raw))-len(pathParts(root)) >= 3 || signal {
+	depth := len(pathParts(raw)) - len(pathParts(root))
+	switch {
+	case depth == 2 && !parentSession && !sessionInit:
+		return "main"
+	case depth >= 3 && parentSession:
 		return "subagent"
+	default:
+		return "unknown"
 	}
-	return "main"
 }
+
+// errTranscriptLineTooLong reports a line that exceeds the bounded header prefix.
+var errTranscriptLineTooLong = errors.New("transcript line exceeds the bounded header prefix")
 
 // scanTranscriptLines reads every line once. valid is false when any line,
-// including an empty one, is not JSON. signal reports an omp session marker.
-func scanTranscriptLines(r io.Reader) (signal bool, size int, valid bool, err error) {
+// including an empty one, is not JSON or repeats a signal key. Before the session
+// header is seen, each line must fit in the remaining inputBudget, so an oversize
+// header is never classified. parentSession reports a session header with a string
+// parentSession; sessionInit reports an omp session_init marker.
+func scanTranscriptLines(r io.Reader) (parentSession, sessionInit bool, size int, valid bool, err error) {
 	reader := bufio.NewReader(r)
+	header := false
 	for {
-		line, readErr := reader.ReadBytes('\n')
+		limit := -1
+		if !header {
+			limit = inputBudget - size
+		}
+		line, readErr := readTranscriptLine(reader, limit)
+		if errors.Is(readErr, errTranscriptLineTooLong) {
+			return false, false, size, false, nil
+		}
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return false, false, size, false, readErr
+		}
 		size += len(line)
 		if len(line) > 0 {
+			body := bytes.TrimSuffix(line, []byte("\n"))
 			var value any
-			if json.Unmarshal(bytes.TrimSuffix(line, []byte("\n")), &value) != nil {
-				return false, size, false, nil
+			if json.Unmarshal(body, &value) != nil || transcriptDuplicateSignalKey(body) {
+				return false, false, size, false, nil
 			}
-			signal = signal || transcriptSignal(value)
+			recordParent, recordInit := transcriptSignal(value)
+			parentSession = parentSession || recordParent
+			sessionInit = sessionInit || recordInit
+			if object, ok := value.(map[string]any); ok && object["type"] == "session" {
+				header = true
+			}
 		}
 		if errors.Is(readErr, io.EOF) {
-			return signal, size, true, nil
-		}
-		if readErr != nil {
-			return false, size, false, readErr
+			return parentSession, sessionInit, size, true, nil
 		}
 	}
 }
 
-// transcriptSignal reports an omp session_init marker or a session header
-// whose parentSession is a string.
+// readTranscriptLine returns one newline-terminated line. A non-negative limit
+// bounds the bytes read, so an oversize line fails without being buffered whole.
 //
-// Example: {"type":"session","parentSession":"x"} is a signal.
-func transcriptSignal(value any) bool {
+// Example: a limit of 10 rejects a 20-byte line after one buffer read.
+func readTranscriptLine(reader *bufio.Reader, limit int) ([]byte, error) {
+	var line []byte
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		line = append(line, chunk...)
+		if limit >= 0 && len(line) > limit {
+			return nil, errTranscriptLineTooLong
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return line, err
+		}
+	}
+}
+
+// transcriptDuplicateSignalKey reports whether a top-level JSON object repeats
+// type, customType, or parentSession. encoding/json keeps the last duplicate,
+// which would otherwise hide a signal from the classifier.
+//
+// Example: {"type":"session","parentSession":"p","type":"message"} repeats type.
+func transcriptDuplicateSignalKey(body []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return false
+	}
+	seen := make(map[string]bool, 3)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		key, ok := token.(string)
+		if !ok {
+			return false
+		}
+		if key == "type" || key == "customType" || key == "parentSession" {
+			if seen[key] {
+				return true
+			}
+			seen[key] = true
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return false
+		}
+	}
+	return false
+}
+
+// transcriptSignal reports whether a record is a session header with a string
+// parentSession, and whether it carries an omp session_init marker.
+//
+// Example: {"type":"session","parentSession":"x"} sets the first result.
+func transcriptSignal(value any) (bool, bool) {
 	object, ok := value.(map[string]any)
 	if !ok {
-		return false
+		return false, false
 	}
 	recordType, _ := object["type"].(string)
 	customType, _ := object["customType"].(string)
-	if recordType == "session_init" || customType == "session_init" {
-		return true
-	}
+	sessionInit := recordType == "session_init" || customType == "session_init"
 	_, hasParent := object["parentSession"].(string)
-	return recordType == "session" && hasParent
+	return recordType == "session" && hasParent, sessionInit
 }
