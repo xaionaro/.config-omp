@@ -75,7 +75,16 @@ cat >"$base/fakebin/go" <<'EOF'
 case "$1" in
   env) printf '%s\n%s\n' "$FAKE_GOOS" "$FAKE_GOARCH" ;;
   build)
-    [ -z "${FAKE_GO_FAIL:-}" ] || { echo 'fake go: build failed' >&2; exit 1; }
+    if [ -n "${FAKE_GO_FAIL:-}" ]; then
+      # A lingering child inherits the caller's descriptors, as a stray process from a real build could.
+      # It keeps the provisioning lock's descriptor open after the provisioner returns.
+      if [ -n "${FAKE_GO_LINGER:-}" ]; then
+        sleep 60 </dev/null >/dev/null 2>&1 &
+        printf '%s\n' "$!" >"$FAKE_GO_LINGER"
+      fi
+      echo 'fake go: build failed' >&2
+      exit 1
+    fi
     out=''
     while [ "$#" -gt 0 ]; do
       [ "$1" != -o ] || out="$2"
@@ -272,11 +281,16 @@ run_provision gate-dir
 pass "directory at eci-hook-helper: rc nonzero, nothing built, nothing moved into it"
 rmdir -- "$bin/eci-hook-helper"
 
-# 10. A failing builder: rc nonzero, nothing installed, and the lock is free afterwards.
+# 10. A failing builder: rc nonzero, nothing installed, and the lock is free afterwards. The failing fake go leaves
+# a child that inherited descriptor 7, so the lock is free only if the provisioner unlocked it explicitly
+# (eci_file_lock_release_fd 7); closing its own copy of the descriptor is not enough while the child holds one.
 reset_bin
-export FAKE_GO_FAIL=1
+linger_pid_file="$base/linger.pid"
+export FAKE_GO_FAIL=1 FAKE_GO_LINGER="$linger_pid_file"
 run_provision builder-fails
-unset FAKE_GO_FAIL
+unset FAKE_GO_FAIL FAKE_GO_LINGER
+linger_pid=$(cat -- "$linger_pid_file" 2>/dev/null || true)
+[ -n "$linger_pid" ] && kill -0 "$linger_pid" 2>/dev/null || fail "builder fails: the lingering child is not running"
 [ "$(rc_of builder-fails)" != 0 ] || fail "builder fails: rc 0"
 [ ! -e "$bin/eci-command-plan" ] || fail "builder fails: a binary was installed"
 expect_stdout_empty builder-fails
@@ -287,7 +301,8 @@ lock_free=0
   source "$eci/hooks/lib/eci-file-lock.sh"
   eci_file_lock_acquire_fd 7 nonblocking
 ) && lock_free=1
-[ "$lock_free" = 1 ] || fail "builder fails: the provisioning lock is still held"
-pass "failing builder: rc nonzero, nothing installed, builder output on stderr, lock free"
+kill "$linger_pid" 2>/dev/null || true
+[ "$lock_free" = 1 ] || fail "builder fails: the provisioning lock is still held while a child keeps its descriptor"
+pass "failing builder: rc nonzero, nothing installed, builder output on stderr, lock released explicitly"
 
 printf 'eci-native-provision: %s checks passed (host %s, bash %s)\n' "$checks" "$host_os" "$BASH_VERSION"
