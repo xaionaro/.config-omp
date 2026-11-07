@@ -14,6 +14,7 @@ agent/sessions/
 agent/terminal-sessions/
 agent/custom-session-files/
 agent/blobs/
+agent/eci/bin/
 
 # Secrets and credentials
 auth*.json
