@@ -3669,17 +3669,24 @@ func runEciAuthorityRootsIgnoreECIHOMEScenario(t *testing.T) {
 	kimiGate := filepath.Join(kimiRoot, "bin", "eci-command-gate-mode")
 	foreignGate := filepath.Join(foreignRoot, "bin", "eci-command-gate-mode")
 
-	identity := gateModeIdentityForEnvironment()
-	if identity.failure != "" {
-		t.Errorf("gate-mode identity failure=%q, want lexical HOME/.omp/agent/eci and configured Kimi roots", identity.failure)
+	ompIdentity := gateModeIdentityForEnvironment(ProviderOmp)
+	if ompIdentity.failure != "" {
+		t.Errorf("omp gate-mode identity failure=%q, want lexical HOME/.omp/agent/eci root", ompIdentity.failure)
 	}
-	if len(identity.canonicalPaths) != 2 || identity.canonicalPaths[0] != eciGate || identity.canonicalPaths[1] != kimiGate {
-		t.Errorf("gate-mode canonical paths=%q, want [%q %q]", identity.canonicalPaths, eciGate, kimiGate)
+	if len(ompIdentity.canonicalPaths) != 1 || ompIdentity.canonicalPaths[0] != eciGate {
+		t.Errorf("omp gate-mode canonical paths=%q, want [%q]", ompIdentity.canonicalPaths, eciGate)
 	}
-	if canonical, ok := gateModeProviderPath(ProviderOmp, identity); !ok || canonical != eciGate {
+	if canonical, ok := gateModeProviderPath(ProviderOmp, ompIdentity); !ok || canonical != eciGate {
 		t.Errorf("omp gate-mode canonical path=%q known=%t, want %q/true", canonical, ok, eciGate)
 	}
-	if canonical, ok := gateModeProviderPath(ProviderKimi, identity); !ok || canonical != kimiGate {
+	kimiIdentity := gateModeIdentityForEnvironment(ProviderKimi)
+	if kimiIdentity.failure != "" {
+		t.Errorf("Kimi gate-mode identity failure=%q, want configured Kimi root", kimiIdentity.failure)
+	}
+	if len(kimiIdentity.canonicalPaths) != 2 || kimiIdentity.canonicalPaths[0] != eciGate || kimiIdentity.canonicalPaths[1] != kimiGate {
+		t.Errorf("Kimi gate-mode canonical paths=%q, want [%q %q]", kimiIdentity.canonicalPaths, eciGate, kimiGate)
+	}
+	if canonical, ok := gateModeProviderPath(ProviderKimi, kimiIdentity); !ok || canonical != kimiGate {
 		t.Errorf("Kimi gate-mode canonical path=%q known=%t, want %q/true", canonical, ok, kimiGate)
 	}
 

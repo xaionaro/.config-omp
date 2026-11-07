@@ -4087,13 +4087,17 @@ func isExactGateModeArguments(argv []token) bool {
 //
 // Example: ProviderOmp selects the omp path and never its Kimi peer.
 func gateModeProviderPath(provider Provider, identity gateModeIdentity) (string, bool) {
-	if len(identity.canonicalPaths) != 2 {
-		return "", false
-	}
 	switch provider {
 	case ProviderOmp:
+		// The omp path is independent of the Kimi peer root; it is present whenever the omp root resolves.
+		if len(identity.canonicalPaths) < 1 {
+			return "", false
+		}
 		return identity.canonicalPaths[0], true
 	case ProviderKimi:
+		if len(identity.canonicalPaths) != 2 {
+			return "", false
+		}
 		return identity.canonicalPaths[1], true
 	default:
 		return "", false
@@ -4152,17 +4156,8 @@ func inspectGateMode(
 		)
 	}
 
-	identity := gateModeIdentityForEnvironment()
-	expected, providerKnown := gateModeProviderPath(request.Provider, identity)
-	if !providerKnown {
-		return gateModeEnvelopeDiagnostic(
-			original,
-			target,
-			segmentIndex,
-			"gate-mode-provider-path",
-			"command-gate control provider has no canonical selected executable path",
-		)
-	}
+	identity := gateModeIdentityForEnvironment(request.Provider)
+	expected, _ := gateModeProviderPath(request.Provider, identity)
 	if target.value != expected {
 		predicate := "gate-mode-envelope"
 		reason := "command-gate control requires the exact provider-selected canonical executable path"
@@ -4263,7 +4258,7 @@ func isExactGateModeEnvelope(
 		!isExactGateModeArguments(argv) {
 		return false
 	}
-	identity := gateModeIdentityForEnvironment()
+	identity := gateModeIdentityForEnvironment(request.Provider)
 	expected, providerKnown := gateModeProviderPath(request.Provider, identity)
 	return providerKnown && identity.failure == "" && argv[0].value == expected
 }
@@ -4277,11 +4272,18 @@ func originalTokenIndex(original []token, target token) int {
 	return 0
 }
 
-func gateModeIdentityForEnvironment() gateModeIdentity {
+// gateModeIdentityForEnvironment returns the canonical gate-mode identity for
+// provider. ProviderOmp checks only the omp root and gate binary, and never
+// consults the Kimi peer. ProviderKimi keeps the two-root checks: its gate must
+// be the same file as the omp gate and have the same digest.
+//
+// Example: with no Kimi root, the omp identity still resolves and the Kimi
+// identity reports canonical-path-invalid.
+func gateModeIdentityForEnvironment(provider Provider) gateModeIdentity {
 	home := os.Getenv("HOME")
-	roots := []string{
-		filepath.Join(home, ".omp", "agent", "eci"),
-		firstNonEmpty(os.Getenv("KIMI_CODE_HOME"), filepath.Join(home, ".kimi-code")),
+	roots := []string{filepath.Join(home, ".omp", "agent", "eci")}
+	if provider != ProviderOmp {
+		roots = append(roots, firstNonEmpty(os.Getenv("KIMI_CODE_HOME"), filepath.Join(home, ".kimi-code")))
 	}
 	paths := make([]string, 0, len(roots))
 	for _, root := range roots {
@@ -4294,7 +4296,7 @@ func gateModeIdentityForEnvironment() gateModeIdentity {
 		}
 		paths = append(paths, filepath.Join(root, "bin", "eci-command-gate-mode"))
 	}
-	if len(paths) != 2 {
+	if len(paths) != len(roots) {
 		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-path-invalid"}
 	}
 	infos := make([]os.FileInfo, 0, len(paths))
@@ -4309,6 +4311,18 @@ func gateModeIdentityForEnvironment() gateModeIdentity {
 		}
 		infos = append(infos, info)
 	}
+	if provider == ProviderOmp {
+		digest, err := digestRegularFile(paths[0], infos[0])
+		if err != nil {
+			return gateModeIdentity{canonicalPaths: paths, failure: "canonical-read-race"}
+		}
+		// The receipt is report-only: a missing or mismatched receipt is an
+		// advisory on stderr and never denies omp gate-mode control.
+		if receiptErr := gateModeReceiptError(paths[0], digest); receiptErr != nil {
+			hookAdvisory("command-gate receipt", receiptErr)
+		}
+		return gateModeIdentity{canonicalPaths: paths}
+	}
 	if !os.SameFile(infos[0], infos[1]) {
 		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-hardlink-split"}
 	}
@@ -4321,6 +4335,32 @@ func gateModeIdentityForEnvironment() gateModeIdentity {
 		return gateModeIdentity{canonicalPaths: paths, failure: "canonical-digest-mismatch"}
 	}
 	return gateModeIdentity{canonicalPaths: paths}
+}
+
+// gateModeReceiptError checks the "<hex>  <name>" receipt that
+// build-native-binaries.sh writes beside the gate binary. The receipt must be
+// a small regular file owned by the current user whose first line records the
+// binary digest and name.
+//
+// Example: bin/eci-command-gate-mode.sha256 must read "<sha256>  eci-command-gate-mode".
+func gateModeReceiptError(binaryPath string, digest [sha256.Size]byte) error {
+	receiptPath := binaryPath + ".sha256"
+	info, err := os.Lstat(receiptPath)
+	if os.IsNotExist(err) {
+		return errors.New("canonical-receipt-missing")
+	}
+	if err != nil || !info.Mode().IsRegular() || !fileOwnedByCurrentUser(info) || info.Size() > 1024 {
+		return errors.New("canonical-receipt-invalid")
+	}
+	contents, err := os.ReadFile(receiptPath)
+	if err != nil {
+		return errors.New("canonical-receipt-invalid")
+	}
+	line, _, _ := strings.Cut(string(contents), "\n")
+	if line != fmt.Sprintf("%x  %s", digest, filepath.Base(binaryPath)) {
+		return errors.New("canonical-receipt-mismatch")
+	}
+	return nil
 }
 
 func firstNonEmpty(value, fallback string) string {
