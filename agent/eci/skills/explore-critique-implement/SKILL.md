@@ -57,14 +57,14 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 ## Spawn skill routing
 
-The trigger table in `~/.omp/agent/eci-binding-contract.md` (lines 213-226) is the single authority for skill routing. Before every spawn, including read-only explorer briefs and follow-up briefs to a reused agent, match the task against that table and read each matched skill before spawning. Code tasks match the code, debugging, and test rows; Go and Python skills apply only through their conditional rows.
+The trigger table in `~/.omp/agent/eci-binding-contract.md` (lines 213-226) is the single authority for skill routing. Before every spawn or resume, including read-only explorer briefs and follow-up briefs to a reused agent, match the task against that table and read each matched skill.
 
 Every brief includes:
 
 - One Routing line per trigger row, every time: `match: <skill>` (naming the triggering files or task kind) or `no match: <reason>` (citing what it was judged against).
 - `Skills:` lists exactly the `match:` entries from the Routing lines, or `none, <reason>` when there are none. Derive it from the Routing lines; do not write it independently.
 
-Fill the Routing lines before spawning. Treat independent review of them as advisory.
+The Supervisor fills the Routing lines before any spawn or resume. Treat independent review of them as advisory.
 
 ## Model selection
 
