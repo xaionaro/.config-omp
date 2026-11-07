@@ -1,5 +1,6 @@
 modelRoles:
   default: anthropic/claude-haiku-5-5
+  eci-max: anthropic/claude-opus-5-5
 symbolPreset: nerd
 composer:
   shape: band
