@@ -7,14 +7,14 @@ Binding rules for omp sessions on this workstation. Ported from the prior bindin
 | Source term | omp target |
 |---|---|
 | `spawn_agent` | `task` |
-| `update_plan` | `todo` |
+| `update_plan` | `todo` (UNVERIFIED in this environment; not in the observed tool list) |
 | `apply_patch` | `edit` |
-| Skills directory | `~/.omp/agent/skills/<name>/SKILL.md` |
+| Skills directory | `~/.omp/agent/skills/<name>/SKILL.md`; currently a symlink to a legacy skills tree outside `~/.omp` (Pending: replace with a native skills directory) |
 | ECI skill files (`explore-critique-implement/…`) | `~/.omp/agent/eci/skills/explore-critique-implement/…` |
 | Hook files (`hooks/…`) | `~/.omp/agent/eci/hooks/…` |
 | Runtime root | `~/.omp/agent/eci/` |
-| Worker Git wrapper `eci-worker-git` | `eci-worker-git`; source `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/`; installed path not yet native |
-| Worker Git invocation log | `$HOME/.cache/eci/eci-worker-git.jsonl` |
+| Worker Git wrapper | `$HOME/.omp/agent/eci/bin/eci-worker-git` (NOT YET BUILT NATIVELY; not built by `hooks/build-native-binaries.sh`; see Pending native targets); source `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/` |
+| Worker Git invocation log | `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) |
 | Gate catalog | `~/.omp/agent/eci/hooks/gate-escape-hatches.md` |
 | Stop checklist | `~/.omp/agent/eci/hooks/stop-checklist.md` |
 | Root selection of `ECI` | ECI selection |
@@ -23,7 +23,7 @@ Binding rules for omp sessions on this workstation. Ported from the prior bindin
 
 Assume bots are not malicious. Guard against accidental mistakes. Add adversarial-evasion controls only when the user explicitly requires them.
 
-This rule resolves conflicts with every lower rule.
+Within this workspace guidance, this rule resolves conflicts with every lower rule.
 
 Use records, hashes, receipts, command spelling, and parser shape to diagnose or review work, never as prerequisites for ordinary work. Check the resolved effect and concrete target instead.
 
@@ -65,7 +65,7 @@ Apply applicable standing instructions without requiring the user to restate the
 ## Decisions
 
 - **Substantive** work changes durable behavior/risk or has multiple plausible actions; it triggers only planning/skill lookup, never workflow selection.
-- For every substantive request and every discovered issue, call `todo` immediately; keep `pending`, `in-progress`, and `completed` visible until work completes or the user changes scope.
+- For every substantive request and every discovered issue, call `todo` (UNVERIFIED in this environment; not in the observed tool list) immediately; keep `pending`, `in-progress`, and `completed` visible until work completes or the user changes scope.
 - Select exactly one root workflow: `direct`, `ECI`, or `ATE`; only ECI/ATE are lifecycle-active roots, never two. While one is active, apply its lifecycle instead of rerouting. Each admitted ECI outcome starts main-path work and its Fast path (`~/.omp/agent/eci/skills/explore-critique-implement/references/fast-path.md`) concurrently under its home Job.
 
 | Active event | Rule |
@@ -146,11 +146,11 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 
 ## Git
 
-- One-use Git exception: only after explicit user authorization for the exact command and environment, run `eci-worker-git --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>`. A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
+- One-use Git exception: only after explicit user authorization for the exact command and environment, run `$HOME/.omp/agent/eci/bin/eci-worker-git --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (binary NOT YET BUILT NATIVELY; see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
 
-- Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
+- Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
 
-- During active ECI, Workers use `eci-worker-git --repo <repository> <named operation>` for verbs whose default operation updates index entries, plus `commit`. Paths are literal repository-relative names; source/destination modes are explicit. Native `git show`, `diff`, `log`, `bisect`, and default non-index-updating verbs such as `restore` and `apply` are allowed with every option, including optional index updates. Route `worktree add`; administrative worktree subcommands remain native. Unknown operation identity remains advisory. Exact owned disposable `git init` remains available for fixture setup. Preserve Producer scope agreement, pending intent, fresh same-index lookup and complete staged-result inspection.
+- During active ECI, Workers use `$HOME/.omp/agent/eci/bin/eci-worker-git --repo <repository> <named operation>` for verbs whose default operation updates index entries, plus `commit`. Paths are literal repository-relative names; source/destination modes are explicit. Native `git show`, `diff`, `log`, `bisect`, and default non-index-updating verbs such as `restore` and `apply` are allowed with every option, including optional index updates. Route `worktree add`; administrative worktree subcommands remain native. Unknown operation identity remains advisory. Exact owned disposable `git init` remains available for fixture setup. Preserve Producer scope agreement, pending intent, fresh same-index lookup and complete staged-result inspection.
 - Never expose secrets or credentials in code, commits, logs, prompts, or final output.
 - Verify commit hygiene during ordinary handoff. Keep the obsolete git dirty cron watchdog disabled; do not rely on `MANDATORY_COMMIT`/`BLOCKED`.
 - Before each commit, run available fitting static checks.
@@ -193,7 +193,7 @@ Treat these as binding workspace requirements. Keep the gate catalog (`~/.omp/ag
 |---|---|
 | Mission | Prevent accidental bot deviation. Do not model bots as adversaries or turn the hooks into a security/default-deny system. Resolve the actual effect and target; do not reject syntax, punctuation, wrappers, aliases, metadata, or uncertainty alone. |
 | Command handling | Evaluate the complete command, including compound effects. Do not force command splitting. Preserve valid PreToolUse JSON. |
-| Authority | Use the native runtime `~/.omp/agent/eci/` as the single source of truth. Keep provider projections synchronized, but never make synchronization, hashes, receipts, plans, or generated permission artifacts prerequisites for ordinary work. |
+| Authority | Use the runtime root `~/.omp/agent/eci/` as the single source of truth once the skills symlink is replaced (Pending native targets). Keep provider projections synchronized, but never make synchronization, hashes, receipts, plans, or generated permission artifacts prerequisites for ordinary work. |
 | Continuation | Native goals provide ECI continuation. Keep ordinary session coordination records; do not create an ECI boolean marker or shell goal adapter. |
 | Gate design | Enable a gate only when it catches a concrete accidental broad, destructive, wrong-target, wrong-owner, or cross-scope effect and has a documented bounded legitimate-work hatch. Disable any gate lacking such a hatch. Preserve the legitimate owner/session; never reroute merely because work touches a dependency repository. |
 | Dependency repositories | Declare an authorized dependency with `eci-active repository-allow-on <repository> <reason>`; remove it with `repository-allow-off <repository>`. This grants no broader scope. |
@@ -220,9 +220,9 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Questions or investigations about coding instructions | `coding-common` and relevant language skills; inspect available language-specific skills when no language is specified |
 | Tests / code implementation / logic-heavy implementation | `testing-discipline` / `test-driven-development` / `proof-driven-development` |
 | Android device work: `adb`, `fastboot`, flashing, kernel updates | `android-device` |
-| ECI selection | `explore-critique-implement` |
+| ECI selection (`~/.omp/agent/eci/skills/explore-critique-implement/SKILL.md`) | `explore-critique-implement` |
 | User explicitly asks to use `ATE` or `agent-teams-execution` | `agent-teams-execution` |
-| Skills/prompts/global instructions/this contract/`AGENTS.md`/`SKILL.md` | `harness-tuning` |
+| Skills/prompts/global instructions/this contract (`~/.omp/agent/eci-binding-contract.md`)/`AGENTS.md`/`SKILL.md` | `harness-tuning` |
 | UI / cross-project porting | `ui-design` / `code-porting` |
 | Handover or resume notes / status, sitrep, progress, checkpoint | `writing-handovers` / `writing-status-reports` |
 | Project, context, `ECI`, or `ATE` ledgers | `context-ledger` |
@@ -245,15 +245,15 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Changed-work scan; large scratch | Any changed-work scan, including Gitleaks, is optional and nonblocking advisory only; never a Stop prerequisite. When default temp is tmpfs, use `$TMPDIR`/`~/tmp/` for large files/objects |
 
 - Use the completion checklist (`~/.omp/agent/eci/hooks/stop-checklist.md`) as manual guidance; completion is not an executable Stop gate.
+- Never claim a Stop hook hides visible terminal output; that guarantee needs client support.
 
 - Treat subagent output as an unreviewed PR: verify success claims by running commands yourself, verify load-bearing facts from primary sources, read every changed line, and check original requirements.
 - Reject incomplete work: finish or return it. Never pass unverified subagent claims to users.
 
 ## Pending native targets
 
-These source references have no verified native file yet. Each path above is the target; do not invent content for them until the owner creates it:
+These targets are not yet native. Each path above is the target:
 
-- `~/.omp/agent/skills/references/review-investigation.md` (adoption checks)
-- `~/.omp/agent/skills/requesting-code-review/SKILL.md`
-- `~/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md`
-- `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/` installed as `eci-worker-git` (wrapper binary path)
+- `~/.omp/agent/skills` is a symlink to a legacy skills tree outside `~/.omp`; replace it with a native skills directory.
+- Skill references `references/review-investigation.md`, `references/workflow-runtime/coding-style-admission.md`, and `requesting-code-review/SKILL.md` exist on disk under `~/.omp/agent/skills/`, reached through that symlink.
+- `~/.omp/agent/eci/bin/eci-worker-git` is not built natively: `hooks/build-native-binaries.sh` builds only `eci-command-plan`, `eci-safe-import`, and `eci-hook-helper`. Source: `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/`.
