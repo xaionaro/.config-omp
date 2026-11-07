@@ -36,6 +36,10 @@ Guard flags and receipt semantics: owned-command -help and the source README.md.
 EOF
   exit 0
 fi
+[ "$(uname -s)" = Linux ] || {
+  printf 'owned-command: Linux-only (cgroup v2 and pidfd custody); %s is not supported\n' "$(uname -s)" >&2
+  exit 1
+}
 source_dir=$(realpath -e -- "$source_dir")
 [[ -f $source_dir/go.mod && -f $source_dir/main.go ]] || {
   printf 'owned-command: source module missing at %s\n' "$source_dir" >&2
@@ -53,9 +57,12 @@ go_launcher=$(type -P go) || {
 }
 go_launcher=$(realpath -e -- "$go_launcher")
 # Bootstrap retains dependency transport, caches and requested toolchain selection.
-bootstrap=$(cd -- "$source_dir"; env "${go_config[@]}" GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
+bootstrap=$(cd -- "$source_dir"; env ${go_config[@]+"${go_config[@]}"} GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
   "$go_launcher" env GOHOSTOS GOHOSTARCH GOROOT GOVERSION GOTOOLCHAIN)
-mapfile -t compiler_selection <<< "$bootstrap"
+compiler_selection=()
+while IFS= read -r selected_value; do
+  compiler_selection+=("$selected_value")
+done <<< "$bootstrap"
 [[ ${#compiler_selection[@]} == 5 ]] || {
   printf 'owned-command: incomplete Go compiler selection\n' >&2
   exit 1
@@ -77,7 +84,7 @@ for name in "${tuning_names[@]}"; do
   defaults_env+=(-u "$name")
 done
 # A selected toolchain may differ from the caller's bootstrap GOROOT.
-native_env=(env "${go_config[@]}" GOROOT="$compiler_root" GOTOOLCHAIN=local GOOS="$host_os" GOARCH="$host_arch" \
+native_env=(env ${go_config[@]+"${go_config[@]}"} GOROOT="$compiler_root" GOTOOLCHAIN=local GOOS="$host_os" GOARCH="$host_arch" \
   GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0)
 case $host_arch in
   386) tuning=GO386 ;;
