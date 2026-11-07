@@ -20,35 +20,6 @@ fi
 cp -- "$SOURCE_ROOT/hooks.json" "$RUNTIME_ROOT/hooks.json"
 mkdir -p -- "$RUNTIME_ROOT/bin"
 cp -- "$SOURCE_ROOT/bin/eci-runtime-sync" "$RUNTIME_ROOT/bin/eci-runtime-sync"
-# Build the disposable runtime from its copied sources. Clean archives contain
-# neither ignored executables nor optional planner provenance.
-source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
-PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
-  eci-command-gate-mode eci-command-plan eci-safe-import eci-worker-git
-source_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
-if cmp -s -- <(head -n 9 -- "$RUNTIME_ROOT/hooks/validate-bash.sh") <(cat <<'BRIDGE'
-#!/usr/bin/env bash
-# PreToolUse hook: validate Bash commands before execution.
-
-# Temporarily bypass command validation: Git preparation checks reject scoped
-# Producer operations (mv, rm, restore, checkout), and some denials route
-# them to a Supervisor that cannot perform their contribution. Remove this
-# bypass once effect-aware routing and actionable guidance are fixed and verified.
-exit 0
-
-BRIDGE
-); then
-  sed '4,9d' "$RUNTIME_ROOT/hooks/validate-bash.sh" >"$RUNTIME_ROOT/hooks/validate-bash.sh.tmp"
-  mv -- "$RUNTIME_ROOT/hooks/validate-bash.sh.tmp" "$RUNTIME_ROOT/hooks/validate-bash.sh"
-fi
-exercised_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
-printf 'registered_hook source_sha256=%s exercised_sha256=%s\n' "$source_hook_sha" "$exercised_hook_sha"
-BASH_LAUNCHER="$(jq -er '.hooks.PreToolUse[] | select(.matcher == "^Bash$") | .hooks[] | select(.type == "command") | .command' "$RUNTIME_ROOT/hooks.json")"
-[ "$BASH_LAUNCHER" = 'bash "$HOME/.omp/agent/eci/hooks/validate-bash.sh"' ] || {
-  printf 'unexpected copied Bash launcher: %s\n' "$BASH_LAUNCHER" >&2
-  exit 1
-}
-
 # Refresh only this private fixture's planner receipt. This keeps the test on
 # the real hook path while avoiding a source build for every Git probe.
 PLANNER_DIR="$RUNTIME_ROOT/hooks/lib/eci-command-plan-go"
@@ -78,6 +49,46 @@ awk \
 ' "$PLANNER_DIR/.eci-command-plan.provenance" >"$PLANNER_DIR/.eci-command-plan.provenance.tmp"
 mv -- "$PLANNER_DIR/.eci-command-plan.provenance.tmp" "$PLANNER_DIR/.eci-command-plan.provenance"
 chmod 600 -- "$PLANNER_DIR/.eci-command-plan.provenance"
+
+# Publish and receipt the planner pair that the build call verifies in this bin/:
+# eci-command-plan is the binary built above; eci-safe-import is built from its module.
+cp -- "$PLANNER_DIR/eci-command-plan" "$RUNTIME_ROOT/bin/eci-command-plan"
+(
+  cd -- "$RUNTIME_ROOT/hooks/lib/eci-safe-import-go"
+  /usr/lib/go-1.26/bin/go build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-safe-import" .
+)
+for planner_tool in eci-command-plan eci-safe-import; do
+  printf '%s  %s\n' "$(sha256sum -- "$RUNTIME_ROOT/bin/$planner_tool" | awk '{print $1}')" "$planner_tool" >"$RUNTIME_ROOT/bin/$planner_tool.sha256"
+done
+
+# Build the disposable runtime from its copied sources. Clean archives contain
+# neither ignored executables nor optional planner provenance.
+source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
+PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
+  eci-command-gate-mode eci-command-plan eci-safe-import eci-worker-git
+source_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
+if cmp -s -- <(head -n 9 -- "$RUNTIME_ROOT/hooks/validate-bash.sh") <(cat <<'BRIDGE'
+#!/usr/bin/env bash
+# PreToolUse hook: validate Bash commands before execution.
+
+# Temporarily bypass command validation: Git preparation checks reject scoped
+# Producer operations (mv, rm, restore, checkout), and some denials route
+# them to a Supervisor that cannot perform their contribution. Remove this
+# bypass once effect-aware routing and actionable guidance are fixed and verified.
+exit 0
+
+BRIDGE
+); then
+  sed '4,9d' "$RUNTIME_ROOT/hooks/validate-bash.sh" >"$RUNTIME_ROOT/hooks/validate-bash.sh.tmp"
+  mv -- "$RUNTIME_ROOT/hooks/validate-bash.sh.tmp" "$RUNTIME_ROOT/hooks/validate-bash.sh"
+fi
+exercised_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
+printf 'registered_hook source_sha256=%s exercised_sha256=%s\n' "$source_hook_sha" "$exercised_hook_sha"
+BASH_LAUNCHER="$(jq -er '.hooks.PreToolUse[] | select(.matcher == "^Bash$") | .hooks[] | select(.type == "command") | .command' "$RUNTIME_ROOT/hooks.json")"
+[ "$BASH_LAUNCHER" = 'bash "$HOME/.omp/agent/eci/hooks/validate-bash.sh"' ] || {
+  printf 'unexpected copied Bash launcher: %s\n' "$BASH_LAUNCHER" >&2
+  exit 1
+}
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 
