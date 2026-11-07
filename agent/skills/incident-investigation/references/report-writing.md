@@ -1,0 +1,15 @@
+# Write the incident report
+
+Use the existing project template and authoritative incident/action record. Scale this content to the incident; omit irrelevant ceremony, mark unknowns and link raw detail. Write for a reader who did not join the investigation. Lead with consequences and current state, use concrete language, and keep the summary faithful to uncertainty in the body.
+
+| Content | Write and substantiate |
+| --- | --- |
+| Summary | What happened, affected users/services, current recovery, strongest supported explanation and confidence, and next consequential work. State the assessment's as-of time. Recovery does not mean followups are complete. |
+| Scope and impact | Affected journey, service/version, measured or estimated impact and duration, source, assumptions/ranges and gaps. Distinguish impact onset, detection and restoration. Do not invent counts or severity. |
+| Evidence and timeline | Link raw records/artifacts; distinguish observation, recollection and inference. Preserve original timestamps/timezones, useful normalization and uncertainty. Include material warnings, decisions, interventions, failed attempts, recovery and verification; sequence alone does not establish cause. |
+| Explanation and learning | Explain trigger, mechanism, contributing conditions and successful/failed defenses. Compare expected with actual behavior and cite the maintained contract or independent measurement. Preserve tested alternatives, contrary evidence, unresolved hypotheses and discriminating next evidence. Explain choices using information available then, without blame or unsupported culture labels. |
+| Response and remediation | Distinguish containment, attempted repair and verified durable change. Give intervention rationale, scope, observed effect, regression/abort, restoration and restoration proof. Retain failed/partial attempts that affect understanding or recovery. |
+| Findings and actions | Link the authoritative register: each material finding's disposition, promised effect, accountable/accepted owner, execution/effect evidence, dependencies and next trigger. Keep proposed/unaccepted work, accepted alternatives and verified repairs distinct; avoid a second mutable ledger. |
+| Validation and closure | Name exercised behavior, environment/revision, expected-result source and actual independent review. Summarize failing-path and relevant healthy/alternative controls. Report recovery, investigation disposition and followup completion separately, including missing proof, dissent, residual exposure and concrete resume conditions. |
+
+Update the report when material evidence changes its conclusion; refresh affected review and preserve consequential prior reasoning as history. Reuse the qualified independent critic to follow material source links, compare summary with evidence/actions and challenge causal and completion claims. Heading presence, agent agreement, green tests or ticket state alone are insufficient. Keep sensitive/personal detail out unless necessary. Sending or publishing uses existing authority.
