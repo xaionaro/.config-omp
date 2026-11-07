@@ -69,8 +69,8 @@ export default function askGoalGate(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_call", (event, ctx) => {
+    if (event.toolName !== "ask") return undefined;
     try {
-      if (event.toolName !== "ask") return undefined;
       const id = sessionIdOf(ctx);
       if (unreadableSessions.has(id)) return { block: true, reason: GOAL_UNREADABLE_REASON };
       // Accepted residual: the overlay type declares only inactive | active | paused,

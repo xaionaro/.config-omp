@@ -165,6 +165,25 @@ describe("ask goal gate", () => {
     assert.equal(reads, 0);
   });
 
+  test("a non-ask tool_call whose toolName read throws never returns a block", () => {
+    const { fire } = setup();
+    const throwingEvent = {
+      type: "tool_call",
+      toolCallId: "call-3",
+      get toolName(): never {
+        throw new Error("boom");
+      },
+      input: {},
+    };
+    let result: unknown;
+    try {
+      result = fire("tool_call", throwingEvent, main());
+    } catch {
+      // The throw escapes this handler; the runner decides the call's fate, not this gate.
+    }
+    assert.equal(result, undefined);
+  });
+
   test("goal_updated from a sub context does not change the cache", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), sub());
