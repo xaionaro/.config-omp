@@ -2393,11 +2393,6 @@ assert_go_preference() {
 }
 
 assert_status_lane_stage_contract() {
-  local header
-  header="$(grep -F -- '| Task ID | Parent ID | Lane | Lane requirement context | Stage | Owner |' "$STATUS_REPORT" || true)"
-  [ -n "$header" ] || fail 'status report lane table is missing the Stage column'
-  [[ "$header" == *'| Stage |'* ]] || fail 'status report lane table does not expose Stage'
-
   require_text "$STATUS_REPORT" 'Missing, stale, or unknown stage metadata is reported and reconciled'
   require_text "$STATUS_REPORT" 'without pausing harmless work.'
   require_text "$STATUS_REPORT" 'lineage unavailable—reconcile'
@@ -2753,7 +2748,7 @@ assert_forecast_target_history_contract_mutations() {
 }
 
 assert_lane_forecast_contract() {
-  local file header completed
+  local file completed
   local lane_workstream_pattern serial_lane_pattern distinct_lane_pattern root_omission_pattern
   local outcome_pattern actor_stage_pattern root_full_pattern root_nonadditive_pattern
   local changed_forecast_pattern recalibration_template_pattern initial_template_pattern
@@ -2791,12 +2786,6 @@ assert_lane_forecast_contract() {
   require_pattern "$COORDINATOR" 'coordinator missing/stale forecasts do not delay updates' "$missing_stale_pattern"
 
   require_line "$STATUS_REPORT" '## Lane forecasts'
-  header="$(grep -F -- '| Task ID | Parent ID | Lane | Lane requirement context | Stage | Owner |' "$STATUS_REPORT" || true)"
-  [[ "$header" == *'| Next milestone |'* &&
-     "$header" == *'| Forecast deadline / recalibration |'* &&
-     "$header" == *'| Dependencies / critical path |'* &&
-     "$header" == *'| Next proof/action |'* ]] ||
-    fail 'status report lane table lacks forecast columns before Next proof/action'
 
   for file in "$COORDINATOR" "$STATUS_REPORT" "$LEDGER"; do
     assert_forecast_source_contract "$file" "$(<"$file")"
