@@ -265,8 +265,37 @@ func TestHookContextSymlinkedAncestorIsWorker(t *testing.T) {
 	transcript := filepath.Join(link, "C.jsonl")
 	status, err := hookTranscriptStatus(transcript)
 	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "crosses a symlink")
 	require.Empty(t, status)
 	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
+// TestHookContextHomeAliasAboveRootIsCoordinator keeps a main transcript reached through a HOME alias on the coordinator role and a symlink below the root unknown.
+//
+// Example: ALIAS/.omp/agent/sessions/project/C.jsonl with ALIAS linked to HOME is main, while project/P/C.jsonl with P linked to project is unknown.
+func TestHookContextHomeAliasAboveRootIsCoordinator(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	home := os.Getenv("HOME")
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	alias := filepath.Join(t.TempDir(), "alias")
+	require.NoError(t, os.Symlink(home, alias))
+	transcript := filepath.Join(alias, ".omp", "agent", "sessions", "project", "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.NoError(t, err)
+	require.Equal(t, "main", status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleCoordinator, got.Role)
+	require.NoError(t, os.Symlink(project, filepath.Join(project, "P")))
+	linked := filepath.Join(alias, ".omp", "agent", "sessions", "project", "P", "C.jsonl")
+	status, err = hookTranscriptStatus(linked)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "crosses a symlink")
+	require.Empty(t, status)
+	got, err = hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: linked})
 	require.NoError(t, err)
 	require.Equal(t, RoleWorker, got.Role)
 }

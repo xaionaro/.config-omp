@@ -478,16 +478,35 @@ func hookTranscriptRoots() (string, string, error) {
 	return lexical, resolved, err
 }
 
-// hookTranscriptRelative returns the base, either the configured or the resolved
-// sessions root, under which path lies, and the path relative to that base.
+// hookTranscriptRelative returns the base under which path lies and the path relative
+// to that base. The base is the configured or the resolved sessions root. When path
+// reaches the root through a symlink above it, such as a HOME alias, the base is the
+// topmost ancestor of path that resolves to the resolved root. Symlinks below the base
+// are rejected by hookNoSymlinkBelow.
 //
-// Example: a transcript at <root>/project/a.jsonl yields project/a.jsonl.
+// Example: <root>/project/a.jsonl and ALIAS/.omp/agent/sessions/project/a.jsonl, with
+// ALIAS linked to HOME, both yield project/a.jsonl.
 func hookTranscriptRelative(path, lexical, resolved string) (string, string, error) {
 	for _, base := range []string{lexical, resolved} {
 		relative, err := filepath.Rel(base, path)
 		if err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return base, relative, nil
 		}
+	}
+	var ancestors []string
+	for dir := filepath.Dir(path); dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+		ancestors = append(ancestors, dir)
+	}
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		physical, err := filepath.EvalSymlinks(ancestors[i])
+		if err != nil || physical != resolved {
+			continue
+		}
+		relative, err := filepath.Rel(ancestors[i], path)
+		if err != nil {
+			continue
+		}
+		return ancestors[i], relative, nil
 	}
 	return "", "", errors.New("transcript is outside the sessions root")
 }
