@@ -2,11 +2,6 @@
 # Build the canonical host guard on demand; keep generated executables out of Git.
 set -euo pipefail
 
-wrapper_path=${BASH_SOURCE[0]}
-wrapper_dir=${wrapper_path%/*}
-[[ $wrapper_dir != "$wrapper_path" ]] || wrapper_dir=.
-wrapper_dir=$(cd -- "$wrapper_dir" && pwd -P)
-source "$wrapper_dir/../hooks/lib/eci-file-lock.sh"
 source_dir=${OWNED_COMMAND_SOURCE:-$HOME/.omp/agent/eci/tools/owned-command}
 cache_dir=${OWNED_COMMAND_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/eci/owned-command}
 resolve_executable=false
@@ -26,8 +21,8 @@ Usage: owned-command [guard flags] -- command args...
 Builds ECI tools/owned-command automatically and forwards arguments/status.
 OWNED_COMMAND_SOURCE: Go module directory override (default ~/.omp/agent/eci/tools/owned-command).
 OWNED_COMMAND_CACHE: generated executable cache (default ${XDG_CACHE_HOME:-$HOME/.cache}/eci/owned-command).
-Source changes rebuild before the next invocation. Requires Go, the native
-file-lock helper in ~/.omp/agent/eci/hooks/lib, and sha256sum.
+Linux only. Source changes rebuild before the next invocation. Requires Go, the file-lock and
+build helpers in ~/.omp/agent/eci/hooks/lib, and sha256sum or shasum.
 Cache versions belong to this wrapper; remove old versions only after their callers exit.
 --resolve-executable prepares without executing and prints one absolute cache path.
 Resolve before timed phases; execute that path directly with caller arguments/environment.
@@ -40,120 +35,26 @@ fi
   printf 'owned-command: Linux-only (cgroup v2 and pidfd custody); %s is not supported\n' "$(uname -s)" >&2
   exit 1
 }
-source_dir=$(realpath -e -- "$source_dir")
-[[ -f $source_dir/go.mod && -f $source_dir/main.go ]] || {
-  printf 'owned-command: source module missing at %s\n' "$source_dir" >&2
-  exit 1
-}
-# Resolve caller-relative configuration before entering the canonical module.
-go_config=()
-if [[ -n ${GOENV:-} && $GOENV != off ]]; then
-  go_config+=("GOENV=$(realpath -m -- "$GOENV")")
-fi
-# Select a PATH executable or shim even when the caller exports a go function.
-go_launcher=$(type -P go) || {
-  printf 'owned-command: Go compiler not found in PATH\n' >&2
-  exit 1
-}
-go_launcher=$(realpath -e -- "$go_launcher")
-# Bootstrap retains dependency transport, caches and requested toolchain selection.
-bootstrap=$(cd -- "$source_dir"; env ${go_config[@]+"${go_config[@]}"} GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
-  "$go_launcher" env GOHOSTOS GOHOSTARCH GOROOT GOVERSION GOTOOLCHAIN)
-compiler_selection=()
-while IFS= read -r selected_value; do
-  compiler_selection+=("$selected_value")
-done <<< "$bootstrap"
-[[ ${#compiler_selection[@]} == 5 ]] || {
-  printf 'owned-command: incomplete Go compiler selection\n' >&2
-  exit 1
-}
-host_os=${compiler_selection[0]}
-host_arch=${compiler_selection[1]}
-compiler_root=${compiler_selection[2]}
-compiler_version=${compiler_selection[3]}
-requested_toolchain=${compiler_selection[4]}
-compiler=$compiler_root/bin/go
-[[ -n $host_os && -n $host_arch && -n $compiler_version && -x $compiler ]] || {
-  printf 'owned-command: selected native Go compiler unavailable\n' >&2
-  exit 1
-}
-# Ask the selected compiler for its baseline ISA, without caller target tuning.
-tuning_names=(GO386 GOAMD64 GOARM GOARM64 GOMIPS GOMIPS64 GOPPC64 GORISCV64 GOWASM)
-defaults_env=(env)
-for name in "${tuning_names[@]}"; do
-  defaults_env+=(-u "$name")
-done
-# A selected toolchain may differ from the caller's bootstrap GOROOT.
-native_env=(env ${go_config[@]+"${go_config[@]}"} GOROOT="$compiler_root" GOTOOLCHAIN=local GOOS="$host_os" GOARCH="$host_arch" \
-  GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0)
-case $host_arch in
-  386) tuning=GO386 ;;
-  amd64) tuning=GOAMD64 ;;
-  arm) tuning=GOARM ;;
-  arm64) tuning=GOARM64 ;;
-  mips|mipsle) tuning=GOMIPS ;;
-  mips64|mips64le) tuning=GOMIPS64 ;;
-  ppc64|ppc64le) tuning=GOPPC64 ;;
-  riscv64) tuning=GORISCV64 ;;
-  wasm) tuning=GOWASM ;;
-  *) tuning= ;;
+# The libraries come from the canonical ECI tree only; a caller-relative path is not trusted.
+case ${HOME:-} in
+  /*) ;;
+  *) printf 'owned-command: HOME must be an absolute path\n' >&2; exit 1 ;;
 esac
-if [[ -n $tuning ]]; then
-  native_default=$(cd -- "$source_dir"; "${defaults_env[@]}" GOROOT="$compiler_root" GOENV=off GOTOOLCHAIN=local \
-    GOOS="$host_os" GOARCH="$host_arch" GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
-    "$compiler" env "$tuning")
-  [[ -n $native_default ]] || {
-    printf 'owned-command: native Go architecture default missing for %s\n' "$tuning" >&2
-    exit 1
-  }
-  native_env+=("$tuning=$native_default")
+eci_home=$HOME/.omp/agent/eci
+if [ ! -f "$eci_home/hooks/lib/eci-file-lock.sh" ] || [ ! -f "$eci_home/hooks/lib/eci-go-tool-build.sh" ]; then
+  printf 'owned-command: ECI runtime not found at %s; check out ~/.omp and retry\n' "$eci_home" >&2
+  exit 1
 fi
-# Every steady query and compilation shares this exact compiler and native policy.
-native_go() {
-  "${native_env[@]}" "$compiler" "$@"
-}
+source "$eci_home/hooks/lib/eci-file-lock.sh"
+source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 mkdir -p -- "$cache_dir"
-cache_dir=$(realpath -e -- "$cache_dir")
+cache_dir=$(cd -P -- "$cache_dir" && pwd -P)
 # One builder per cache. Immutable filenames remain safe after unlocking and exec.
 exec 9>"$cache_dir/build.lock"
 eci_file_lock_acquire_fd 9 blocking
-fingerprint() (
-  cd -- "$source_dir" || return
-  printf '%s\n' 'owned-command cache format 2; native host/default ISA; GOFLAGS=space; GO_EXTLINK_ENABLED=0; -buildvcs=false'
-  printf '%s\n' "$source_dir"
-  printf '%s\n' "$go_launcher" "$compiler" "$compiler_root" "$compiler_version" "$requested_toolchain" "$tuning"
-  sha256sum -- "$go_launcher" "$compiler" || return
-  native_go version || return
-  native_go env GOOS GOARCH GO111MODULE GOWORK CGO_ENABLED GOFLAGS GO_EXTLINK_ENABLED \
-    GOPATH GOMODCACHE GOEXPERIMENT GOFIPS140 || return
-  if [[ -n $tuning ]]; then
-    native_go env "$tuning" || return
-  fi
-  find . -type f \( -name '*.go' -o -name go.mod -o -name go.sum \) -print0 |
-    sort -z | xargs -0 sha256sum
-)
-key=$(fingerprint | sha256sum)
-key=${key%% *}
-executable=$cache_dir/$key/owned-command
-if [[ ! -x $executable ]]; then
-  build_dir=$(mktemp -d "$cache_dir/.build.XXXXXXXX")
-  trap 'rm -rf -- "$build_dir"' EXIT
-  if "$resolve_executable"; then
-    (cd -- "$source_dir"; native_go build -buildvcs=false -o "$build_dir/owned-command" .) >&2
-  else
-    (cd -- "$source_dir"; native_go build -buildvcs=false -o "$build_dir/owned-command" .)
-  fi
-  # Source writers do not share this cache lock. Refuse a changed build snapshot.
-  after=$(fingerprint | sha256sum)
-  [[ ${after%% *} == "$key" ]] || {
-    printf 'owned-command: source changed during build; retry invocation\n' >&2
-    exit 1
-  }
-  mkdir -p -- "$cache_dir/$key"
-  mv -T -- "$build_dir/owned-command" "$executable"
-  rmdir -- "$build_dir"
-  trap - EXIT
-fi
+# The shared build step prints the cold-build notice and the rerun line on failure, both on stderr.
+eci_go_tool_build owned-command "$source_dir" "$cache_dir/" /owned-command 'about 1-2 minutes' || exit $?
+executable=$eci_go_tool_executable
 eci_file_lock_release_fd 9
 if "$resolve_executable"; then
   case $executable in
