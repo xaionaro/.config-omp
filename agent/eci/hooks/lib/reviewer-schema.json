@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "required": [
+    "assistant_tail_quote",
+    "passes_completed",
+    "verdict",
+    "violations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "assistant_tail_quote": {
+      "type": "string"
+    },
+    "passes_completed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "tail",
+          "tools",
+          "checklist",
+          "agreements"
+        ]
+      },
+      "minItems": 4,
+      "uniqueItems": true
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
