@@ -2387,7 +2387,7 @@ assert_concurrency_section_placement() {
     /^### Concurrent tasks$/ { capture = 1; next }
     capture && /^##? / { exit }
     capture { print }
-  ' "$ECI")"
+  ' "$ECI_BINDING_CONTRACT")"
   [[ "$section" == *'Run every ready, independent action concurrently, including independent tool calls'* ]] || fail 'missing concurrency section'
   [[ "$section" != *'Without an active ECI/ATE root'* && "$section" != *'Inferred condition'* ]] ||
     fail 'concurrency section contains root workflow selection'
