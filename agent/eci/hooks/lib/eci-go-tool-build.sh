@@ -231,7 +231,7 @@ eci_go_tool_build() {
     return 1
   fi
   # Built executables are 0755 whatever the caller's umask.
-  chmod 0755 -- "$build_dir/$name" || { rm -rf -- "$build_dir"; return 1; }
+  chmod -- 0755 "$build_dir/$name" || { rm -rf -- "$build_dir"; return 1; }
 
   if ! mkdir -p -- "${executable%/*}" || ! mv -f -- "$build_dir/$name" "$executable" || ! rmdir -- "$build_dir"; then
     rm -rf -- "$build_dir"

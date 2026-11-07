@@ -313,7 +313,7 @@ _eci_runtime_darwin_copy_inode() {
   [[ $mode =~ $mode_re ]] || { eci_runtime_denial "$name" "has an unreadable mode"; return 1; }
   (( 8#$mode & 022 )) && { eci_runtime_denial "$name" "is group- or other-writable"; return 1; }
   (( 8#$mode & 0111 )) || { eci_runtime_denial "$name" "is not executable"; return 1; }
-  chmod 0500 -- "$copy" || { eci_runtime_denial "$name" "cannot be made executable"; return 1; }
+  chmod -- 0500 "$copy" || { eci_runtime_denial "$name" "cannot be made executable"; return 1; }
 }
 
 # Checks the receipt "<64 lowercase hex>  <name>" that hooks/build-native-binaries.sh writes, then the

@@ -49,7 +49,7 @@ fi
 
 bin_dir="$HOME/.omp/agent/eci/bin"
 mkdir -p -- "$bin_dir"
-chmod 0755 -- "$bin_dir"
+chmod -- 0755 "$bin_dir"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
@@ -64,7 +64,7 @@ for name in "${names[@]}"; do
     GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
     || die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""
-  chmod 0755 -- "$stage/$name"
+  chmod -- 0755 "$stage/$name"
   eci_runtime_binary_is_native "$stage/$name" \
     || die "$name: built $host_os/$host_arch binary is not native for this host"
   digest="$("${sha256_command[@]}" -- "$stage/$name")"
