@@ -4,11 +4,6 @@
 # toolchain builds bin/.eci-active.<key> beside this wrapper, because eciBaseDir() is the
 # executable's grandparent directory and the binary must not move. Source and helper libraries
 # come from the canonical $HOME/.omp/agent/eci.
-# Temporary darwin guard: the commit that lands the bash 3.2 and Mach-O fixes removes it.
-if [ "$(uname -s)" = Darwin ]; then
-  printf '%s\n' 'eci-active: macOS support is pending the bash 3.2 and Mach-O fixes; pull a later update' >&2
-  exit 2
-fi
 set -euo pipefail
 case ${HOME:-} in
   /*) ;;
