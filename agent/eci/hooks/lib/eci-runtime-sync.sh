@@ -90,7 +90,7 @@ eci_runtime_build_missing() (
         printf 'ECI runtime build: could not build %s from %s\n' "$name" "$module" >&2
         return 1
       fi
-      mkdir -p -- "${binary%/*}" && chmod 755 -- "$temporary/$name" &&
+      mkdir -p -- "${binary%/*}" && chmod -- 755 "$temporary/$name" &&
         mv -f -- "$temporary/$name" "$binary" || return 1
       rmdir -- "$temporary" || return 1
       temporary=''
