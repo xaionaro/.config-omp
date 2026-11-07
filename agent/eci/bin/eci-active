@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# On-demand launcher for the canonical ECI Go tool agent/eci/tools/eci-active, following the
+# owned-command wrapper pattern of pre-migration source 575bb81. The first run of each source and
+# toolchain builds bin/.eci-active.<key> beside this wrapper, because eciBaseDir() is the
+# executable's grandparent directory and the binary must not move. Source and helper libraries
+# come from the canonical $HOME/.omp/agent/eci.
+# Temporary darwin guard: the commit that lands the bash 3.2 and Mach-O fixes removes it.
+if [ "$(uname -s)" = Darwin ]; then
+  printf '%s\n' 'eci-active: macOS support is pending the bash 3.2 and Mach-O fixes; pull a later update' >&2
+  exit 2
+fi
+set -euo pipefail
+case ${HOME:-} in
+  /*) ;;
+  *) printf 'eci-active: HOME must be an absolute path\n' >&2; exit 1 ;;
+esac
+eci_home=$HOME/.omp/agent/eci
+wrapper=${BASH_SOURCE[0]}
+while [ -L "$wrapper" ]; do
+  link=$(readlink -- "$wrapper")
+  case $link in
+    /*) wrapper=$link ;;
+    *) wrapper=${wrapper%/*}/$link ;;
+  esac
+done
+case $wrapper in
+  */*) bin_dir=${wrapper%/*} ;;
+  *) bin_dir=. ;;
+esac
+bin_dir=$(cd -P -- "$bin_dir" && pwd -P)
+source "$eci_home/hooks/lib/eci-file-lock.sh"
+source "$eci_home/hooks/lib/eci-go-tool-build.sh"
+exec 9>"$bin_dir/.eci-active-build.lock"
+eci_file_lock_acquire_fd 9 blocking
+eci_go_tool_build eci-active "$eci_home/tools/eci-active" "$bin_dir/.eci-active." '' 'about 30 seconds' || exit $?
+executable=$eci_go_tool_executable
+# Selection refreshes the mtime under the lock. Only keys unselected for 24 hours are pruned, so a
+# caller between unlock and exec keeps its file.
+touch -c -- "$executable"
+find "$bin_dir" -maxdepth 1 -type f -name '.eci-active.*' ! -name "${executable##*/}" -mmin +1440 -exec rm -f -- {} + || true
+eci_file_lock_release_fd 9
+exec "$executable" "$@"
