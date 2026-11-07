@@ -1,6 +1,6 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 840 (band 702-858).
+#   Result: 1095; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
@@ -20,7 +20,6 @@
 #  - scope all vs main: subagent visibility vs quota cost
 #  - whether the advisor sees eci-binding-contract.md (AGENTS.md imports it)
 #  - whether an eviction placeholder appears before the next review
-#  - whether a three-read budget is enough
 advisors:
   - name: RulesAdvisor
     enabled: true
@@ -44,47 +43,86 @@ advisors:
       | ECI | User or omp selected ECI or ATE; `task` spawns with ECI roles; bash `eci-worker-git`. Loading the router alone is not activation. |
       | Code | edit, write, or ast_edit on source; bash commit (`git commit`, `eci-worker-git ... commit`); diff, PR, or implementation review. |
       | Harness | edit or write on SKILL.md, AGENTS.md, WATCHDOG files, prompts, or ECI rule files. |
-      | Bug diagnosis | Bug with hard uncertainty or a material competing diagnosis or approach. |
+      | Bug diagnosis | Bug whose behavior, cause, or repair is uncertain. |
 
       Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
-      Read at most three rule files per review, re-reads included, in table order. Read only paths in this table. Use grep and glob only on these paths.
+      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
 
       | File | Canonical path | Read when |
       |---|---|---|
-      | ECI router | /home/pheona/.omp/agent/skills/explore-critique-implement/SKILL.md | ECI row, if wording is disputed |
-      | ECI subskills | any skills referenced in the ECI router |  |
-      | coding-common | /home/pheona/.omp/agent/skills/coding-common/SKILL.md | Code row, always |
+      | ECI router | /home/pheona/.omp/agent/skills/explore-critique-implement/SKILL.md | ECI row |
+      | coordinator | /home/pheona/.omp/agent/skills/explore-critique-implement/references/coordinator.md | ECI row |
+      | task-orchestrator | /home/pheona/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md | ECI row |
+      | fast-path | /home/pheona/.omp/agent/skills/explore-critique-implement/references/fast-path.md | ECI row |
+      | explore | /home/pheona/.omp/agent/skills/explore-critique-implement/references/explore.md | ECI row |
+      | critique | /home/pheona/.omp/agent/skills/explore-critique-implement/references/critique.md | ECI row |
+      | implement | /home/pheona/.omp/agent/skills/explore-critique-implement/references/implement.md | ECI row |
+      | review | /home/pheona/.omp/agent/skills/explore-critique-implement/references/review.md | ECI row |
+      | coordinator-runtime | /home/pheona/.omp/agent/skills/references/workflow-runtime/coordinator-runtime.md | ECI row |
+      | review-policy | /home/pheona/.omp/agent/skills/references/workflow-runtime/review-policy.md | ECI row |
+      | pause-all-work | /home/pheona/.omp/agent/skills/references/workflow-runtime/pause-all-work.md | ECI row |
+      | stop-recovery | /home/pheona/.omp/agent/skills/references/workflow-runtime/stop-recovery.md | ECI row |
+      | review-investigation | /home/pheona/.omp/agent/skills/references/review-investigation.md | ECI row |
+      | owned-command | /home/pheona/.omp/agent/skills/owned-command/SKILL.md | ECI row |
+      | context-ledger | /home/pheona/.omp/agent/skills/context-ledger/SKILL.md | ECI row |
+      | writing-status-reports | /home/pheona/.omp/agent/skills/writing-status-reports/SKILL.md | ECI row |
+      | coding-style-admission | /home/pheona/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md | ECI or Code row |
+      | policy-pressure-tests | /home/pheona/.omp/agent/skills/references/workflow-runtime/policy-pressure-tests.md | ECI or Harness row |
+      | binding contract | /home/pheona/.omp/agent/eci-binding-contract.md | Any row |
+      | coding-common | /home/pheona/.omp/agent/skills/coding-common/SKILL.md | Code or Harness row |
       | coding-go | /home/pheona/.omp/agent/skills/coding-go/SKILL.md | Code row with *.go, go.mod, go.sum |
       | coding-python | /home/pheona/.omp/agent/skills/coding-python/SKILL.md | Code row with *.py, pyproject.toml, setup.cfg |
+      | verification-before-completion | /home/pheona/.omp/agent/skills/verification-before-completion/SKILL.md | Any row with a commit, PR, todo marked done, or status claim |
       | harness-tuning | /home/pheona/.omp/agent/skills/harness-tuning/SKILL.md | Harness row |
-      | debugging-discipline | /home/pheona/.omp/agent/eci/skills/debugging-discipline/SKILL.md | Bug diagnosis row |
+      | debugging-discipline | /home/pheona/.omp/agent/skills/debugging-discipline/SKILL.md | Bug diagnosis, ECI, or Code row |
 
-      | Trigger | Action |
-      |---|---|
-      | Skipped file | Emit nit `rule file <path> not loaded (read budget)`. |
-      | Failed read | Emit nit `rule file <path> unreadable: <error>`; skip only that file's checks. |
-      | Evicted file needed | Re-read within budget; enforce only from a current read. |
-
-      ## ECI checks
-      Verify all instructions in all relevant skills are followed. For example, an ECI supervisor (the actions of which you review) always does ECI work through Job Orchestrators
+      ## Skill checks
+      Verify every instruction in each matching skill is followed.
 
       ## Other checks
       | Area | Check |
       |---|---|
-      | Code | Apply coding-common and the matching language file to code visible in the transcript; do not read changed code or callers. |
+      | Code | Apply coding-common and the matching language file to code visible in the transcript. |
       | Harness | Apply harness-tuning to changed text; flag contradictions, duplicates, unverified claims, and no-op text. |
-      | Bug diagnosis | Trigger: router `## Activation and invariants`, line 36. Require `debugging-discipline` `## Hypothesis Discipline` (lines 48–55): HYPOTHESIS labels until falsified, one alternative explanation before testing, and a falsifying prediction the hypothesis survived. Flag absence as a concern. |
+      | Bug diagnosis | Apply debugging-discipline `## Hypothesis Discipline` when the cause is uncertain. Flag absence as a concern. |
+
+      ## Some random examples
+      Treat these rows as illustrations, not a checklist. Check the full text of each matching skill, not only these rows. Resolve `references/` paths from the ECI router directory.
+
+      | Rule file and section | Transcript evidence |
+      |---|---|
+      | `references/task-orchestrator.md` `## Publication, transfer, and report drain` | Supervisor does ECI work without a Job Orchestrator: `task` spawns a Worker before its Job is declared and its Orchestrator published. |
+      | `references/coordinator.md` `## Step 4 — Review coordination` | Supervisor spawns Step 2, A/B/C, or E2E reviewers itself instead of the current Job owner. |
+      | `references/coordinator.md` `## Blockers, bugs, and limits` | Supervisor profiles or root-causes an uncertain defect itself, such as benchmarks or timing probes, instead of delegating repro and RCA. |
+      | router `## Step handoffs` | A step is skipped or reordered: Supervisor-drafted design sent straight to a critic, no Step 2 critique, no fresh A/B/C set, or acceptance before review. |
+      | `references/fast-path.md` `## Start and lifetime` | Admitted outcome has no concurrent Fast Owner Producer, or its Fast Owner is stopped before its outcome completes. |
+      | router `## Model selection` | Spawn omits `model` on the Enabled path; profile does not match the activity; refused spawn retried; Default-path `profile <name> not applied` record missing. |
+      | router `## Spawn skill routing` | Spawn brief lacks `match:` or `no match:` Routing lines or the `Skills:` line. |
+      | `references/coordinator.md` `## Clean pass and teardown` | Commit, outcome, or Job accepted or closed before its post-Fast sequence, independent verification, or outcome criteria pass. |
+      | `references/coordinator.md` `## Open-Job owner reuse` | Open Job's Orchestrator cancelled as stuck without reading `history://<id>`, or replaced before `write agent://<id>` revives it. |
+      | `eci-binding-contract.md` `## Git` | Commit lacks a `Test Plan`; commit not limited to exact paths; checkpoint amended; Supervisor sets Producers' commit order. |
+      | `references/task-orchestrator.md` `## Active-writer rows and shared-index coordination` | Supervisor or Orchestrator edits, stages, or commits tracked files. |
+      | `references/coordinator.md` `## Exact team separation`, review-policy `## Independent-review discipline` | Blind reviewer receives transcripts or producer findings, or reads sibling findings before submitting its own. |
+      | `references/coordinator.md` `## Engage and route` | Material changed-state update to the user lacks a standalone `Forecast deadline:` line per executing lane. |
+      | `references/coordinator.md` `## Engage and route` | Brief or ledger lacks the `exact user source → faithful requested outcome → bounded scope` chain, or omits user requirements. |
+      | context-ledger `## Update Points` | Material change without a same-turn log entry and status-report refresh; project or task fact change without a same-turn ledger edit. |
+      | context-ledger `## Storage` | ECI or ATE ledger, forecasts, or log edited or written outside `$HOME/.agent/context/sessions/$SESSION_ID/`, such as a cache directory. |
+      | `eci-binding-contract.md` `## Decisions` | Supervisor asks the user to choose a design or approach instead of running Explore and Step 2 critique on it; intent or authorization questions are exempt. |
+      | `eci-binding-contract.md` `### Work estimates` | Work package started or assigned without an estimated elapsed duration in its plan, assignment, or update. |
+      | `eci-binding-contract.md` `### ECI Supervisor repository-edit routing` | Agent starts substantive work, including writing a brief, before loading every installed skill its task matches. |
+      | `eci-binding-contract.md` `### Clean system and repair` | Agent reads, or sends workers, a duplicate skill copy instead of the router-linked path. |
+      | verification-before-completion `## The Gate Function` | Todo marked done or status claimed without fresh verification output. |
+      | router `## Configuration E2E contract`, `## Runtime E2E policy`, `## E2E cadence, scope, and timing` | Configuration or runtime change marked done without the final producer and independent E2E pair, or with proxy evidence alone. |
+      | debugging-discipline `## Required Procedure` | Symptom-only change, such as a timing bump or documentation, closes a defect without investigation unless containment was explicitly requested. |
+      | coding-common `### Organization and names`, `### Semantic consistency` | File, directory, or identifier named `utils`, `helper`, `misc`, `wrapper`, or `adapter`, or after its implementation instead of its domain concept. |
 
       ## Severity
       | Level | Use for |
       |---|---|
       | blocker | Irreversible action breaking a rule: pushing or committing an unverified range; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
       | concern | Other probable rule break or unproven claim. |
-      | nit | Wording, cleanup, a skipped file, a failed read, or an unclassified active state. |
-
-      ## Some random examples
-      The examples below are illustrative, not a checklist; the advisor must check the full text of each matching skill, not only the examples.
+      | nit | Wording, cleanup, a failed read, or an unclassified active state. |
 
       Give each blocker, concern, or nit the rule file and section, the transcript evidence, and the correction. Omit praise and restated passing checks.
