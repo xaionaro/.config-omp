@@ -101,7 +101,7 @@ fallback, alternate filename, alias, tolerant parser, sidecar, or conversion.
 This is a logging contract, not a syntax/content gate; direct append admission
 and advisory anchor reconciliation remain unchanged.
 
-Use exactly `ledger-append --json '<event-object>'`. It validates exactly one object
+Use exactly `"$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '<event-object>'`. It validates exactly one object
 before log mutation and sets `schema: "eci-high-level-log/v1"`, the actual UTC
 `timestamp`, and selected log `session_id`, overriding supplied envelope values.
 Preserve event-specific payload in `details`. Direct append callers supply this

@@ -1,6 +1,6 @@
 # Capture and prepare a changed assignment
 
-Applicability follows [Update Points](SKILL.md#update-points). Run `eci-active requirement-assignment --request <JSON-file>` from the intended working directory with explicit `ECI_SESSION_ID` (or `ECI_THREAD_ID` when unset). It uses that session’s existing `project-understanding.yaml`; it does not send messages or update the status report.
+Applicability follows [Update Points](SKILL.md#update-points). Run `"$HOME/.omp/agent/eci/bin/eci-active" requirement-assignment --request <JSON-file>` from the intended working directory with explicit `ECI_SESSION_ID` (or `ECI_THREAD_ID` when unset). It uses that session’s existing `project-understanding.yaml`; it does not send messages or update the status report.
 
 Classify the input under [Project requirements](../../eci-binding-contract.md#project-requirements); reuse saved requirements when only corrective or operational work changes.
 
