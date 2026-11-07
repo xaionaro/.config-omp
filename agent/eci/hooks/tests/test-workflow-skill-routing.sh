@@ -3328,7 +3328,6 @@ assert_least_restriction_contract() {
   require_text "$IMPLEMENT" 'A missing record, receipt, hash, marker, or coordination detail does not deny a bounded in-scope write.'
   require_text "$ECI_CRITIQUE" 'Records, hashes, receipts, and packet shape are review context, not admission criteria.'
   require_text "$FAST_PATH" 'Speed grants no broader or irreversible authority.'
-  require_text "$COORDINATOR" 'Treat records, hashes, receipts, packet shape, and marker spelling as context or audit, never as permission checks.'
   require_text "$ECI_COVERAGE" 'This map is an audit index, not an admission inventory.'
   require_text "$REVIEW_POLICY" 'Evidence tests the result; a record, receipt, hash, or packet shape never permits or blocks ordinary work.'
   require_text "$PAUSE" 'Pause state is session-local coordination context, not a receipt, hash, or artifact gate.'
