@@ -1,9 +1,10 @@
 // Command codex-coverage-check verifies the codex port coverage manifest.
 //
-// The manifest maps every pinned codex unit to an omp path that must exist in the tree, to a recorded reason code,
-// or to an open or unrecorded state that keeps the check red. A unit is a whole codex instruction file, a whole codex
-// bin wrapper, or one build, refresh, or install behavior of a codex bin wrapper. The check reads only the manifest,
-// the embedded pinned units, and the omp tree, so it runs without ~/.codex.
+// The manifest maps every pinned codex unit to an omp path that must exist in the tree, to an excluded decision whose
+// superseding omp path must exist, to a reason-coded decision, or to an open or unrecorded state that keeps the check
+// red. A unit is a whole codex instruction file, a whole codex bin wrapper, or one build, refresh, or install behavior
+// of a codex bin wrapper. The check reads only the manifest, the embedded pinned units, and the omp tree, so it runs
+// without ~/.codex.
 package main
 
 import (
@@ -15,8 +16,8 @@ import (
 
 // main exits with the status that run reports for the process arguments.
 //
-// Example: codex-coverage-check -manifest hooks/tests/codex-port-coverage.tsv -root ~/.omp exits 0 only when every unit
-// is mapped or reason-coded.
+// Example: codex-coverage-check -manifest hooks/tests/codex-port-coverage.tsv -root ~/.omp exits 0 only when no unit is
+// open or unrecorded and every row's omp path exists.
 func main() {
 	os.Exit(run())
 }
@@ -51,8 +52,8 @@ func run() int {
 	for _, failure := range report.Failures {
 		fmt.Println(failure)
 	}
-	fmt.Printf("codex port coverage: %d units; %d mapped, %d reason-coded, %d open, %d unrecorded\n",
-		len(units), report.Mapped, report.ReasonCoded, report.Open, report.Unrecorded)
+	fmt.Printf("codex port coverage: %d units; %d mapped, %d reason-coded, %d excluded, %d open, %d unrecorded\n",
+		len(units), report.Mapped, report.ReasonCoded, report.Excluded, report.Open, report.Unrecorded)
 	if len(report.Failures) > 0 {
 		return 1
 	}

@@ -12,7 +12,7 @@ import (
 // presentOmpPath is the omp file the rule tests map to. ruleTree holds it and no other file.
 const presentOmpPath = "agent/present.md"
 
-// ruleTree is the omp tree the rule tests check mapped paths against.
+// ruleTree is the omp tree the rule tests check omp paths against.
 var ruleTree = fstest.MapFS{presentOmpPath: &fstest.MapFile{}}
 
 // tsvRow joins the six columns of one manifest row into a tab-separated line.
@@ -73,8 +73,8 @@ func TestPinnedUnitsMatchCodexCommit(t *testing.T) {
 	assert.Equal(t, 24, wrapperUnits)
 }
 
-// TestCheckAcceptsCompleteManifest verifies that mapped files, a mapped bin behavior, and reason-coded units all pass,
-// and that each state is counted separately.
+// TestCheckAcceptsCompleteManifest verifies that mapped files, a mapped bin behavior, reason-coded units, and an
+// excluded unit with a superseding omp path all pass, and that each state is counted separately.
 //
 // Example: a manifest that covers each pinned unit exactly once yields no failures.
 func TestCheckAcceptsCompleteManifest(t *testing.T) {
@@ -83,16 +83,19 @@ func TestCheckAcceptsCompleteManifest(t *testing.T) {
 		{Codex: "bin/x.sh", Behavior: "refresh-call"},
 		{Codex: "b.toml"},
 		{Codex: "bin/y.sh"},
+		{Codex: "c.sh"},
 	}
 	manifest := manifestOf(
 		tsvRow("a.md", "-", "mapped", presentOmpPath, "-", "-"),
 		tsvRow("bin/x.sh", "refresh-call", "mapped", presentOmpPath, "-", "-"),
 		tsvRow("b.toml", "-", "reason-coded", "-", "config-moved", "agent/AGENTS.md"),
 		tsvRow("bin/y.sh", "-", "reason-coded", "-", "obsolete", "CODEX.md:136"),
+		tsvRow("c.sh", "-", "excluded", presentOmpPath, "superseded", "replaced by present.md"),
 	)
 	report := checkManifest(t, manifest, units)
 	assert.Empty(t, report.Failures)
 	assert.Equal(t, 2, report.Mapped)
+	assert.Equal(t, 1, report.Excluded)
 	assert.Equal(t, 2, report.ReasonCoded)
 	assert.Equal(t, 0, report.Open)
 	assert.Equal(t, 0, report.Unrecorded)
@@ -178,10 +181,40 @@ func TestCheckReportsEachViolatedRule(t *testing.T) {
 			want:     "reason-coded row also names omp path agent/present.md",
 		},
 		{
+			name:     "excluded row without a reason code",
+			manifest: manifestOf(tsvRow("a.md", "-", "excluded", presentOmpPath, "-", "x")),
+			units:    wholeFile,
+			want:     "excluded row gives no reason code",
+		},
+		{
+			name:     "excluded row outside the vocabulary",
+			manifest: manifestOf(tsvRow("a.md", "-", "excluded", presentOmpPath, "bogus", "x")),
+			units:    wholeFile,
+			want:     `reason code "bogus" is not a recorded reason`,
+		},
+		{
+			name:     "excluded row without a superseding omp path",
+			manifest: manifestOf(tsvRow("a.md", "-", "excluded", "-", "superseded", "x")),
+			units:    wholeFile,
+			want:     "excluded row names no omp path",
+		},
+		{
+			name:     "excluded row whose superseding path is missing",
+			manifest: manifestOf(tsvRow("a.md", "-", "excluded", "agent/missing.go", "superseded", "x")),
+			units:    wholeFile,
+			want:     "omp path agent/missing.go is not in the tree",
+		},
+		{
+			name:     "whole-file excluded bin wrapper with an omp path",
+			manifest: manifestOf(tsvRow("bin/x.sh", "-", "excluded", presentOmpPath, "superseded", "x")),
+			units:    []Unit{{Codex: "bin/x.sh"}},
+			want:     "bin/ row names an omp path without a behavior",
+		},
+		{
 			name:     "mapped path missing from the tree",
 			manifest: manifestOf(tsvRow("a.md", "-", "mapped", "agent/missing.md", "-", "-")),
 			units:    wholeFile,
-			want:     "mapped path agent/missing.md is not in the tree",
+			want:     "omp path agent/missing.md is not in the tree",
 		},
 		{
 			name:     "mapped row that also gives a reason code",
@@ -199,7 +232,7 @@ func TestCheckReportsEachViolatedRule(t *testing.T) {
 			name:     "whole-file mapping of a bin wrapper",
 			manifest: manifestOf(tsvRow("bin/x.sh", "-", "mapped", presentOmpPath, "-", "-")),
 			units:    []Unit{{Codex: "bin/x.sh", Behavior: "refresh-call"}},
-			want:     "bin/ path match needs a behavior unit",
+			want:     "bin/ row names an omp path without a behavior",
 		},
 		{
 			name:     "unknown state",

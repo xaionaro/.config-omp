@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// wrapperPrefix marks codex bin wrappers. A mapped wrapper row must name a behavior: a whole-file path match with an
-// omp file says nothing about the build, refresh, and install steps the wrapper performs.
+// wrapperPrefix marks codex bin wrappers. A row for a wrapper that names an omp path must name a behavior: a whole-file
+// path match with an omp file says nothing about the build, refresh, and install steps the wrapper performs.
 const wrapperPrefix = "bin/"
 
 // Failure is one violated coverage rule, rendered as one output line.
@@ -20,6 +20,7 @@ type Failure string
 // in Failures, so a run that has either stays red.
 type Report struct {
 	Mapped      int
+	Excluded    int
 	ReasonCoded int
 	Open        int
 	Unrecorded  int
@@ -54,11 +55,13 @@ func Check(
 // count adds one row to the counter for its state. A row with an unknown state is counted nowhere; its failure
 // already names it.
 //
-// Example: a row in StateOpen increments Open and nothing else.
+// Example: a row in StateExcluded increments Excluded and nothing else.
 func (report *Report) count(state State) {
 	switch state {
 	case StateMapped:
 		report.Mapped++
+	case StateExcluded:
+		report.Excluded++
 	case StateReasonCoded:
 		report.ReasonCoded++
 	case StateOpen:
@@ -110,6 +113,8 @@ func checkRow(
 	switch row.State {
 	case StateMapped:
 		return checkMappedRow(row, tree)
+	case StateExcluded:
+		return checkExcludedRow(row, tree)
 	case StateReasonCoded:
 		return checkReasonRow(row), nil
 	case StateOpen:
@@ -121,45 +126,55 @@ func checkRow(
 	}
 }
 
-// checkMappedRow applies the rules of a mapped row: it needs an omp path that exists in the tree, no reason code, and
-// a behavior when it belongs to a bin wrapper.
+// checkMappedRow applies the rules of a mapped row: it needs an omp path that exists in the tree and no reason code,
+// and a bin/ wrapper row needs a behavior.
 //
 // Example: a mapped row for hooks/x.sh with omp path agent/x.md passes only when agent/x.md exists in the tree.
 func checkMappedRow(
 	row Row,
 	tree fs.FS,
 ) ([]Failure, error) {
-	var failures []Failure
-	if row.Unit.Behavior == "" && strings.HasPrefix(string(row.Unit.Codex), wrapperPrefix) {
-		failures = append(failures, rowFailure(row, "bin/ path match needs a behavior unit; a whole-file mapping is not coverage"))
-	}
+	failures := checkWrapperBehavior(row)
 	if row.Reason != "" {
 		failures = append(failures, rowFailure(row, fmt.Sprintf("mapped row also gives reason code %q", row.Reason)))
 	}
 	if row.Omp == "" {
 		return append(failures, rowFailure(row, "mapped row names no omp path")), nil
 	}
-	missing, err := checkMappedPath(row, tree)
+	missing, err := checkOmpPath(row, tree)
 	if err != nil {
 		return nil, err
 	}
 	return append(failures, missing...), nil
 }
 
-// checkReasonRow applies the rules of a reason-coded row: the code must be in the recorded vocabulary, and the row
-// must not name an omp path.
+// checkExcludedRow applies the rules of an excluded row: a recorded reason code, plus the omp path of the implementation
+// that supersedes the unit. That path must exist in the tree.
 //
-// Example: a reason-coded row with code "bogus" yields "reason code \"bogus\" is not a recorded reason".
+// Example: an excluded row with reason "superseded" and omp path agent/x.go passes only when agent/x.go exists.
+func checkExcludedRow(
+	row Row,
+	tree fs.FS,
+) ([]Failure, error) {
+	failures := checkWrapperBehavior(row)
+	failures = append(failures, checkRecordedReason(row)...)
+	if row.Omp == "" {
+		return append(failures, rowFailure(row, "excluded row names no omp path")), nil
+	}
+	missing, err := checkOmpPath(row, tree)
+	if err != nil {
+		return nil, err
+	}
+	return append(failures, missing...), nil
+}
+
+// checkReasonRow applies the rules of a reason-coded row: the code must be recorded, and no omp path may be named.
+//
+// Example: a reason-coded row that also names an omp path yields "reason-coded row also names omp path ...".
 func checkReasonRow(row Row) []Failure {
-	var failures []Failure
+	failures := checkRecordedReason(row)
 	if row.Omp != "" {
 		failures = append(failures, rowFailure(row, fmt.Sprintf("reason-coded row also names omp path %s", row.Omp)))
-	}
-	switch {
-	case row.Reason == "":
-		failures = append(failures, rowFailure(row, "reason-coded row gives no reason code"))
-	case !row.Reason.recorded():
-		failures = append(failures, rowFailure(row, fmt.Sprintf("reason code %q is not a recorded reason", row.Reason)))
 	}
 	return failures
 }
@@ -180,11 +195,37 @@ func checkOpenRow(row Row) []Failure {
 	return append(failures, rowFailure(row, "open until its owner lands: "+row.Evidence))
 }
 
-// checkMappedPath reports a mapped row whose omp path is absent from the tree. Any other stat error means the tree
-// could not be inspected, so it is returned to the caller.
+// checkRecordedReason requires the row to carry a code from the recorded vocabulary. The message names the row's
+// state, so a reason-coded row and an excluded row each get their own wording.
 //
-// Example: a row mapped to agent/missing.md yields "mapped path agent/missing.md is not in the tree".
-func checkMappedPath(
+// Example: an excluded row with code "bogus" yields "reason code \"bogus\" is not a recorded reason".
+func checkRecordedReason(row Row) []Failure {
+	switch {
+	case row.Reason == "":
+		return []Failure{rowFailure(row, fmt.Sprintf("%s row gives no reason code", row.State))}
+	case !row.Reason.recorded():
+		return []Failure{rowFailure(row, fmt.Sprintf("reason code %q is not a recorded reason", row.Reason))}
+	default:
+		return nil
+	}
+}
+
+// checkWrapperBehavior flags a bin/ row that names an omp path without naming a behavior. Such a row is a whole-file
+// path match, which is not coverage of a wrapper.
+//
+// Example: a row for bin/x.sh that names agent/x.md with no behavior yields one failure.
+func checkWrapperBehavior(row Row) []Failure {
+	if row.Omp == "" || row.Unit.Behavior != "" || !strings.HasPrefix(string(row.Unit.Codex), wrapperPrefix) {
+		return nil
+	}
+	return []Failure{rowFailure(row, "bin/ row names an omp path without a behavior; a whole-file path match is not coverage")}
+}
+
+// checkOmpPath reports a row whose omp path is absent from the tree. Any other stat error means the tree could not be
+// inspected, so it is returned to the caller.
+//
+// Example: a row naming agent/missing.md yields "omp path agent/missing.md is not in the tree".
+func checkOmpPath(
 	row Row,
 	tree fs.FS,
 ) ([]Failure, error) {
@@ -193,7 +234,7 @@ func checkMappedPath(
 	case err == nil:
 		return nil, nil
 	case errors.Is(err, fs.ErrNotExist):
-		return []Failure{rowFailure(row, fmt.Sprintf("mapped path %s is not in the tree", row.Omp))}, nil
+		return []Failure{rowFailure(row, fmt.Sprintf("omp path %s is not in the tree", row.Omp))}, nil
 	default:
 		return nil, fmt.Errorf("stat %s: %w", row.Omp, err)
 	}

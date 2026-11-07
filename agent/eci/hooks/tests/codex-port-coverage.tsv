@@ -1,9 +1,9 @@
 # Codex port coverage: codex 575bb81 instruction files and bin wrappers.
 # Checked by agent/eci/tools/codex-coverage-check; pinned units are in codex-575bb81-units.tsv.
 # Columns: codex_path, behavior, state, omp_path, reason_code, evidence. "-" marks an empty column.
-# States: mapped (omp_path must exist), reason-coded (reason_code from reason.go), open (owner named in evidence),
-# unrecorded (no disposition yet). Open and unrecorded rows keep the check red.
-# A mapped bin/ row names a behavior: a whole-file path match is not coverage.
+# States: mapped (omp_path must exist); excluded (superseded: omp_path names the superseding file, which must exist, and reason_code is set);
+# reason-coded (reason_code from reason.go, no omp_path); open (owner in evidence); unrecorded (no disposition yet).
+# Open and unrecorded rows keep the check red. A bin/ row that names an omp path needs a behavior, not a whole file.
 CODEX.md	-	mapped	agent/eci-binding-contract.md	-	-
 bin/codex-lane-status-reminder	-	reason-coded	-	codex-only-lane-reminder	AUDIT decision 1: Codex-only lane reminder
 bin/codex-ollama-responses-bridge	-	reason-coded	-	codex-only-model-bridge	AUDIT decision 1: Codex-only model bridge
@@ -42,7 +42,7 @@ hooks/lib/codex-file-lock.sh	-	mapped	agent/eci/hooks/lib/eci-file-lock.sh	-	-
 hooks/lib/codex-proof-state.sh	-	mapped	agent/eci/hooks/lib/eci-proof-state.sh	-	-
 hooks/lib/codex-tmp.sh	-	mapped	agent/eci/hooks/lib/eci-tmp.sh	-	-
 hooks/lib/compose-reviewer-prompt.sh	-	mapped	agent/eci/hooks/lib/compose-reviewer-prompt.sh	-	-
-hooks/lib/eci-cleanup-route.sh	-	unrecorded	-	-	no record in agent/eci/hooks/tests/TEST-DISPOSITION.md or agent/eci/hooks/lib/eci-hook-helper-go/PORT-MANIFEST.md; cleanup_route.go header names this source
+hooks/lib/eci-cleanup-route.sh	-	excluded	agent/eci/hooks/lib/eci-hook-helper-go/cleanup_route.go	superseded	575bb81 hooks/*.sh has no caller of eci_shared_cleanup_route; wrapper dead at source; Go helper ported (cleanup_route.go); TEST-DISPOSITION.md records it
 hooks/lib/eci-command-gate-mode-go/PORT-MANIFEST.md	-	mapped	agent/eci/hooks/lib/eci-command-gate-mode-go/PORT-MANIFEST.md	-	-
 hooks/lib/eci-command-gate-mode-go/config_linux.go	-	mapped	agent/eci/hooks/lib/eci-command-gate-mode-go/config_linux.go	-	-
 hooks/lib/eci-command-gate-mode-go/config_test.go	-	mapped	agent/eci/hooks/lib/eci-command-gate-mode-go/config_test.go	-	-

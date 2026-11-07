@@ -2,8 +2,8 @@ package main
 
 import "slices"
 
-// ReasonCode names a recorded decision for a unit that has no omp counterpart. Only the codes in recordedReasons are
-// accepted, so a reason code outside the vocabulary fails the check.
+// ReasonCode names a recorded decision for a unit that has no omp counterpart, or that an omp implementation supersedes.
+// Only the codes in recordedReasons are accepted, so a reason code outside the vocabulary fails the check.
 type ReasonCode string
 
 // Recorded reason codes. Each code is one decision made during the port; the evidence column of the manifest row
@@ -44,6 +44,8 @@ const (
 	// ReasonNoPeerProviderRoot marks a peer-sync behavior that the Codex-free port does not reproduce, because omp has no
 	// peer provider root.
 	ReasonNoPeerProviderRoot ReasonCode = "no-peer-provider-root"
+	// ReasonSuperseded marks a codex unit that an omp implementation supersedes; the excluded row's omp path names it.
+	ReasonSuperseded ReasonCode = "superseded"
 )
 
 // recordedReasons lists every reason code the checker accepts. "unrecorded" is deliberately absent: a unit with no
@@ -66,11 +68,12 @@ var recordedReasons = []ReasonCode{
 	ReasonObsolete,
 	ReasonStopGateRetired,
 	ReasonNoPeerProviderRoot,
+	ReasonSuperseded,
 }
 
 // recorded reports whether the code is one of the recorded reason codes.
 //
-// Example: ReasonCode("unrecorded").recorded() is false, and ReasonObsolete.recorded() is true.
+// Example: ReasonCode("unrecorded").recorded() is false, and ReasonSuperseded.recorded() is true.
 func (code ReasonCode) recorded() bool {
 	return slices.Contains(recordedReasons, code)
 }

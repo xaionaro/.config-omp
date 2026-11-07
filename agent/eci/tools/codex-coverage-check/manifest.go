@@ -29,6 +29,9 @@ type State string
 const (
 	// StateMapped marks a row whose omp path must exist in the tree.
 	StateMapped State = "mapped"
+	// StateExcluded marks a row whose codex unit an omp implementation supersedes. Its omp path names that
+	// implementation and must exist, and its reason code records the decision.
+	StateExcluded State = "excluded"
 	// StateReasonCoded marks a row whose recorded reason code explains why no omp counterpart exists.
 	StateReasonCoded State = "reason-coded"
 	// StateOpen marks a row whose work another owner has not landed. It always fails the check, so the run stays red
