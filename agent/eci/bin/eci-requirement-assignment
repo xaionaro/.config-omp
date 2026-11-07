@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# On-demand launcher for the canonical ECI Go tool hooks/lib/eci-requirement-assignment-go. The first run
+# of each source and toolchain builds bin/.eci-requirement-assignment.<key> beside this wrapper, then
+# execs it with the caller's arguments and streams unchanged. Build output goes to stderr only, so the
+# helper's stdout stays JSON. Source and libraries come only from the canonical $HOME/.omp/agent/eci.
+set -euo pipefail
+case ${HOME:-} in
+  /*) ;;
+  *) printf 'eci-requirement-assignment: HOME must be an absolute path\n' >&2; exit 1 ;;
+esac
+eci_home=$HOME/.omp/agent/eci
+if [ ! -f "$eci_home/hooks/lib/eci-file-lock.sh" ] || [ ! -f "$eci_home/hooks/lib/eci-go-tool-build.sh" ] || [ ! -f "$eci_home/hooks/lib/eci-requirement-assignment-go/go.mod" ]; then
+  printf 'eci-requirement-assignment: ECI runtime not found at %s; check out ~/.omp and retry\n' "$eci_home" >&2
+  exit 1
+fi
+wrapper=${BASH_SOURCE[0]}
+while [ -L "$wrapper" ]; do
+  link=$(readlink -- "$wrapper")
+  case $link in
+    /*) wrapper=$link ;;
+    *) wrapper=${wrapper%/*}/$link ;;
+  esac
+done
+case $wrapper in
+  */*) bin_dir=${wrapper%/*} ;;
+  *) bin_dir=. ;;
+esac
+bin_dir=$(cd -P -- "$bin_dir" && pwd -P)
+source "$eci_home/hooks/lib/eci-file-lock.sh"
+source "$eci_home/hooks/lib/eci-go-tool-build.sh"
+exec 9>"$bin_dir/.eci-requirement-assignment-build.lock"
+eci_file_lock_acquire_fd 9 blocking
+eci_go_tool_build eci-requirement-assignment "$eci_home/hooks/lib/eci-requirement-assignment-go" "$bin_dir/.eci-requirement-assignment." '' 'about 1 minute' || exit $?
+executable=$eci_go_tool_executable
+# Selection refreshes the mtime under the lock; keys unselected for 24 hours are pruned.
+touch -c -- "$executable"
+find "$bin_dir" -maxdepth 1 -type f -name '.eci-requirement-assignment.*' ! -name "${executable##*/}" -mmin +1440 -exec rm -f -- {} + || true
+eci_file_lock_release_fd 9
+exec "$executable" "$@"

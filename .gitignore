@@ -22,6 +22,8 @@ agent/eci/bin/*
 !agent/eci/bin/eci-runtime-sync
 # eci-active is an on-demand wrapper: its built .eci-active.<key> and build lock stay ignored.
 !agent/eci/bin/eci-active
+# eci-requirement-assignment is an on-demand wrapper: track the script; its built .eci-requirement-assignment.<key> and build lock stay ignored.
+!agent/eci/bin/eci-requirement-assignment
 
 # Secrets and credentials
 auth*.json

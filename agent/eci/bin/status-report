@@ -1,7 +1,41 @@
 #!/usr/bin/env bash
+# On-demand launcher for the canonical ECI Go tool tools/status-report. The first run of each source
+# and toolchain builds bin/.status-report.<key> beside this wrapper, then execs it. Source and helper
+# libraries come only from the canonical $HOME/.omp/agent/eci, so a copied wrapper uses the same tree.
 set -euo pipefail
-
-module_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../tools/status-report" && pwd)"
+case ${HOME:-} in
+  /*) ;;
+  *) printf 'status-report: HOME must be an absolute path\n' >&2; exit 1 ;;
+esac
+eci_home=$HOME/.omp/agent/eci
+if [ ! -f "$eci_home/hooks/lib/eci-file-lock.sh" ] || [ ! -f "$eci_home/hooks/lib/eci-go-tool-build.sh" ] || [ ! -f "$eci_home/tools/status-report/go.mod" ]; then
+  printf 'status-report: ECI runtime not found at %s; check out ~/.omp and retry\n' "$eci_home" >&2
+  exit 1
+fi
+wrapper=${BASH_SOURCE[0]}
+while [ -L "$wrapper" ]; do
+  link=$(readlink -- "$wrapper")
+  case $link in
+    /*) wrapper=$link ;;
+    *) wrapper=${wrapper%/*}/$link ;;
+  esac
+done
+case $wrapper in
+  */*) bin_dir=${wrapper%/*} ;;
+  *) bin_dir=. ;;
+esac
+bin_dir=$(cd -P -- "$bin_dir" && pwd -P)
+source "$eci_home/hooks/lib/eci-file-lock.sh"
+source "$eci_home/hooks/lib/eci-go-tool-build.sh"
+exec 9>"$bin_dir/.status-report-build.lock"
+eci_file_lock_acquire_fd 9 blocking
+eci_go_tool_build status-report "$eci_home/tools/status-report" "$bin_dir/.status-report." '' 'about 1 minute' || exit $?
+executable=$eci_go_tool_executable
+# Selection refreshes the mtime under the lock; keys unselected for 24 hours are pruned.
+touch -c -- "$executable"
+find "$bin_dir" -maxdepth 1 -type f -name '.status-report.*' ! -name "${executable##*/}" -mmin +1440 -exec rm -f -- {} + || true
+eci_file_lock_release_fd 9
+# Relative paths become caller-directory paths before the program runs; the program never reads its cwd.
 args=("$@")
 if [[ ${args[0]:-} == validate || ${args[0]:-} == render ]]; then
 	for ((i = 1; i < ${#args[@]}; i++)); do
@@ -17,5 +51,4 @@ if [[ ${args[0]:-} == validate || ${args[0]:-} == render ]]; then
 elif [[ ${args[0]:-} == refresh && -n ${args[1]:-} && ${args[1]} != /* ]]; then
 	args[1]="$PWD/${args[1]}"
 fi
-cd "$module_dir"
-exec go run . ${args[@]+"${args[@]}"}
+exec "$executable" ${args[@]+"${args[@]}"}
