@@ -57,6 +57,8 @@ Every early, Fast, Producer-final, and independent-final E2E report records `sta
 
 ## Spawn skill routing
 
+For a new root package, record the Job and publish its Orchestrator as described in [Initial admission](references/task-orchestrator.md#publication-transfer-and-report-drain), then spawn Workers.
+
 The trigger table in `~/.omp/agent/eci-binding-contract.md` (lines 213-226) is the single authority for skill routing. Before every spawn or resume, including read-only explorer briefs and follow-up briefs to a reused agent, match the task against that table and read each matched skill.
 
 Every brief includes:
