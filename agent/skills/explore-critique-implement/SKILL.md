@@ -76,7 +76,7 @@ For a new root package, record the Job and publish its Orchestrator as described
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Match the task against the [trigger table](~/.omp/agent/eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
+Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Supervisor fills one Routing line per unit:
 
 - `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
 - A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
@@ -104,7 +104,7 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 | Role | Required module | Conditional module/predicate |
 | --- | --- | --- |
 | Supervisor | [coordinator](references/coordinator.md), [coordinator runtime](../references/workflow-runtime/coordinator-runtime.md), [review policy](../references/workflow-runtime/review-policy.md) | [pause-all-work](../references/workflow-runtime/pause-all-work.md), [stop recovery](../references/workflow-runtime/stop-recovery.md), and [policy pressure tests](../references/workflow-runtime/policy-pressure-tests.md) only by their predicates |
-| `explorer` | [explore](references/explore.md) | [debugging-discipline](../debugging-discipline/SKILL.md) only for assigned bug investigation; [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for assigned governed source discovery |
+| `explorer` | [explore](references/explore.md) | [debugging-discipline](../debugging-discipline/SKILL.md) only for assigned debugging, test-failure, unexpected-behavior, performance, or build-failure investigation; [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for assigned governed source discovery |
 | `critic-step2` | [critique](references/critique.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for independent admission |
 | Producer (`implementer`) | [implement](references/implement.md) | [debugging-discipline](../debugging-discipline/SKILL.md) only for assigned code/debug work; [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for a governed scope |
 | Orchestrator | [task-orchestrator](references/task-orchestrator.md) | Candidate, handoff, or relay by bounded assignment; Job dispatch only after its designated publisher publishes ownership under that contract; shared [review policy](../references/workflow-runtime/review-policy.md) only for outcome-level review/evidence |

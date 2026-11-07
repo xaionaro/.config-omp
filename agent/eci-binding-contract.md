@@ -208,7 +208,7 @@ Assign every new tracked repository contribution, including code, documentation,
 
 The Supervisor may edit session-local coordination records, ledgers, plans, status reports, handoffs, and proof notes outside the tracked repository. Resolve routing edge cases through explicit session coordination while hook migration is deferred. Do not call retired self-edit helpers; Producer ownership and index rules still apply.
 
-- Before substantive work or investigating or answering questions about coding instructions, load every installed matching skill from `~/.omp/agent/skills/`; slash-paired cells map positionally; matches are cumulative; a worker loads every skill named in its brief's `Skills:` line; a trigger row's skill matches for a role only when that role's module predicate (SKILL.md, Module routing) is met, when the module restricts it; slash-paired cells map positionally only when both cells have equal slash-part counts. Skill routing is instruction-only; never port Claude `Skill` `PostToolUse` markers without real native skill identity/path fields.
+- Before substantive work or investigating or answering questions about coding instructions, load every installed matching skill from `~/.omp/agent/skills/`. Matches are cumulative. A worker loads every skill named in its brief's `Skills:` line. A trigger row's skill matches for a role only when that role's module predicate (`~/.omp/agent/skills/explore-critique-implement/SKILL.md`, Module routing) is met, when the module restricts it. Slash-paired cells map positionally only when both cells have equal slash-part counts. Skill routing is instruction-only; never port Claude `Skill` `PostToolUse` markers without real native skill identity/path fields.
 
 | Trigger | Skill |
 |---|---|
