@@ -290,8 +290,11 @@ chmod "$fixture_root_mode" -- "$FIXTURE_HOME"
 restore_full_runtime_receipt
 chmod g+w -- "$FIXTURE_HOME/bin" "$FIXTURE_HOME/hooks"
 group_writable_dirs_output="$(run_hook "$quoted_exact_command" "$MAIN_TRANSCRIPT")"
-[ ! -s "$group_writable_dirs_output" ] || {
-  printf '%s\n' 'group-writable managed directories unexpectedly denied maintenance:' >&2
+jq -e '
+  .hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
+' "$group_writable_dirs_output" >/dev/null || {
+  printf '%s\n' 'group-writable bin directory was not denied by the native gate:' >&2
   cat -- "$group_writable_dirs_output" >&2
   exit 1
 }
