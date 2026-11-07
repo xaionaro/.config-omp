@@ -1330,7 +1330,7 @@ assert_fast_path_progress_wait_contract() {
   require_section_pattern "$section" 'cross-path wait permits independent progress' \
     'Independent work in the other path does not block intermediate progress'
   require_section_pattern "$section" 'cross-path wait follows general dependency scheduling' \
-    'AGENTS.md.*dependency.*independent tasks'
+    'eci-binding-contract\.md.*dependency.*independent tasks'
   require_section_pattern "$section" 'cross-path wait preserves aggregation and closure boundaries' \
     'coordinator\.md#step-4--review-coordination.*#adoption-review-and-closure'
 }
