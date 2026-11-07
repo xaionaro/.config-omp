@@ -1,21 +1,20 @@
-// Shared bridge: runs Codex hook scripts from ~/.codex/hooks on behalf of omp
+// Native ECI hook runner: runs ECI hook scripts from ~/.omp/agent/eci/hooks on behalf of omp
 // hook factories. Not discovered as a factory (lives outside pre/ and post/).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 /** Structural subset of omp's ExtensionContext used by the factories. */
-export interface CodexSessionContext {
+export interface EciSessionContext {
 	cwd: string;
 	sessionManager: { getSessionFile(): string | undefined };
 }
 
-export interface CodexIdentity {
+export interface EciIdentity {
 	sessionId: string;
 	transcriptPath?: string;
 	cwd: string;
 	isSubagent: boolean;
-	role?: string;
 }
 
 export interface HookRun {
@@ -25,35 +24,33 @@ export interface HookRun {
 	stderr: string;
 }
 
-type Subagent = { isSubagent: boolean; role?: string };
-
-export const codexHome = (): string => join(process.env.HOME ?? homedir(), ".codex");
+export const eciHooksDir = (): string => join(process.env.HOME ?? homedir(), ".omp", "agent", "eci", "hooks");
 
 const TIMEOUT_EXIT = 124;
 const KILL_EXIT = 137;
 
-const subagentCache = new Map<string, Subagent>();
+const subagentCache = new Map<string, boolean>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * Subagent detection: a transcript containing a `session_init` record marks a subagent;
- * its `agent` field supplies CODEX_ROLE. [INFERENCE: exact record location of `agent`;
- * no omp transcript currently contains a session_init record.]
+ * Subagent detection: a transcript containing a `session_init` record marks a subagent.
+ * [INFERENCE: exact record location of `agent`; no omp transcript currently contains a
+ * session_init record.]
  */
-function detectSubagent(transcriptPath: string | undefined): Subagent {
-	if (!transcriptPath) return { isSubagent: false };
+function detectSubagent(transcriptPath: string | undefined): boolean {
+	if (!transcriptPath) return false;
 	const cached = subagentCache.get(transcriptPath);
-	if (cached) return cached;
+	if (cached !== undefined) return cached;
 	let text: string;
 	try {
 		text = readFileSync(transcriptPath, "utf8");
 	} catch {
-		return { isSubagent: false };
+		return false;
 	}
-	let found: Subagent = { isSubagent: false };
+	let found = false;
 	for (const line of text.split("\n")) {
 		if (!line.includes("session_init")) continue;
 		let record: unknown;
@@ -64,29 +61,25 @@ function detectSubagent(transcriptPath: string | undefined): Subagent {
 		}
 		if (!isRecord(record)) continue;
 		if (record.type !== "session_init" && record.customType !== "session_init") continue;
-		const data = isRecord(record.data) ? record.data : undefined;
-		const role = data?.agent ?? record.agent;
-		found = { isSubagent: true, role: typeof role === "string" ? role : undefined };
+		found = true;
 		break;
 	}
 	subagentCache.set(transcriptPath, found);
 	return found;
 }
 
-export function identityFor(ctx: CodexSessionContext): CodexIdentity {
+export function identityFor(ctx: EciSessionContext): EciIdentity {
 	const transcriptPath = ctx.sessionManager.getSessionFile() ?? undefined;
-	const sub = detectSubagent(transcriptPath);
 	return {
 		sessionId: process.env.PI_SESSION_ID ?? "",
 		transcriptPath,
 		cwd: ctx.cwd,
-		isSubagent: sub.isSubagent,
-		role: sub.role,
+		isSubagent: detectSubagent(transcriptPath),
 	};
 }
 
-/** Codex-shaped stdin common fields. */
-export function basePayload(id: CodexIdentity, hookEventName: string): Record<string, unknown> {
+/** Hook-shaped stdin common fields. */
+export function basePayload(id: EciIdentity, hookEventName: string): Record<string, unknown> {
 	return {
 		session_id: id.sessionId,
 		...(id.transcriptPath ? { transcript_path: id.transcriptPath } : {}),
@@ -100,19 +93,17 @@ export function basePayload(id: CodexIdentity, hookEventName: string): Record<st
  * The `timeout` binary enforces the deadline (exit 124, or 137 after kill-after); a JS-side
  * kill timer is a backstop. Any spawn error returns code -1 (fail-closed for PreToolUse).
  */
-export async function runCodexHook(
+export async function runEciHook(
 	script: string,
 	stdin: Record<string, unknown>,
-	id: CodexIdentity,
+	id: EciIdentity,
 	timeoutSec: number,
 ): Promise<HookRun> {
 	const env: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== "CODEX_ROLE") env[k] = v;
-	env.CODEX_HOME = codexHome();
-	env.CODEX_SESSION_ID = id.sessionId;
-	env.CODEX_THREAD_ID = id.sessionId;
-	env.CODEX_HOOK_IS_SUBAGENT = id.isSubagent ? "1" : "0";
-	if (id.isSubagent && id.role) env.CODEX_ROLE = id.role;
+	for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("CODEX_")) env[k] = v;
+	env.ECI_SESSION_ID = id.sessionId;
+	env.ECI_THREAD_ID = id.sessionId;
+	env.ECI_HOOK_IS_SUBAGENT = id.isSubagent ? "1" : "0";
 	try {
 		const proc = Bun.spawn(
 			["timeout", "--kill-after=5", String(timeoutSec), "bash", script],
@@ -149,7 +140,7 @@ export type PreToolVerdict = { block: true; reason: string } | undefined;
 export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	const fail = (why: string): PreToolVerdict => ({
 		block: true,
-		reason: `Codex hook ${label} ${why}; blocking (fail-closed).`,
+		reason: `ECI hook ${label} ${why}; blocking (fail-closed).`,
 	});
 	if (run.code === -1) return fail(`could not run (${run.stderr.trim()})`);
 	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return fail("timed out");
@@ -166,7 +157,7 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	if (hso?.hookEventName !== "PreToolUse") return fail("returned unrecognized output");
 	if (hso.permissionDecision === "allow") return undefined;
 	if (hso.permissionDecision === "deny") {
-		const reason = typeof hso.permissionDecisionReason === "string" ? hso.permissionDecisionReason : `denied by Codex hook ${label}`;
+		const reason = typeof hso.permissionDecisionReason === "string" ? hso.permissionDecisionReason : `denied by ECI hook ${label}`;
 		return { block: true, reason };
 	}
 	return fail("returned unsupported permissionDecision");
@@ -190,4 +181,4 @@ export function advisoryContext(run: HookRun, hookEventName: string): string | u
 	return undefined;
 }
 
-export const scriptPath = (name: string): string => join(codexHome(), "hooks", name);
+export const scriptPath = (name: string): string => join(eciHooksDir(), name);
