@@ -251,7 +251,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 
 ## Pending native targets
 
-These targets are not yet native. Each path above is the target:
+These targets are not yet native, except the last bullet, which records `eci-worker-git` as built natively. Each path above is the target:
 
 - `~/.omp/agent/skills` is a symlink whose owner is the pre-migration runtime that owns source commit 575bb81; verify the target with `readlink ~/.omp/agent/skills`; replace it with a native skills directory.
 - Skill references `references/review-investigation.md`, `references/workflow-runtime/coding-style-admission.md`, and `requesting-code-review/SKILL.md` exist on disk under `~/.omp/agent/skills/`, reached through that symlink.
