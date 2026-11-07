@@ -1361,17 +1361,19 @@ func hookTildeHome(argument token) (string, bool) {
 	return filepath.Clean(home), true
 }
 
-// hookSessionsMention reports whether operand text names the omp agent sessions location,
-// including glob or brace spellings of it.
+// hookSessionsMention reports whether operand text names the omp agent location by its literal
+// ".omp" spelling, including glob or brace forms that keep that spelling. Forms that avoid a
+// literal ".omp" are not mentioned; the lexical gate is defense in depth only.
 //
-// Example: ~/.omp/agent/sess[s]ions/x and {sessions,eci} both mention it.
+// Example: ~/.omp/agent/sess[s]ions/x mentions it; ~/tmp/session-notes.txt does not.
 func hookSessionsMention(text string) bool {
-	return strings.Contains(text, ".omp/agent") || strings.Contains(text, "sess")
+	return strings.Contains(text, ".omp")
 }
 
 // hookSessionsAmbiguous reports whether an operand that mentions the sessions location has a
 // spelling the lexical check cannot establish: a glob or brace, a "~user", "~+", or "~-" prefix,
-// a mixed quote form after an unquoted "~", a ".." after a component, or an unknown CWD.
+// a mixed quote form after an unquoted "~", a ".." after a component, or an unknown CWD for a
+// relative operand (an absolute operand does not depend on the CWD).
 //
 // Example: ~/.omp/agent/sess*/x and ~/.omp/agent/x/../sessions/y are ambiguous.
 func hookSessionsAmbiguous(argument token, cwdKnown bool) bool {
@@ -1407,7 +1409,7 @@ func hookSessionsOperandDiagnostic(
 	if expands {
 		text = home + argument.value[1:]
 	}
-	if (hookSessionsMention(argument.value) || hookSessionsMention(text)) && hookSessionsAmbiguous(argument, request.CWDKnown) {
+	if (hookSessionsMention(argument.value) || hookSessionsMention(text)) && hookSessionsAmbiguous(argument, request.CWDKnown || filepath.IsAbs(text)) {
 		return diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal spells omp session transcript root ambiguously: "+argument.value,
 			segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
 	}
@@ -1422,9 +1424,12 @@ func hookSessionsOperandDiagnostic(
 		lexical = filepath.Join(request.CWD, lexical)
 	}
 	lexical = filepath.Clean(lexical)
-	resolved, err := resolvePathWithMissingSuffix(lexical)
-	if err == nil && hookUnlinksDirectoryEntry(argv) {
+	var resolved string
+	var err error
+	if hookUnlinksDirectoryEntry(argv) {
 		resolved, err = resolvePathEntryWithMissingSuffix(lexical)
+	} else {
+		resolved, err = resolvePathWithMissingSuffix(lexical)
 	}
 	if err != nil {
 		diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal cannot resolve "+lexical+" to rule out the omp session transcript root",

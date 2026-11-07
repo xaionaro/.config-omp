@@ -388,6 +388,58 @@ func TestHookWorkerSessionsWritesDenied(t *testing.T) {
 		diagnostic := inspectHookControlWriter(unknown, []token{{value: "tee"}, {value: "relative/scratch.txt"}}, 1)
 		require.Falsef(t, diagnostic != nil, "unknown-CWD non-sessions operand denied: %+v", diagnostic)
 	}
+	// Removing a symlink removes the entry only: a dangling ENOTDIR link and a loop are not followed.
+	badlink := filepath.Join(home, "tmp", "badlink")
+	loop1 := filepath.Join(home, "tmp", "loop1")
+	loop2 := filepath.Join(home, "tmp", "loop2")
+	require.NoError(t, os.Symlink("/etc/hostname/x", badlink))
+	require.NoError(t, os.Symlink(loop2, loop1))
+	require.NoError(t, os.Symlink(loop1, loop2))
+	for _, command := range []string{"rm " + badlink, "unlink " + badlink, "rm " + loop1, "unlink " + loop2} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic != nil && diagnostic.Code == hookCodeWorkerSessionsRootDenied, "symlink removal denied: %s: %+v", command, diagnostic)
+	}
+	for _, argv := range [][]token{
+		{{value: "rm"}, {value: badlink}},
+		{{value: "unlink"}, {value: loop2}},
+	} {
+		diagnostic := inspectHookControlWriter(request, argv, 1)
+		require.Falsef(t, diagnostic != nil && diagnostic.Code == hookCodeWorkerSessionsRootDenied, "symlink removal denied: %+v", diagnostic)
+	}
+	// An absolute operand does not depend on the CWD, so an unknown CWD does not deny it; only a
+	// relative operand that mentions the root does.
+	absolute := filepath.Join(home, "tmp", "session-notes.txt")
+	unknown.Command = "tee " + absolute
+	{
+		diagnostic := hookTestDiagnostic(unknown)
+		require.Falsef(t, diagnostic != nil && diagnostic.Code == hookCodeWorkerSessionsRootDenied, "unknown-CWD absolute operand denied: %+v", diagnostic)
+	}
+	for _, argv := range [][]token{
+		{{value: "tee"}, {value: filepath.Join(home, ".omp", "agent", "notes.txt")}},
+	} {
+		diagnostic := inspectHookControlWriter(unknown, argv, 1)
+		require.Falsef(t, diagnostic != nil && diagnostic.Code == hookCodeWorkerSessionsRootDenied, "unknown-CWD absolute operand denied: %+v", diagnostic)
+	}
+	{
+		diagnostic := inspectHookControlWriter(unknown, []token{{value: "tee"}, {value: filepath.Join(sessions, "slug", "new.jsonl")}}, 1)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "unknown-CWD absolute sessions write allowed: %+v", diagnostic)
+	}
+	// The mention predicate is the literal ".omp" only: names that spell only "sess" do not mention
+	// the root and pass; a glob that keeps ".omp" still denies.
+	for _, argv := range [][]token{
+		{{value: "tee"}, {value: "session-*.txt"}},
+		{{value: "tee"}, {value: "session{1,2}.txt"}},
+		{{value: "tee"}, {value: "sess.txt"}},
+	} {
+		diagnostic := inspectHookControlWriter(request, argv, 1)
+		require.Falsef(t, diagnostic != nil && diagnostic.Code == hookCodeWorkerSessionsRootDenied, "sess-only operand denied: %+v", diagnostic)
+	}
+	request.Command = "tee ~/.omp/*/x.txt"
+	{
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "ambiguous .omp glob allowed: %+v", diagnostic)
+	}
 }
 
 // TestHookGitPreviewSemantics binds preview interpretation to the selected verb.
