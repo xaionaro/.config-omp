@@ -27,7 +27,7 @@ advisors:
     model: anthropic/claude-haiku-5-5:max
     tools: [read, grep, glob]
     reviewMode: turn
-    reviewInterval: 20
+    reviewInterval: 5
     syncBacklog: off
     scope: all
     includeReasoning: false
