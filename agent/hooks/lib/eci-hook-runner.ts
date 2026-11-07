@@ -1,7 +1,7 @@
 // Native ECI hook runner: runs ECI hook scripts from ~/.omp/agent/eci/hooks on behalf of omp
 // hook factories. Not discovered as a factory (lives outside pre/ and post/).
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 /** Structural subset of omp's ExtensionContext used by the factories. */
@@ -26,7 +26,7 @@ export interface HookRun {
 
 export const eciHooksDir = (): string => {
 	const home = process.env.HOME;
-	const base = home && isAbsolute(home) ? home : homedir();
+	const base = home && isAbsolute(home) ? home : userInfo().homedir;
 	return join(base, ".omp", "agent", "eci", "hooks");
 };
 
@@ -41,8 +41,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Subagent detection: a transcript containing a `session_init` record marks a subagent.
- * [INFERENCE: exact record location of `agent`; no omp transcript currently contains a
- * session_init record.]
+ * Observed shape: `type` or `customType` is "session_init"; the role sits in `data.agent` or `agent`.
  */
 function detectSubagent(transcriptPath: string | undefined): boolean {
 	if (!transcriptPath) return false;
@@ -103,6 +102,7 @@ export async function runEciHook(
 	id: EciIdentity,
 	timeoutSec: number,
 ): Promise<HookRun> {
+	if (!isAbsolute(script)) return { ok: false, code: -1, stdout: "", stderr: "ECI hook path is not absolute" };
 	const env: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
 	env.ECI_SESSION_ID = id.sessionId;
