@@ -7,17 +7,20 @@ source "$ROOT/hooks/lib/eci-file-lock.sh"
 TMP_ROOT="$(realpath -e -- "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-session-refresh.XXXXXX")")"
 trap 'chmod -R u+w -- "$TMP_ROOT" 2>/dev/null; rm -rf -- "$TMP_ROOT"' EXIT
 
+# The hook derives its baseline repository from the input cwd. Baseline cases pass
+# ECI_SOURCE_REPO as hook_cwd: ROOT is a run-isolated copy outside any repository.
 run_snapshot() {
   local proof_root="$1"
   local input_source="$2"
   local out="$3"
   local session_id="${4:-t00-session}"
+  local hook_cwd="${5:-$ROOT}"
 
   mkdir -p "$TMP_ROOT/home/tmp" "$proof_root"
   jq -cn \
     --arg session_id "$session_id" \
     --arg source "$input_source" \
-    --arg cwd "$ROOT" \
+    --arg cwd "$hook_cwd" \
     '{session_id:$session_id, transcript_path:"/tmp/session.jsonl", cwd:$cwd, source:$source}' |
     HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" \
       bash "$ROOT/hooks/session-snapshot.sh" >"$out"
@@ -149,13 +152,14 @@ test_baseline_uses_fixed_git_and_resolves_head() {
 }
 
 test_baseline_pair_recovers_after_publication_boundary() {
-  local proof_root="$TMP_ROOT/baseline-recovery-proof" out baseline binding
+  local proof_root="$TMP_ROOT/baseline-recovery-proof" out baseline binding source_repo
+  source_repo="${ECI_SOURCE_REPO:?run-isolated.sh must export ECI_SOURCE_REPO}"
   mkdir -p "$proof_root" "$TMP_ROOT/home/tmp"
   baseline="$proof_root/t00-session/baseline_head"
   binding="$proof_root/t00-session/baseline_head.binding"
   out="$TMP_ROOT/baseline-recovery.out"
 
-  if jq -cn --arg cwd "$ROOT" '{session_id:"t00-session",transcript_path:"/tmp/session.jsonl",cwd:$cwd}' |
+  if jq -cn --arg cwd "$source_repo" '{session_id:"t00-session",transcript_path:"/tmp/session.jsonl",cwd:$cwd}' |
     HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_SNAPSHOT_FAIL_AFTER=baseline \
       bash "$ROOT/hooks/session-snapshot.sh" >"$out"; then
     return 1
@@ -165,7 +169,7 @@ test_baseline_pair_recovers_after_publication_boundary() {
 
   # A retry repairs the missing binding from the validated baseline instead of
   # leaving the review gate wedged on a half-published pair.
-  run_snapshot "$proof_root" resume "$out"
+  run_snapshot "$proof_root" resume "$out" t00-session "$source_repo"
   [ -f "$baseline" ] && [ -f "$binding" ]
   grep -Fxq "base_oid: $(cat "$baseline")" "$binding"
 
@@ -173,13 +177,13 @@ test_baseline_pair_recovers_after_publication_boundary() {
   baseline="$proof_root/t00-session/baseline_head"
   binding="$proof_root/t00-session/baseline_head.binding"
   mkdir -p "$proof_root"
-  if jq -cn --arg cwd "$ROOT" '{session_id:"t00-session",transcript_path:"/tmp/session.jsonl",cwd:$cwd}' |
+  if jq -cn --arg cwd "$source_repo" '{session_id:"t00-session",transcript_path:"/tmp/session.jsonl",cwd:$cwd}' |
     HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_SNAPSHOT_FAIL_AFTER=binding \
       bash "$ROOT/hooks/session-snapshot.sh" >"$out"; then
     return 1
   fi
   [ -f "$baseline" ] && [ -f "$binding" ]
-  run_snapshot "$proof_root" resume "$out"
+  run_snapshot "$proof_root" resume "$out" t00-session "$source_repo"
   [ -f "$baseline" ] && [ -f "$binding" ]
 }
 
@@ -212,7 +216,8 @@ test_eci_active_mutations_fail_closed_when_lock_is_busy() {
 }
 
 test_session_start_skips_pruning_when_mutation_lock_is_busy() {
-  local proof_root="$TMP_ROOT/lock-proof" out old_dir lock_fd
+  local proof_root="$TMP_ROOT/lock-proof" out old_dir lock_fd source_repo
+  source_repo="${ECI_SOURCE_REPO:?run-isolated.sh must export ECI_SOURCE_REPO}"
   old_dir="$proof_root/019df400-0000-7000-8000-000000000002"
   mkdir -p "$old_dir"
   printf 'old marker\n' >"$old_dir/eci_active"
@@ -221,11 +226,11 @@ test_session_start_skips_pruning_when_mutation_lock_is_busy() {
   exec {lock_fd}>>"$proof_root/.eci-active.lock"
   eci_file_lock_acquire_fd "$lock_fd" nonblocking
   out="$TMP_ROOT/lock.out"
-  run_snapshot "$proof_root" resume "$out" t00-session
+  run_snapshot "$proof_root" resume "$out" t00-session "$source_repo"
   [ -e "$old_dir/eci_active" ]
   [ ! -e "$proof_root/t00-session" ]
   eci_file_lock_release_fd "$lock_fd"
-  run_snapshot "$proof_root" resume "$out" t00-session
+  run_snapshot "$proof_root" resume "$out" t00-session "$source_repo"
   [ -s "$proof_root/t00-session/baseline_head" ]
   [ -e "$old_dir/eci_active" ]
 }
