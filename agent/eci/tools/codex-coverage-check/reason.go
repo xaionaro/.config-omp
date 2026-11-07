@@ -46,6 +46,8 @@ const (
 	ReasonNoPeerProviderRoot ReasonCode = "no-peer-provider-root"
 	// ReasonSuperseded marks a codex unit that an omp implementation supersedes; the excluded row's omp path names it.
 	ReasonSuperseded ReasonCode = "superseded"
+	// ReasonCodexBoundUnused marks a Codex-bound wrapper that omp does not use; its omp config entry was removed.
+	ReasonCodexBoundUnused ReasonCode = "codex-bound-unused"
 )
 
 // recordedReasons lists every reason code the checker accepts. "unrecorded" is deliberately absent: a unit with no
@@ -69,6 +71,7 @@ var recordedReasons = []ReasonCode{
 	ReasonStopGateRetired,
 	ReasonNoPeerProviderRoot,
 	ReasonSuperseded,
+	ReasonCodexBoundUnused,
 }
 
 // recorded reports whether the code is one of the recorded reason codes.

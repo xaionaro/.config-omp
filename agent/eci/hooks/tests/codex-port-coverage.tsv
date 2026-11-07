@@ -7,7 +7,7 @@
 CODEX.md	-	mapped	agent/eci-binding-contract.md	-	-
 bin/codex-lane-status-reminder	-	reason-coded	-	codex-only-lane-reminder	AUDIT decision 1: Codex-only lane reminder
 bin/codex-ollama-responses-bridge	-	reason-coded	-	codex-only-model-bridge	AUDIT decision 1: Codex-only model bridge
-bin/context7-mcp	-	open	-	-	owner OrchPort-2: port pending; set the omp path when the port lands
+bin/context7-mcp	-	reason-coded	-	codex-bound-unused	disposed in 9f370f8: Codex-bound wrapper; omp config entry removed in 5534754; omp does not use context7
 bin/eci-active	install-peer	reason-coded	-	no-peer-provider-root	Codex-free port; omp has no peer provider root (AUDIT decision 2)
 bin/eci-active	install-planner	mapped	agent/eci/tools/eci-active/planner.go	-	maintainPlanner rebuilds the planner pair, publishes it, and refreshes the Kimi planner
 bin/eci-active	install-runtime	mapped	agent/eci/tools/eci-active/runtime_sync.go	-	syncRuntime ports the local publication of eci_runtime_sync_run
