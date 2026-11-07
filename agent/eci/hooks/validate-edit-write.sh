@@ -4,9 +4,16 @@
 
 set -Eeuo pipefail
 
+# A deny decision that cannot be written exits 2 with a stderr message: the tool
+# call is blocked, and the hook never exits 1 with no output.
+deny_write_failed() {
+  printf '%s\n' "$1: could not write the deny decision to stdout; the tool call is blocked" >&2 || true
+  exit 2
+}
+
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-edit-write cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-edit-write cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}' || deny_write_failed validate-edit-write
   exit 0
 fi
 # Every lib function this hook calls must be defined; a partial load would let
@@ -36,7 +43,7 @@ deny() {
       permissionDecision: "deny",
       permissionDecisionReason: $reason
     }
-  }'
+  }' || deny_write_failed validate-edit-write
   exit 0
 }
 
@@ -108,7 +115,6 @@ fi
 # Session-scoped targets fail closed.  An owner that resolves must match an
 # allowed session, and a session-scoped target with no resolvable session id
 # is denied rather than allowed through.
-ownership_busy=""
 ownership_failure_deny() {
   local code="${1:-1}"
   # Under set -E a subshell failure exits with its own status, so no deny JSON
@@ -117,13 +123,13 @@ ownership_failure_deny() {
     exit "$code"
   fi
   # Unconditional deny, as source 575bb81:hooks/validate-edit-write.sh:85-88.
-  # The busy flag stops re-entry: a failure inside deny prints one constant deny.
-  if [ -n "$ownership_busy" ]; then
-    _eci_fail_closed_constant validate-edit-write
+  # deny() exits 0 after writing its decision, or exits 2 if that write fails.
+  # It runs in a || list, where errexit and this ERR trap do not fire inside it,
+  # so a failure before its write returns here and one constant deny is written.
+  deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})" || {
+    _eci_fail_closed_constant validate-edit-write || deny_write_failed validate-edit-write
     exit 0
-  fi
-  ownership_busy=1
-  deny "ownership check failed; failing closed for session-scoped path safety (file=${BASH_SOURCE[0]},line=${BASH_LINENO[0]:-unknown},command=${BASH_COMMAND})"
+  }
 }
 trap 'ownership_failure_deny "$?"' ERR
 owner_probe="${lexical_file_path:-$file_path}"

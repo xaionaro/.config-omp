@@ -8,7 +8,7 @@ export LC_ALL=C
 # Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.
 hook_deny() {
   if ! jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason,additionalContext:$reason}}' 2>/dev/null; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry","additionalContext":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry"}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry","additionalContext":"ECI prompt reminder denied: the reason could not be encoded because jq is unavailable or failed; provision jq and retry"}}' || { printf '%s\n' 'prompt-task-reminder: could not write the deny decision to stdout; the prompt is blocked' >&2 || true; exit 2; }
   fi
   exit 0
 }
@@ -21,9 +21,11 @@ prompt_skip_or_deny() {
   hook_deny "$1"
 }
 if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
+  declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0
   hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null; then
+  declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown && exit 0
   hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: lib/eci-proof-state.sh failed to load; reinstall the ECI hooks and retry"
 fi
 # Every lib function this hook calls must be defined; a partial load would let

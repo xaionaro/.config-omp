@@ -4,33 +4,33 @@
 set -Eeuo pipefail
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# Write one deny decision to stdout.  A failed write exits 2 with a stderr
+# message naming the failure: the edit is blocked, and the hook never exits 1
+# with no output.
+dispatch_write_deny() {
+  printf '%s\n' "$1" || { printf '%s\n' 'pretooluse-edit-dispatch: could not write the deny decision to stdout; the edit is blocked' >&2 || true; exit 2; }
+}
 # Child-health failures are advisory: malformed output or stderr from a child
 # never turns an edit into a denial by itself.  Every denial in this dispatch
 # depends on the ECI marker check, so the proof-state lib must load and define
 # it first; if it cannot, the gate cannot decide and denies.
 if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
+  dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
 # Unexpected failure after the lib load.  With an active or unknown marker the
 # tool call is denied with the fail-closed constant; with no marker the hook
 # exits with the failing status, as errexit does in the source.  A subshell
-# failure exits with its own status so no deny JSON is captured into a value,
-# and the busy flag stops a failure inside this handler from re-entering it.
-_dispatch_err_busy=""
+# failure exits with its own status so no deny JSON is captured into a value.
+# Every command in this handler is guarded, so a failure cannot reach errexit
+# inside it.
 _dispatch_err_trap() {
   local status="$1"
   if [ "$BASHPID" != "$$" ]; then
     exit "$status"
   fi
-  if [ -z "$_dispatch_err_busy" ]; then
-    _dispatch_err_busy=1
-    if eci_marker_active_or_unknown; then
-      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: an unexpected failure occurred while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
-      exit 0
-    fi
-  elif eci_marker_active_or_unknown; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a failure inside the fail-closed handler occurred while an active marker exists; inspect the hook log and retry"}}'
+  if eci_marker_active_or_unknown; then
+    dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: an unexpected failure occurred while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
     exit 0
   fi
   exit "$status"
@@ -38,12 +38,11 @@ _dispatch_err_trap() {
 trap '_dispatch_err_trap "$?"' ERR
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
 if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
-  # No scratch directory: deny only while a marker is active or unknown; with no marker exit 0 as the source does.
   if eci_marker_active_or_unknown; then
-    if ! jq -cn --arg reason "[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
-      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'; then
-      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
-    fi
+    deny_json="$(jq -cn --arg reason "[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null)" ||
+      deny_json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
+    dispatch_write_deny "$deny_json"
   fi
   exit 0
 fi
@@ -55,7 +54,7 @@ cat >"$input_file"
 if ! tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null)"; then
   # Unparseable input denies only while a marker is active or unknown; with no marker exit 0 as the source does.
   if eci_marker_active_or_unknown; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_JQ_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input while an active marker exists; provision jq and retry"}}'
+    dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_JQ_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input while an active marker exists; provision jq and retry"}}'
   fi
   exit 0
 fi
@@ -176,9 +175,18 @@ for index in "${!gates[@]}"; do
 done
 
 if [ -n "$candidate_output" ]; then
-  jq -c . "$candidate_output"
+  # The child's deny is the decision.  A failed write under an active or unknown
+  # marker blocks the edit (exit 2); with no marker the source status is kept.
+  jq -c . "$candidate_output" || {
+    candidate_status=$?
+    if eci_marker_active_or_unknown; then
+      printf '%s\n' 'pretooluse-edit-dispatch: could not write the gate child deny decision to stdout; the edit is blocked' >&2 || true
+      exit 2
+    fi
+    exit "$candidate_status"
+  }
 elif [ -n "$gate_failed" ] && eci_marker_active_or_unknown; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_EDIT_GATE_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a gate child exited non-zero while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
+  dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_EDIT_GATE_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a gate child exited non-zero while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
 fi
 
 # The explicitly requested advisory is intentionally outside the provider
@@ -187,3 +195,5 @@ fi
 if [ -n "$reminder_index" ] && [ -s "$tmp_dir/error-$reminder_index" ]; then
   cat -- "$tmp_dir/error-$reminder_index" >&2
 fi
+
+exit 0
