@@ -322,35 +322,6 @@ assert_copied_home_admitted() {
   }
 }
 
-assert_copied_home_session_targeting_denied() {
-  local command="$1" expected_detail="$2" output
-
-  output="$(run_copied_home_hook "$command" "$COPIED_SESSION" "$COPIED_ROOT")"
-  jq -e --arg expected_detail "$expected_detail" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_IDENTITY_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($expected_detail))
-  ' "$output" >/dev/null || {
-    printf 'copied-home session-targeting lifecycle command did not retain identity denial: command=%q\n' "$command" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_copied_home_foreign_lifecycle_denied() {
-  local command="$1" output
-
-  output="$(run_copied_home_hook "$command" "$COPIED_SESSION" "$COPIED_OTHER_CWD")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_TARGET_DENIED]"))
-  ' "$output" >/dev/null || {
-    printf 'copied-home foreign lifecycle target did not retain its concrete-target denial: command=%q\n' "$command" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
 run_hook_without_marker() {
   local command="$1" output
   output="$TMP_ROOT/output-without-marker"
@@ -401,20 +372,16 @@ assert_copied_home_admitted \
 assert_copied_home_admitted \
   "$(copied_home_lifecycle_command KIMI_SESSION_ID=wrong-session 'sync-runtime extra')" \
   "$COPIED_SESSION" "$COPIED_ROOT"
-assert_copied_home_session_targeting_denied \
-  "$(copied_home_lifecycle_command ECI_SESSION_ID=wrong-session 'ledger-append --json "{\"event\":\"decision\",\"summary\":\"session-targeting-probe\"}"')" \
-  'active session identity mismatch'
-assert_copied_home_session_targeting_denied \
-  "$(copied_home_lifecycle_command KIMI_SESSION_ID=wrong-session 'ledger-append --json "{\"event\":\"decision\",\"summary\":\"session-targeting-probe\"}"')" \
-  'provider session identity mismatch'
+# Retired: session-targeting and foreign-target lifecycle denials expected
+# hook-side ECI_LIFECYCLE_IDENTITY_DENIED and ECI_LIFECYCLE_TARGET_DENIED. Neither
+# code is produced at HEAD or by the pre-migration source 575bb81, and lifecycle
+# verbs are retired (ECI_LIFECYCLE_RETIRED route in tools/eci-active).
 mkdir -p -- "$COPIED_PROOF_ROOT/foreign-session"
 printf 'scope: foreign copied-home marker\ncwd: %s\nsession_id: foreign-session\n' \
   "$COPIED_ROOT" >"$COPIED_PROOF_ROOT/foreign-session/eci_active"
 assert_copied_home_admitted \
   "$(copied_home_lifecycle_command ECI_SESSION_ID=invalid/session sync-runtime)" \
   "$COPIED_SESSION" "$COPIED_OTHER_CWD"
-assert_copied_home_foreign_lifecycle_denied \
-  'env ECI_SESSION_ID=wrong-session ECI_ROLE=coordinator "$HOME/.kimi-code/bin/eci-active" maintain-planner'
 
 if [ "${VALIDATE_BASH_CLASSIFIER_COPIED_HOME_LIFECYCLE_ONLY:-false}" = true ]; then
   printf '%s\n' 'validate-bash classifier copied-home lifecycle: PASS'
@@ -532,19 +499,6 @@ printf '%s\n' \
   'while IFS= read -r _; do :; done' \
   >"$defer_fixture_gate"
 chmod 755 "$defer_fixture_planner" "$defer_fixture_gate"
-defer_fixture_planner_sha="$(sha256sum -- "$defer_fixture_planner" | awk '{print $1}')"
-defer_fixture_planner_size="$(stat -c '%s' -- "$defer_fixture_planner")"
-sed -i \
-  -e "s/^binary_sha256\t.*/binary_sha256\t$defer_fixture_planner_sha/" \
-  -e "s/^binary_size\t.*/binary_size\t$defer_fixture_planner_size/" \
-  -e 's/^binary_mode\t.*/binary_mode\t755/' \
-  "$defer_fixture_provenance"
-[ "$(awk -F '\t' '$1 == "binary_sha256" {print $2}' "$defer_fixture_provenance")" = "$defer_fixture_planner_sha" ] &&
-  [ "$(awk -F '\t' '$1 == "binary_size" {print $2}' "$defer_fixture_provenance")" = "$defer_fixture_planner_size" ] &&
-  [ "$(awk -F '\t' '$1 == "binary_mode" {print $2}' "$defer_fixture_provenance")" = 755 ] || {
-  printf '%s\n' 'deferred planner fixture did not bind provenance to its fake planner' >&2
-  exit 1
-}
 printf '%s\n' \
   'scope: deferred planner fixture' \
   "cwd: $ROOT" \
