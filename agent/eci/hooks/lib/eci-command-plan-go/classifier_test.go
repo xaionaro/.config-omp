@@ -34,6 +34,12 @@ func providerHome(provider Provider) string {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
+	if provider == ProviderKimi {
+		if configured := os.Getenv("KIMI_CODE_HOME"); configured != "" {
+			return filepath.Clean(configured)
+		}
+		return filepath.Join(home, ".kimi-code")
+	}
 	return filepath.Join(home, ".omp", "agent", "eci")
 }
 
@@ -68,9 +74,13 @@ func TestClassifyLedgerAppendRemediationUsesEciAuthority(t *testing.T) {
 	}
 
 	for _, testCase := range []struct {
-		provider Provider
+		provider        Provider
+		wantRemediation string
 	}{
+		// Kimi's remediation is the 575bb81 classifier.go:835-838 text; omp keeps its own
+		// literal-path remediation, checked by eciActiveRemediationError.
 		{provider: ProviderOmp},
+		{provider: ProviderKimi, wantRemediation: "use eci-active ledger-append --json"},
 	} {
 		testCase := testCase
 		t.Run(string(testCase.provider), func(t *testing.T) {
@@ -91,6 +101,12 @@ func TestClassifyLedgerAppendRemediationUsesEciAuthority(t *testing.T) {
 			}
 			if result.Diagnostic.Operation != "ledger-append-only" {
 				t.Errorf("operation: got %q, want ledger-append-only", result.Diagnostic.Operation)
+			}
+			if testCase.wantRemediation != "" {
+				if result.Diagnostic.Remediation != testCase.wantRemediation {
+					t.Errorf("remediation: got %q, want %q", result.Diagnostic.Remediation, testCase.wantRemediation)
+				}
+				return
 			}
 			if err := eciActiveRemediationError(result.Diagnostic.Remediation); err != nil {
 				t.Errorf("remediation: %v", err)
