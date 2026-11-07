@@ -272,6 +272,9 @@ func hookTranscriptStatus(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("%w: empty transcript path", errHookTranscriptUnknown)
 	}
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%w: transcript path is not absolute", errHookTranscriptUnknown)
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
@@ -481,8 +484,9 @@ func hookTranscriptRoots() (string, string, error) {
 // hookTranscriptRelative returns the base under which path lies and the path relative
 // to that base. The base is the configured or the resolved sessions root. When path
 // reaches the root through a symlink above it, such as a HOME alias, the base is the
-// topmost ancestor of path that resolves to the resolved root. Symlinks below the base
-// are rejected by hookNoSymlinkBelow.
+// topmost ancestor of path that resolves to the resolved root. Every component of path
+// must avoid symlinks into the root (hookNoSymlinkIntoRoot), and symlinks below the
+// base are rejected by hookNoSymlinkBelow.
 //
 // Example: <root>/project/a.jsonl and ALIAS/.omp/agent/sessions/project/a.jsonl, with
 // ALIAS linked to HOME, both yield project/a.jsonl.
@@ -506,6 +510,9 @@ func hookTranscriptRelative(path, lexical, resolved string) (string, string, err
 		if err != nil {
 			continue
 		}
+		if err := hookNoSymlinkIntoRoot(path, resolved); err != nil {
+			return "", "", err
+		}
 		return ancestors[i], relative, nil
 	}
 	return "", "", errors.New("transcript is outside the sessions root")
@@ -524,6 +531,37 @@ func hookNoSymlinkBelow(base, relative string) error {
 			return err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("transcript path crosses a symlink")
+		}
+	}
+	return nil
+}
+
+// hookNoSymlinkIntoRoot fails when any component of path, from the filesystem root
+// down to path, is a symlink whose physical location is the resolved root or lies
+// below it. Such a link reaches the sessions root from outside, so a match above it
+// is not a plain alias.
+//
+// Example: HOME/s -> root/project makes HOME/s/up/project/C.jsonl unknown.
+func hookNoSymlinkIntoRoot(path, resolved string) error {
+	current := string(filepath.Separator)
+	for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		physical, err := filepath.EvalSymlinks(current)
+		if err != nil {
+			return err
+		}
+		if physical == resolved || strings.HasPrefix(physical, resolved+string(filepath.Separator)) {
 			return errors.New("transcript path crosses a symlink")
 		}
 	}

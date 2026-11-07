@@ -300,6 +300,68 @@ func TestHookContextHomeAliasAboveRootIsCoordinator(t *testing.T) {
 	require.Equal(t, RoleWorker, got.Role)
 }
 
+// TestHookContextSymlinkIntoRootAboveMatchIsWorker rejects a HOME alias whose path re-enters the sessions root through a symlink inside it.
+//
+// Example: HOME/s -> root/project and root/project/up -> root make HOME/s/up/project/C.jsonl unknown.
+func TestHookContextSymlinkIntoRootAboveMatchIsWorker(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	home := os.Getenv("HOME")
+	root := filepath.Dir(project)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	require.NoError(t, os.Symlink(root, filepath.Join(project, "up")))
+	require.NoError(t, os.Symlink(project, filepath.Join(home, "s")))
+	transcript := filepath.Join(home, "s", "up", "project", "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "crosses a symlink")
+	require.Empty(t, status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
+// TestHookContextSymlinkBaseIsWorker rejects a HOME alias that is itself a symlink to the sessions root.
+//
+// Example: HOME/b -> root makes HOME/b/project/C.jsonl unknown, although it sits at depth two.
+func TestHookContextSymlinkBaseIsWorker(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	home := os.Getenv("HOME")
+	root := filepath.Dir(project)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	require.NoError(t, os.Symlink(root, filepath.Join(home, "b")))
+	transcript := filepath.Join(home, "b", "project", "C.jsonl")
+	status, err := hookTranscriptStatus(transcript)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "crosses a symlink")
+	require.Empty(t, status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: transcript})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
+// TestHookContextRelativeTranscriptIsWorker treats a relative transcript path as unknown, even when it names a real main transcript.
+//
+// Example: a path relative to the working directory is unknown, so the callback runs as a worker.
+func TestHookContextRelativeTranscriptIsWorker(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(project, "C.jsonl"), []byte(`{"type":"session","version":3,"id":"owner"}`+"\n"), 0600))
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	relative, err := filepath.Rel(wd, filepath.Join(project, "C.jsonl"))
+	require.NoError(t, err)
+	require.False(t, filepath.IsAbs(relative))
+	status, err := hookTranscriptStatus(relative)
+	require.ErrorIs(t, err, errHookTranscriptUnknown)
+	require.ErrorContains(t, err, "not absolute")
+	require.Empty(t, status)
+	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: relative})
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
 // TestHookContextMarkerAliasAndInvalid checks supported aliases and invalid records.
 //
 // Example: owner resolves session_owner, while a broken marker grants no authority.
