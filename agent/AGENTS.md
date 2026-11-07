@@ -1,6 +1,6 @@
 # omp ↔ Codex bridge
 
-Authority is `~/.codex`. The binding contract is `CODEX.md`, loaded beside this file as a symlink to `~/.codex/CODEX.md`. Do not copy it. Its relative paths (`skills/...`, `hooks/...`) resolve under `~/.codex/`. This file only maps omp to it.
+Authority is `~/.codex`. Read `~/.codex/CODEX.md` as the binding contract. This file only maps omp to it.
 
 ## Tool glossary (Codex name → omp tool)
 - `spawn_agent` → `task`
