@@ -9,7 +9,9 @@
 # HOME is set to <work>/home. The runtime is copied to <work>/home/.omp/agent/eci
 # and the test runs from that copy, so ROOT equals the HOME-derived runtime path.
 # The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
-# a symlink to the real peer tree (read by tests). ~/.omp/agent/AGENTS.md is a
+# a scratch copy of the Kimi peer (KIMI_CODE_HOME), not a link: the peer sync and
+# some tests write into it, and a write through a link would reach the account.
+# ~/.omp/agent/AGENTS.md is a
 # symlink to the account's global instructions (read by the reviewer prompt) and
 # ~/.omp/agent/skills to the account's skills tree (read by tests).
 # ~/.omp/agent/eci-binding-contract.md is a symlink to the account's binding contract (read by tests).
@@ -46,7 +48,27 @@ cp -a "$runtime_root" "$work/home/.omp/agent/eci"
 if [ -d "$account_home/tmp/eci-runtime" ]; then
   cp -a "$account_home/tmp/eci-runtime" "$work/home/tmp/eci-runtime"
 fi
-ln -s "$account_home/.kimi-code" "$work/home/.kimi-code"
+# The Kimi peer copy keeps every entry except the 180 MB upstream bin/kimi; cache/
+# and search-index/ stay empty (no ECI test reads them). ECI_ACCOUNT_KIMI_CODE_HOME
+# names the account peer for the regression probe, test-run-isolated-kimi-peer.sh.
+kimi_account="$account_home/.kimi-code"
+kimi_home="$work/home/.kimi-code"
+mkdir -p -m 700 "$kimi_home/bin"
+shopt -s dotglob nullglob
+for entry in "$kimi_account"/*; do
+  name="${entry##*/}"
+  case "$name" in
+    bin)
+      for tool in "$entry"/*; do
+        [ "${tool##*/}" = kimi ] || cp -a -- "$tool" "$kimi_home/bin/"
+      done ;;
+    cache|search-index) mkdir -m 700 -- "$kimi_home/$name" ;;
+    *) cp -a -- "$entry" "$kimi_home/" ;;
+  esac
+done
+shopt -u dotglob nullglob
+export KIMI_CODE_HOME="$kimi_home"
+export ECI_ACCOUNT_KIMI_CODE_HOME="$kimi_account"
 ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 ln -s "$account_home/.omp/agent/skills" "$work/home/.omp/agent/skills"
 ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/eci-binding-contract.md"
