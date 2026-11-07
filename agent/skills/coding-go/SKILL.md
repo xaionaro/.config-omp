@@ -144,7 +144,7 @@ Use the global build cache unless the caller set a non-empty `GOCACHE`. Its path
 | Situation | Action |
 |---|---|
 | Caller set a non-empty `GOCACHE` | Inherit it. Never overwrite it. |
-| Code sets `GOCACHE` for a child process | Use `go env GOCACHE` run from the parent environment, before any `HOME` override. Never a temp, isolated, or project path. |
+| Code sets `GOCACHE` for a child process | Run `go env GOCACHE` with `HOME` set to the account home (`os/user`), never `$HOME`. Never a temp, isolated, or project path. |
 | Deriving the cache path | Use `go env GOCACHE`. Never `os.UserCacheDir()`, `$HOME`, or a temp path. |
 | `go env GOCACHE` fails or is not an absolute path | Fail. Never fall back to a path under an isolated `HOME`. |
 | Removing cache data | Never run `go clean -cache` or delete the cache directory. Exception: a one-time removal the user explicitly approves, with a stated justification. |

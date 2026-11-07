@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -118,22 +119,25 @@ func (f cliFixture) env(t *testing.T) []string {
 		require.NoError(t, err, "pin GOCACHE to the global build cache")
 		env = append(env, "GOCACHE="+cache)
 	}
-	realHome, err := os.UserHomeDir()
-	if err != nil {
-		return env
-	}
-	if _, ok := os.LookupEnv("GOPATH"); !ok {
-		env = append(env, "GOPATH="+filepath.Join(realHome, "go"))
-	}
-	if _, ok := os.LookupEnv("GOMODCACHE"); !ok {
-		env = append(env, "GOMODCACHE="+filepath.Join(realHome, "go", "pkg", "mod"))
+
+	_, gopathSet := os.LookupEnv("GOPATH")
+	_, modcacheSet := os.LookupEnv("GOMODCACHE")
+	if !gopathSet || !modcacheSet {
+		acctHome, err := accountHome()
+		require.NoError(t, err, "pin GOPATH and GOMODCACHE to the account home")
+		if !gopathSet {
+			env = append(env, "GOPATH="+filepath.Join(acctHome, "go"))
+		}
+		if !modcacheSet {
+			env = append(env, "GOMODCACHE="+filepath.Join(acctHome, "go", "pkg", "mod"))
+		}
 	}
 	return env
 }
 
 // resolveGoCache returns the absolute build cache directory that `go env GOCACHE` reports under the account HOME.
 //
-// Example: resolve the account build cache from the parent environment before a fixture isolates HOME.
+// Example: resolve the build cache under the account home, not the fixture's isolated HOME.
 func resolveGoCache() (string, error) {
 	home, err := accountHome()
 	if err != nil {
@@ -153,8 +157,10 @@ func resolveGoCache() (string, error) {
 }
 
 // accountHome returns the account's home directory from the user database, never from $HOME.
+//
+// Example: resolve the account home before a fixture overrides HOME.
 func accountHome() (string, error) {
-	u, err := user.Current()
+	u, err := user.LookupId(strconv.Itoa(os.Getuid()))
 	if err != nil {
 		return "", fmt.Errorf("look up account home: %w", err)
 	}
