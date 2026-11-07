@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -187,7 +188,7 @@ func currentCwd() (string, error) {
 	return canonicalCwd(cwd), nil
 }
 
-// gitSafe runs git in a scrubbed environment with fixed system locations.
+// gitSafe runs git in a scrubbed environment with fixed system locations; a failed run returns git's own stderr as its error text.
 func gitSafe(args ...string) (string, error) {
 	var exe string
 	for _, candidate := range []string{"/usr/bin/git", "/bin/git", "/usr/local/bin/git"} {
@@ -223,8 +224,14 @@ func gitSafe(args ...string) (string, error) {
 		"GIT_TERMINAL_PROMPT=0",
 	}
 	out, err := cmd.Output()
-	if err != nil {
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return strings.TrimSuffix(string(out), "\n"), nil
+	case errors.As(err, &exitErr) && len(exitErr.Stderr) > 0:
+		// Callers show git's own diagnostic, so the captured stderr becomes the error text.
+		return "", errors.New(strings.TrimSuffix(string(exitErr.Stderr), "\n"))
+	default:
 		return "", err
 	}
-	return strings.TrimSuffix(string(out), "\n"), nil
 }

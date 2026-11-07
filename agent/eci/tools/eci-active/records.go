@@ -244,7 +244,10 @@ func repositoryAllowOn(args []string) error {
 		return exitError{code: 1, msg: "repository-allow-on requires a bounded non-blank reason without control characters."}
 	}
 	active, err := activeRepoRoot(cwd)
-	if err == nil && active == repo {
+	if err != nil {
+		return exitError{code: 1, msg: err.Error()}
+	}
+	if active == repo {
 		return exitError{code: 1, msg: "Repository is already the active work repository."}
 	}
 	lock, err := acquireLock()

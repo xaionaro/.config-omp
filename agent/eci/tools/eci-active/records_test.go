@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,14 @@ func (fx repoAllowFixture) writeRecord(t *testing.T, cwd, repo string, mode os.F
 	}
 	if err := os.Chmod(fx.recordPath(), mode); err != nil {
 		t.Fatalf("set record mode %o: %v", mode, err)
+	}
+}
+
+// assertRecordAbsent fails the test when the fixture session holds an additional-repository record.
+func (fx repoAllowFixture) assertRecordAbsent(t *testing.T) {
+	t.Helper()
+	if _, err := os.Lstat(fx.recordPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("record %s: want absent, Lstat error = %v", fx.recordPath(), err)
 	}
 }
 
@@ -137,4 +146,69 @@ func TestRepositoryAllowStatusFailsClosedOnInvalidRecord(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRepositoryAllowOnRefusesCwdOutsideWorktree refuses an allowance from a directory that no git worktree contains and writes no record.
+func TestRepositoryAllowOnRefusesCwdOutsideWorktree(t *testing.T) {
+	fx := newRepoAllowFixture(t)
+	repo := fx.makeRepo(t, "target")
+	t.Chdir(t.TempDir())
+
+	out, err := captureStdout(t, func() error {
+		return repositoryAllowOn([]string{"repository-allow-on", repo, "test reason"})
+	})
+	var ee exitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("allow outside a worktree: want exitError, got %#v", err)
+	}
+	if ee.code != 1 || !strings.Contains(ee.msg, "not a git repository") {
+		t.Errorf("allow outside a worktree: exitError = %#v, want code 1 with git's not-a-repository diagnostic", ee)
+	}
+	if out != "" {
+		t.Errorf("allow outside a worktree: stdout = %q, want empty", out)
+	}
+	fx.assertRecordAbsent(t)
+}
+
+// TestRepositoryAllowOnRecordsOtherWorktree records the target when the working directory is a different git worktree.
+func TestRepositoryAllowOnRecordsOtherWorktree(t *testing.T) {
+	fx := newRepoAllowFixture(t)
+	repo := fx.makeRepo(t, "target")
+	work := fx.makeRepo(t, "work")
+	t.Chdir(work)
+
+	out, err := captureStdout(t, func() error {
+		return repositoryAllowOn([]string{"repository-allow-on", repo, "test reason"})
+	})
+	if err != nil {
+		t.Fatalf("allow from other worktree: unexpected error: %#v", err)
+	}
+	if want := "ECI additional repository active: " + repo + "\nreason: test reason\n"; out != want {
+		t.Errorf("allow from other worktree: stdout = %q, want %q", out, want)
+	}
+	if _, err := os.Stat(fx.recordPath()); err != nil {
+		t.Errorf("allow from other worktree: record not written: %v", err)
+	}
+}
+
+// TestRepositoryAllowOnRefusesActiveRepository refuses to allow the repository that already is the working directory's worktree.
+func TestRepositoryAllowOnRefusesActiveRepository(t *testing.T) {
+	fx := newRepoAllowFixture(t)
+	repo := fx.makeRepo(t, "target")
+	t.Chdir(repo)
+
+	out, err := captureStdout(t, func() error {
+		return repositoryAllowOn([]string{"repository-allow-on", repo, "test reason"})
+	})
+	var ee exitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("allow of active repository: want exitError, got %#v", err)
+	}
+	if want := (exitError{code: 1, msg: "Repository is already the active work repository."}); ee != want {
+		t.Errorf("allow of active repository: exitError = %#v, want %#v", ee, want)
+	}
+	if out != "" {
+		t.Errorf("allow of active repository: stdout = %q, want empty", out)
+	}
+	fx.assertRecordAbsent(t)
 }
