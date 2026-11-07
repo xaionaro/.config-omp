@@ -20,7 +20,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 export const GOAL_BLOCK_REASON =
-  "Work autonomously: no user can answer `ask` while the goal runs. If the matching skill is loaded, follow it. If it is not loaded, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you cannot progress, do not call `ask`; state the exact blocker, then end your turn.";
+  "`ask` is disabled while a goal runs unattended; no user can answer it. Work autonomously. If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you cannot progress, do not call `ask`; state the exact blocker and needed input in your final message, then end your turn. The user pauses the goal to answer.";
 
 export const GOAL_UNREADABLE_REASON = "`ask` is unavailable: goal state could not be read";
 
@@ -52,8 +52,8 @@ export default function askGoalGate(pi: ExtensionAPI): void {
       id = sessionIdOf(ctx);
       // Decision: if the kind read throws, the catch marks this session unreadable, so
       // its ask stays blocked until a clean goal_updated from that session. A subagent
-      // never reaches a clean update, so its ask stays blocked too; ask is absent in
-      // subagents, so the effect is nil.
+      // never reaches a clean update, so its ask stays blocked for the life of the
+      // process (fail closed).
       if (ctx.agent.kind !== "main") return;
       if (event.state?.enabled === true) engagedSessions.add(id);
       else engagedSessions.delete(id);
