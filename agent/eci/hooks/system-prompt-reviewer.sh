@@ -240,15 +240,10 @@ fi
 
 model="$REVIEWER_BACKEND"
 start_call=$(date +%s)
-if [ -n "${ECI_REVIEWER_FAKE_RESULT:-}" ]; then
-  result=$(printf '%s' "$ECI_REVIEWER_FAKE_RESULT" | reviewer_strip_fences)
-  model="fake"
-else
-  result=$(reviewer_call_chat "stop_reviewer" "$rules_file" "$body_file" "$HOOK_DIR/lib/reviewer-schema.json" "$ECI_STOP_REVIEWER_TIMEOUT" 2>/dev/null) || {
-    printf '%s\n' "$(eci_diagnostic_reason "ECI_REVIEW_BACKEND_CALL_FAILED" "Stop" "external-review" "reviewer=$(eci_diagnostic_value "$REVIEWER_BACKEND"),session=$(eci_diagnostic_value "$session_id"),cwd=$(eci_diagnostic_value "$cwd")" "reviewer call failed; review skipped" "retry the reviewer when the backend is available; Stop admission remains unchanged")" >&2
-    exit 0
-  }
-fi
+result=$(reviewer_call_chat "stop_reviewer" "$rules_file" "$body_file" "$HOOK_DIR/lib/reviewer-schema.json" "$ECI_STOP_REVIEWER_TIMEOUT" 2>/dev/null) || {
+  printf '%s\n' "$(eci_diagnostic_reason "ECI_REVIEW_BACKEND_CALL_FAILED" "Stop" "external-review" "reviewer=$(eci_diagnostic_value "$REVIEWER_BACKEND"),session=$(eci_diagnostic_value "$session_id"),cwd=$(eci_diagnostic_value "$cwd")" "reviewer call failed; review skipped" "retry the reviewer when the backend is available; Stop admission remains unchanged")" >&2
+  exit 0
+}
 elapsed=$(( $(date +%s) - start_call ))
 
 verdict=$(printf '%s' "$result" | jq -r '.verdict // empty' 2>/dev/null || true)

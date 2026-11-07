@@ -13,16 +13,16 @@ hook_deny() {
   exit 0
 }
 if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
-  hook_deny "ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+  hook_deny "[ECI_NATIVE_HELPER_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 fi
 if ! command -v jq >/dev/null 2>&1; then
-  hook_deny "ECI prompt reminder denied: jq is not installed; install jq and retry"
+  hook_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
 fi
 if ! eci_runtime_open_verified eci-hook-helper; then
-  hook_deny "$ECI_RUNTIME_DENY_REASON"
+  hook_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
 fi
 helper_fd="$ECI_RUNTIME_BINARY_FD"
-private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || exit 0
+private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || { exec {helper_fd}<&-; hook_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"; }
 trap 'rm -rf -- "$private_dir"' EXIT
 input_file="$private_dir/input"
 helper_output="$private_dir/output"
@@ -69,9 +69,9 @@ if [ "$helper_rc" -eq 0 ]; then
 fi
 exec {helper_fd}<&-
 if [ "$helper_rc" -ne 0 ]; then
-  hook_deny "ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
+  hook_deny "[ECI_NATIVE_HELPER_FAILED] ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
 fi
-input="$(cat -- "$helper_output")" || { rm -rf -- "$private_dir"; hook_deny "ECI prompt reminder denied: the native helper output was unreadable; reinstall the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"; }
+input="$(cat -- "$helper_output")" || { rm -rf -- "$private_dir"; hook_deny "[ECI_NATIVE_HELPER_OUTPUT_UNREADABLE] ECI prompt reminder denied: the native helper output was unreadable; reinstall the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"; }
 rm -rf -- "$private_dir"
 
 # Fail closed once the helper gate has decided: an internal failure after that
@@ -84,11 +84,17 @@ prompt_fail_closed() {
     exit "$code"
   fi
   if [ -n "$prompt_busy" ]; then
-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry","additionalContext":"ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry","additionalContext":"[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; provision jq and the native binaries with $HOME/.omp/agent/eci/hooks/build-native-binaries.sh, and retry"}}'
     exit 0
   fi
   prompt_busy=1
-  hook_deny "ECI prompt reminder denied: an internal step failed after the native helper gate; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+  # With no active marker this prompt is not under ECI control, so exit 0 as
+  # the source does.  An unknown marker scan, or a proof-state library that did
+  # not load, counts as active and denies below.
+  if declare -F eci_marker_active_or_unknown >/dev/null 2>&1 && ! eci_marker_active_or_unknown; then
+    exit 0
+  fi
+  hook_deny "[ECI_PROMPT_INTERNAL_FAILURE] ECI prompt reminder denied: an internal step failed after the native helper gate; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
 }
 trap 'prompt_fail_closed "$?"' ERR
 rm -f "$input_file"
@@ -112,7 +118,7 @@ write_side_stop_marker() {
 
 if eci_valid_session_id "$session_id"; then
   reviewer_dir="$root/reviewer/$session_id"
-  mkdir -p "$reviewer_dir"
+  mkdir -p "$reviewer_dir" || prompt_fail_closed 1
   head=$(git -C "$HOME/.omp/agent/eci" rev-parse HEAD 2>/dev/null || true)
   if [ -n "$head" ]; then
     printf '%s\n' "$head" >"$reviewer_dir/prompt_head"

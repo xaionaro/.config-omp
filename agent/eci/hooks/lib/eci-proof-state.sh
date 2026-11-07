@@ -131,7 +131,7 @@ eci_marker_file_is_bounded() {
 # candidates remain in the stream for strict validation rather than being
 # silently discarded.
 eci_marker_candidates_bounded() {
-  local root entry count=0
+  local root entry listing count=0
 
   root="$(eci_proof_root)"
   if ! eci_proof_root_is_safe; then
@@ -139,14 +139,22 @@ eci_marker_candidates_bounded() {
     return 0
   fi
   [ -d "$root" ] || return 0
-  while IFS= read -r -d '' entry; do
+  # A failed listing (unreadable session directory, root removed mid-scan) is
+  # unknown state, not an empty scan: report it as unsafe so every caller
+  # treats the marker state as active and fails closed.
+  listing="$(find "$root" -mindepth 2 -maxdepth 2 -name eci_active -print 2>/dev/null)" || {
+    printf '%s\n' "$eci_marker_scan_unsafe_token"
+    return 0
+  }
+  [ -n "$listing" ] || return 0
+  while IFS= read -r entry; do
     count=$((count + 1))
     if [ "$count" -gt "$eci_marker_scan_max_candidates" ]; then
       printf '%s\n' "$eci_marker_scan_overflow_token"
       return 0
     fi
     printf '%s\n' "$entry"
-  done < <(find "$root" -mindepth 2 -maxdepth 2 -name eci_active -print0 2>/dev/null)
+  done <<< "$listing"
 }
 
 # Gate predicate shared by every PreToolUse gate: an active marker is any

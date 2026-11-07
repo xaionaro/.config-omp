@@ -44,7 +44,7 @@ deny() {
 # While an active marker exists it is denied; with no marker the ordinary path exits 0.
 if [ -z "$patch_text" ]; then
   if eci_marker_active_or_unknown; then
-    deny "patch text is empty while an active marker exists; the patch cannot be checked for session-scoped targets, so it is denied"
+    deny "[ECI_PATCH_TEXT_EMPTY] patch text is empty while an active marker exists; the patch cannot be checked for session-scoped targets, so it is denied"
   fi
   exit 0
 fi
@@ -135,7 +135,7 @@ while IFS= read -r path; do
   owner_probe="${lexical_owner_path:-$path}"
   owner_session_id="$(eci_path_owner_session_id "$owner_probe" 2>/dev/null || true)"
   [ -n "$owner_session_id" ] || owner_session_id="$(eci_path_owner_session_id "${resolved_owner_path:-$path}" 2>/dev/null || true)"
-  [ -n "$owner_session_id" ] || continue
+  [ -n "$owner_session_id" ] || deny "$(eci_diagnostic_reason "ECI_SESSION_OWNER_UNRESOLVED" "PreToolUse" "apply-patch-validation" "$path" "Session-scoped file ${path##*/} has no resolvable session owner; refusing fail-open on a session-scoped path." "use the current session's canonical path")"
   eci_hook_allowed_session_ids "$input" "$hook_subagent_status"
   allowed_session_ids=("${ECI_HOOK_ALLOWED_SESSION_IDS[@]}")
   if [ "${#allowed_session_ids[@]}" -eq 0 ]; then

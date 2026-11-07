@@ -70,8 +70,8 @@ eci_runtime_directory_chain_is_trusted() {
 # runs while the descriptor is open.  Hashing reads the verified descriptor
 # through its path, so the bytes hashed are those of the opened inode.
 eci_runtime_verify_fd() {
-  local name="$1" fd="$2" expected_path="$3" scratch="$4" fdpath="/proc/self/fd/$2"
-  local target owner mode kind receipt_path receipt_line expected actual hash_line
+  local name="$1" fd="$2" expected_path="$3" scratch="$4" receipt_path="$5" fdpath="/proc/self/fd/$2"
+  local target owner mode kind receipt_line expected actual hash_line
 
   readlink -- "$fdpath" >"$scratch/target" 2>/dev/null || { eci_runtime_denial "$name" "descriptor cannot be resolved"; return 1; }
   IFS= read -r target <"$scratch/target" || true
@@ -85,7 +85,6 @@ eci_runtime_verify_fd() {
   (( 8#$mode & 0111 )) || { eci_runtime_denial "$name" "is not executable"; return 1; }
   eci_runtime_elf_matches_host "$fdpath" "$scratch" || { eci_runtime_denial "$name" "is not an ELF binary for this host"; return 1; }
 
-  receipt_path="$(eci_runtime_artifact_path "$name").sha256"
   [ -f "$receipt_path" ] && [ ! -L "$receipt_path" ] || { eci_runtime_denial "$name" "has no sha256 receipt"; return 1; }
   IFS= read -r receipt_line <"$receipt_path" || true
   [[ "$receipt_line" =~ ^([0-9a-f]{64})"  $name"$ ]] || { eci_runtime_denial "$name" "has a malformed sha256 receipt"; return 1; }
@@ -111,10 +110,11 @@ eci_runtime_open_verified() {
 }
 
 _eci_runtime_open_verified_in() {
-  local name="$1" scratch="$2" path bin_dir real_bin fd
+  local name="$1" scratch="$2" path bin_dir real_bin fd receipt_path
 
   path="$(eci_runtime_artifact_path "$name")" || { eci_runtime_denial "$name" "not an allowed artifact name or HOME is not absolute"; return 1; }
   bin_dir="${path%/*}"
+  receipt_path="$path.sha256"
   real_bin="$(realpath -e -- "$bin_dir" 2>/dev/null)" || { eci_runtime_denial "$name" "bin directory is missing"; return 1; }
   eci_runtime_directory_chain_is_trusted "$real_bin" || { eci_runtime_denial "$name" "bin directory or an ancestor is not owned by the current user or root, or is group/other-writable"; return 1; }
   if [ -L "$path" ] || [ ! -f "$path" ]; then
@@ -125,7 +125,7 @@ _eci_runtime_open_verified_in() {
     eci_runtime_denial "$name" "cannot be opened"
     return 1
   fi
-  if ! eci_runtime_verify_fd "$name" "$fd" "$real_bin/$name" "$scratch"; then
+  if ! eci_runtime_verify_fd "$name" "$fd" "$real_bin/$name" "$scratch" "$receipt_path"; then
     exec {fd}<&-
     return 1
   fi

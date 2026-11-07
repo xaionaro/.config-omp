@@ -40,7 +40,7 @@ case "$tool_name" in
   Edit|Write|MultiEdit|NotebookEdit) ;;
   "")
     if eci_marker_active_or_unknown; then
-      deny "tool_name is empty while an active marker exists; the edit callback cannot be classified, so it is denied"
+      deny "[ECI_EDIT_TOOL_NAME_EMPTY] tool_name is empty while an active marker exists; the edit callback cannot be classified, so it is denied"
     fi
     exit 0
     ;;
@@ -51,7 +51,7 @@ file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.n
 
 if [ -z "$file_path" ]; then
   if eci_marker_active_or_unknown; then
-    deny "edit target path is empty while an active marker exists; the edit cannot be attributed to a session-scoped path, so it is denied"
+    deny "[ECI_EDIT_TARGET_EMPTY] edit target path is empty while an active marker exists; the edit cannot be attributed to a session-scoped path, so it is denied"
   fi
   exit 0
 fi
@@ -125,6 +125,11 @@ if [ -n "$owner_session_id" ]; then
   if ! eci_session_owner_allowed "$owner_session_id" "${allowed_session_ids[@]}"; then
     deny "Refusing to edit ${file_path##*/}: file belongs to session $owner_session_id, allowed sessions are ${allowed_session_ids[*]}."
   fi
+elif eci_path_is_under_proof_root "$lexical_file_path" ||
+     eci_path_is_under_proof_root "$resolved_file_path" ||
+     eci_context_session_rest "$lexical_file_path" >/dev/null ||
+     eci_context_session_rest "$resolved_file_path" >/dev/null; then
+  deny "$(eci_diagnostic_reason "ECI_SESSION_OWNER_UNRESOLVED" "PreToolUse" "edit-validation" "$file_path" "Session-scoped file ${file_path##*/} has no resolvable session owner; refusing fail-open on a session-scoped path." "use the current session's canonical path")"
 fi
 trap - ERR
 eci_install_fail_closed_trap validate-edit-write
