@@ -7,7 +7,11 @@ const SCRIPT = "eci-post-compact-refresh.sh";
 
 export default function eciSessionCompact(pi: ExtensionAPI): void {
 	pi.on("session_compact", async (_event, ctx) => {
-		const id = identityFor(ctx);
-		await runEciHook(scriptPath(SCRIPT), basePayload(id, "PostCompact"), id, 30);
+		try {
+			const id = identityFor(ctx);
+			await runEciHook(scriptPath(SCRIPT), basePayload(id, "PostCompact"), id, 30);
+		} catch {
+			return undefined;
+		}
 	});
 }

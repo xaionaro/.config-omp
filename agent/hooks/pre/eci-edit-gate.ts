@@ -31,21 +31,25 @@ function editTargetPaths(input: Record<string, unknown>): string[] {
 
 export default function eciEditGate(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
-		const input = event.input as Record<string, unknown>;
-		const id = identityFor(ctx);
-		const toolName = event.toolName === "edit" ? "Edit" : "Write";
-		const paths = event.toolName === "edit" ? editTargetPaths(input) : targetPaths(input);
-		const toolInputs = paths.length > 0 ? paths.map((filePath) => ({ ...input, file_path: filePath })) : [input];
-		for (const toolInput of toolInputs) {
-			const run = await runEciHook(scriptPath(SCRIPT),
-				{ ...basePayload(id, "PreToolUse"), tool_name: toolName, tool_input: toolInput },
-				id,
-				75,
-			);
-			const verdict = preToolVerdict(run, "pretooluse-edit-dispatch");
-			if (verdict) return verdict;
+		try {
+			if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
+			const input = event.input as Record<string, unknown>;
+			const id = identityFor(ctx);
+			const toolName = event.toolName === "edit" ? "Edit" : "Write";
+			const paths = event.toolName === "edit" ? editTargetPaths(input) : targetPaths(input);
+			const toolInputs = paths.length > 0 ? paths.map((filePath) => ({ ...input, file_path: filePath })) : [input];
+			for (const toolInput of toolInputs) {
+				const run = await runEciHook(scriptPath(SCRIPT),
+					{ ...basePayload(id, "PreToolUse"), tool_name: toolName, tool_input: toolInput },
+					id,
+					75,
+				);
+				const verdict = preToolVerdict(run, "pretooluse-edit-dispatch");
+				if (verdict) return verdict;
+			}
+			return undefined;
+		} catch (err) {
+			return { block: true, reason: "ECI hook error: " + String(err) };
 		}
-		return undefined;
 	});
 }

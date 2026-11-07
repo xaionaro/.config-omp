@@ -7,15 +7,19 @@ const SCRIPT = "prompt-task-reminder.sh";
 
 export default function eciPromptReminder(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event, ctx) => {
-		if (event.reason === "revive") return undefined;
-		const id = identityFor(ctx);
-		const run = await runEciHook(scriptPath(SCRIPT),
-			{ ...basePayload(id, "UserPromptSubmit"), prompt: event.prompt },
-			id,
-			30,
-		);
-		const content = advisoryContext(run, "UserPromptSubmit");
-		if (content === undefined) return undefined;
-		return { message: { customType: "eci-prompt-reminder", content, display: false, attribution: "agent" } };
+		try {
+			if (event.reason === "revive") return undefined;
+			const id = identityFor(ctx);
+			const run = await runEciHook(scriptPath(SCRIPT),
+				{ ...basePayload(id, "UserPromptSubmit"), prompt: event.prompt },
+				id,
+				30,
+			);
+			const content = advisoryContext(run, "UserPromptSubmit");
+			if (content === undefined) return undefined;
+			return { message: { customType: "eci-prompt-reminder", content, display: false, attribution: "agent" } };
+		} catch {
+			return undefined;
+		}
 	});
 }
