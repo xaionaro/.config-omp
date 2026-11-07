@@ -61,11 +61,10 @@ if ! command -v jq >/dev/null 2>&1; then
   prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
 fi
 private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || prompt_skip_or_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"
-trap 'rm -rf -- "$private_dir"' EXIT
+trap 'eci_runtime_close_verified; rm -rf -- "$private_dir"' EXIT
 if ! eci_runtime_open_verified eci-hook-helper; then
   prompt_skip_or_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
 fi
-helper_fd="$ECI_RUNTIME_BINARY_FD"
 input_file="$private_dir/input"
 helper_output="$private_dir/output"
 head -c 65537 >"$input_file" || prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input could not be read; retry"
@@ -107,9 +106,9 @@ done < <(printf '%s\n' "$normalized_prompt" | sed -E 's/[,;.!?]/\n/g; s/[[:space
 # Run the verified helper before any reminder is emitted; a helper runtime failure is an explicit deny, not a silent exit.
 helper_rc=0
 if [ "$helper_rc" -eq 0 ]; then
-  "/proc/self/fd/$helper_fd" stdin <"$input_file" >"$helper_output" || helper_rc=$?
+  "$ECI_RUNTIME_BINARY_EXEC" stdin <"$input_file" >"$helper_output" || helper_rc=$?
 fi
-exec {helper_fd}<&-
+eci_runtime_close_verified
 if [ "$helper_rc" -ne 0 ]; then
   prompt_skip_or_deny "[ECI_NATIVE_HELPER_FAILED] ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
 fi
