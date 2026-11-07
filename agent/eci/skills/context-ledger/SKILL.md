@@ -507,7 +507,7 @@ file under existing ownership. Rename is publication, not concurrency control.
 ```sh
 (
 set -e
-session_dir="${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}/$SESSION_ID"
+session_dir="$HOME/.agent/context/sessions/$SESSION_ID"
 snapshot_tmp=$(mktemp "$session_dir/.understanding-snapshot.XXXXXX")
 cp -- "$session_dir/project-understanding.yaml" "$snapshot_tmp"
 # Apply the bounded native edit to "$snapshot_tmp"; reconcile/check before publishing.
