@@ -51,6 +51,10 @@ fi
 if [ "$#" -gt 0 ]; then
   requested=' '
   for name in "$@"; do
+    # One name per argument: a name with whitespace could match several list entries at once below.
+    case "$name" in
+      '' | *[[:space:]]*) die "binary name '$name' is empty or contains whitespace; pass one name per argument" ;;
+    esac
     case " ${names[*]} " in
       *" $name "*) ;;
       *) die "unknown binary '$name' for $host_os; known: ${names[*]}" ;;
