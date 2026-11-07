@@ -55,7 +55,7 @@ func manifestWrite(args []string) error {
 	return nil
 }
 
-// reportAggregatePlanResidue is the advisory branch of codex
+// reportAggregatePlanResidue is the advisory branch of the pre-migration source
 // reject_normal_lifecycle_for_aggregate_session. A live aggregate context is
 // not reconstructed here because aggregate lifecycle mutators are deferred in
 // omp; a plan file is reported as diagnostic residue only.

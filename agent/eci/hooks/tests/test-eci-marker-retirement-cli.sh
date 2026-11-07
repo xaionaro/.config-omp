@@ -81,7 +81,7 @@ done
 if (cd -- "$outer" && "$base_dir/bin/eci-active" aggregate-review "$phase" unknown >/dev/null 2>&1); then
   echo 'unknown aggregate repository accepted' >&2; exit 1
 fi
-# Codex advisory parity: a selected caller without a current manifest gets a refresh reminder (exit 0), and no manifest is written.
+# Pre-migration source 575bb81 advisory parity: a selected caller without a current manifest gets a refresh reminder (exit 0), and no manifest is written.
 (cd -- "$repo_b" && "$base_dir/bin/eci-active" aggregate-review "$phase" repo-b >"$fixture/refresh-$phase.out" 2>&1)
 grep -Fq "ECI review refresh needed: phase=$phase" "$fixture/refresh-$phase.out"
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-aggregate.repo-b.required-critics.json" ]

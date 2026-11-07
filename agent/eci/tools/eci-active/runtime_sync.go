@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// Runtime synchronization ports the local publication of codex's eci_runtime_sync_run
+// Runtime synchronization ports the local publication of the pre-migration source's eci_runtime_sync_run
 // (hooks/lib/eci-runtime-sync.sh at 575bb81). The canonical source is the running omp ECI home. Its managed
-// surface is the hooks/ tree plus the bin/ entries codex publishes. Codex's peer-apply step accepts only the
-// canonical Codex home as its source, so it is reported as an advisory rather than copied.
+// surface is the hooks/ tree plus the bin/ entries the pre-migration source publishes. Its peer-apply step accepts only the
+// canonical pre-migration home as its source, so it is reported as an advisory rather than copied.
 const (
 	runtimeSyncProvider    = "eci"
 	runtimeSyncHomeSuffix  = "/.omp/agent/eci"
@@ -24,7 +24,7 @@ const (
 // runtimeSyncRequired must exist in the canonical source before anything is published.
 var runtimeSyncRequired = []string{"bin/eci-active", "hooks/validate-bash.sh"}
 
-// runtimeSyncBins are the bin/ entries published when present (codex's list).
+// runtimeSyncBins are the bin/ entries published when present (the pre-migration source's list).
 var runtimeSyncBins = []string{
 	"bin/eci-active", "bin/eci-active-dispatch", "bin/eci-runtime-sync",
 	"bin/eci-command-gate-mode", "bin/eci-worker-git",
@@ -37,7 +37,7 @@ type runtimeRow struct {
 	mode os.FileMode
 }
 
-// runtimeSyncFail formats a refusal in codex's shape.
+// runtimeSyncFail formats a refusal in the pre-migration source's shape.
 func runtimeSyncFail(code, format string, args ...any) error {
 	return exitError{code: 1, msg: fmt.Sprintf("[%s] ECI runtime synchronization denied: %s", code, fmt.Sprintf(format, args...))}
 }
@@ -101,7 +101,7 @@ func runtimeSyncTmpRoot() (string, error) {
 	return canon, nil
 }
 
-// runtimeSafeRel accepts only plain printable relative paths, as codex's manifest validation does.
+// runtimeSafeRel accepts only plain printable relative paths, as the pre-migration source's manifest validation does.
 func runtimeSafeRel(rel string) bool {
 	return !strings.HasPrefix(rel, "/") && !strings.Contains(rel, "..") &&
 		strings.IndexFunc(rel, func(r rune) bool { return r < 0x20 || r > 0x7e }) < 0
@@ -194,7 +194,7 @@ func stageRuntime(source, stage string) ([]runtimeRow, []byte, error) {
 	return rows, manifest.Bytes(), nil
 }
 
-// runtimeMountPoints lists mount points from mountinfo, skipping entries codex also skips.
+// runtimeMountPoints lists mount points from mountinfo, skipping entries the pre-migration source also skips.
 func runtimeMountPoints() []string {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
@@ -282,7 +282,7 @@ func publishRuntimeTarget(source, target, stage string, rows []runtimeRow, manif
 			return runtimeSyncFail("ECI_RUNTIME_SYNC_VERIFY", "provider=%s source=%s target=%s digest_or_mode_mismatch", runtimeSyncProvider, source, dst)
 		}
 	}
-	// The receipt is descriptive; a failure to write it is advisory, as in codex.
+	// The receipt is descriptive; a failure to write it is advisory, as in the pre-migration source.
 	receipt := filepath.Join(target, runtimeSyncReceiptName)
 	if info, err := os.Lstat(receipt); err == nil && info.IsDir() {
 		fmt.Fprintf(os.Stderr, "ECI runtime maintenance advisory: target receipt is not a replaceable file: %s\n", receipt)
@@ -300,7 +300,7 @@ func publishRuntimeTarget(source, target, stage string, rows []runtimeRow, manif
 	return nil
 }
 
-// publishRuntimeSourceReceipt refreshes the canonical source receipt. Failures are advisory, as in codex.
+// publishRuntimeSourceReceipt refreshes the canonical source receipt. Failures are advisory, as in the pre-migration source.
 func publishRuntimeSourceReceipt(source string, manifest []byte) {
 	receipt := filepath.Join(source, runtimeSyncReceiptName)
 	if info, err := os.Lstat(receipt); err == nil && info.IsDir() {

@@ -11,9 +11,9 @@ import (
 	"strings"
 )
 
-// aggregate-review ports codex bin/eci-active aggregate-review at 575bb81. Plan validation and selection port
-// codex_eci_aggregate_plan_is_valid, _plan_select, _live_repo_metadata, and _selected_child_is_genuinely_independent
-// from hooks/lib/codex-proof-state.sh; the review gate ports the aggregate branch of hooks/eci-review-gate.sh.
+// aggregate-review ports the pre-migration source's bin/eci-active aggregate-review at 575bb81. Plan validation and selection port
+// pre-migration eci_aggregate_plan_is_valid, _plan_select, _live_repo_metadata, and _selected_child_is_genuinely_independent
+// from the pre-migration proof-state shell library (575bb81 hooks/lib); the review gate ports the aggregate branch of hooks/eci-review-gate.sh.
 // The command is read-only: it holds the ECI mutation lock while it validates and publishes no state.
 
 const aggregateManifestFmt = "eci-aggregate.%s.required-critics.json"
@@ -250,7 +250,7 @@ func aggregateCurrentContext(sid, sessionDir string) (string, string, error) {
 	return plan, outer, nil
 }
 
-// aggregatePlanSelect ports codex_eci_aggregate_plan_select for an explicit repository ID.
+// aggregatePlanSelect ports the pre-migration eci_aggregate_plan_select for an explicit repository ID.
 func aggregatePlanSelect(plan, sid, outer, repoID string) (string, error) {
 	if !aggregateRepoIDRe.MatchString(repoID) {
 		return "", errors.New("repository id is invalid")
@@ -348,7 +348,7 @@ type reviewGate struct {
 	cwd   string
 }
 
-// refresh prints the non-blocking refresh reminder that codex's gate emits for missing or stale review metadata.
+// refresh prints the non-blocking refresh reminder that the pre-migration source's gate emits for missing or stale review metadata.
 func (g reviewGate) refresh(reason, target string) {
 	fmt.Fprintf(os.Stdout, "ECI review refresh needed: phase=%s target=%s reason=%s; ordinary work continues; workflow must route one fresh named least-restriction critic for the current diff.\n",
 		g.phase, target, reason)
@@ -403,7 +403,7 @@ func gitPlainOutput(args ...string) string {
 }
 
 // aggregateReviewGate ports the aggregate branch of hooks/eci-review-gate.sh. It returns errGateDenied after
-// printing a denial, or nil for pass and refresh outcomes (refresh is advisory, as in codex).
+// printing a denial, or nil for pass and refresh outcomes (refresh is advisory, as in the pre-migration source).
 func aggregateReviewGate(phase, sid, repoID, outer string) error {
 	if outer != canonicalCwd(outer) {
 		return errGateDenied
