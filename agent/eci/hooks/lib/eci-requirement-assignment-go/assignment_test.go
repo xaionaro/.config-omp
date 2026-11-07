@@ -85,7 +85,7 @@ func newCLIFixture(t *testing.T) cliFixture {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	home := filepath.Join(root, "home")
-	// The canonical ledger lives in <HOME>/.agent/context/sessions/<sid>, as in codex;
+	// The canonical ledger lives in <HOME>/.agent/context/sessions/<sid>, as in the pre-migration source;
 	// the proof root only names the session.
 	session := filepath.Join(home, ".agent", "context", "sessions", "test-capture")
 	require.NoError(t, os.MkdirAll(session, 0700))
