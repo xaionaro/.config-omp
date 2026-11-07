@@ -1,7 +1,13 @@
-# PORT-MANIFEST: hooks/tests (codex-free port of 575bb81:hooks/tests)
+# TEST-DISPOSITION: hooks/tests, per-file disposition against source 575bb81 (kept, renamed, excluded with reason)
 
 Source: `git -C ~/.codex archive 575bb81 hooks/tests` (134 files: 53 under `fixtures/`, 77 top-level `*.sh` including `run.sh`, the `eci-hook-e2e-go/` Go module, and its README).
 Destination: `agent/eci/hooks/tests` (133 files, 53 under `fixtures/`). One source file is excluded and listed below.
+
+## Isolation
+
+Run every test through `run-isolated.sh <test-file>`. It copies the runtime to `<tmp>/home/.omp/agent/eci` and runs the test from that copy, so `ROOT` matches the HOME-derived path. HOME is `<tmp>/home`, so the context root (`$HOME/.agent/context`) and proof root (`$HOME/tmp/agent/proof`, also `ECI_PROOF_ROOT`) resolve under `<tmp>` and are removed on exit. `~/.kimi-code` is a symlink to the real peer tree. GOPATH, GOMODCACHE, and GOCACHE stay on account paths. Running a test directly writes to the real account HOME (for example `test-eci-structured-log.sh` and `test-eci-understanding-yaml.sh` write `$HOME/.agent/context/sessions/<id>`).
+
+Measured on one `run.sh` run each: symlinked runtime, `SUMMARY pass=139 fail=65`, real `t00-session` log rewritten once (12:37:41, `wrong-cwd probe` line); copied runtime, `SUMMARY pass=115 fail=89`, real `t00-session` log unchanged. Copy-only failures include `pre-commit-go-mod.sh` byte checks whose log paths show `/mnt/nvme0n1/home` while HOME is `/home/pheona`, because `/home` is a symlink to `/mnt/nvme0n1/home`. The `validate-bash ... make without memory cap` failures are not diagnosed.
 
 ## Exclusions
 
