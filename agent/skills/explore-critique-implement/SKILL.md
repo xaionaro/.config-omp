@@ -61,12 +61,12 @@ Before any Worker spawn, apply the spawn rule in [Initial admission](references/
 
 Before every spawn or resume, apply this section to every brief, including read-only explorer briefs and follow-up briefs to a reused agent.
 
-Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The Orchestrator (current Job owner dispatching the spawn) fills one Routing line per unit:
+Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. The dispatcher fills one Routing line per unit: the Orchestrator (current Job owner) for its Job's spawns, or the publisher for an Orchestrator spawn:
 
 - `match: <skill>` names the triggering files or task kind; `no match: <reason>` cites what the unit was judged against.
 - A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
-- The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The Orchestrator derives it from the Routing lines.
+- The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The dispatcher derives it from the Routing lines.
 
 ## Model selection
 
