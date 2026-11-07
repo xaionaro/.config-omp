@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -77,7 +79,7 @@ func openAbsoluteDirectory(path string) (int, bool) {
 			syscall.Close(fd)
 			return -1, false
 		}
-		next, err := syscall.Openat(fd, part, dirOpenFlags, 0)
+		next, err := unix.Openat(fd, part, dirOpenFlags, 0)
 		syscall.Close(fd)
 		if err != nil {
 			return -1, false
@@ -112,14 +114,14 @@ func openContainedTranscript(root, raw string) (*os.File, bool) {
 		return nil, false
 	}
 	for _, part := range rel[:len(rel)-1] {
-		next, err := syscall.Openat(dirFD, part, dirOpenFlags, 0)
+		next, err := unix.Openat(dirFD, part, dirOpenFlags, 0)
 		syscall.Close(dirFD)
 		if err != nil {
 			return nil, false
 		}
 		dirFD = next
 	}
-	fd, err := syscall.Openat(dirFD, rel[len(rel)-1], fileOpenFlags, 0)
+	fd, err := unix.Openat(dirFD, rel[len(rel)-1], fileOpenFlags, 0)
 	syscall.Close(dirFD)
 	if err != nil {
 		return nil, false

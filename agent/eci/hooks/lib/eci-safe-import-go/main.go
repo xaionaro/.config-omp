@@ -12,8 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -27,10 +27,6 @@ const (
 	waitReportName        = "eci_user_owned_wait.md"
 	singletonManifestName = "eci-required-critics.json"
 	temporaryLeafPrefix   = ".eci-safe-import."
-	// pathOpenFlag obtains entry metadata without opening it for I/O (Linux O_PATH).
-	//
-	// Example: O_NOFOLLOW permits inspecting a dangling symlink itself.
-	pathOpenFlag = 0x200000
 )
 
 // Request identifies a regular source and one fixed destination leaf below a
@@ -85,29 +81,29 @@ func importRequest(request Request, hooks importHooks) error {
 	if err != nil {
 		return fmt.Errorf("proof root: %w", err)
 	}
-	defer syscall.Close(rootFD)
+	defer unix.Close(rootFD)
 
 	sessionFD, err := openSessionDirectory(rootFD, request.ProofRoot, request.SessionDir)
 	if err != nil {
 		return fmt.Errorf("session directory: %w", err)
 	}
-	defer syscall.Close(sessionFD)
+	defer unix.Close(sessionFD)
 
 	sourceFD, err := openRegularSource(request.Source)
 	if err != nil {
 		return fmt.Errorf("source: %w", err)
 	}
-	defer syscall.Close(sourceFD)
+	defer unix.Close(sourceFD)
 	if hooks.afterSourceOpen != nil {
 		hooks.afterSourceOpen()
 	}
 
-	var destinationStat syscall.Stat_t
+	var destinationStat unix.Stat_t
 	err = statNamed(sessionFD, destination, &destinationStat)
 	switch {
 	case err == nil:
 		return replaceExistingLeaf(sessionFD, destination, sourceFD, hooks)
-	case errors.Is(err, syscall.ENOENT):
+	case errors.Is(err, unix.ENOENT):
 		return publishAbsentLeaf(sessionFD, destination, sourceFD, hooks)
 	default:
 		return fmt.Errorf("inspect destination: %w", err)
@@ -193,17 +189,17 @@ func openCanonicalDirectory(path string) (int, error) {
 	if err != nil || resolved != path {
 		return -1, fmt.Errorf("%w: proof root is not a canonical directory", errInvalidRequest)
 	}
-	fd, err := openNoFollowPath(path, syscall.O_RDONLY|syscall.O_DIRECTORY)
+	fd, err := openNoFollowPath(path, unix.O_RDONLY|unix.O_DIRECTORY)
 	if err != nil {
 		return -1, err
 	}
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(fd, &stat); err != nil {
-		syscall.Close(fd)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		unix.Close(fd)
 		return -1, err
 	}
-	if stat.Mode&syscall.S_IFMT != syscall.S_IFDIR {
-		syscall.Close(fd)
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		unix.Close(fd)
 		return -1, errors.New("not a directory")
 	}
 	return fd, nil
@@ -222,17 +218,17 @@ func openSessionDirectory(rootFD int, proofRoot string, sessionDir string) (int,
 	if sessionDir != filepath.Join(proofRoot, relative) {
 		return -1, fmt.Errorf("%w: session directory binding", errInvalidRequest)
 	}
-	fd, err := syscall.Openat(rootFD, relative, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	fd, err := unix.Openat(rootFD, relative, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return -1, err
 	}
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(fd, &stat); err != nil {
-		syscall.Close(fd)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		unix.Close(fd)
 		return -1, err
 	}
-	if stat.Mode&syscall.S_IFMT != syscall.S_IFDIR {
-		syscall.Close(fd)
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		unix.Close(fd)
 		return -1, errors.New("not a directory")
 	}
 	return fd, nil
@@ -262,17 +258,17 @@ func openRegularSource(source string) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	fd, err := openNoFollowPath(resolvedSource, syscall.O_RDONLY|syscall.O_NONBLOCK)
+	fd, err := openNoFollowPath(resolvedSource, unix.O_RDONLY|unix.O_NONBLOCK)
 	if err != nil {
 		return -1, err
 	}
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(fd, &stat); err != nil {
-		syscall.Close(fd)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		unix.Close(fd)
 		return -1, err
 	}
-	if stat.Mode&syscall.S_IFMT != syscall.S_IFREG {
-		syscall.Close(fd)
+	if stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		unix.Close(fd)
 		return -1, errors.New("not a regular file")
 	}
 	return fd, nil
@@ -290,10 +286,10 @@ func openNoFollowPath(path string, finalFlags int) (int, error) {
 	var err error
 	var components []string
 	if filepath.IsAbs(cleaned) {
-		fd, err = syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+		fd, err = unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 		components = strings.Split(strings.TrimPrefix(cleaned, string(filepath.Separator)), string(filepath.Separator))
 	} else {
-		fd, err = syscall.Open(".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+		fd, err = unix.Open(".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 		components = strings.Split(cleaned, string(filepath.Separator))
 	}
 	if err != nil {
@@ -306,14 +302,14 @@ func openNoFollowPath(path string, finalFlags int) (int, error) {
 		if component == "" || component == "." {
 			continue
 		}
-		flags := syscall.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_CLOEXEC
+		flags := unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC
 		if index < len(components)-1 {
-			flags |= syscall.O_DIRECTORY
+			flags |= unix.O_DIRECTORY
 		} else {
 			flags |= finalFlags
 		}
-		nextFD, openErr := syscall.Openat(fd, component, flags, 0)
-		syscall.Close(fd)
+		nextFD, openErr := unix.Openat(fd, component, flags, 0)
+		unix.Close(fd)
 		if openErr != nil {
 			return -1, openErr
 		}
@@ -326,17 +322,17 @@ func openNoFollowPath(path string, finalFlags int) (int, error) {
 // when it differs from the source FD, then rejects a pathname binding change
 // before reporting success.
 func replaceExistingLeaf(sessionFD int, destination string, sourceFD int, hooks importHooks) error {
-	destinationFD, err := syscall.Openat(sessionFD, destination, syscall.O_WRONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	destinationFD, err := unix.Openat(sessionFD, destination, unix.O_WRONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
-	defer syscall.Close(destinationFD)
+	defer unix.Close(destinationFD)
 	stat, err := validateDestinationFD(destinationFD)
 	if err != nil {
 		return err
 	}
-	var sourceStat syscall.Stat_t
-	if err := syscall.Fstat(sourceFD, &sourceStat); err != nil {
+	var sourceStat unix.Stat_t
+	if err := unix.Fstat(sourceFD, &sourceStat); err != nil {
 		return err
 	}
 	sameInode := sourceStat.Dev == stat.Dev && sourceStat.Ino == stat.Ino
@@ -344,16 +340,16 @@ func replaceExistingLeaf(sessionFD int, destination string, sourceFD int, hooks 
 		hooks.afterExistingOpen()
 	}
 	if !sameInode {
-		if err := syscall.Ftruncate(destinationFD, 0); err != nil {
+		if err := unix.Ftruncate(destinationFD, 0); err != nil {
 			return err
 		}
-		if _, err := syscall.Seek(destinationFD, 0, io.SeekStart); err != nil {
+		if _, err := unix.Seek(destinationFD, 0, io.SeekStart); err != nil {
 			return err
 		}
 		if err := copyDescriptor(sourceFD, destinationFD); err != nil {
 			return err
 		}
-		if err := syscall.Fsync(destinationFD); err != nil {
+		if err := unix.Fsync(destinationFD); err != nil {
 			return err
 		}
 	}
@@ -370,18 +366,18 @@ func publishAbsentLeaf(sessionFD int, destination string, sourceFD int, hooks im
 	if err != nil {
 		return err
 	}
-	defer syscall.Close(temporaryFD)
+	defer unix.Close(temporaryFD)
 	removeTemporary := true
 	defer func() {
 		if removeTemporary {
-			_ = syscall.Unlinkat(sessionFD, temporaryName)
+			_ = unix.Unlinkat(sessionFD, temporaryName, 0)
 		}
 	}()
 
 	if err := copyDescriptor(sourceFD, temporaryFD); err != nil {
 		return err
 	}
-	if err := syscall.Fsync(temporaryFD); err != nil {
+	if err := unix.Fsync(temporaryFD); err != nil {
 		return err
 	}
 	if hooks.beforeAbsentPublish != nil {
@@ -390,11 +386,11 @@ func publishAbsentLeaf(sessionFD int, destination string, sourceFD int, hooks im
 	if err := linkAt(sessionFD, temporaryName, sessionFD, destination); err != nil {
 		return fmt.Errorf("publish without replacement: %w", err)
 	}
-	if err := syscall.Unlinkat(sessionFD, temporaryName); err != nil {
+	if err := unix.Unlinkat(sessionFD, temporaryName, 0); err != nil {
 		return err
 	}
 	removeTemporary = false
-	var stat syscall.Stat_t
+	var stat unix.Stat_t
 	if err := statNamed(sessionFD, destination, &stat); err != nil {
 		return err
 	}
@@ -408,24 +404,7 @@ func publishAbsentLeaf(sessionFD int, destination string, sourceFD int, hooks im
 // A destination that appears after the initial absence check makes this call
 // fail with EEXIST; it never replaces that raced name.
 func linkAt(oldDirectoryFD int, oldPath string, newDirectoryFD int, newPath string) error {
-	oldName, err := syscall.BytePtrFromString(oldPath)
-	if err != nil {
-		return err
-	}
-	newName, err := syscall.BytePtrFromString(newPath)
-	if err != nil {
-		return err
-	}
-	_, _, errno := syscall.Syscall6(
-		syscall.SYS_LINKAT,
-		uintptr(oldDirectoryFD), uintptr(unsafe.Pointer(oldName)),
-		uintptr(newDirectoryFD), uintptr(unsafe.Pointer(newName)),
-		0, 0,
-	)
-	if errno != 0 {
-		return errno
-	}
-	return nil
+	return unix.Linkat(oldDirectoryFD, oldPath, newDirectoryFD, newPath, 0)
 }
 
 // createPrivateTemporaryLeaf makes a mode-0600 regular file under the opened
@@ -437,16 +416,16 @@ func createPrivateTemporaryLeaf(sessionFD int) (string, int, error) {
 			return "", -1, err
 		}
 		name := fmt.Sprintf("%s%x", temporaryLeafPrefix, entropy)
-		fd, err := syscall.Openat(sessionFD, name, syscall.O_RDWR|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
-		if errors.Is(err, syscall.EEXIST) {
+		fd, err := unix.Openat(sessionFD, name, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+		if errors.Is(err, unix.EEXIST) {
 			continue
 		}
 		if err != nil {
 			return "", -1, err
 		}
 		if _, err := validateDestinationFD(fd); err != nil {
-			syscall.Close(fd)
-			syscall.Unlinkat(sessionFD, name)
+			unix.Close(fd)
+			unix.Unlinkat(sessionFD, name, 0)
 			return "", -1, err
 		}
 		return name, fd, nil
@@ -455,27 +434,27 @@ func createPrivateTemporaryLeaf(sessionFD int) (string, int, error) {
 
 // validateDestinationFD verifies the opened destination's concrete type,
 // owner, and one-link binding before it is written.
-func validateDestinationFD(fd int) (syscall.Stat_t, error) {
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(fd, &stat); err != nil {
-		return syscall.Stat_t{}, err
+func validateDestinationFD(fd int) (unix.Stat_t, error) {
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return unix.Stat_t{}, err
 	}
 	if !validDestinationStat(stat) {
-		return syscall.Stat_t{}, errors.New("destination is not a current-user-owned single-link regular file")
+		return unix.Stat_t{}, errors.New("destination is not a current-user-owned single-link regular file")
 	}
 	return stat, nil
 }
 
 // validDestinationStat reports whether stat is safe to use as one fixed
 // current-session leaf without following another inode through a hard link.
-func validDestinationStat(stat syscall.Stat_t) bool {
-	return stat.Mode&syscall.S_IFMT == syscall.S_IFREG && int(stat.Uid) == os.Geteuid() && stat.Nlink == 1
+func validDestinationStat(stat unix.Stat_t) bool {
+	return stat.Mode&unix.S_IFMT == unix.S_IFREG && int(stat.Uid) == os.Geteuid() && stat.Nlink == 1
 }
 
 // destinationBindingMatches proves the fixed session leaf still names the
 // same validated inode after an existing-destination descriptor write.
-func destinationBindingMatches(sessionFD int, destination string, expected syscall.Stat_t) bool {
-	var current syscall.Stat_t
+func destinationBindingMatches(sessionFD int, destination string, expected unix.Stat_t) bool {
+	var current unix.Stat_t
 	if err := statNamed(sessionFD, destination, &current); err != nil {
 		return false
 	}
@@ -485,15 +464,10 @@ func destinationBindingMatches(sessionFD int, destination string, expected sysca
 // statNamed reads descriptor-relative entry metadata without following its final symlink.
 //
 // Example: a destination symlink is inspected itself, including when its target is absent.
-func statNamed(parentFD int, name string, metadata *syscall.Stat_t) error {
-	// O_PATH avoids read permissions and special-file I/O while retaining the
-	// nofollow semantics of fstatat across Linux syscall package architectures.
-	fd, err := syscall.Openat(parentFD, name, pathOpenFlag|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	statErr := syscall.Fstat(fd, metadata)
-	return errors.Join(statErr, syscall.Close(fd))
+func statNamed(parentFD int, name string, metadata *unix.Stat_t) error {
+	// fstatat with AT_SYMLINK_NOFOLLOW reads the entry itself without opening it,
+	// so FIFOs and entries without read permission are never opened for I/O.
+	return unix.Fstatat(parentFD, name, metadata, unix.AT_SYMLINK_NOFOLLOW)
 }
 
 // copyDescriptor copies all bytes from an already-validated source FD to an
@@ -501,7 +475,7 @@ func statNamed(parentFD int, name string, metadata *syscall.Stat_t) error {
 func copyDescriptor(sourceFD int, destinationFD int) error {
 	buffer := make([]byte, 32*1024)
 	for {
-		readCount, readErr := syscall.Read(sourceFD, buffer)
+		readCount, readErr := unix.Read(sourceFD, buffer)
 		if readCount > 0 {
 			if err := writeAll(destinationFD, buffer[:readCount]); err != nil {
 				return err
@@ -513,7 +487,7 @@ func copyDescriptor(sourceFD int, destinationFD int) error {
 			}
 			continue
 		}
-		if errors.Is(readErr, syscall.EINTR) {
+		if errors.Is(readErr, unix.EINTR) {
 			continue
 		}
 		return readErr
@@ -524,14 +498,14 @@ func copyDescriptor(sourceFD int, destinationFD int) error {
 // partial regular-file write.
 func writeAll(fd int, bytes []byte) error {
 	for len(bytes) > 0 {
-		written, err := syscall.Write(fd, bytes)
+		written, err := unix.Write(fd, bytes)
 		if written > 0 {
 			bytes = bytes[written:]
 		}
 		if err == nil {
 			continue
 		}
-		if errors.Is(err, syscall.EINTR) {
+		if errors.Is(err, unix.EINTR) {
 			continue
 		}
 		return err

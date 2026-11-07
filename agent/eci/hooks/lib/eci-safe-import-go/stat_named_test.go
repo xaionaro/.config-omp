@@ -4,8 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // TestStatNamedPreservesEntryIdentity checks lookup after a parent rename and special entries.
@@ -24,26 +25,26 @@ func TestStatNamedPreservesEntryIdentity(t *testing.T) {
 	if err := os.Symlink("missing-target", filepath.Join(parent, "link")); err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Mkfifo(filepath.Join(parent, "fifo"), 0o600); err != nil {
+	if err := unix.Mkfifo(filepath.Join(parent, "fifo"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(parent, parent+"-moved"); err != nil {
 		t.Fatal(err)
 	}
-	for name, wantType := range map[string]uint32{"link": syscall.S_IFLNK, "fifo": syscall.S_IFIFO} {
-		var got, want syscall.Stat_t
+	for name, wantType := range map[string]uint32{"link": unix.S_IFLNK, "fifo": unix.S_IFIFO} {
+		var got, want unix.Stat_t
 		if err := statNamed(int(directory.Fd()), name, &got); err != nil {
 			t.Fatalf("statNamed(%q): %v", name, err)
 		}
-		if err := syscall.Lstat(filepath.Join(parent+"-moved", name), &want); err != nil {
+		if err := unix.Lstat(filepath.Join(parent+"-moved", name), &want); err != nil {
 			t.Fatal(err)
 		}
-		if got.Dev != want.Dev || got.Ino != want.Ino || got.Mode != want.Mode || got.Mode&syscall.S_IFMT != wantType {
+		if got.Dev != want.Dev || got.Ino != want.Ino || got.Mode != want.Mode || uint32(got.Mode)&unix.S_IFMT != wantType {
 			t.Fatalf("statNamed(%q) = %#v, want %#v type %o", name, got, want, wantType)
 		}
 	}
-	for name, wantErr := range map[string]error{"missing": syscall.ENOENT, "bad\x00name": syscall.EINVAL} {
-		var got syscall.Stat_t
+	for name, wantErr := range map[string]error{"missing": unix.ENOENT, "bad\x00name": unix.EINVAL} {
+		var got unix.Stat_t
 		if err := statNamed(int(directory.Fd()), name, &got); !errors.Is(err, wantErr) {
 			t.Fatalf("statNamed(%q) error = %v, want %v", name, err, wantErr)
 		}
