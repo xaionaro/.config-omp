@@ -124,6 +124,7 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 - bin/eci-active-dispatch absent: 69, 72, 89. Reason: not ported; decision 1.
 - bin/context7-mcp, eci/config.toml, eci/AGENTS.md absent: 91, 93, 95, 98, 100, 114. Reason: not ported; decision 1.
 - Launchers ~/.local/bin/eci and ~/bin/eci: 85, 87. Reason: user-owned; decision 2.
+- aggregate-manifest-write deferred (main.go:54, ECI_COORDINATION_DEFERRED). aggregate-review prewrite/final now exit 1 naming the unmet manifest gate (f88c626, aggregate.go). Disclosed gap; reason: the producer is not ported.
 
 ## Decisions and rewrites (Supervisor decisions 3-6)
 
@@ -175,9 +176,9 @@ Commits cited below exist in `git log` at HEAD b3f2c90. No item here claims a pa
 
 ## Still failing, not yet resolved (classified)
 
-- 109 edit marker overflow (run.sh "Edit marker overflow remains session scoped", test-eci-fast-path.sh): D, deliberate. Session-scoped sub-case fixed in c214a8c (eci-proof-state.sh:137-180, 2120: candidates scoped to expected session). Malformed-callback sub-case (`session_id:123`, Edit) still denies ECI_HOOK_IDENTITY_MALFORMED via the session-less broad path of eci_marker_active_or_unknown. Supervisor decision (Main): keep fail-closed deny; an unreadable marker must deny. Broad path unchanged; assertion not rewritten. Unverified: run.sh line 2834 still expected to fail on that sub-case.
-- 156 canonical-handoff hardlink denial: R, product (classifier.go:4639-4643). Pending (c).
-- 157 ledger append other cwd: R, product (tools/eci-active/ledger.go). Pending (c).
+- 109 edit marker overflow (run.sh "Edit marker overflow remains session scoped", test-eci-fast-path.sh): design decision open. c214a8c scopes marker candidate capacity to the expected session (eci-proof-state.sh:137-180, 2120). The gate path is session-less and still reports overflow as active. The malformed sub-case (`session_id:123`, Edit) still denies ECI_HOOK_IDENTITY_MALFORMED; assertion not rewritten. Unverified after 360b0ad: run.sh line 2834 status not measured.
+- 156 canonical-handoff hardlink denial: 2e3c28a denies a hardlinked canonical handoff with the proof target (classifier.go:4639-4643). Unverified after 360b0ad.
+- 157 ledger append other cwd: 16e911d binds ledger-append to marker cwd (tools/eci-active/ledger.go). Unverified after 360b0ad.
 - 180, 181, 182 omp status depth rule: D, shell (eci-proof-state.sh:2335-2346) vs Go (hook_context.go:313-324). Pick one contract.
 - 213, 216, 217, 222, 223, 224: F+R, the routing text "Delegate repository edits" has no producer outside tests (eci-active-gate.sh:202-211). Stale expectation, not yet rewritten.
 - 164 command-plan NAME=value escaped-space branch: U.
