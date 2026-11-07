@@ -48,7 +48,7 @@ advisors:
       Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
-      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
+      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill, within the run's configured rule-file allowance, to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
 
       | File | Canonical path | Read when |
       |---|---|---|
