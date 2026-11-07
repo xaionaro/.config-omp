@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Installed to ~/.local/bin/eci and ~/bin/eci by launchers/install-launchers.sh.
+set -euo pipefail
+export ECI_HOME="$HOME/.omp/agent/eci"
+exec "$HOME/.omp/agent/eci/bin/eci-active" "$@"
