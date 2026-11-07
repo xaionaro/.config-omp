@@ -4,25 +4,25 @@ set -euo pipefail
 
 ROOT="${WORKFLOW_SKILL_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 ECI="$ROOT/AGENTS.md"
-ECI="$ROOT/skills/explore-critique-implement/SKILL.md"
+ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 TESTING_DISCIPLINE="$ROOT/skills/testing-discipline/SKILL.md"
 DEBUGGING="$ROOT/skills/debugging-discipline/SKILL.md"
 STATUS_REPORT="$ROOT/skills/writing-status-reports/SKILL.md"
 LEDGER="$ROOT/skills/context-ledger/SKILL.md"
-LINEAGE="$ROOT/skills/references/requirement-lineage.md"
+LINEAGE="$ROOT/../skills/references/requirement-lineage.md"
 ATE="$ROOT/skills/agent-teams-execution/SKILL.md"
-ECI_COVERAGE="$ROOT/skills/explore-critique-implement/references/coverage-map.md"
-STYLE_ADMISSION="$ROOT/skills/references/workflow-runtime/coding-style-admission.md"
+ECI_COVERAGE="$ROOT/../skills/explore-critique-implement/references/coverage-map.md"
+STYLE_ADMISSION="$ROOT/../skills/references/workflow-runtime/coding-style-admission.md"
 ATE_COVERAGE="$ROOT/skills/agent-teams-execution/references/coverage-map.md"
-FAST_PATH="$ROOT/skills/explore-critique-implement/references/fast-path.md"
-PAUSE="$ROOT/skills/references/workflow-runtime/pause-all-work.md"
-POLICY="$ROOT/skills/references/workflow-runtime/policy-pressure-tests.md"
-ECI_CRITIQUE="$ROOT/skills/explore-critique-implement/references/critique.md"
-IMPLEMENT="$ROOT/skills/explore-critique-implement/references/implement.md"
-REVIEW="$ROOT/skills/explore-critique-implement/references/review.md"
-COORDINATOR="$ROOT/skills/explore-critique-implement/references/coordinator.md"
-COORDINATOR_RUNTIME="$ROOT/skills/references/workflow-runtime/coordinator-runtime.md"
-REVIEW_POLICY="$ROOT/skills/references/workflow-runtime/review-policy.md"
+FAST_PATH="$ROOT/../skills/explore-critique-implement/references/fast-path.md"
+PAUSE="$ROOT/../skills/references/workflow-runtime/pause-all-work.md"
+POLICY="$ROOT/../skills/references/workflow-runtime/policy-pressure-tests.md"
+ECI_CRITIQUE="$ROOT/../skills/explore-critique-implement/references/critique.md"
+IMPLEMENT="$ROOT/../skills/explore-critique-implement/references/implement.md"
+REVIEW="$ROOT/../skills/explore-critique-implement/references/review.md"
+COORDINATOR="$ROOT/../skills/explore-critique-implement/references/coordinator.md"
+COORDINATOR_RUNTIME="$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
+REVIEW_POLICY="$ROOT/../skills/references/workflow-runtime/review-policy.md"
 GATE_CATALOG="$ROOT/hooks/gate-escape-hatches.md"
 SNITCH="$ROOT/skills/agent-teams-execution/references/snitch.md"
 ATE_ORCHESTRATION="$ROOT/skills/agent-teams-execution/references/orchestration.md"
@@ -165,12 +165,12 @@ assert_local_links_resolve() {
     "$DEBUGGING"
     "$ECI_COVERAGE"
     "$ATE_COVERAGE"
-    "$ROOT/skills/explore-critique-implement/references/coordinator.md"
-    "$ROOT/skills/explore-critique-implement/references/critique.md"
+    "$ROOT/../skills/explore-critique-implement/references/coordinator.md"
+    "$ROOT/../skills/explore-critique-implement/references/critique.md"
     "$FAST_PATH"
-    "$ROOT/skills/explore-critique-implement/references/explore.md"
-    "$ROOT/skills/explore-critique-implement/references/implement.md"
-    "$ROOT/skills/explore-critique-implement/references/review.md"
+    "$ROOT/../skills/explore-critique-implement/references/explore.md"
+    "$ROOT/../skills/explore-critique-implement/references/implement.md"
+    "$ROOT/../skills/explore-critique-implement/references/review.md"
     "$ROOT/skills/agent-teams-execution/references/design.md"
     "$ROOT/skills/agent-teams-execution/references/execution.md"
     "$ROOT/skills/agent-teams-execution/references/orchestration.md"
@@ -178,12 +178,12 @@ assert_local_links_resolve() {
     "$ROOT/skills/agent-teams-execution/references/review.md"
     "$SNITCH"
     "$ROOT/skills/agent-teams-execution/references/testing-and-qa.md"
-    "$ROOT/skills/references/workflow-runtime/coding-style-admission.md"
-    "$ROOT/skills/references/workflow-runtime/coordinator-runtime.md"
-    "$ROOT/skills/references/workflow-runtime/pause-all-work.md"
-    "$ROOT/skills/references/workflow-runtime/policy-pressure-tests.md"
-    "$ROOT/skills/references/workflow-runtime/review-policy.md"
-    "$ROOT/skills/references/workflow-runtime/stop-recovery.md"
+    "$ROOT/../skills/references/workflow-runtime/coding-style-admission.md"
+    "$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
+    "$ROOT/../skills/references/workflow-runtime/pause-all-work.md"
+    "$ROOT/../skills/references/workflow-runtime/policy-pressure-tests.md"
+    "$ROOT/../skills/references/workflow-runtime/review-policy.md"
+    "$ROOT/../skills/references/workflow-runtime/stop-recovery.md"
     "$GATE_CATALOG"
   )
 
@@ -1099,9 +1099,9 @@ assert_coordinator_bug_routing_is_nonblocking() {
 assert_eci_ordinary_role_split() {
   local file forbidden
   local -a ordinary_modules=(
-    "$ROOT/skills/explore-critique-implement/references/explore.md"
+    "$ROOT/../skills/explore-critique-implement/references/explore.md"
     "$ECI_CRITIQUE"
-    "$ROOT/skills/explore-critique-implement/references/implement.md"
+    "$ROOT/../skills/explore-critique-implement/references/implement.md"
     "$REVIEW"
   )
 
@@ -1225,12 +1225,12 @@ assert_fast_path_routes() {
   require_text "$ECI" '| `fast-owner` (Fast Owner Producer) | [ECI fast path](references/fast-path.md) |'
   require_line "$FAST_PATH" '# ECI fast path'
   for file in "$ECI" "$ECI" "$COORDINATOR" "$IMPLEMENT" "$REVIEW" \
-    "$ECI_CRITIQUE" "$ROOT/skills/explore-critique-implement/references/explore.md" \
+    "$ECI_CRITIQUE" "$ROOT/../skills/explore-critique-implement/references/explore.md" \
     "$ATE" "$ATE_ORCHESTRATION" "$COORDINATOR_RUNTIME" "$REVIEW_POLICY" "$LEDGER" "$STATUS_REPORT"; do
     require_text "$file" 'fast-path.md'
     forbid_pattern "$file" 'Emergency Unblock|emergency-unblock\.md|pre-normal|Stage: emergency'
   done
-  [ ! -e "$ROOT/skills/explore-critique-implement/references/emergency-unblock.md" ] ||
+  [ ! -e "$ROOT/../skills/explore-critique-implement/references/emergency-unblock.md" ] ||
     fail 'obsolete emergency module remains'
   require_pattern "$FAST_PATH" 'both paths launch for every ECI task' \
     'Start one Fast Producer alongside Step 1 for every new ECI task'
@@ -1288,7 +1288,7 @@ assert_fast_quality() {
     fail 'Fast quality mutation discarded passing tests as useful evidence'
   fi
   [[ "$output" == *'passing tests remain evidence'* ]] || fail "unexpected mutation failure: $output"
-  for file in "$ROOT/skills/explore-critique-implement/references/explore.md" \
+  for file in "$ROOT/../skills/explore-critique-implement/references/explore.md" \
     "$ECI_CRITIQUE" "$IMPLEMENT" "$REVIEW"; do
     require_text "$file" 'fast-path.md#main-eci-quality-responsibility'
   done
@@ -1970,7 +1970,7 @@ $step2_line}"
   [[ "$output" == *'concurrent Step 4 is intermediate only'* ]] ||
     fail "unexpected pre-restart Step 4 pressure failure: $output"
   for file in "$ECI" "$COORDINATOR" "$COORDINATOR_RUNTIME" "$ECI_CRITIQUE" \
-    "$ROOT/skills/explore-critique-implement/references/explore.md" "$IMPLEMENT" "$REVIEW"; do
+    "$ROOT/../skills/explore-critique-implement/references/explore.md" "$IMPLEMENT" "$REVIEW"; do
     require_text "$file" 'fast-path.md#post-fast-completion'
   done
   require_text "$ECI" \
@@ -1981,7 +1981,7 @@ $step2_line}"
     'Follow the normative [post-Fast completion sequence](../../explore-critique-implement/references/fast-path.md#post-fast-completion).'
   require_text "$ECI_CRITIQUE" \
     'Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-completion).'
-  require_text "$ROOT/skills/explore-critique-implement/references/explore.md" \
+  require_text "$ROOT/../skills/explore-critique-implement/references/explore.md" \
     'Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-completion).'
   require_text "$IMPLEMENT" \
     'Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-completion).'
@@ -1998,7 +1998,7 @@ $step2_line}"
   [[ "$output" == *'stale three-choice disposition'* ]] ||
     fail "unexpected critique stale three-choice failure: $output"
   for file in "$ECI" "$COORDINATOR" "$COORDINATOR_RUNTIME" "$ECI_CRITIQUE" \
-    "$ROOT/skills/explore-critique-implement/references/explore.md" "$IMPLEMENT" "$REVIEW"; do
+    "$ROOT/../skills/explore-critique-implement/references/explore.md" "$IMPLEMENT" "$REVIEW"; do
     forbid_text "$file" 'Fast owner completion report enumerates every finding and changed hunk from the Fast owner and its helpers'
     forbid_text "$file" 'The fresh Step 2 critic gives each inventory item exactly one disposition'
     forbid_text "$file" 'final cumulative Step 4 verifies every inventory item has a disposition and final evidence'
@@ -3325,7 +3325,7 @@ assert_least_restriction_contract() {
 
 assert_implementer_iteration_checkpoint_contract() {
   local handoff verification dispatch clause
-  local orchestrator="$ROOT/skills/explore-critique-implement/references/task-orchestrator.md"
+  local orchestrator="$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md"
   handoff='3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then commits its checked scope during handoff.'
   verification='Before Step 4 or dependent work on another implementation iteration, the Supervisor independently verifies the Producer’s immutable parent-to-commit range.'
   dispatch='4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration'
@@ -3435,7 +3435,7 @@ assert_recursive_job_contract() {
     '**J** counts every unclosed Job once across the whole lifecycle' \
     'A Job closes only when all home outcomes are accepted or cancellation-closed, all child Jobs are closed, all subtree Writers are observed stopped, and all produced reports are accounted for' \
     'Pending transfers, report drains, and cancellation cleanup keep the Job counted' \
-    'Job B satisfies the closure predicate, leaving A1/A2; J returns to 1 while N = 2' \
+    'Job B satisfies the closure predicate, leaving A1/A2; J = 1 while N = 2' \
     'A → B → C; N = 0; C has pending Writer/report cleanup; J = 3' \
     'A/B/C remain counted until the subtree satisfies closure; then J = 0' \
     'Children may admit further children by the same rule' \
@@ -3448,7 +3448,7 @@ assert_recursive_job_contract() {
     'Former, withdrawn, and non-current owners relay reports through the current parent route' \
     'Cancel a Job recursively through its descendants' \
     'leave unrelated siblings running' \
-    'coordination handback never flattens the Job tree' \
+    'ownership transfer never flattens the Job tree' \
     'A child-local lookup never substitutes for the root-global fresh lookup'; do
     [[ "$text" == *"$clause"* ]] || fail "recursive Job contract missing: $clause"
   done
@@ -3462,7 +3462,7 @@ assert_recursive_job_contract() {
 
 assert_recursive_jobs() {
   local text clause output mutation
-  text="$(<"$ROOT/skills/explore-critique-implement/references/task-orchestrator.md")"
+  text="$(<"$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md")"
   assert_recursive_job_contract "$text"
   require_text "$ECI" 'Job dispatch only after its designated publisher publishes ownership'
   require_text "$FAST_PATH" 'including a child-Job outcome'
