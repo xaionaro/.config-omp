@@ -1,10 +1,9 @@
-// Command codex-coverage-check verifies the codex port coverage manifest.
+// Command port-coverage-check verifies the port coverage manifest.
 //
-// The manifest maps every pinned codex unit to an omp path that must exist in the tree, to an excluded decision whose
+// The manifest maps every pinned unit to an omp path that must exist in the tree, to an excluded decision whose
 // superseding omp path must exist, to a reason-coded decision, or to an open or unrecorded state that keeps the check
-// red. A unit is a whole codex instruction file, a whole codex bin wrapper, or one build, refresh, or install behavior
-// of a codex bin wrapper. The check reads only the manifest, the embedded pinned units, and the omp tree, so it runs
-// without ~/.codex.
+// red. A unit is a whole source instruction file, a whole bin wrapper, or one build, refresh, or install behavior of a
+// bin wrapper. The check reads only the manifest, the embedded pinned units, and the omp tree.
 package main
 
 import (
@@ -16,8 +15,8 @@ import (
 
 // main exits with the status that run reports for the process arguments.
 //
-// Example: codex-coverage-check -manifest hooks/tests/codex-port-coverage.tsv -root ~/.omp exits 0 only when no unit is
-// open or unrecorded and every row's omp path exists.
+// Example: port-coverage-check -manifest hooks/tests/port-coverage.tsv -root ~/.omp exits 0 only when no unit is open or
+// unrecorded and every row's omp path exists.
 func main() {
 	os.Exit(run())
 }
@@ -27,7 +26,7 @@ func main() {
 //
 // Example: run returns 1 and prints an "open until its owner lands" line for each open row.
 func run() int {
-	manifestPath := flag.String("manifest", "", "codex port coverage manifest to check")
+	manifestPath := flag.String("manifest", "", "port coverage manifest to check")
 	treeRoot := flag.String("root", "", "omp tree root that mapped paths resolve against")
 	flag.Parse()
 	if *manifestPath == "" || *treeRoot == "" {
@@ -52,7 +51,7 @@ func run() int {
 	for _, failure := range report.Failures {
 		fmt.Println(failure)
 	}
-	fmt.Printf("codex port coverage: %d units; %d mapped, %d reason-coded, %d excluded, %d open, %d unrecorded\n",
+	fmt.Printf("port coverage: %d units; %d mapped, %d reason-coded, %d excluded, %d open, %d unrecorded\n",
 		len(units), report.Mapped, report.ReasonCoded, report.Excluded, report.Open, report.Unrecorded)
 	if len(report.Failures) > 0 {
 		return 1

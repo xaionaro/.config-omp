@@ -1,4 +1,4 @@
-module eci.local/codex-coverage-check
+module eci.local/port-coverage-check
 
 go 1.24.0
 

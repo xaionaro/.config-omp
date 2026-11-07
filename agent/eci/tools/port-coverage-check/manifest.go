@@ -7,15 +7,16 @@ import (
 	"strings"
 )
 
-// manifestColumns is the field count of each manifest row: codex path, behavior, state, omp path, reason code, and
+// manifestColumns is the field count of each manifest row: source path, behavior, state, omp path, reason code, and
 // evidence.
 const manifestColumns = 6
 
-// CodexPath is a repository-relative path in the pinned codex tree, such as "hooks/validate-bash.sh".
-type CodexPath string
+// SourcePath is a repository-relative path in the pre-migration source tree, such as "hooks/validate-bash.sh". A source
+// path whose name the port does not carry is written as an alias such as "src-01".
+type SourcePath string
 
-// Behavior names one build, refresh, or install step of a codex bin wrapper, such as "refresh-status". The empty
-// value marks a whole instruction file or a whole wrapper.
+// Behavior names one build, refresh, or install step of a bin wrapper, such as "refresh-status". The empty value marks
+// a whole instruction file or a whole wrapper.
 type Behavior string
 
 // OmpPath is a repository-relative path in the omp tree, resolved against the tree root.
@@ -29,7 +30,7 @@ type State string
 const (
 	// StateMapped marks a row whose omp path must exist in the tree.
 	StateMapped State = "mapped"
-	// StateExcluded marks a row whose codex unit an omp implementation supersedes. Its omp path names that
+	// StateExcluded marks a row whose source unit an omp implementation supersedes. Its omp path names that
 	// implementation and must exist, and its reason code records the decision.
 	StateExcluded State = "excluded"
 	// StateReasonCoded marks a row whose recorded reason code explains why no omp counterpart exists.
@@ -41,10 +42,10 @@ const (
 	StateUnrecorded State = "unrecorded"
 )
 
-// Unit is one coverage obligation: a whole codex instruction file, a whole codex bin wrapper, or one behavior of a
-// codex bin wrapper.
+// Unit is one coverage obligation: a whole source instruction file, a whole bin wrapper, or one behavior of a bin
+// wrapper.
 type Unit struct {
-	Codex    CodexPath
+	Source   SourcePath
 	Behavior Behavior
 }
 
@@ -59,14 +60,14 @@ type Row struct {
 	Evidence string
 }
 
-// String renders a unit as its codex path for a whole file or wrapper, or as "codex#behavior" for a behavior.
+// String renders a unit as its source path for a whole file or wrapper, or as "source#behavior" for a behavior.
 //
-// Example: Unit{Codex: "bin/eci-active", Behavior: "refresh-status"}.String() is "bin/eci-active#refresh-status".
+// Example: Unit{Source: "bin/eci-active", Behavior: "refresh-status"}.String() is "bin/eci-active#refresh-status".
 func (unit Unit) String() string {
 	if unit.Behavior == "" {
-		return string(unit.Codex)
+		return string(unit.Source)
 	}
-	return string(unit.Codex) + "#" + string(unit.Behavior)
+	return string(unit.Source) + "#" + string(unit.Behavior)
 }
 
 // parseManifest reads every data row of the manifest, skipping blank and "#" lines. A line with the wrong field count
@@ -91,7 +92,7 @@ func parseManifest(source io.Reader) ([]Row, []Failure, error) {
 			continue
 		}
 		rows = append(rows, Row{
-			Unit:     Unit{Codex: CodexPath(fields[0]), Behavior: Behavior(fieldValue(fields[1]))},
+			Unit:     Unit{Source: SourcePath(fields[0]), Behavior: Behavior(fieldValue(fields[1]))},
 			Line:     lineNumber,
 			State:    State(fields[2]),
 			Omp:      OmpPath(fieldValue(fields[3])),

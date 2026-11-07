@@ -12,6 +12,9 @@ import (
 // presentOmpPath is the omp file the rule tests map to. ruleTree holds it and no other file.
 const presentOmpPath = "agent/present.md"
 
+// aliasPrefix marks a source-path alias in the pinned units and the manifest, such as "src-01".
+const aliasPrefix = "src-"
+
 // ruleTree is the omp tree the rule tests check omp paths against.
 var ruleTree = fstest.MapFS{presentOmpPath: &fstest.MapFile{}}
 
@@ -54,23 +57,31 @@ func failureText(report Report) string {
 	return strings.Join(lines, "\n")
 }
 
-// TestPinnedUnitsMatchCodexCommit pins the unit counts for codex 575bb81: 410 instruction files, plus 24 bin units
-// (18 wrapper behaviors and 6 whole wrappers).
+// TestPinnedUnitsMatchSourceCommit pins the unit counts for pre-migration source 575bb81: 434 units in all, of which 18
+// are wrapper behaviors, 19 are source-path aliases, 4 are whole wrappers, and 393 are plain instruction files.
 //
 // Example: a re-pin that changes these counts must update this test in the same commit.
-func TestPinnedUnitsMatchCodexCommit(t *testing.T) {
+func TestPinnedUnitsMatchSourceCommit(t *testing.T) {
 	units, err := pinnedUnits()
 	require.NoError(t, err)
-	instructionFiles, wrapperUnits := 0, 0
+	var behaviors, aliased, wrappers, files int
 	for _, unit := range units {
-		if strings.HasPrefix(string(unit.Codex), wrapperPrefix) {
-			wrapperUnits++
-			continue
+		switch {
+		case unit.Behavior != "":
+			behaviors++
+		case strings.HasPrefix(string(unit.Source), aliasPrefix):
+			aliased++
+		case strings.HasPrefix(string(unit.Source), wrapperPrefix):
+			wrappers++
+		default:
+			files++
 		}
-		instructionFiles++
 	}
-	assert.Equal(t, 410, instructionFiles)
-	assert.Equal(t, 24, wrapperUnits)
+	assert.Equal(t, 434, len(units))
+	assert.Equal(t, 18, behaviors)
+	assert.Equal(t, 19, aliased)
+	assert.Equal(t, 4, wrappers)
+	assert.Equal(t, 393, files)
 }
 
 // TestCheckAcceptsCompleteManifest verifies that mapped files, a mapped bin behavior, reason-coded units, and an
@@ -79,17 +90,17 @@ func TestPinnedUnitsMatchCodexCommit(t *testing.T) {
 // Example: a manifest that covers each pinned unit exactly once yields no failures.
 func TestCheckAcceptsCompleteManifest(t *testing.T) {
 	units := []Unit{
-		{Codex: "a.md"},
-		{Codex: "bin/x.sh", Behavior: "refresh-call"},
-		{Codex: "b.toml"},
-		{Codex: "bin/y.sh"},
-		{Codex: "c.sh"},
+		{Source: "a.md"},
+		{Source: "bin/x.sh", Behavior: "refresh-call"},
+		{Source: "b.toml"},
+		{Source: "bin/y.sh"},
+		{Source: "c.sh"},
 	}
 	manifest := manifestOf(
 		tsvRow("a.md", "-", "mapped", presentOmpPath, "-", "-"),
 		tsvRow("bin/x.sh", "refresh-call", "mapped", presentOmpPath, "-", "-"),
 		tsvRow("b.toml", "-", "reason-coded", "-", "config-moved", "agent/AGENTS.md"),
-		tsvRow("bin/y.sh", "-", "reason-coded", "-", "obsolete", "CODEX.md:136"),
+		tsvRow("bin/y.sh", "-", "reason-coded", "-", "obsolete", "src-01 line 136"),
 		tsvRow("c.sh", "-", "excluded", presentOmpPath, "superseded", "replaced by present.md"),
 	)
 	report := checkManifest(t, manifest, units)
@@ -106,7 +117,7 @@ func TestCheckAcceptsCompleteManifest(t *testing.T) {
 //
 // Example: an open row with owner evidence yields one "open until its owner lands" failure.
 func TestCheckKeepsOpenAndUnrecordedRowsRed(t *testing.T) {
-	units := []Unit{{Codex: "a.md"}, {Codex: "b.md"}, {Codex: "c.md"}}
+	units := []Unit{{Source: "a.md"}, {Source: "b.md"}, {Source: "c.md"}}
 	manifest := manifestOf(
 		tsvRow("a.md", "-", "reason-coded", "-", "config-moved", "agent/AGENTS.md"),
 		tsvRow("b.md", "-", "open", "-", "-", "owner OrchPort-2: port pending"),
@@ -125,7 +136,7 @@ func TestCheckKeepsOpenAndUnrecordedRowsRed(t *testing.T) {
 //
 // Example: a reason-coded row with code "bogus" reports "reason code \"bogus\" is not a recorded reason".
 func TestCheckReportsEachViolatedRule(t *testing.T) {
-	wholeFile := []Unit{{Codex: "a.md"}}
+	wholeFile := []Unit{{Source: "a.md"}}
 	cases := []struct {
 		name     string
 		manifest string
@@ -207,7 +218,7 @@ func TestCheckReportsEachViolatedRule(t *testing.T) {
 		{
 			name:     "whole-file excluded bin wrapper with an omp path",
 			manifest: manifestOf(tsvRow("bin/x.sh", "-", "excluded", presentOmpPath, "superseded", "x")),
-			units:    []Unit{{Codex: "bin/x.sh"}},
+			units:    []Unit{{Source: "bin/x.sh"}},
 			want:     "bin/ row names an omp path without a behavior",
 		},
 		{
@@ -231,7 +242,7 @@ func TestCheckReportsEachViolatedRule(t *testing.T) {
 		{
 			name:     "whole-file mapping of a bin wrapper",
 			manifest: manifestOf(tsvRow("bin/x.sh", "-", "mapped", presentOmpPath, "-", "-")),
-			units:    []Unit{{Codex: "bin/x.sh", Behavior: "refresh-call"}},
+			units:    []Unit{{Source: "bin/x.sh", Behavior: "refresh-call"}},
 			want:     "bin/ row names an omp path without a behavior",
 		},
 		{

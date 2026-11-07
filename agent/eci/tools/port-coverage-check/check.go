@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// wrapperPrefix marks codex bin wrappers. A row for a wrapper that names an omp path must name a behavior: a whole-file
-// path match with an omp file says nothing about the build, refresh, and install steps the wrapper performs.
+// wrapperPrefix marks bin wrappers. A row for a wrapper that names an omp path must name a behavior: a whole-file path
+// match with an omp file says nothing about the build, refresh, and install steps the wrapper performs.
 const wrapperPrefix = "bin/"
 
 // Failure is one violated coverage rule, rendered as one output line.
@@ -126,8 +126,8 @@ func checkRow(
 	}
 }
 
-// checkMappedRow applies the rules of a mapped row: it needs an omp path that exists in the tree and no reason code,
-// and a bin/ wrapper row needs a behavior.
+// checkMappedRow applies the rules of a mapped row: it needs an omp path that exists in the tree, no reason code, and
+// a behavior when it belongs to a bin wrapper.
 //
 // Example: a mapped row for hooks/x.sh with omp path agent/x.md passes only when agent/x.md exists in the tree.
 func checkMappedRow(
@@ -195,8 +195,8 @@ func checkOpenRow(row Row) []Failure {
 	return append(failures, rowFailure(row, "open until its owner lands: "+row.Evidence))
 }
 
-// checkRecordedReason requires the row to carry a code from the recorded vocabulary. The message names the row's
-// state, so a reason-coded row and an excluded row each get their own wording.
+// checkRecordedReason requires the row to carry a code from the recorded vocabulary. The message names the row's state,
+// so a reason-coded row and an excluded row each get their own wording.
 //
 // Example: an excluded row with code "bogus" yields "reason code \"bogus\" is not a recorded reason".
 func checkRecordedReason(row Row) []Failure {
@@ -215,7 +215,7 @@ func checkRecordedReason(row Row) []Failure {
 //
 // Example: a row for bin/x.sh that names agent/x.md with no behavior yields one failure.
 func checkWrapperBehavior(row Row) []Failure {
-	if row.Omp == "" || row.Unit.Behavior != "" || !strings.HasPrefix(string(row.Unit.Codex), wrapperPrefix) {
+	if row.Omp == "" || row.Unit.Behavior != "" || !strings.HasPrefix(string(row.Unit.Source), wrapperPrefix) {
 		return nil
 	}
 	return []Failure{rowFailure(row, "bin/ row names an omp path without a behavior; a whole-file path match is not coverage")}

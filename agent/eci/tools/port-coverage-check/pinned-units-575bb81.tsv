@@ -1,11 +1,8 @@
-# Coverage units pinned to codex commit 575bb81. Columns: codex_path, behavior ("-" for a whole file or wrapper).
-# Files: git -C ~/.codex ls-tree -r --name-only 575bb81, keeping every file under skills/ and hooks/
-# and every *.md, *.txt, *.yaml, *.yml, *.toml file elsewhere.
+# Coverage units pinned to pre-migration source 575bb81. Columns: source_path, behavior ("-" for a whole file or wrapper).
+# Files: git ls-tree -r --name-only 575bb81 in the pre-migration source repository, keeping every file under skills/ and hooks/
+# and every *.md, *.txt, *.yaml, *.yml, *.toml file elsewhere. src-NN aliases: the name map is the manifest at commit 8c5e238, file order.
 # Wrappers: all ten bin/ files. bin/status-report, bin/owned-command, bin/eci-active, and bin/eci-runtime-sync have
-# one unit per build, refresh, or install step; the other six are whole-wrapper units.
-CODEX.md	-
-bin/codex-lane-status-reminder	-
-bin/codex-ollama-responses-bridge	-
+# one unit per build, refresh, or install step; the other six are whole-wrapper units (two of them aliased).
 bin/context7-mcp	-
 bin/eci-active	install-peer
 bin/eci-active	install-planner
@@ -37,9 +34,6 @@ hooks/eci-post-compact-refresh.sh	-
 hooks/eci-review-gate.sh	-
 hooks/gate-escape-hatches.md	-
 hooks/install-pre-commit-go-mod.sh	-
-hooks/lib/codex-file-lock.sh	-
-hooks/lib/codex-proof-state.sh	-
-hooks/lib/codex-tmp.sh	-
 hooks/lib/compose-reviewer-prompt.sh	-
 hooks/lib/eci-cleanup-route.sh	-
 hooks/lib/eci-command-gate-mode-go/PORT-MANIFEST.md	-
@@ -136,9 +130,6 @@ hooks/session-snapshot.sh	-
 hooks/stop-checklist.md	-
 hooks/stop-verification.md	-
 hooks/system-prompt-reviewer.sh	-
-hooks/tests/codex-hook-e2e-go/README.md	-
-hooks/tests/codex-hook-e2e-go/e2e_test.go	-
-hooks/tests/codex-hook-e2e-go/go.mod	-
 hooks/tests/fixtures/eci-apply-patch-code.json	-
 hooks/tests/fixtures/eci-apply-patch-markdown.json	-
 hooks/tests/fixtures/eci-apply-patch-mixed.json	-
@@ -193,8 +184,6 @@ hooks/tests/fixtures/validate-edit-write-gomod-local-write.json	-
 hooks/tests/fixtures/validate-edit-write-imports-write.json	-
 hooks/tests/fixtures/validate-edit-write-vendorish-edit.json	-
 hooks/tests/run.sh	-
-hooks/tests/test-codex-home-authority.sh	-
-hooks/tests/test-codex-runtime-single-source.sh	-
 hooks/tests/test-command-hook-go.sh	-
 hooks/tests/test-coordinator-protected-git-target.sh	-
 hooks/tests/test-eci-active-normal-git.sh	-
@@ -204,7 +193,6 @@ hooks/tests/test-eci-aggregate-commit-tree-cas.sh	-
 hooks/tests/test-eci-aggregate-coordination-residue.sh	-
 hooks/tests/test-eci-aggregate-git-independence.sh	-
 hooks/tests/test-eci-aggregate-lifecycle-normalization.sh	-
-hooks/tests/test-eci-codex-kimi-peer-sync.sh	-
 hooks/tests/test-eci-command-plan.sh	-
 hooks/tests/test-eci-command-syntax-gating.sh	-
 hooks/tests/test-eci-control-alias-target.sh	-
@@ -274,14 +262,12 @@ hooks/validate-apply-patch.sh	-
 hooks/validate-bash.sh	-
 hooks/validate-edit-write.sh	-
 model-selection.yaml	-
-skills/.system/.codex-system-skills.marker	-
 skills/.system/imagegen/LICENSE.txt	-
 skills/.system/imagegen/SKILL.md	-
 skills/.system/imagegen/agents/openai.yaml	-
 skills/.system/imagegen/assets/imagegen-small.svg	-
 skills/.system/imagegen/assets/imagegen.png	-
 skills/.system/imagegen/references/cli.md	-
-skills/.system/imagegen/references/codex-network.md	-
 skills/.system/imagegen/references/image-api.md	-
 skills/.system/imagegen/references/prompting.md	-
 skills/.system/imagegen/references/sample-prompts.md	-
@@ -292,7 +278,6 @@ skills/.system/openai-docs/SKILL.md	-
 skills/.system/openai-docs/agents/openai.yaml	-
 skills/.system/openai-docs/assets/openai-small.svg	-
 skills/.system/openai-docs/assets/openai.png	-
-skills/.system/openai-docs/references/codex-self-knowledge.md	-
 skills/.system/openai-docs/references/latest-model.md	-
 skills/.system/openai-docs/references/mcp-diagnostics.md	-
 skills/.system/openai-docs/references/model-migration.md	-
@@ -301,7 +286,6 @@ skills/.system/openai-docs/references/official-docs.md	-
 skills/.system/openai-docs/references/prompting-guide.md	-
 skills/.system/openai-docs/references/upgrade-guide.md	-
 skills/.system/openai-docs/references/upgrading-to-gpt-6-astra.md	-
-skills/.system/openai-docs/scripts/fetch-codex-manual.mjs	-
 skills/.system/openai-docs/scripts/resolve-latest-model-info	-
 skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs	-
 skills/.system/review-agent/SKILL.md	-
@@ -346,7 +330,6 @@ skills/brainstorming/visual-companion.md	-
 skills/caveman/README.md	-
 skills/caveman/SKILL.md	-
 skills/code-porting/SKILL.md	-
-skills/codex-crash-recovery/SKILL.md	-
 skills/coding-common/SKILL.md	-
 skills/coding-go/SKILL.md	-
 skills/coding-python/SKILL.md	-
@@ -419,7 +402,6 @@ skills/ui-design/SKILL.md	-
 skills/ultracave/README.md	-
 skills/ultracave/SKILL.md	-
 skills/using-superpowers/SKILL.md	-
-skills/using-superpowers/references/codex-tools.md	-
 skills/using-superpowers/references/copilot-tools.md	-
 skills/using-superpowers/references/gemini-tools.md	-
 skills/verification-before-completion/SKILL.md	-
@@ -427,13 +409,31 @@ skills/writing-handovers/SKILL.md	-
 skills/writing-plans/SKILL.md	-
 skills/writing-plans/plan-document-reviewer-prompt.md	-
 skills/writing-skills/SKILL.md	-
-skills/writing-skills/examples/CODEX_MD_TESTING.md	-
 skills/writing-skills/graphviz-conventions.dot	-
 skills/writing-skills/persuasion-principles.md	-
 skills/writing-skills/render-graphs.js	-
 skills/writing-skills/skill-authoring-best-practices.md	-
 skills/writing-skills/testing-skills-with-subagents.md	-
 skills/writing-status-reports/SKILL.md	-
+src-01	-
+src-02	-
+src-03	-
+src-04	-
+src-05	-
+src-06	-
+src-07	-
+src-08	-
+src-09	-
+src-10	-
+src-11	-
+src-12	-
+src-13	-
+src-14	-
+src-15	-
+src-16	-
+src-17	-
+src-18	-
+src-19	-
 tools/owned-command-checks-go/README.md	-
 tools/owned-command/README.md	-
 tools/status-report/README.md	-
