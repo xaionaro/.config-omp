@@ -23,9 +23,9 @@ bin/git-dirty-watchdog	-	reason-coded	-	obsolete	AUDIT decision 1: obsolete; src
 bin/owned-command	on-demand-build	mapped	agent/eci/bin/owned-command	-	on-demand wrapper: builds the tool into a cache on first use; no explicit build step
 bin/owned-command	resolve-executable	open	-	-	owner AUTOBUILD: --resolve-executable (prepare and print the built path) is not ported; callers use the fixed path
 bin/skip-stop	-	reason-coded	-	stop-gate-retired	AUDIT decision 1: stop gate retired; agent/eci/hooks/tests/TEST-DISPOSITION.md:27
-bin/status-report	on-demand-build	mapped	agent/eci/tools/eci-active/ledger.go	-	omp has no wrapper; runStatusRefresh runs go run in tools/status-report for refresh only
-bin/status-report	path-anchor	open	-	-	owner AUTOBUILD: validate, render, and refresh do not anchor relative paths to the caller's PWD
-bin/status-report	refresh-call	mapped	agent/eci/tools/eci-active/ledger.go	-	statusRefresh and appendLedgerEntry call the status-report refresh with the ledger dir
+bin/status-report	on-demand-build	mapped	agent/eci/bin/status-report	-	bin/status-report builds tools/status-report on demand into bin/.status-report.<key> through hooks/lib/eci-go-tool-build.sh and execs it (8c0827d); runStatusRefresh execs bin/status-report and runs no go command per call (ledger.go:423).
+bin/status-report	path-anchor	mapped	agent/eci/bin/status-report	-	the wrapper rewrites relative paths in validate, render and refresh to the caller's PWD before exec; test-status-report-launcher.sh covers a relative --session-dir (8c0827d).
+bin/status-report	refresh-call	mapped	agent/eci/tools/eci-active/ledger.go	-	statusRefresh and appendLedgerEntry call bin/status-report refresh with the ledger dir (ledger.go:423).
 claude-port/README.md	-	reason-coded	-	source-ledger	agent/eci/hooks/system-prompt-reviewer.sh; agent/eci/hooks/prompt-task-reminder.sh; agent/eci/hooks/session-snapshot.sh; agent/eci/hooks/lib/eci-proof-state.sh
 config.toml	-	reason-coded	-	config-moved	agent/AGENTS.md: developer_instructions moved to its @-import of eci-binding-contract.md and its Skills section
 hooks/ate-orchestrator-gate.sh	-	mapped	agent/eci/hooks/ate-orchestrator-gate.sh	-	-
