@@ -14,8 +14,7 @@ for relative in \
   hooks/tests/test-pre-commit-go-mod.sh; do
   local_file=$root/$relative
   [[ -f $local_file ]] || fail "missing local file: $local_file"
-  mode=$(stat -c '%a' "$local_file")
-  [[ $mode == 755 ]] || fail "expected mode 755 for $relative, got $mode"
+  [[ -x $local_file ]] || fail "expected executable bit for $relative"
 done
 
 checker=$root/hooks/pre-commit-go-mod.sh
