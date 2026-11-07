@@ -10,7 +10,7 @@ the planner pair (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`) via
 | `... hook-transcript-first-record <root>` | `eci-hook-helper hook-transcript-first-record <root>` |
 | `... hook-transcript-thread-spawn-metadata <root>` | `eci-hook-helper hook-transcript-thread-spawn-metadata <root>` |
 | `hooks/security-reminder.py` | `eci-hook-helper security-reminder` |
-| `hooks/lib/eci-environment-command.sh` python recognizer | `eci-hook-helper environment-command <command>` |
+| `hooks/lib/eci-environment-command.sh` python recognizer (shell wrapper removed in C2r1; no live caller) | `eci-hook-helper environment-command <command>` |
 | `hooks/lib/reviewer-filter.sh` python filter | `eci-hook-helper reviewer-filter <static-corpus> <extra-text> <threshold>` |
 
 Not ported (no live caller): `first-record`, `transcript-first-record`.

@@ -19,14 +19,14 @@ if [[ ! ${max_blob_bytes} =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
-tmp_root="${ECI_TMPDIR:-${KIMI_TMPDIR:-$HOME/tmp}}"
+tmp_root="${ECI_TMPDIR:-$HOME/tmp}"
 tmp_root_canonical="$(realpath -m -- "$tmp_root" 2>/dev/null || true)"
 [ -n "$tmp_root_canonical" ] || tmp_root_canonical="$tmp_root"
 if [ "$tmp_root_canonical" = /tmp ] || [[ "$tmp_root_canonical" == /tmp/* ]]; then
   go_hook_deny "GO_HOOK_TMPDIR_UNSAFE" "temporary-directory" \
     "requested=$(eci_diagnostic_value "$tmp_root"),canonical=$(eci_diagnostic_value "$tmp_root_canonical")" \
     'go.mod hook: system temporary root /tmp is not an ECI scratch location' \
-    'unset ECI_TMPDIR/KIMI_TMPDIR or set one to a writable home-scoped directory such as $HOME/tmp'
+  'unset ECI_TMPDIR or set it to a writable home-scoped directory such as $HOME/tmp'
   exit 2
 fi
 mkdir -p -- "$tmp_root"

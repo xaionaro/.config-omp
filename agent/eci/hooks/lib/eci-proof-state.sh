@@ -660,61 +660,6 @@ eci_accidental_override_record_path() {
   printf '%s\n' "$path"
 }
 
-# Cleanup accepts only the canonical session-claim spelling below the active
-# proof root.  In particular, the global override record is intentionally not
-# a target for this narrow recovery route.
-eci_accidental_override_claim_path_is_canonical() {
-  local claim="${1:-}" root rest session_id
-
-  root="$(eci_proof_root)" || return 1
-  eci_proof_root_is_safe || return 1
-  case "$claim" in
-    /*) ;;
-    *) return 1 ;;
-  esac
-  case "$claim" in
-    *[![:print:]]*) return 1 ;;
-  esac
-  case "$claim" in
-    "$root"/*) rest="${claim#"$root"/}" ;;
-    *) return 1 ;;
-  esac
-  [ "$claim" = "$(realpath -m -- "$claim" 2>/dev/null || true)" ] || return 1
-  session_id="${rest%%/*}"
-  [ "$rest" = "$session_id/.eci-accidental-mistake-override.claim" ] || return 1
-  eci_valid_session_id "$session_id" || return 1
-  eci_session_dir_is_safe "$root" "$session_id" || return 1
-  [ "$claim" = "$root/$session_id/.eci-accidental-mistake-override.claim" ] || return 1
-  [ -d "$claim" ] && [ ! -L "$claim" ] || return 1
-  [ "$claim" = "$(realpath -e -- "$claim" 2>/dev/null || true)" ] || return 1
-}
-
-eci_accidental_override_cleanup_command() {
-  local claim="${1:-}" contract_source provider_root eci_root
-
-  eci_accidental_override_claim_path_is_canonical "$claim" || return 1
-  contract_source="$(realpath -e -- "${BASH_SOURCE[0]}" 2>/dev/null || true)"
-  case "$contract_source" in
-    */hooks/lib/eci-proof-state.sh)
-      provider_root="${contract_source%/hooks/lib/eci-proof-state.sh}"
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-  eci_root="$(realpath -e -- "${HOME:-}/.omp/agent/eci" 2>/dev/null || true)"
-
-  case "$provider_root" in
-    "$eci_root")
-      [ -n "$eci_root" ] || return 1
-      printf '"$HOME/.omp/agent/eci/bin/eci-active" accidental-override-cleanup --authorized-by-user %q\n' "$claim"
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
 eci_accidental_override_fingerprint() {
   local scope="$1" tool="$2" session_id="${3:-}" cwd="${4:-}" payload="${5-}" canonical_cwd
 
@@ -817,12 +762,7 @@ eci_accidental_override_consume() {
     if ! { [ -d "$claim" ] && [ ! -L "$claim" ] &&
            [ -f "$record" ] && [ ! -L "$record" ] &&
            rmdir -- "$claim" 2>/dev/null; }; then
-      recovery_command="$(eci_accidental_override_cleanup_command "$claim" 2>/dev/null || true)"
-      if [ -n "$recovery_command" ]; then
-        eci_accidental_override_consume_reason="authorization state is already consumed or interrupted (state=$claim); publish a new explicitly authorized record and use the coordinator recovery route: run from the main coordinator: $recovery_command; do not restore the old record"
-      else
-        eci_accidental_override_consume_reason="authorization state is already consumed or interrupted (state=$claim); publish a new explicitly authorized record and use the coordinator recovery route before retrying; do not restore the old record"
-      fi
+      eci_accidental_override_consume_reason="authorization state is already consumed or interrupted (state=$claim); publish a new explicitly authorized record and retry; do not restore the old record"
       eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
       return 1
     fi

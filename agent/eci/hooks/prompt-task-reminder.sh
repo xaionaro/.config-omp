@@ -12,6 +12,18 @@ if (( $(wc -c <"$input_file") > 65536 )); then exit 0; fi
 if (( $(tr -d '\000' <"$input_file" | wc -c) != $(wc -c <"$input_file") )); then exit 0; fi
 iconv -f UTF-8 -t UTF-8 "$input_file" >/dev/null 2>&1 || exit 0
 jq -se 'length == 1 and (.[0] | type == "object")' "$input_file" >/dev/null 2>&1 || exit 0
+# Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.
+hook_deny() {
+  jq -cn --arg reason "$1" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  exit 0
+}
+if ! . "$HOOK_DIR/lib/eci-native-binary.sh" 2>/dev/null; then
+  hook_deny "ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; reinstall the ECI hooks, provision the native binaries with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\", and retry"
+fi
+if ! eci_runtime_open_verified eci-hook-helper; then
+  hook_deny "$ECI_RUNTIME_DENY_REASON"
+fi
+helper_fd="$ECI_RUNTIME_BINARY_FD"
 prompt=$(jq -r 'if (.prompt? | type) == "string" then .prompt else "" end' "$input_file" 2>/dev/null || true)
 normalized_prompt="${prompt,,}"
 explicit_report='(^|[^[:alpha:]])(give|show|provide|write|send|want|need|request|get|what[[:space:]]+is)([[:space:]]+(me|us|a|an|the|my|our|proper|current|full|detailed|quick|brief|please|latest|updated|comprehensive))*[[:space:]]+(status([[:space:]]+and[[:space:]]+progress)?|progress)[[:space:]]+(report|update)'
@@ -49,9 +61,7 @@ fi
 
 # Keep the independent, nonblocking reminder even if the steps below fail.
 trap 'exit 0' ERR
-. "$HOOK_DIR/lib/eci-native-binary.sh" || exit 0
-helper="$(eci_runtime_hook_helper_path)" || exit 0
-input="$("$helper" stdin <"$input_file")" || exit 0
+input="$("/proc/self/fd/$helper_fd" stdin <"$input_file")" || exit 0
 rm -f "$input_file"
 trap - EXIT
 . "$HOOK_DIR/lib/eci-proof-state.sh"
