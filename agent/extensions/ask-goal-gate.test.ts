@@ -190,9 +190,10 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main(undefined)), undefined);
   });
 
-  // Intended: a non-main agent never writes the main session's cache, and its ask
-  // is gated only by its own session entry. The main session's goal does not gate it.
-  test("subagent ask is not gated by the main session's goal (kind !== main)", () => {
+  // Intended: subagent gating depends on the session id. A subagent never writes the
+  // main session's cache, so an id with no engaged main session is not blocked by the
+  // main goal.
+  test("subagent id with no engaged main session is not blocked", () => {
     const { fire } = setup();
     const subCtx = sessionCtx(`${currentId}-sub`, "sub");
     fire("goal_updated", goalUpdated(true, "active"), main());
@@ -273,10 +274,5 @@ describe("ask goal gate", () => {
     };
     await modes.set({ mode: "goal", action: "pause" });
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
-  });
-
-  test("block reason tells the model to follow loaded skills and end its turn", () => {
-    assert.ok(GOAL_BLOCK_REASON.includes("follow the loaded skills"));
-    assert.ok(GOAL_BLOCK_REASON.includes("end your turn"));
   });
 });

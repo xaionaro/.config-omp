@@ -42,14 +42,15 @@ function sessionIdOf(ctx: unknown): string {
 }
 
 export default function askGoalGate(pi: ExtensionAPI): void {
-  // Intended behavior for kind !== "main": a non-main agent (subagent or fork)
-  // never writes this cache, and its ask is gated only by its own session entry,
-  // which is never written. The main session's goal therefore does not gate it.
+  // Intended behavior for kind !== "main": a non-main agent never writes this cache.
+  // Its ask is gated only if its own session id has an engaged entry, so subagent
+  // gating depends on the session id. A subagent id that matches no engaged main
+  // session is not blocked by the main goal.
   pi.on("goal_updated", (event, ctx) => {
     let id: string | undefined;
     try {
-      if (ctx.agent.kind !== "main") return;
       id = sessionIdOf(ctx);
+      if (ctx.agent.kind !== "main") return;
       if (event.state?.enabled === true) engagedSessions.add(id);
       else engagedSessions.delete(id);
       unreadableSessions.delete(id);
