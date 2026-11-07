@@ -38,9 +38,11 @@ exec {planner_fd}<&-
 }
 
 # Keep the hook contract explicit: validate-bash opens the validated planner
-# once and execs it through the inherited descriptor, never by pathname.
-open_line="$(grep -n -F 'exec {planner_fd}<"$binary"' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
-exec_line="$(grep -n -F 'exec "/proc/self/fd/$planner_fd" --hook' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
+# once through eci_runtime_open_verified (hooks/lib/eci-native-binary.sh:101-133,
+# descriptor opened at :124) and execs it through the inherited descriptor,
+# never by pathname (hooks/validate-bash.sh:66-70).
+open_line="$(grep -n -F 'eci_runtime_open_verified eci-command-plan' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
+exec_line="$(grep -n -F '"/proc/self/fd/$ECI_RUNTIME_BINARY_FD" --hook' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
 [[ "$open_line" =~ ^[0-9]+$ ]] && [[ "$exec_line" =~ ^[0-9]+$ ]] &&
   [ "$open_line" -lt "$exec_line" ] || {
     printf '%s\n' 'validate-bash does not open the planner descriptor before exec through /proc/self/fd' >&2

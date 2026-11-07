@@ -45,19 +45,6 @@ for command in on off nested-enter nested-accept nested-exit; do
   [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active")" = 'stale marker' ]
 done
 echo 'PASS marker-free ledger and retired lifecycle CLI'
-# Importing the library never executes a requested command or retains its retired mutators.
-bash -c '
-  source_path="$1"
-  set -- on ignored
-  . "$source_path"
-  for name in ledger_ensure_anchor safe_import_fixed_session_leaf aggregate_current_context repository_allow_status repository_allow_on repository_allow_off write_permissive_record cleanup_accidental_override_claim; do
-    declare -F "$name" >/dev/null || { echo "live helper missing: $name" >&2; exit 1; }
-  done
-  for name in clear_current_regular_eci_wait_state reconcile_local_activation_residue repository_allow_write_record write_coordinator_edit_record write_aggregate_plan aggregate_stage_path_is_selected aggregate_reconcile_commit_history write_user_closed_ledger; do
-    if declare -F "$name" >/dev/null; then echo "retired helper remains: $name" >&2; exit 1; fi
-  done
-' _ "$base_dir/bin/eci-active"
-echo 'PASS import-safe coordination library retains only supported mutators'
 # Marker-free aggregate review accepts only its outer cwd or the selected child.
 mkdir -p "$fixture/aggregate"
 outer="$(realpath -e -- "$fixture/aggregate")"

@@ -10,7 +10,7 @@ install_configured_home_fixture() {
   # hooks.json deliberately resolves its hook target from HOME.  Give the
   # configured-command tests one canonical HOME/.omp/agent/eci view of this source
   # tree, rather than smuggling the source root back in through ECI_HOME.
-  mkdir -p "$TMP_ROOT/home"
+  mkdir -p "$TMP_ROOT/home" "$TMP_ROOT/home/.omp/agent"
   if [ -e "$TMP_ROOT/home/.omp/agent/eci" ] || [ -L "$TMP_ROOT/home/.omp/agent/eci" ]; then
     [ -L "$TMP_ROOT/home/.omp/agent/eci" ] && [ "$(readlink -- "$TMP_ROOT/home/.omp/agent/eci")" = "$ROOT" ]
   else

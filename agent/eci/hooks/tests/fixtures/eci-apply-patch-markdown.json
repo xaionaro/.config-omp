@@ -1,5 +1,6 @@
 {
   "session_id": "t00-session",
+  "cwd": "/tmp/eci-hooks-test-repo",
   "tool_name": "apply_patch",
   "tool_input": {
     "command": "*** Begin Patch\n*** Add File: hooks/tests/tmp.md\n+# note\n*** End Patch\n"

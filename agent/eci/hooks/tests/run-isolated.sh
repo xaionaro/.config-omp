@@ -9,7 +9,8 @@
 # HOME is set to <work>/home. The runtime is copied to <work>/home/.omp/agent/eci
 # and the test runs from that copy, so ROOT equals the HOME-derived runtime path.
 # The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
-# a symlink to the real peer tree (read by tests). Context and proof roots
+# a symlink to the real peer tree (read by tests). ~/.omp/agent/AGENTS.md is a
+# symlink to the account's global instructions (read by the reviewer prompt).
 # (~/.agent, ~/tmp/agent) resolve under <work> and are removed on exit. Go caches
 # stay on account paths.
 set -euo pipefail
@@ -37,6 +38,7 @@ if [ -d "$account_home/tmp/eci-runtime" ]; then
   cp -a "$account_home/tmp/eci-runtime" "$work/home/tmp/eci-runtime"
 fi
 ln -s "$account_home/.kimi-code" "$work/home/.kimi-code"
+ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 
 export HOME="$work/home"
 export TMPDIR="$HOME/tmp/mtlog"
