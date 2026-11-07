@@ -211,7 +211,12 @@ test_post_compact_hook_is_registered_and_session_start_is_restricted() {
   # This is only the existing user-owned trust-state key. The test exercises
   # source command shape directly and must not claim that the changed command
   # has already been trusted by a fresh ECI launch.
-  grep -Fq "$postcompact_hook_state" "$ROOT/config.toml"
+  # config.toml records the canonical account path literally; the key matches only
+  # when ROOT is that path.
+  if ! grep -Fq "$postcompact_hook_state" "$ROOT/config.toml"; then
+    printf 'PostCompact trust-state key missing from %s: %s\n' "$ROOT/config.toml" "$postcompact_hook_state" >&2
+    return 1
+  fi
 }
 
 test_post_compact_active_eci_uses_provider_valid_empty_output
