@@ -48,10 +48,10 @@ HOME="$empty_home" "$ROOT/bin/eci-active" --help >/dev/null 2>&1 || true
 HOME="$empty_home" "$copy_eci" --help >/dev/null 2>&1 || true
 HOME="$empty_home" env PATH="$path_root:/usr/bin:/bin" eci-active --help >/dev/null 2>&1 || true
 
-# These commands intentionally have no sibling hook tree, runtime receipt,
-# planner, peer provider, or configured HOME authority. Read-only discovery
-# must still inspect the resolved executable and return normal help.
-assert_help canonical-empty-home "$ROOT/bin/eci-active" --help
+# These commands run with a HOME that supplies only the canonical runtime link: no runtime receipt, planner,
+# peer provider, or other configured HOME authority, and the copied binary has no sibling hook tree.
+# Read-only discovery must still inspect the resolved executable and return normal help.
+assert_help canonical-runtime-home "$ROOT/bin/eci-active" --help
 assert_help copied "$copy_eci" --help
 assert_help equivalent-symlink "$alias_eci" -h
 assert_help path \
