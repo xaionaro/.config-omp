@@ -5,8 +5,9 @@
 # build-native-binaries.sh, tests/test-eci-native-provision.sh, this lint, and lib/eci-native-binary.sh.
 # Each file prints PASS or FAIL; any FAIL exits 1. hooks/tests/test-lint-bsd-userland.sh holds the planted cases.
 # Before matching, backslash-continued lines are joined and comments are removed. Quoted text is reduced to a
-# placeholder ('x', "x", or '' when empty), except command substitutions ($(...) and backticks), which run even
-# inside double quotes and are kept. The /proc path form is matched with quoted text kept, since paths are quoted.
+# placeholder ('x', "x", or '' when empty), except what the shell still expands inside double quotes: command
+# substitutions ($(...) and backticks) and parameter expansions (${...}) are kept. The /proc path form is matched
+# with quoted text kept, since paths are quoted.
 # - sha256sum outside the loader passes only in a file that probes `command -v sha256sum` and falls back to
 #   `shasum -a 256`.
 # - GNU long options: any --option that is not in lint_long_allow FAILs.
@@ -17,6 +18,10 @@
 # - eci_runtime_close_verified is allowed only as the paired release of eci_runtime_open_verified (lint_paired_release):
 #   a file that calls it must also call eci_runtime_open_verified as a command.
 # Patterns use bracket expressions so that this file does not match itself.
+# Documented limits (not detected): GNU forms inside strings that a shell later runs (eval, sh -c, bash -c,
+# sh <<<); flags written as quoted words ("-c"); a ")" inside quotes within "$(...)", which ends the kept
+# substitution early; runtime-only bash 4/5 features (coproc, globstar, $EPOCHSECONDS, wait -n); flags held in
+# variables.
 set -u
 
 lint_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -184,6 +189,18 @@ strip_line() {
                 case ${s:$i:1} in
                   '(') level=$((level + 1)) ;;
                   ')') level=$((level - 1)); [ "$level" -gt 0 ] || break ;;
+                esac
+                i=$((i + 1))
+              done
+              strip_code="$strip_code${s:$start:$((i - start + 1))}"
+              strip_text="$strip_text ${s:$start:$((i - start + 1))} "
+            elif [ "${s:$((i + 1)):1}" = '{' ]; then
+              # A ${...} expansion runs inside double quotes: keep it, up to the matching brace.
+              local start=$i level=0
+              while [ "$i" -lt "$len" ]; do
+                case ${s:$i:1} in
+                  '{') level=$((level + 1)) ;;
+                  '}') level=$((level - 1)); [ "$level" -gt 0 ] || break ;;
                 esac
                 i=$((i + 1))
               done

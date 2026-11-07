@@ -108,6 +108,12 @@ must_fail 'long option --reference' 'an unlisted GNU long option' 'touch --refer
 must_fail 'stat-c' 'stat -c inside $(...) inside double quotes' 'echo "$(stat -c %a f)"'
 must_fail 'stat-c' 'stat -c inside backticks inside double quotes' 'echo "`stat -c %a f`"'
 must_fail 'stat-c' 'stat -c inside bare backticks' 'm=`stat -c %a f`'
+# Bash 4 expansions inside double quotes still expand (Gap17Reviewer P2 on 14e039a).
+must_fail 'case-modification' '${v,,} inside double quotes' 'lower="${name,,}"'
+must_fail 'case-modification' '${v^^} inside double quotes' 'up="${name^^}"'
+must_fail 'negative-index' '${arr[-1]} inside double quotes' 'echo "${arr[-1]}"'
+must_fail 'test-v' '[[ -v ]] inside "$(...)"' 'echo "$(if [[ -v name ]]; then echo set; fi)"'
+must_fail 'case-modification' '${v,,} inside "$(...)"' 'echo "$(printf %s "${name,,}")"'
 # Pairing rule: the open counts only as a command.
 must_fail 'without eci_runtime_open_verified' 'close with the open only in a comment' 'eci_runtime_close_verified  # pairs with eci_runtime_open_verified'
 must_fail 'without eci_runtime_open_verified' 'close with the open only in a string' 'echo "call eci_runtime_open_verified first"
