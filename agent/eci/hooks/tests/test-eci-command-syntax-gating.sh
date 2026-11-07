@@ -131,7 +131,7 @@ assert_broad_root_denied() {
     case "$role" in
     coordinator) code=ECI_BROAD_DESTRUCTIVE_DENIED operation=broad-destructive predicate=broad-destructive-root ;;
     # The worker's root write resolves to the live session control target, not the broad-destructive
-    # predicate (hook_effects.go:1238: "resolved write selects live session control target").
+    # predicate (message at pre-migration source 575bb81 hook_effects.go:1238 and omp HEAD hook_effects.go:1268: "resolved write selects live session control target").
     worker) code=ECI_CONTROL_OWNER_REQUIRED operation=worker-control predicate=worker-live-control ;;
     esac
     run_hook 'rm -rf / | head -n 20' "$role"
@@ -207,7 +207,8 @@ assert_wrapped_marker_write_denied() {
 }
 
 # A worker `env - -v touch <marker>` is denied by the live-control route for the exact marker
-# (classifier.go:7011 message, 7016 predicate). The check pins the code and predicate.
+# (pre-migration source 575bb81 classifier.go:7011 and 7016; omp HEAD classifier.go:7014 and 7019).
+# The check pins the code and predicate.
 assert_worker_live_control_denied() {
   local command="$1"
 
@@ -230,10 +231,11 @@ assert_worker_live_control_denied() {
   }
 }
 
-# A write to another session's active marker is denied by the role's proof-control route:
-# coordinator-proof-control (classifier.go:4721) or worker-proof-control (classifier.go:4735).
-# The pre-migration source (575bb81) and omp give the same deny for all three forms. The
-# cross-session code is not pinned to these inputs: neither tree emits it for them.
+# A write to another session's active marker is denied by the role's proof-control route.
+# The runtime predicate is string(request.Role)+"-proof-control" (omp HEAD classifier.go:4680),
+# denied at classifier.go:4678-4692; the literals are coordinator-proof-control (classifier.go:4724)
+# and worker-proof-control (classifier.go:4738). Pre-migration source 575bb81 has the same literals at
+# classifier.go:4721 and 4735. The cross-session code is not pinned to these inputs: neither tree emits it for them.
 assert_foreign_marker_denied() {
   local role command foreign_marker predicate
 
@@ -248,12 +250,14 @@ assert_foreign_marker_denied() {
       worker) predicate=worker-proof-control ;;
       esac
       run_hook "$command" "$role"
+      # The token is exact: the planner writes it followed by ", path=", so a longer path that
+      # merely starts with the marker does not match.
       jq -e --arg foreign_marker "$foreign_marker" --arg predicate "$predicate" '
         .hookSpecificOutput.permissionDecision == "deny" and
         (.hookSpecificOutput.permissionDecisionReason |
           contains("[ECI_PLAN_LIVE_CONTROL_DENIED]") and
           contains("operation=plan-segment") and
-          contains("token=" + $foreign_marker) and
+          contains("token=" + $foreign_marker + ", ") and
           contains("predicate=" + $predicate)
         )
       ' "$OUTPUT" >/dev/null || {
@@ -267,10 +271,10 @@ assert_foreign_marker_denied() {
 
 # Known defect, recorded and kept red (shared by the pre-migration source and omp): the worker
 # denial for `git fsck --lost-found` is unreachable while the marker is active. Both classifiers
-# return DecisionDefer for worker git commands first (pre-migration source 575bb81
-# classifier.go:3767-3769; omp classifier.go:3761-3763), so the worker-git-ownership branch
-# (source classifier.go:3772-3782; omp classifier.go:3766-3777) never runs. The pre-migration
-# test expects this denial at its lines 282-290. The classifier is not changed here.
+# return DecisionDefer for worker git commands first (classifier.go:3767-3769, the same lines in
+# source 575bb81 and omp HEAD), so the worker-git-ownership branch (classifier.go:3772-3782, the
+# same lines in both trees) never runs. The pre-migration test expects this denial at its
+# lines 282-290. The classifier is not changed here.
 assert_worker_fsck_lost_found_denied() {
   run_hook 'env git fsck --lost-found | head -n 20' worker
   jq -e '
@@ -297,7 +301,7 @@ assert_current_control_operand_boundaries() {
 
   for suffix in '' ' | cat'; do
     # Writers to the active marker are denied for both roles: coordinator-proof-control
-    # (classifier.go:4721) and worker-proof-control (classifier.go:4735).
+    # (omp HEAD classifier.go:4724) and worker-proof-control (classifier.go:4738).
     for command in \
       "cp $OUTSIDE_PROOF $MARKER" \
       "cp -frR -v --force --recursive --verbose -- $OUTSIDE_PROOF $MARKER" \
@@ -315,7 +319,7 @@ assert_current_control_operand_boundaries() {
       "env -C ${MARKER%/*} touch eci_active"; do
       assert_wrapped_marker_write_denied "$command$suffix"
     done
-    # `env - -v touch <marker>`: the worker is denied by the live-control route (classifier.go:7011, 7016);
+    # `env - -v touch <marker>`: the worker is denied by the live-control route (omp HEAD classifier.go:7014, 7019; source 575bb81 classifier.go:7011, 7016);
     # the coordinator argv stays allowed.
     assert_worker_live_control_denied "env - -v touch $MARKER$suffix"
     run_hook "env - -v touch $MARKER$suffix" coordinator
@@ -385,15 +389,17 @@ assert_allowed "cat $OTHER_MARKER | head -n 20"
 assert_allowed "printf '%s\\n' '|' touch $OTHER_MARKER"
 assert_allowed "printf '%s\\n' '|' touch $OTHER_MARKER | head -n 20"
 
+# Retain only resolved targets that would concretely escape the session's
+# ownership/control boundary.  A pipe or quote cannot change this outcome.
+# These checks run before the row-4 call below: that call exits under set -e,
+# so a check placed after it runs only in a copy with row 4 removed.
+assert_broad_root_denied
+assert_current_marker_denied
+assert_foreign_marker_denied
+
 # `git fsck --lost-found` writes recovered objects under .git/lost-found.  Its
 # worker denial preserves the concrete Git ownership boundary, independent of
 # the surrounding env wrapper or pipeline syntax.
 assert_worker_fsck_lost_found_denied
-
-# Retain only resolved targets that would concretely escape the session's
-# ownership/control boundary.  A pipe or quote cannot change this outcome.
-assert_broad_root_denied
-assert_current_marker_denied
-assert_foreign_marker_denied
 
 printf '%s\n' 'target-aware command syntax regression: PASS'
