@@ -1269,10 +1269,23 @@ func inspectHookControlWriter(
 			diagnostic.Path = resolved
 			return diagnostic
 		}
-		if hookSessionsRootTarget(name, index == len(argv)-1, lexical, resolved) {
-			diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal selects omp session transcript root "+resolved,
+		sessionsLexical, sessionsResolved := lexical, resolved
+		if home, ok := hookTildeHome(pathArgument); ok {
+			// An unquoted leading tilde is an absolute HOME path to the shell; only the sessions-root check applies it.
+			sessionsLexical = filepath.Clean(filepath.Join(home, pathArgument.value[1:]))
+			sessionsResolved = resolvePathIdentity(sessionsLexical)
+			if hookUnlinksDirectoryEntry(argv) {
+				entry, err := resolvePathEntryWithMissingSuffix(sessionsLexical)
+				if err != nil {
+					continue
+				}
+				sessionsResolved = entry
+			}
+		}
+		if hookSessionsRootTarget(name, index == len(argv)-1, sessionsLexical, sessionsResolved) {
+			diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal selects omp session transcript root "+sessionsResolved,
 				segmentIndex, index, pathArgument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
-			diagnostic.Path = resolved
+			diagnostic.Path = sessionsResolved
 			return diagnostic
 		}
 	}
@@ -1311,6 +1324,22 @@ func hookSessionsRootTarget(name string, final bool, lexical, resolved string) b
 		}
 	}
 	return false
+}
+
+// hookTildeHome returns the HOME that an unquoted leading "~" or "~/" word denotes.
+// Quoted words (any quoting, including escapes) and "~user" forms are literal here and
+// report false; a non-absolute HOME yields no expansion, matching hookSessionsRoots.
+//
+// Example: unquoted ~/.omp/agent/sessions/x.jsonl expands under HOME, while "~/x" does not.
+func hookTildeHome(argument token) (string, bool) {
+	if argument.quoted || argument.value != "~" && !strings.HasPrefix(argument.value, "~/") {
+		return "", false
+	}
+	home := os.Getenv("HOME")
+	if !filepath.IsAbs(home) {
+		return "", false
+	}
+	return filepath.Clean(home), true
 }
 
 // inspectHookCleanup protects existing live hooks from removal or relocation.

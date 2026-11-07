@@ -335,6 +335,27 @@ func TestHookWorkerSessionsWritesDenied(t *testing.T) {
 		diagnostic := hookTestDiagnostic(request)
 		require.Falsef(t, diagnostic != nil, "scratch command denied: %+v", diagnostic)
 	}
+	// An unquoted leading tilde expands to HOME, so the sessions-root check denies it.
+	for _, command := range []string{
+		"echo x > ~/.omp/agent/sessions/slug/new.jsonl",
+		"tee ~/.omp/agent/sessions/slug/new.jsonl",
+		"rm -rf ~/.omp/agent",
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "unquoted tilde sessions command allowed: %s: %+v", command, diagnostic)
+	}
+	// Observed before C1r5 and kept: ~other/... and quoted "~/..." or '~/...' are literal
+	// (not HOME-expanded), so the sessions-root check does not fire and no diagnostic is returned.
+	for _, command := range []string{
+		"echo x > ~other/.omp/agent/sessions/slug/new.jsonl",
+		"echo x > \"~/.omp/agent/sessions/slug/new.jsonl\"",
+		"echo x > '~/.omp/agent/sessions/slug/new.jsonl'",
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic != nil, "literal tilde command denied: %s: %+v", command, diagnostic)
+	}
 }
 
 // TestHookGitPreviewSemantics binds preview interpretation to the selected verb.
