@@ -256,6 +256,87 @@ func TestHookCoordinatorGitTargets(t *testing.T) {
 	}
 }
 
+// TestHookWorkerGitMutationScope applies Coordinator-only Git mutation denials to Worker mutations.
+//
+// Example: a Worker clean -fdx is denied while read-only status and log stay native.
+func TestHookWorkerGitMutationScope(t *testing.T) {
+	root := t.TempDir()
+	foreign := t.TempDir()
+	for _, directory := range []string{root, foreign} {
+		output, err := exec.Command("git", "init", "-q", directory).CombinedOutput()
+		require.NoErrorf(t, err, "init fixture: %v: %s", err, output)
+	}
+	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, CWD: root, CollectShellCommands: true, ApprovedRoots: []string{root}}
+	for _, command := range []string{"git clean -fdx", "git clean -fd"} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != CodeBroadDestructiveDenied, "worker clean allowed: %s: %+v", command, diagnostic)
+	}
+	request.Command = "git -C " + foreign + " branch -D topic"
+	{
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeGitCrossScopeDenied, "worker cross-repository branch delete allowed: %+v", diagnostic)
+	}
+	for _, command := range []string{"git status", "git log --oneline", "git -C " + foreign + " log --oneline"} {
+		request.Command = command
+		{
+			diagnostic := hookTestDiagnostic(request)
+			require.Falsef(t, diagnostic != nil, "read-only worker Git denied: %s: %+v", command, diagnostic)
+		}
+	}
+}
+
+// TestHookWorkerSessionsWritesDenied keeps omp session transcripts out of Worker writes and removals.
+//
+// Example: a Worker tee into the sessions root is denied while a scratch write stays allowed.
+func TestHookWorkerSessionsWritesDenied(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	sessions := filepath.Join(home, ".omp", "agent", "sessions")
+	transcript := filepath.Join(sessions, "slug", "main.jsonl")
+	fresh := filepath.Join(sessions, "slug", "new.jsonl")
+	scratch := filepath.Join(home, "tmp", "zz.txt")
+	requireHookDirectory(t, filepath.Dir(transcript))
+	requireHookFile(t, transcript, "{}\n")
+	requireHookDirectory(t, filepath.Dir(scratch))
+	link := filepath.Join(home, "sessions-link")
+	require.NoError(t, os.Symlink(sessions, link))
+	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, CWD: home, CWDKnown: true, CollectShellCommands: true, ApprovedRoots: []string{home}}
+	for _, argv := range [][]token{
+		{{value: "tee"}, {value: fresh}},
+		{{value: "cp"}, {value: filepath.Join(home, "source.txt")}, {value: fresh}},
+		{{value: "rm"}, {value: transcript}},
+		{{value: "tee"}, {value: filepath.Join(sessions, "slug", "..", "x.jsonl")}},
+		{{value: "tee"}, {value: filepath.Join(link, "slug", "new.jsonl")}},
+		{{value: "rm"}, {value: "-rf"}, {value: filepath.Join(home, ".omp", "agent")}},
+		{{value: "mv"}, {value: sessions}, {value: filepath.Join(home, "elsewhere")}},
+	} {
+		diagnostic := inspectHookControlWriter(request, argv, 1)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "sessions writer allowed: %+v", diagnostic)
+	}
+	for _, command := range []string{
+		"echo x > " + fresh,
+		"printf x >> " + transcript,
+		"echo x > $HOME/.omp/agent/sessions/slug/new.jsonl",
+		"tee " + filepath.Join(sessions, "slug", "..", "x.jsonl"),
+		"cp " + filepath.Join(home, "source.txt") + " " + fresh,
+		"rm " + transcript,
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeWorkerSessionsRootDenied, "sessions command allowed: %s: %+v", command, diagnostic)
+	}
+	{
+		diagnostic := inspectHookControlWriter(request, []token{{value: "tee"}, {value: scratch}}, 1)
+		require.Falsef(t, diagnostic != nil, "scratch write denied: %+v", diagnostic)
+	}
+	request.Command = "echo x > " + scratch
+	{
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic != nil, "scratch command denied: %+v", diagnostic)
+	}
+}
+
 // TestHookGitPreviewSemantics binds preview interpretation to the selected verb.
 //
 // Example: commit -n bypasses hooks while add -n is a dry run.

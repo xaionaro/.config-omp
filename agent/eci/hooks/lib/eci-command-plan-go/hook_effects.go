@@ -40,6 +40,10 @@ const (
 	//
 	// Example: tee targeting another owner's eci_active selects this gate.
 	hookCodeCrossSessionActiveMarkerDenied DiagnosticCode = "ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED"
+	// hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
+	//
+	// Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
+	hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROOT_DENIED"
 )
 
 // inspectHookEffects completes callback-owned checks on every reachable command.
@@ -548,14 +552,25 @@ func inspectHookGit(
 	if argv[verbIndex].value == "worktree" && verbIndex+1 < len(argv) && !hookArgumentKnown(record, argv[verbIndex+1].offset) {
 		return nil
 	}
-	if request.Role == RoleWorker && !hookGitFamily(argv, verbIndex) {
+	family := hookGitFamily(argv, verbIndex)
+	mutation := hookGitCoordinatorMutation(argv, verbIndex)
+	if request.Role == RoleWorker && !family && !mutation {
 		return nil
 	}
-	if request.Role == RoleCoordinator && !hookGitCoordinatorMutation(argv, verbIndex) {
+	if request.Role == RoleCoordinator && !mutation {
 		return nil
 	}
 	directory := hookGitDirectory(record, argv, verbIndex)
 	if request.Role == RoleWorker {
+		// Worker Git mutations meet the Coordinator-only denials before the typed-route diagnostic.
+		if mutation {
+			if diagnostic := inspectHookGitMutation(request, record, argv, verbIndex, directory); diagnostic != nil {
+				return diagnostic
+			}
+		}
+		if !family {
+			return nil
+		}
 		if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
 			directory = repository
 		}
@@ -573,6 +588,20 @@ func inspectHookGit(
 		diagnostic.Path = directory
 		return diagnostic
 	}
+	return inspectHookGitMutation(request, record, argv, verbIndex, directory)
+}
+
+// inspectHookGitMutation applies the broad, cross-scope and protected-target denials to one native Git mutation.
+// Read-only verbs never reach it, so Worker and Coordinator share one set of mutation denials.
+//
+// Example: git clean -fdx and git -C foreign branch -D topic select denied effects.
+func inspectHookGitMutation(
+	request Request,
+	record ShellCommandRecord,
+	argv []token,
+	verbIndex int,
+	directory string,
+) *Diagnostic {
 	if diagnostic := inspectHookGitBroad(record, argv, verbIndex, directory); diagnostic != nil {
 		return diagnostic
 	}
@@ -1240,8 +1269,48 @@ func inspectHookControlWriter(
 			diagnostic.Path = resolved
 			return diagnostic
 		}
+		if hookSessionsRootTarget(name, index == len(argv)-1, lexical, resolved) {
+			diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal selects omp session transcript root "+resolved,
+				segmentIndex, index, pathArgument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
+			diagnostic.Path = resolved
+			return diagnostic
+		}
 	}
 	return nil
+}
+
+// hookSessionsRoots returns the lexical and symlink-resolved omp sessions roots under HOME.
+// It returns nil when HOME is not absolute, so no Worker deny is inferred.
+//
+// Example: $HOME/.omp/agent/sessions and its resolved target both name transcript storage.
+func hookSessionsRoots() []string {
+	home := os.Getenv("HOME")
+	if !filepath.IsAbs(home) {
+		return nil
+	}
+	lexical := filepath.Clean(filepath.Join(home, ".omp", "agent", "sessions"))
+	roots := []string{lexical}
+	if resolved := resolvePathIdentity(lexical); resolved != lexical {
+		roots = append(roots, resolved)
+	}
+	return roots
+}
+
+// hookSessionsRootTarget reports whether a Worker writer or removal reaches the sessions root.
+// Removals and move sources also deny an operand that is an ancestor of the root.
+//
+// Example: rm of $HOME/.omp/agent removes the transcripts beneath the root.
+func hookSessionsRootTarget(name string, final bool, lexical, resolved string) bool {
+	ancestor := name == "rm" || name == "rmdir" || name == "unlink" || name == "shred" || name == "srm" || name == "find" || name == "mv" && !final
+	for _, root := range hookSessionsRoots() {
+		if pathWithin(lexical, root) || pathWithin(resolved, root) {
+			return true
+		}
+		if ancestor && pathWithin(root, resolved) {
+			return true
+		}
+	}
+	return false
 }
 
 // inspectHookCleanup protects existing live hooks from removal or relocation.
