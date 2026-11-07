@@ -35,21 +35,6 @@ On activation and closure, the Supervisor follows [native goal lifecycle](refere
 - Each normal iteration is Explore → Critique → Implement → parallel Review. A producer never acts as critic.
 - Bugs with hard uncertainty or a material competing diagnosis/approach use `debugging-discipline` on either path; retain permitted basic investigation and Fast's deferred main-path sequence.
 
-## Engineering priorities
-
-Achieve all applicable goals; this order governs conflicts, scheduling, and incremental delivery. An unfinished lower-priority improvement never blocks a higher-priority improvement; track it and advance it independently or afterward. The order does not waive final goals, and security follow-ups cannot block reliability work.
-
-1. It works.
-2. The design is correct.
-3. High code quality.
-4. Reliable.
-5. Observable.
-6. Scalable, when applicable.
-7. High performance.
-8. Secure; security findings remain follow-ups.
-
-Security findings are always follow-up work. They never block provisional delivery or final functional acceptance, and security severity alone never creates `now` work. Split mixed findings and judge actual requested functional behavior separately; do not relabel a security concern as functional merely to block. Existing instructions protecting credentials, secrets, user work, and authorized actions still govern execution.
-
 ## Configuration E2E contract
 
 Every configuration change, including configuration-only work, requires the final implementer-owned and fresh independent E2E pair on the stabilized final cumulative state described below. This requirement may not be waived.
