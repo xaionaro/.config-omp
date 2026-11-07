@@ -93,7 +93,7 @@ The `<profile level>` is the profile's `reasoning_effort` field.
 - A refused `default` profile spawn on the Enabled path stops. Record the refusal text and report it to the Supervisor. Never respawn the same brief on another model or without a model. The Default path passes no `model` and is not refused.
 - After a refused `higher` or `max` spawn, send the refusal and profile to the Supervisor and do not respawn. The Supervisor either chooses a listed model for a new spawn decision or stops the activity. That choice is a new spawn decision, not a retry.
 - Keep existing launch settings and reusable owners.
-- Reuse an open Job's owner with `write agent://<id>`; never replace it while that write can reach it: [open-Job owner reuse](references/coordinator.md#open-job-owner-reuse).
+- The Supervisor keeps an open Job's owner under [open-Job owner reuse](references/coordinator.md#open-job-owner-reuse).
 - Give an activity with a different profile its own spawn.
 - Keep independent reviewer assignments self-contained and blind to producer findings.
 - Profile selection does not change role authority or reviewer independence.
