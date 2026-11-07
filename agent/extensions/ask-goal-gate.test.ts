@@ -274,4 +274,9 @@ describe("ask goal gate", () => {
     await modes.set({ mode: "goal", action: "pause" });
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
   });
+
+  test("block reason tells the model to follow loaded skills and end its turn", () => {
+    assert.ok(GOAL_BLOCK_REASON.includes("follow the loaded skills"));
+    assert.ok(GOAL_BLOCK_REASON.includes("end your turn"));
+  });
 });
