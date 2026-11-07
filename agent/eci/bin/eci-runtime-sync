@@ -434,10 +434,10 @@ while IFS= read -r -d '' source_path; do
     fail ECI_RUNTIME_SYNC_SOURCE_UNSAFE "canonical managed path is not a regular file: $source_path"
   relative="${source_path#"$source_root/"}"
   if [[ "$mode" == peer-* ]]; then
-    # The planner binaries and the hook-helper binary are published by maintain-planner
-    # into the provider trees. Peer runtime sync must not replace them. The
-    # module-directory planner is maintain-planner's test build (planner.go), not a
-    # peer artifact.
+    # Peer runtime sync skips three hooks/lib entries: the module-directory planner
+    # binary (maintain-planner's test build, planner.go), its provenance receipt
+    # (.eci-command-plan.provenance, omitted by design), and the hook-helper binary.
+    # bin/ planner files are not skipped; they are published to the peer.
     case "$relative" in
       hooks/lib/eci-command-plan-go/eci-command-plan|hooks/lib/eci-command-plan-go/.eci-command-plan.provenance|hooks/lib/eci-hook-helper-go/eci-hook-helper)
         continue
