@@ -246,12 +246,12 @@ hooks/tests/test-session-snapshot-refresh.sh	-	mapped	agent/eci/hooks/tests/test
 hooks/tests/test-status-report-launcher.sh	-	mapped	agent/eci/hooks/tests/test-status-report-launcher.sh	-	-
 hooks/tests/test-status-report-reminder.sh	-	mapped	agent/eci/hooks/tests/test-status-report-reminder.sh	-	-
 hooks/tests/test-status-report-trigger-guidance.sh	-	mapped	agent/eci/hooks/tests/test-status-report-trigger-guidance.sh	-	-
-hooks/tests/test-stop-aux-metadata-advisory.sh	-	mapped	agent/eci/hooks/tests/test-stop-aux-metadata-advisory.sh	-	-
-hooks/tests/test-stop-gitleaks-advisory.sh	-	mapped	agent/eci/hooks/tests/test-stop-gitleaks-advisory.sh	-	-
-hooks/tests/test-stop-history-advisory.sh	-	mapped	agent/eci/hooks/tests/test-stop-history-advisory.sh	-	-
+hooks/tests/test-stop-aux-metadata-advisory.sh	-	reason-coded	-	tested-tool-unported	retired: tests hooks/stop-gate.sh only, deleted in pre-migration source f50ca64 (absent at 575bb81); agent/eci/hooks/tests/TEST-DISPOSITION.md:28
+hooks/tests/test-stop-gitleaks-advisory.sh	-	reason-coded	-	tested-tool-unported	retired: tests hooks/stop-gate.sh only, deleted in pre-migration source f50ca64 (absent at 575bb81); agent/eci/hooks/tests/TEST-DISPOSITION.md:31
+hooks/tests/test-stop-history-advisory.sh	-	reason-coded	-	tested-tool-unported	retired: tests hooks/stop-gate.sh only, deleted in pre-migration source f50ca64 (absent at 575bb81); agent/eci/hooks/tests/TEST-DISPOSITION.md:29
 hooks/tests/test-stop-hook-trust-stale-red.sh	-	mapped	agent/eci/hooks/tests/test-stop-hook-trust-stale-red.sh	-	-
 hooks/tests/test-stop-ordinary-continuation.sh	-	mapped	agent/eci/hooks/tests/test-stop-ordinary-continuation.sh	-	-
-hooks/tests/test-stop-r11-recovery.sh	-	mapped	agent/eci/hooks/tests/test-stop-r11-recovery.sh	-	-
+hooks/tests/test-stop-r11-recovery.sh	-	reason-coded	-	tested-tool-unported	retired: tests hooks/stop-gate.sh only, deleted in pre-migration source f50ca64 (absent at 575bb81); agent/eci/hooks/tests/TEST-DISPOSITION.md:30
 hooks/tests/test-system-tmp-diagnostic-order.sh	-	mapped	agent/eci/hooks/tests/test-system-tmp-diagnostic-order.sh	-	-
 hooks/tests/test-validate-bash-classifier.sh	-	mapped	agent/eci/hooks/tests/test-validate-bash-classifier.sh	-	-
 hooks/tests/test-validate-bash-git-approvals.sh	-	mapped	agent/eci/hooks/tests/test-validate-bash-git-approvals.sh	-	-
