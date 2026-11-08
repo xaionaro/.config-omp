@@ -15,7 +15,7 @@ replacement="$TMP_ROOT/eci-command-plan.replacement"
 
 printf '%s\n' '#!/usr/bin/env bash' 'printf pinned-planner' >"$planner"
 printf '%s\n' '#!/usr/bin/env bash' 'printf replacement-planner' >"$replacement"
-chmod 755 -- "$planner" "$replacement"
+chmod -- 755 "$planner" "$replacement"
 
 # A path replacement after validation must not change the executable selected
 # for this callback. The descriptor remains inherited by the child process,
