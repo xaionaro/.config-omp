@@ -112,7 +112,8 @@ for index in "${!gates[@]}"; do
   fi
   output_file="$tmp_dir/output-$index"
   error_file="$tmp_dir/error-$index"
-  bash "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
+  # $BASH is this guarded interpreter (bash 4.4 or newer); a PATH lookup could pick an older bash.
+  "$BASH" "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
   pids[$index]=$!
 done
 

@@ -23,10 +23,6 @@ pattern+='|date[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*d'
 pattern+='|find[[:space:]][^|;&]*-printf'
 pattern+='|xargs[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*r)([[:space:]=]|$)'
 exempt='lint-bsd-userland.sh test-lint-bsd-userland.sh test-eci-portable.sh test-tests-bsd-userland.sh portable-test.sh'
-# PORT-owned tests that the macOS portability group (c) migrates; it removes them from
-# this list, leaving it empty. Until then they are outside this check's scope.
-pending_group_c='run.sh run-isolated.sh'
-exempt="$exempt $(printf '%s' "$pending_group_c" | tr -s ' \n' '  ')"
 
 # file<TAB>exact line text, for test data that only looks like an executed GNU form.
 # A command string the planner under test must deny; never executed by the test.

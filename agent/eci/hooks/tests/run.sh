@@ -5,6 +5,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/hooks/tests/require-go.sh"
+. "$ROOT/hooks/tests/portable-test.sh"
 cd "$ROOT"
 FIXTURES="$ROOT/hooks/tests/fixtures"
 if ! command -v strace >/dev/null 2>&1; then
@@ -996,7 +997,7 @@ test_omp_status_large_main_is_main() {
   printf '%s\n' "$OMP_TITLE_LINE" "$OMP_HEADER_LINE" \
     "$(jq -cn --arg t "$filler" '{type: "message", message: {role: "user", content: $t}}')" \
     "$OMP_MESSAGE_LINE" >"$path"
-  [ "$(stat -c %s "$path")" -gt 65536 ] || return 1
+  [ "$(eci_stat size "$path")" -gt 65536 ] || return 1
   [ "$(omp_status_of "$path")" = main ]
 }
 
@@ -1013,7 +1014,7 @@ test_omp_status_classifies_bounded_prefix() {
   [ "$(omp_status_of "$dir/torn-tail.jsonl")" = main ] || return 1
   title="$(printf '%-255.200s' '{"type":"title","v":1,"title":"Session","pad":"')"
   printf '%s\n' "$title" "$OMP_HEADER_LINE" >"$dir/torn-title.jsonl"
-  [ "$(stat -c %s "$dir/torn-title.jsonl")" -eq $(( 256 + ${#OMP_HEADER_LINE} + 1 )) ] || return 1
+  [ "$(eci_stat size "$dir/torn-title.jsonl")" -eq $(( 256 + ${#OMP_HEADER_LINE} + 1 )) ] || return 1
   [ "$(omp_status_of "$dir/torn-title.jsonl")" = main ]
 }
 
@@ -1799,7 +1800,7 @@ test_eci_gate_blocks_relative_control_path_write() {
   mkdir -p "$proof_root/t00-session"
   marker="$proof_root/t00-session/eci_active"
   printf '%s\n' 'scope: relative control path' >"$marker"
-  relative_path="$(realpath --relative-to="$ROOT" "$marker")"
+  relative_path="$(eci_realpath_relative "$ROOT" "$marker")"
   input="$TMP_ROOT/gate-write-relative-control.json"
   jq -n --arg cwd "$ROOT" --arg fp "$relative_path" \
     '{session_id:"t00-session",cwd:$cwd,tool_name:"Write",tool_input:{file_path:$fp,content:"forged"}}' >"$input"
@@ -1867,7 +1868,7 @@ test_eci_gate_blocks_relative_control_path_apply_patch() {
   mkdir -p "$proof_root/t00-session"
   marker="$proof_root/t00-session/eci_active"
   printf '%s\n' 'scope: relative control path' >"$marker"
-  relative_path="$(realpath --relative-to="$ROOT" "$marker")"
+  relative_path="$(eci_realpath_relative "$ROOT" "$marker")"
   patch_text="$(printf '*** Begin Patch\n*** Update File: %s\n-scope: relative control path\n+scope: forged\n*** End Patch\n' "$relative_path")"
   input="$TMP_ROOT/gate-apply-patch-relative-control.json"
   jq -n --arg cwd "$ROOT" --arg patch "$patch_text" \
@@ -2877,6 +2878,10 @@ run_case "portable sha256, realpath and stat match GNU under BSD emulation" \
   bash "$ROOT/hooks/tests/test-eci-portable.sh"
 run_case "hook entry points name the bash 4.4 requirement under an older bash" \
   bash "$ROOT/hooks/tests/test-eci-bash-guard.sh"
+run_case "edit dispatch runs gate children on its own bash" \
+  bash "$ROOT/hooks/tests/test-eci-dispatch-child-bash.sh"
+run_case "hooks tests use no GNU-only userland forms" \
+  bash "$ROOT/hooks/tests/test-tests-bsd-userland.sh"
 run_case "direct lifecycle visibility accepts semantic current markers" \
   bash "$ROOT/hooks/tests/test-eci-lifecycle-visibility.sh"
 run_case "ECI lifecycle source authority outside command validation" \

@@ -3,9 +3,13 @@
 #
 # Usage: run-isolated.sh <test-file-in-this-dir> [args...]
 #
-# The per-test work area lives under $XDG_RUNTIME_DIR (mode 0700). Its ancestors
-# must be private because the planner refuses a bin directory with a
-# group/other-writable ancestor, and ~/tmp is group-writable.
+# The per-test work area lives under $XDG_RUNTIME_DIR (mode 0700). Every ancestor
+# must be owned by the user or root and not group/other-writable, because the
+# planner refuses a bin directory with a group/other-writable ancestor (~/tmp is
+# group-writable); the run is refused up front otherwise. macOS sets no
+# XDG_RUNTIME_DIR, and /tmp there is world-writable; use a private directory under
+# the per-user $TMPDIR (/var/folders/.../T, mode 0700):
+#   export XDG_RUNTIME_DIR="$(mktemp -d "$TMPDIR/eci-xdg.XXXXXX")"
 # HOME is set to <work>/home. The runtime is copied to <work>/home/.omp/agent/eci
 # and the test runs from that copy, so ROOT equals the HOME-derived runtime path.
 # The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
@@ -24,8 +28,9 @@
 set -euo pipefail
 umask 077
 
-account_home="$(realpath -e -- "${HOME:?HOME must be set}")"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$here/portable-test.sh"
+account_home="$(eci_realpath_existing "${HOME:?HOME must be set}")"
 runtime_root="$(cd "$here/../.." && pwd -P)"
 # The source repository that owns runtime_root. Tests that compare against the
 # source HEAD read it from ECI_SOURCE_REPO; a runtime outside a repository leaves it unset.
@@ -55,7 +60,7 @@ while :; do
   [ "$chain_dir" = / ] && break
   chain_dir="$(dirname -- "$chain_dir")"
 done
-work="$(realpath -e -- "$(mktemp -d "$base/eci-hooktest.XXXXXX")")"
+work="$(eci_realpath_existing "$(mktemp -d "$base/eci-hooktest.XXXXXX")")"
 cleanup() { rm -rf -- "$work"; }
 trap cleanup EXIT
 
@@ -70,7 +75,7 @@ native_bin="$work/home/.omp/agent/eci/bin"
 HOME="$work/home" bash "$work/home/.omp/agent/eci/hooks/build-native-binaries.sh" \
   eci-command-plan eci-safe-import eci-hook-helper >&2 ||
   { printf 'run-isolated: build-native-binaries.sh failed; native gate binaries are not provisioned\n' >&2; exit 1; }
-if command -v sha256sum >/dev/null 2>&1; then native_sha256=(sha256sum); else native_sha256=(shasum -a 256); fi
+native_sha256=("${eci_sha256_command[@]}")
 for native_name in eci-command-plan eci-safe-import eci-hook-helper; do
   (cd "$native_bin" && "${native_sha256[@]}" -c --status "$native_name.sha256") ||
     { printf 'run-isolated: receipt mismatch for %s\n' "$native_name" >&2; exit 1; }
