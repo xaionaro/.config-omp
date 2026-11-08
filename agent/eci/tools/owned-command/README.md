@@ -63,8 +63,11 @@ native call that never returns are outside the cleanup guarantee.
 
 Setup has a five-second monotonic scheduling budget, separate from `-deadline`.
 The command runtime budget starts after successful native launch. Defaults are
-three seconds of runtime and 250 milliseconds of grace. Native-call, inspection
-and finalization latency are additional; these are not hard wall-clock limits.
+three seconds of runtime and 250 milliseconds of grace. With `-cancel-pid`,
+`-deadline` instead bounds the time from guard start until retirement begins
+(see Foreign PID cancellation). Cancellation has no separate setup budget.
+Native-call, inspection and finalization latency are additional; these are not
+hard wall-clock limits.
 An interruption or setup error prevents launch and returns 125 through the same
 receipt finalizer. An ambiguous manager reply never authorizes launch.
 
@@ -152,12 +155,22 @@ parent descriptor whose post-read poll proves that its lifetime covered the read
 An admitted identity remains owned after detachment or reparenting. Launch-only
 subreaper adoption is unavailable to this driver.
 
-Before initial root TERM, one finite host proc snapshot is acquired parent-first.
-Finite preparation batches check interruption and the common retirement clock.
-If preparation is incomplete when KILL becomes due, it ends permanently, known
+Before initial root TERM, one finite host proc snapshot is acquired parent-first
+in finite batches. Retirement starts when the pass completes, so `-grace` does
+not include discovery. `-deadline` is
+measured from guard start; setup and binding use it but are not cut short by it.
+During the pass, reaching it or an interruption starts retirement while TERM
+stays held, and a discovery or acquisition error starts retirement and ends the
+pass. `Cause` names what started retirement (`cancel requested` when the
+completed pass starts it), and the root's `observed` event marks binding. Every
+batch checks interruption, the deadline and the common retirement clock. If
+preparation is incomplete when KILL becomes due, it ends permanently, known
 handles receive the due schedule, and the result remains unsettled with status
 125. Later custody emptiness cannot erase that uncertainty. Children outside the
-snapshot or changing ancestry during it are not proved covered.
+snapshot, including any forked during or after the pass, or changing ancestry
+during it are not proved covered. The pass ends by KILL, one `-grace` after
+retirement starts, and retirement starts by the first check at or after
+`-deadline`.
 
 Unknown metadata, visibility, scan or poll failures do not mean exit. Anchored
 ENOENT alone is insufficient. Prebinding absence requires native pidfd_open ESRCH
@@ -168,7 +181,9 @@ Current descriptors close after confirmed exit; immutable receipt history remain
 ## Status and receipts
 
 Ordinary settled commands preserve native exit status, including `128+signal`.
-Cancellation returns 0 only for its documented observed-family settlement.
+Cancellation returns 0 only for its documented observed-family settlement, with
+`Cause` `cancel requested` or `already absent`; a discovery that reaches
+`-deadline` returns 125 even when settlement is later proved.
 Deadline, interruption, inspection, custody, cleanup and receipt errors return
 125. Historical errors force 125 even if physical settlement is later proved.
 A command can itself exit 125: inspect `Cause`, `CommandExit`, `Errors` and

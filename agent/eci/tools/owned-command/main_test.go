@@ -611,7 +611,9 @@ func TestSyntheticNumericHintCloseFailure(t *testing.T) {
 				if !g.initialCancel() {
 					t.Fatal("proved root rejected")
 				}
-				retirement := g.retirement
+				if !g.retirement.IsZero() {
+					t.Errorf("%s binding started retirement: cause=%q", path, g.receipt.Cause)
+				}
 				g.prepareFamily()
 				if (len(g.receipt.Errors) != 0) != closeFailed {
 					t.Errorf("%s known=%v close=%t diagnostics=%v", path, known, closeFailed, g.receipt.Errors)
@@ -627,7 +629,11 @@ func TestSyntheticNumericHintCloseFailure(t *testing.T) {
 				if !closeFailed && (code != 0 || !receipt.HostChildrenSettled || len(receipt.Errors) != 0) {
 					t.Errorf("%s rejected benign %v: code=%d receipt=%+v", path, known, code, receipt)
 				}
-				if !g.retirement.Equal(retirement) || len(k.signals) != 1 || k.signals[0].target != 24101 || k.signals[0].signal != syscall.SIGTERM || len(g.current) != 0 || len(g.pending) != 0 || len(g.tentative) != 0 {
+				wantCause := "cancel requested"
+				if closeFailed {
+					wantCause = "guard error"
+				}
+				if receipt.Cause != wantCause || !k.sentAt[driverSignal{target: 24101, signal: syscall.SIGTERM}].Equal(g.retirement) || len(k.signals) != 1 || k.signals[0].target != 24101 || k.signals[0].signal != syscall.SIGTERM || len(g.current) != 0 || len(g.pending) != 0 || len(g.tentative) != 0 {
 					t.Errorf("%s changed published retirement: signals=%v receipt=%+v", path, k.signals, receipt)
 				}
 			}

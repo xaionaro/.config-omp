@@ -63,6 +63,15 @@ type driverWait struct {
 	notice  os.Signal
 }
 
+// driverStep changes synthetic time or queues a notice during one scripted kernel call.
+//
+// Example: a hint read that reaches -deadline and another that crosses grace mark different boundaries.
+type driverStep struct {
+	advance time.Duration
+	notice  os.Signal
+	mark    string
+}
+
 // driverSignal records the selected signal authority.
 //
 // Example: raw root rollback differs from retained pidfd signaling.
@@ -89,6 +98,7 @@ type driverKernel struct {
 	closeError         error
 	closed             []int
 	signals            []driverSignal
+	sentAt             map[driverSignal]time.Time
 	entries            [][]int
 	entryCalls         int
 	hintCalls          int
@@ -104,11 +114,9 @@ type driverKernel struct {
 	readPIDs           []int
 	reparentOnRootTERM bool
 	exitOnSend         bool
-	hintAdvanceAt      int
-	hintAdvance        time.Duration
+	hintSteps          map[int]driverStep
 	readStats          map[int]processStat
-	readAdvanceAt      int
-	readAdvance        time.Duration
+	readSteps          map[int]driverStep
 	metadataErrors     []error
 	entryErrors        []error
 	hintErrors         map[int]error
@@ -149,6 +157,19 @@ func (k *driverKernel) OpenDirectory(pid int) (int, error) {
 	return pid + 10000, nil
 }
 
+// apply performs one scripted change inside the current kernel call.
+//
+// Example: the zero step of an unscripted call changes nothing.
+func (k *driverKernel) apply(step driverStep) {
+	k.clock.now = k.clock.now.Add(step.advance)
+	if step.notice != nil {
+		k.notices <- step.notice
+	}
+	if step.mark != "" {
+		k.operations = append(k.operations, step.mark)
+	}
+}
+
 // ReadStat supplies anchored metadata with an optional injected error.
 //
 // Example: a postpublication error retains the root descriptor.
@@ -158,10 +179,7 @@ func (k *driverKernel) ReadStat(
 ) metadataRead {
 	k.operations = append(k.operations, "read")
 	k.readPIDs = append(k.readPIDs, pid)
-	if len(k.readPIDs) == k.readAdvanceAt {
-		k.clock.now = k.clock.now.Add(k.readAdvance)
-		k.operations = append(k.operations, "kill-due")
-	}
+	k.apply(k.readSteps[len(k.readPIDs)])
 	stat := k.hints[pid]
 	if fresh, ok := k.readStats[pid]; ok {
 		stat = fresh
@@ -220,7 +238,11 @@ func (k *driverKernel) Send(
 	if fd == 24101 && signal == syscall.SIGKILL {
 		k.operations = append(k.operations, "root-kill")
 	}
-	k.signals = append(k.signals, driverSignal{target: fd, signal: signal})
+	sent := driverSignal{target: fd, signal: signal}
+	k.signals = append(k.signals, sent)
+	if _, ok := k.sentAt[sent]; !ok {
+		k.sentAt[sent] = k.clock.now
+	}
 	if k.reparentOnRootTERM && fd == 24101 && signal == syscall.SIGTERM {
 		for pid, stat := range k.hints {
 			if stat.Parent == 4101 {
@@ -293,10 +315,7 @@ func (k *driverKernel) Entries() ([]int, error) {
 func (k *driverKernel) Hint(pid int) (processStat, error) {
 	k.hintCalls++
 	k.operations = append(k.operations, "hint")
-	if k.hintCalls == k.hintAdvanceAt {
-		k.clock.now = k.clock.now.Add(k.hintAdvance)
-		k.operations = append(k.operations, "kill-due")
-	}
+	k.apply(k.hintSteps[k.hintCalls])
 	if err := k.hintErrors[pid]; err != nil {
 		return processStat{}, err
 	}
@@ -312,7 +331,7 @@ func (k *driverKernel) Hint(pid int) (processStat, error) {
 func newDriverControl() (*guard, *driverKernel) {
 	clock := &driverClock{now: time.Unix(100, 0)}
 	notices := make(chan os.Signal, 16)
-	kernel := &driverKernel{clock: clock, notices: notices, selfFD: 73, selfPollState: processRunning, hints: make(map[int]processStat), hintErrors: make(map[int]error), readStats: make(map[int]processStat), polls: make(map[int]processState)}
+	kernel := &driverKernel{clock: clock, notices: notices, selfFD: 73, selfPollState: processRunning, hints: make(map[int]processStat), hintErrors: make(map[int]error), readStats: make(map[int]processStat), polls: make(map[int]processState), sentAt: make(map[driverSignal]time.Time)}
 	clock.kernel = kernel
 	return newGuard(kernel, clock, notices, time.Hour, time.Second, ProcessIdentity{}), kernel
 }
@@ -638,6 +657,7 @@ func configureDriverExternalFamily(
 }
 
 // TestSyntheticExternalFamilyPreparedBeforeRootTERM falsifies signal-before-discovery ordering.
+// Binding starts no retirement; the completed pass starts it once, at the instant of every TERM.
 //
 // Example: reversed deep families beyond 256 entries retire through every proved handle.
 func TestSyntheticExternalFamilyPreparedBeforeRootTERM(t *testing.T) {
@@ -647,7 +667,9 @@ func TestSyntheticExternalFamilyPreparedBeforeRootTERM(t *testing.T) {
 		if !g.initialCancel() {
 			t.Fatal("valid root binding rejected")
 		}
-		retirement := g.retirement
+		if !g.retirement.IsZero() || g.receipt.Cause != "" || len(k.signals) != 0 {
+			t.Fatalf("binding started retirement before discovery depth=%d cause=%q signals=%v", depth, g.receipt.Cause, k.signals)
+		}
 		g.drive()
 		receipt, code := g.finalize()
 		targets := make(map[int]int)
@@ -656,28 +678,30 @@ func TestSyntheticExternalFamilyPreparedBeforeRootTERM(t *testing.T) {
 				targets[sent.target]++
 			}
 		}
-		if code != 0 || !receipt.HostChildrenSettled || len(targets) != depth+1 || !g.retirement.Equal(retirement) {
+		if code != 0 || !receipt.HostChildrenSettled || len(targets) != depth+1 || receipt.Cause != "cancel requested" {
 			t.Fatalf("external family lost before TERM depth=%d targets=%d expected=%d receipt=%+v code=%d", depth, len(targets), depth+1, receipt, code)
 		}
 		for index := 0; index <= depth; index++ {
-			if targets[24101+index] != 1 {
-				t.Fatalf("unretired family depth=%d handle=%d targets=%v", depth, 24101+index, targets)
+			term := driverSignal{target: 24101 + index, signal: syscall.SIGTERM}
+			if targets[term.target] != 1 || !k.sentAt[term].Equal(g.retirement) {
+				t.Fatalf("unretired family or restarted retirement depth=%d handle=%d targets=%v sent=%v retirement=%v", depth, term.target, targets, k.sentAt[term], g.retirement)
 			}
 		}
 	}
 }
 
-// TestSyntheticExternalPreparationKillCrossingLatchesFailure preserves original retirement timing.
+// TestSyntheticExternalPreparationKillCrossingLatchesFailure keeps the KILL bound of a retirement started during discovery.
 //
-// Example: collection crossing grace retires proved handles and can never settle zero later.
+// Example: a deadline due at the first boundary plus a scan crossing grace retires proved handles and never settles.
 func TestSyntheticExternalPreparationKillCrossingLatchesFailure(t *testing.T) {
 	g, k := newDriverControl()
 	configureDriverExternalFamily(g, k, 5, 300)
-	k.hintAdvanceAt, k.hintAdvance = 1, time.Second
+	g.expires = g.started
+	k.hintSteps = map[int]driverStep{1: {advance: g.grace, mark: "kill-due"}}
 	if !g.initialCancel() {
 		t.Fatal("valid root binding rejected")
 	}
-	retirement := g.retirement
+	start := k.clock.now
 	g.drive()
 	receipt, code := g.finalize()
 	term, kill := 0, 0
@@ -689,8 +713,10 @@ func TestSyntheticExternalPreparationKillCrossingLatchesFailure(t *testing.T) {
 			kill++
 		}
 	}
-	if code != guardFailure || receipt.HostChildrenSettled || !g.retirement.Equal(retirement) || term != 1 || kill != 1 {
-		t.Fatalf("preparation crossing lost latch/schedule: code=%d receipt=%+v term=%d kill=%d hints=%d", code, receipt, term, kill, k.hintCalls)
+	rootKill := k.sentAt[driverSignal{target: 24101, signal: syscall.SIGKILL}]
+	latched := strings.Contains(strings.Join(receipt.Errors, "\n"), "external family preparation incomplete: original KILL boundary reached before complete discovery")
+	if code != guardFailure || receipt.HostChildrenSettled || !g.familyUncertain || !latched || receipt.Cause != "deadline" || !g.retirement.Equal(start) || term != 1 || kill != 1 || rootKill.Before(g.retirement.Add(g.grace)) {
+		t.Fatalf("preparation crossing lost latch/schedule: code=%d receipt=%+v term=%d kill=%d killAt=%v hints=%d", code, receipt, term, kill, rootKill, k.hintCalls)
 	}
 	assertDriverDueRetirementBeforeWork(t, k)
 }
@@ -729,24 +755,19 @@ func TestSyntheticExternalFreshReparentRejectsHintAuthority(t *testing.T) {
 func TestSyntheticExternalAcquisitionKillCrossingServesProvedHandle(t *testing.T) {
 	g, k := newDriverControl()
 	configureDriverExternalFamily(g, k, 2, 0)
-	k.readAdvanceAt, k.readAdvance = 4, time.Second
+	g.expires = g.started
+	k.readSteps = map[int]driverStep{4: {advance: g.grace, mark: "kill-due"}}
 	if !g.initialCancel() {
 		t.Fatal("valid root binding rejected")
 	}
-	retirement := g.retirement
+	start := k.clock.now
 	g.drive()
 	receipt, code := g.finalize()
-	if code != guardFailure || receipt.HostChildrenSettled || !g.retirement.Equal(retirement) {
+	if code != guardFailure || receipt.HostChildrenSettled || !g.familyUncertain || receipt.Cause != "deadline" || !g.retirement.Equal(start) {
 		t.Fatalf("late acquisition erased uncertainty/restarted schedule: receipt=%+v code=%d", receipt, code)
 	}
-	rootKill := false
-	for _, sent := range k.signals {
-		if sent.target == 24101 && sent.signal == syscall.SIGKILL {
-			rootKill = true
-		}
-	}
-	if !rootKill {
-		t.Fatalf("late acquisition failed due root cleanup: signals=%+v", k.signals)
+	if rootKill, ok := k.sentAt[driverSignal{target: 24101, signal: syscall.SIGKILL}]; !ok || rootKill.Before(g.retirement.Add(g.grace)) {
+		t.Fatalf("late acquisition failed due root cleanup: killAt=%v signals=%+v", rootKill, k.signals)
 	}
 	assertDriverDueRetirementBeforeWork(t, k)
 }
@@ -808,7 +829,7 @@ func newDriverPreparation(
 
 // TestSyntheticPreparationMembershipBudgetHoldsTERM counts membership-only work.
 //
-// Example: a held TERM never advances appliedStage or restarts the shared clock.
+// Example: a held TERM never advances appliedStage or starts retirement before the pass completes.
 func TestSyntheticPreparationMembershipBudgetHoldsTERM(t *testing.T) {
 	g, k := newDriverControl()
 	configureDriverExternalFamily(g, k, 1, 0)
@@ -820,13 +841,12 @@ func TestSyntheticPreparationMembershipBudgetHoldsTERM(t *testing.T) {
 		p.Entries = append(p.Entries, 8000+index)
 	}
 	g.preparation = p
-	retirement := g.retirement
 	g.retire()
 	if g.appliedStage != retirementNone || len(k.signals) != 0 {
 		t.Fatalf("held TERM advanced without signals: stage=%d signals=%v", g.appliedStage, k.signals)
 	}
 	g.prepareFamily()
-	if p.At <= 0 || p.At > scanBudget || len(p.Members) != p.At || p.Phase != preparationMembers || len(k.signals) != 0 || g.appliedStage != retirementNone || !g.retirement.Equal(retirement) || k.clock.pauses != 0 {
+	if p.At <= 0 || p.At > scanBudget || len(p.Members) != p.At || p.Phase != preparationMembers || len(k.signals) != 0 || g.appliedStage != retirementNone || !g.retirement.IsZero() || k.clock.pauses != 0 {
 		t.Fatalf("unbounded membership/artificial stage: at=%d members=%d phase=%d stage=%d signals=%v", p.At, len(p.Members), p.Phase, g.appliedStage, k.signals)
 	}
 	g.finalize()
@@ -900,10 +920,11 @@ func TestSyntheticPreparationIndexAndExpansionKillCrossingAbortServicesProvedRoo
 			p.Queue = append(p.Queue, &custody{ProcessIdentity: ProcessIdentity{PID: 8000 + index, Birth: 1}, FD: 30000 + index, Owned: true, State: processRunning})
 		}
 		g.preparation = p
-		retirement := g.retirement
+		g.expires = g.started
+		start := k.clock.now
 		k.clock.advanceAt, k.clock.advance = k.clock.reads+10, time.Second
 		g.prepareFamily()
-		if g.preparation != nil || !g.familyUncertain || !g.retirement.Equal(retirement) || g.appliedStage != retirementKILL || len(k.signals) != 2 || k.signals[0].signal != syscall.SIGTERM || k.signals[1].signal != syscall.SIGKILL || p.At >= scanBudget || len(p.Expanded) >= scanBudget || k.clock.pauses != 0 {
+		if g.preparation != nil || !g.familyUncertain || g.receipt.Cause != "deadline" || !g.retirement.Equal(start) || g.appliedStage != retirementKILL || len(k.signals) != 2 || k.signals[0].signal != syscall.SIGTERM || k.signals[1].signal != syscall.SIGKILL || p.At >= scanBudget || len(p.Expanded) >= scanBudget || k.clock.pauses != 0 {
 			t.Fatalf("phase %d crossing skipped service/latch: at=%d expanded=%d stage=%d uncertain=%t signals=%v", phase, p.At, len(p.Expanded), g.appliedStage, g.familyUncertain, k.signals)
 		}
 		assertDriverDueRetirementBeforeWork(t, k)
@@ -931,11 +952,14 @@ func TestSyntheticPreparationUncertaintyNeverBecomesSettlement(t *testing.T) {
 		if !g.initialCancel() {
 			t.Fatalf("root binding rejected in %s", scenario)
 		}
-		retirement := g.retirement
+		if !g.retirement.IsZero() {
+			t.Fatalf("%s binding started retirement: cause=%q", scenario, g.receipt.Cause)
+		}
 		g.drive()
 		receipt, code := g.finalize()
-		if code != guardFailure || receipt.HostChildrenSettled || !g.familyUncertain || !g.retirement.Equal(retirement) || len(receipt.Errors) == 0 {
-			t.Fatalf("%s uncertainty erased: code=%d receipt=%+v uncertain=%t", scenario, code, receipt, g.familyUncertain)
+		termAt := k.sentAt[driverSignal{target: 24101, signal: syscall.SIGTERM}]
+		if code != guardFailure || receipt.HostChildrenSettled || !g.familyUncertain || receipt.Cause != "guard error" || !termAt.Equal(g.retirement) || len(receipt.Errors) == 0 {
+			t.Fatalf("%s uncertainty erased: code=%d receipt=%+v uncertain=%t termAt=%v retirement=%v", scenario, code, receipt, g.familyUncertain, termAt, g.retirement)
 		}
 		rootTERM := 0
 		for _, sent := range k.signals {
@@ -968,10 +992,107 @@ func TestSyntheticPreparationHintBudgetCountsEveryEntry(t *testing.T) {
 		p.Members[pid] = true
 	}
 	g.preparation = p
-	retirement := g.retirement
 	g.prepareFamily()
-	if p.At <= 0 || p.At > scanBudget || k.hintCalls != p.At || len(p.Hinted) != p.At || g.preparation == nil || len(k.signals) != 0 || g.appliedStage != retirementNone || !g.retirement.Equal(retirement) {
+	if p.At <= 0 || p.At > scanBudget || k.hintCalls != p.At || len(p.Hinted) != p.At || g.preparation == nil || len(k.signals) != 0 || g.appliedStage != retirementNone || !g.retirement.IsZero() {
 		t.Fatalf("unbounded hint collection/artificial stage: at=%d hints=%d stage=%d signals=%v", p.At, k.hintCalls, g.appliedStage, k.signals)
 	}
 	g.finalize()
+}
+
+// TestSyntheticExternalRetirementStartsAtPassCompletion measures grace from the completed pass, not from binding.
+//
+// Example: hint and family phases each three graces long put retirement at binding plus six graces, settled with status 0.
+func TestSyntheticExternalRetirementStartsAtPassCompletion(t *testing.T) {
+	g, k := newDriverControl()
+	// 100 unrelated entries keep the pass inside one batch, so no observation pause moves the clock.
+	configureDriverExternalFamily(g, k, 5, 100)
+	k.hintSteps = map[int]driverStep{1: {advance: 3 * g.grace}}
+	k.readSteps = map[int]driverStep{7: {advance: 3 * g.grace}}
+	if !g.initialCancel() {
+		t.Fatal("valid root binding rejected")
+	}
+	bound := k.clock.now
+	g.drive()
+	receipt, code := g.finalize()
+	if code != 0 || !receipt.HostChildrenSettled || len(receipt.Errors) != 0 || receipt.Cause != "cancel requested" || g.familyUncertain || !g.retirement.Equal(bound.Add(6*g.grace)) {
+		t.Fatalf("long pass did not start retirement at completion: code=%d receipt=%+v bound=%v retirement=%v", code, receipt, bound, g.retirement)
+	}
+	for index := 0; index <= 5; index++ {
+		term := driverSignal{target: 24101 + index, signal: syscall.SIGTERM}
+		if at, ok := k.sentAt[term]; !ok || !at.Equal(g.retirement) {
+			t.Fatalf("handle %d TERM at %v (sent=%t), retirement %v", term.target, at, ok, g.retirement)
+		}
+	}
+	for _, sent := range k.signals {
+		if sent.signal == syscall.SIGKILL {
+			t.Fatalf("settled pass sent KILL: %+v", k.signals)
+		}
+	}
+}
+
+// TestSyntheticExternalDeadlineBoundsPreparation starts retirement at -deadline and keeps the KILL bound.
+//
+// Example: a pass finishing within grace of the deadline TERMs the whole family; one crossing grace gets TERM and KILL together.
+func TestSyntheticExternalDeadlineBoundsPreparation(t *testing.T) {
+	for _, crossesKILL := range []bool{false, true} {
+		t.Run(fmt.Sprintf("crossesKILL=%t", crossesKILL), func(t *testing.T) {
+			g, k := newDriverControl()
+			configureDriverExternalFamily(g, k, 5, 100)
+			deadline := 2 * g.grace
+			g.expires = g.started.Add(deadline)
+			k.hintSteps = map[int]driverStep{1: {advance: deadline + g.grace/2, mark: "deadline-due"}}
+			if crossesKILL {
+				k.hintSteps[2] = driverStep{advance: g.grace, mark: "kill-due"}
+			}
+			if !g.initialCancel() {
+				t.Fatal("valid root binding rejected")
+			}
+			reached := k.clock.now.Add(deadline + g.grace/2)
+			g.drive()
+			receipt, code := g.finalize()
+			rootKill, killed := k.sentAt[driverSignal{target: 24101, signal: syscall.SIGKILL}]
+			if code != guardFailure || receipt.Cause != "deadline" || !g.retirement.Equal(reached) {
+				t.Fatalf("deadline did not start retirement: code=%d receipt=%+v retirement=%v reached=%v", code, receipt, g.retirement, reached)
+			}
+			if !crossesKILL {
+				if !receipt.HostChildrenSettled || g.familyUncertain || len(receipt.Errors) != 0 || killed {
+					t.Fatalf("pass finishing within grace lost coverage: receipt=%+v killed=%t", receipt, killed)
+				}
+				for index := 0; index <= 5; index++ {
+					if at, ok := k.sentAt[driverSignal{target: 24101 + index, signal: syscall.SIGTERM}]; !ok || !at.Equal(reached) {
+						t.Fatalf("handle %d TERM at %v (sent=%t), want %v", 24101+index, at, ok, reached)
+					}
+				}
+				return
+			}
+			latched := strings.Contains(strings.Join(receipt.Errors, "\n"), "external family preparation incomplete: original KILL boundary reached before complete discovery")
+			if receipt.HostChildrenSettled || !g.familyUncertain || !latched || !killed || !rootKill.Equal(reached.Add(g.grace)) {
+				t.Fatalf("crossing lost the KILL bound: receipt=%+v killAt=%v want=%v", receipt, rootKill, reached.Add(g.grace))
+			}
+			assertDriverDueRetirementBeforeWork(t, k)
+		})
+	}
+}
+
+// TestSyntheticExternalSignalDuringPreparationStartsRetirement starts grace at the notice while TERM stays held.
+//
+// Example: SIGTERM to the guard mid-pass sets Cause and retirement; root TERM still waits for the completed pass.
+func TestSyntheticExternalSignalDuringPreparationStartsRetirement(t *testing.T) {
+	g, k := newDriverControl()
+	configureDriverExternalFamily(g, k, 5, 100)
+	k.hintSteps = map[int]driverStep{1: {notice: syscall.SIGTERM}, 2: {advance: g.grace / 2}}
+	if !g.initialCancel() {
+		t.Fatal("valid root binding rejected")
+	}
+	noticed := k.clock.now
+	g.drive()
+	receipt, code := g.finalize()
+	if code != guardFailure || !g.interrupted || receipt.Cause != "signal: terminated" || !g.retirement.Equal(noticed) || !receipt.HostChildrenSettled || g.familyUncertain {
+		t.Fatalf("notice during pass: code=%d receipt=%+v retirement=%v noticed=%v", code, receipt, g.retirement, noticed)
+	}
+	for index := 0; index <= 5; index++ {
+		if at, ok := k.sentAt[driverSignal{target: 24101 + index, signal: syscall.SIGTERM}]; !ok || !at.Equal(noticed.Add(g.grace/2)) {
+			t.Fatalf("handle %d TERM at %v (sent=%t), want held until %v", 24101+index, at, ok, noticed.Add(g.grace/2))
+		}
+	}
 }

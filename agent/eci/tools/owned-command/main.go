@@ -954,7 +954,7 @@ func (g *guard) initialCancel() bool {
 		g.root = g.current[g.cancel.PID]
 		g.receipt.CommandPID = g.cancel.PID
 		g.receipt.CommandExit = 0
-		g.beginRetirement("cancel requested")
+		// The retirement clock starts when the family pass completes, or earlier at -deadline, a signal or an error.
 		g.armPreparation()
 		return true
 	}
@@ -1098,6 +1098,8 @@ func (g *guard) expandFamilyParent(p *familyPreparation) {
 		}
 		if !g.preparationBoundary() {
 			g.preparation = nil
+			// A completed pass starts retirement unless a deadline, signal or error started it first.
+			g.beginRetirement("cancel requested")
 			g.retire()
 		}
 		return
@@ -1581,7 +1583,7 @@ func supervise(
 //
 // Example: receipt and unexpected diagnostic-write errors return 125.
 func main() {
-	deadline := flag.Duration("deadline", 3*time.Second, "maximum command runtime before retirement")
+	deadline := flag.Duration("deadline", 3*time.Second, "maximum command runtime before retirement; with -cancel-pid, time from guard start until retirement starts, even if family discovery is incomplete")
 	grace := flag.Duration("grace", 250*time.Millisecond, "TERM grace and subsequent KILL settlement bound")
 	receipt := flag.String("receipt", "", "JSON receipt path")
 	cancelPID := flag.Int("cancel-pid", 0, "cancel this exact host process")
