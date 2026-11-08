@@ -1,15 +1,15 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 1101; no fixed word budget (harness-tuning).
+#   Result: 1095; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
-# scope: all, so subagent transcripts reach the Activity table's Code row (bash commit). Cost grows with subagent count (OPEN).
+# scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
 # tools: [read, grep, glob]; grep and glob are used only on Rule files paths.
-# reviewMode turn + reviewInterval 5: every 5th turn [unverified: whether tool-loop continuations count].
+# reviewMode turn + reviewInterval 20: every 20th turn [unverified: whether tool-loop continuations count].
 # reviewInterval schema text: "Skipped updates are sent with the next scheduled review." [unverified]
-# includeReasoning false: see instructions, "Judge actions and claims, never reasoning."
-# The router `## Model selection` example row checks spawn parameters and refusal handling; profile tiers are outside the rule table.
+# includeReasoning false: see instructions, Cadence.
+# check 3 checks spawn parameters and refusal handling; profile tiers are outside the rule table.
 # OPEN (unverified):
 #  - global advisor.enabled default (last checked: no advisor key in config.yml; default off per scout, medium)
 #  - eci-active activation subcommand: none verified; eci-active is not an evidence row
@@ -48,7 +48,7 @@ advisors:
       Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
-      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill, within the run's configured rule-file allowance, to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
+      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
 
       | File | Canonical path | Read when |
       |---|---|---|
