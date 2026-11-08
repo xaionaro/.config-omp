@@ -4223,8 +4223,8 @@ func inspectHookGateModeTarget(
 	}
 	resolved := resolveExecutable(target.value, request.CWD)
 	actual, err := os.Stat(resolved)
-	if err != nil {
-		return nil
+	if resolved == "" || err != nil {
+		return gateModeEnvelopeDiagnostic(argv, target, segmentIndex, "gate-mode-identity", "command-gate mode target has no statable executable identity")
 	}
 	for _, root := range protectedHookModeRoots() {
 		canonical := filepath.Join(root, "bin", "eci-command-gate-mode")
