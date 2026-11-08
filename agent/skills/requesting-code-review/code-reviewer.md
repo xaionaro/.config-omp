@@ -9,7 +9,7 @@ Reviewers investigate and report; responsible writers repair under existing disp
 1. Review {WHAT_WAS_IMPLEMENTED}
 2. Compare against {PLAN_OR_REQUIREMENTS}
 3. Check code quality, architecture, testing
-4. Categorize issues by severity
+4. Assign each issue a priority from P0 to P3
 5. Assess production readiness
 
 ## What Was Implemented
@@ -70,16 +70,19 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 ### Issues
 
-#### Critical (Must Fix)
+Use the P0–P3 priority scale under "Write the result" in `skill://review-agent`. That skill's precision filter and result form do not apply to this template.
+
+#### P0–P1 (Must Fix)
 [Bugs, security issues, data loss risks, broken functionality]
 
-#### Important (Should Fix)
+#### P2 (Should Fix)
 [Architecture problems, missing features, poor error handling, test gaps]
 
-#### Minor (Nice to Have)
+#### P3 (Nice to Have)
 [Code style, optimization opportunities, documentation improvements]
 
 **For each issue:**
+- Priority (P0, P1, P2, or P3)
 - File:line reference
 - What's wrong
 - Why it matters
@@ -97,7 +100,7 @@ git diff {BASE_SHA}..{HEAD_SHA}
 ## Critical Rules
 
 **DO:**
-- Categorize by actual severity (not everything is Critical)
+- Assign priority by actual impact (not everything is P0)
 - Be specific (file:line, not vague)
 - Explain WHY issues matter
 - Acknowledge strengths
@@ -105,7 +108,7 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 **DON'T:**
 - Say "looks good" without checking
-- Mark nitpicks as Critical
+- Mark nitpicks as P0 or P1
 - Give feedback on code you didn't review
 - Be vague ("improve error handling")
 - Avoid giving a clear verdict
@@ -120,7 +123,7 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 ### Issues
 
-#### Important
+#### P2
 1. **Missing help text in CLI wrapper**
    - File: index-conversations:1-31
    - Issue: No --help flag, users won't discover --concurrency
@@ -131,7 +134,7 @@ git diff {BASE_SHA}..{HEAD_SHA}
    - Issue: Invalid dates silently return no results
    - Fix: Validate ISO format, throw error with example
 
-#### Minor
+#### P3
 1. **Progress indicators**
    - File: indexer.ts:130
    - Issue: No "X of Y" counter for long operations
@@ -145,5 +148,5 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 **Ready to merge: With fixes**
 
-**Reasoning:** Core implementation is solid with good architecture and tests. Important issues (help text, date validation) are easily fixed and don't affect core functionality.
+**Reasoning:** Core implementation is solid with good architecture and tests. P2 issues (help text, date validation) are easily fixed and don't affect core functionality.
 ```

@@ -46,10 +46,12 @@ Launch a dedicated code-reviewer subagent by spawning it; include the filled `re
 - `{HEAD_SHA}` - Ending commit
 - `{DESCRIPTION}` - Brief summary
 
+For a defect-only review of uncommitted changes, a base-branch diff, or a commit, with no requirements comparison, spawn the `reviewer` agent with the required reviewer-prompt sentence above plus: `Read skill://review-agent and follow it to review <target>; return actionable findings.`
+
 **3. Act on feedback:**
-- Fix Critical issues immediately
-- Fix Important issues before proceeding
-- Note Minor issues for later
+- Fix P0 and P1 issues immediately
+- Fix P2 issues before proceeding
+- Note P3 issues for later
 - Push back if reviewer is wrong (with reasoning)
 
 ## Example
@@ -72,8 +74,8 @@ HEAD_SHA=$(git rev-parse HEAD)
 [Subagent returns]:
   Strengths: Clean architecture, real tests
   Issues:
-    Important: Missing progress indicators
-    Minor: Magic number (100) for reporting interval
+    P2: Missing progress indicators
+    P3: Magic number (100) for reporting interval
   Assessment: Ready to proceed
 
 You: [Fix progress indicators]
@@ -99,8 +101,8 @@ You: [Fix progress indicators]
 
 **Never:**
 - Skip review because "it's simple"
-- Ignore Critical issues
-- Proceed with unfixed Important issues
+- Ignore P0 or P1 issues
+- Proceed with unfixed P2 issues
 - Argue with valid technical feedback
 
 **If reviewer wrong:**

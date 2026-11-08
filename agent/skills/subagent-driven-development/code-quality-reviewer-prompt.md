@@ -41,4 +41,4 @@ After spawn, print the roster entry: `code-quality-reviewer: <runtime name> [exp
 - Is the implementation following the file structure from the plan?
 - Did this implementation create new files that are already large, or significantly grow existing files? (Don't flag pre-existing file sizes — focus on what this change contributed.)
 
-**Code reviewer returns:** Strengths, Issues (Critical/Important/Minor), Assessment
+**Code reviewer returns:** Strengths, Issues (P0–P3), Assessment

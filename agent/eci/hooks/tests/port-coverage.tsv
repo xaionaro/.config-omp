@@ -289,8 +289,8 @@ skills/.system/openai-docs/references/upgrade-guide.md	-	reason-coded	-	needs-op
 skills/.system/openai-docs/references/upgrading-to-gpt-6-astra.md	-	reason-coded	-	needs-openai-key	-
 skills/.system/openai-docs/scripts/resolve-latest-model-info	-	reason-coded	-	needs-openai-key	-
 skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs	-	reason-coded	-	needs-openai-key	-
-skills/.system/review-agent/SKILL.md	-	open	-	-	owner user decision: pre-migration source 575bb81 skills/.system/review-agent/SKILL.md:28-53 defines a five-criterion precision filter and P0-P3 defect-first format with no omp counterpart; agent/skills/requesting-code-review/code-reviewer.md uses Critical/Important/Minor. Port or excluded disposition needs the user's decision.
-skills/.system/review-agent/agents/openai.yaml	-	open	-	-	owner user decision: UI metadata of the review-agent source (see SKILL.md row); follows the SKILL.md decision.
+skills/.system/review-agent/SKILL.md	-	mapped	agent/skills/review-agent/SKILL.md	-	ported whole by Supervisor ruling: five-criterion precision filter and P0-P3 defect-first format kept; omp adaptations are explicit-only frontmatter and the findings mapping for the omp reviewer agent; requesting-code-review/code-reviewer.md uses the same P0-P3 scale
+skills/.system/review-agent/agents/openai.yaml	-	mapped	agent/skills/review-agent/SKILL.md	-	policy allow_implicit_invocation: false is the SKILL.md frontmatter disable-model-invocation: true (omp skills.md frontmatter fields); default_prompt is the reviewer spawn line in agent/skills/requesting-code-review/SKILL.md; interface display_name and short_description dropped, omp skill frontmatter has no UI fields
 skills/.system/skill-creator/SKILL.md	-	reason-coded	-	python-unrunnable	agent/skills/writing-skills
 skills/.system/skill-creator/agents/openai.yaml	-	reason-coded	-	python-unrunnable	agent/skills/writing-skills
 skills/.system/skill-creator/assets/skill-creator-small.svg	-	reason-coded	-	python-unrunnable	agent/skills/writing-skills
