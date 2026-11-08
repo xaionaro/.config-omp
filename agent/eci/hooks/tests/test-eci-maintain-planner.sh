@@ -121,6 +121,10 @@ mkdir -p -- "$HOME_ROOT/tmp/eci-runtime/eci"
   cd "$FIXTURE_HOME/hooks/lib/eci-command-plan-go"
   go build -o "$HOME_ROOT/tmp/eci-runtime/eci/eci-command-plan" .
 )
+# On Linux validate-bash runs the planner through bin/eci-verexec, which maintain-planner does not build.
+if [ "$(uname -s)" = Linux ]; then
+  HOME="$HOME_ROOT" bash "$FIXTURE_HOME/hooks/build-native-binaries.sh" eci-verexec >/dev/null
+fi
 
 snapshot_full_runtime_receipt
 

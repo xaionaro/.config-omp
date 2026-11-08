@@ -123,7 +123,7 @@ cp -- "$fixture/incompatible-binary" "$binary"
 provision first
 eci_runtime_binary_is_native "$binary"
 eci_runtime_binary_is_native "$importer"
-(cd -- "$runtime/bin" && eci_sha256 -c --quiet -- eci-command-plan.sha256 eci-safe-import.sha256)
+(cd -- "$runtime/bin" && eci_sha256 -c --quiet -- eci-command-plan.sha256 eci-safe-import.sha256 eci-verexec.sha256)
 run_callback repaired-cat 'cat AGENTS.md'
 [ ! -s "$fixture/repaired-cat.output" ]
 "$binary" --hook <"$fixture/repaired-cat.input" >"$fixture/native.output"
@@ -159,10 +159,11 @@ cmp -- "$fixture/import-source" "$fixture/proof/hook-test/eci-required-critics.j
 env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
   ECI_PROOF_ROOT="$fixture/proof" XDG_CONFIG_HOME="$fixture/config" \
   XDG_STATE_HOME="$fixture/state" \
-  strace -f -e trace=execve -o "$fixture/exec.trace" bash -c "$launcher" \
+  strace -f -e trace=execve,execveat -o "$fixture/exec.trace" bash -c "$launcher" \
   <"$fixture/warm-cat.input" >"$fixture/traced-cat.output" 2>"$fixture/traced-cat.stderr"
 [ ! -s "$fixture/traced-cat.output" ]
-grep -E 'execve\("/proc/self/fd/[0-9]+",.*"--hook"' "$fixture/exec.trace" >/dev/null
+# bin/eci-verexec runs the planner from its verified descriptor: execveat(fd, "", ..., AT_EMPTY_PATH).
+grep -E 'execveat\([0-9]+, "", \[[^]]*"--hook".*AT_EMPTY_PATH' "$fixture/exec.trace" >/dev/null
 if grep -E 'execve\("[^"]*/python[0-9.]*"' "$fixture/exec.trace"; then
   printf 'FAIL: registered callback executed Python\n' >&2
   exit 1
