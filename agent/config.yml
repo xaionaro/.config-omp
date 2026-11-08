@@ -16,3 +16,5 @@ task:
   softRequestBudget: 0
   agentSoftRequestBudget: {}
 defaultThinkingLevel: max
+advisor:
+  enabled: true
