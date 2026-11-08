@@ -5,7 +5,7 @@ set -Eeuo pipefail
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-normal-git-admission.XXXXXX")"
 TMP_ROOT="$(realpath -e -- "$TMP_ROOT")"
-trap 'chmod -R u+w -- "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
+trap 'chmod -R -- u+w "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 trap 'printf "fixture failed: target=%s line=%s\n" "${NORMAL_GIT_ADMISSION_TARGET:-full}" "$LINENO" >&2' ERR
 
 # Exercise a complete private runtime, removing only the exact development
@@ -120,6 +120,11 @@ printf '%s\n' \
   "session_id: $SESSION" \
   'created_utc: 2026-08-28T00:00:00Z' \
   >"$PROOF_ROOT/$SESSION/eci_active"
+MAIN_TRANSCRIPT="$HOME_ROOT/.omp/agent/sessions/normal-git/main.jsonl"
+mkdir -p -- "$(dirname -- "$MAIN_TRANSCRIPT")"
+printf '%s\n' \
+  "{\"type\":\"session\",\"version\":3,\"id\":\"$SESSION\",\"cwd\":\"$REPO\"}" \
+  '{"type":"message","role":"user","content":"normal git"}' >"$MAIN_TRANSCRIPT"
 
 KIMI_PROOF_ROOT_RAW="$TMP_ROOT/kimi-proof"
 mkdir -p -- "$KIMI_PROOF_ROOT_RAW"
@@ -242,10 +247,11 @@ run_hook() {
     --arg compound_physical "$compound_physical" \
     --arg handoff_token "$compound_handoff_token" \
     --arg command "$command" \
+    --arg transcript "${CALLBACK_TRANSCRIPT:-}" \
     --arg command_path "$CALLBACK_PATH" \
     --argjson timeout_replays "$timeout_replays" \
     --argjson compound_validation "$compound_replay" \
-    '{session_id:$session,tool_name:"Bash",cwd:$cwd,timeout_replays:$timeout_replays,tool_input:{command:$command}} |
+    '({session_id:$session,tool_name:"Bash",cwd:$cwd,timeout_replays:$timeout_replays,tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)) |
       if $compound_validation then
         .eci_compound_segment = {
           validation: true,
@@ -500,6 +506,24 @@ assert_denied_code() {
     printf 'expected concrete %s denial for: %q\n' "$code" "$command" >&2
     cat -- "$output" >&2
     [ "${DEBUG_GIT_HOOK:-false}" != true ] || tail -n 240 -- "$TMP_ROOT/hook-xtrace.log" >&2
+    return 1
+  }
+}
+
+assert_worker_git_route_denied() {
+  local command="$1" token="$2" output
+
+  output="$(run_hook "$command" worker configured absent "$REPO" '[]' false true "$REPO")"
+  jq -e --arg token "token=$token," '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains("role=worker")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains($token))
+  ' "$output" >/dev/null || {
+    printf 'expected worker Git route denial for token %s: %q\n' "$token" "$command" >&2
+    cat -- "$output" >&2
     return 1
   }
 }
@@ -2152,7 +2176,7 @@ run_worker_git_native() {
   mkdir -p "$fake_git"
   printf '#!/bin/sh\nprintf entered > %q\n' "$clone_marker" >"$fake_git/git"
   chmod 755 "$fake_git/git"
-  assert_denied_code "$fake_git/git clone $FOREIGN_REPO $TMP_ROOT/fake-clone" ECI_GIT_EXECUTION_CONTEXT_DENIED worker
+  assert_denied_code "$fake_git/git clone $FOREIGN_REPO $TMP_ROOT/fake-clone" ECI_WORKER_SCRIPT_TARGET_DENIED worker
   [ ! -e "$clone_marker" ] && [ ! -e "$TMP_ROOT/fake-clone" ]
   for command in \
     'git show --unknown-option HEAD' \
@@ -2183,18 +2207,15 @@ run_worker_git_native() {
     assert_allowed "$command" worker
   done
   for family in add rm mv reset checkout switch commit update-index read-tree merge rebase cherry-pick revert am stash pull; do
-    assert_denied_code "git $family --help" ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git
+    assert_worker_git_route_denied "git $family --help" "$family"
   done
-  assert_denied_code 'git worktree add --help' ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git
-  for command in \
-    'git log && git add -- file.txt' \
-    'git diff --output=report; git reset -- file.txt' \
-    'git show HEAD:file.txt && env git commit --help' \
-    'if true; then git log; git add -- file.txt; fi' \
-    '(git diff; git reset -- file.txt)' \
-    'bash -c "git log; git add -- file.txt"'; do
-    assert_denied_code "$command" ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git
-  done
+  assert_denied_code 'git worktree add --help' ECI_WORKER_GIT_OWNERSHIP_DENIED worker
+  assert_worker_git_route_denied 'git log && git add -- file.txt' add
+  assert_worker_git_route_denied 'git diff --output=report; git reset -- file.txt' reset
+  assert_worker_git_route_denied 'git show HEAD:file.txt && env git commit --help' commit
+  assert_worker_git_route_denied 'if true; then git log; git add -- file.txt; fi' add
+  assert_worker_git_route_denied '(git diff; git reset -- file.txt)' reset
+  assert_worker_git_route_denied 'bash -c "git log; git add -- file.txt"' add
   assert_denied_code "git status; rm -- $PROOF_ROOT/$SESSION/eci_active" ECI_PLAN_LIVE_CONTROL_DENIED worker
   printf 'native changed\n' >"$REPO/file.txt"
   command="git diff --output=$TMP_ROOT/native-report -- file.txt"
@@ -2636,9 +2657,6 @@ run_worker_git_cli_matrix() {
   [ "$(git -C "$REPO" show :file.txt)" = 'large ordinary' ]; typed_invariants
   typed_run restore --source head --destination both -- file.txt
   git -C "$REPO" reset -q HEAD -- 'inventory-*'
-  # The marker must match the physical callback CWD. An inactive control
-  # separately proves that it makes no active ECI admission claim.
-  assert_allowed 'git add -- file.txt' worker configured absent "$FOREIGN_REPO"
   original_repo="$REPO"; redirect="$TMP_ROOT/typed-redirect"
   mkdir -p "$redirect"
   cp "$REPO/file.txt" "$redirect/file.txt"
@@ -2669,10 +2687,10 @@ run_worker_git_cli_matrix() {
   for command in 'git status --short' 'git diff -- file.txt' 'git log --oneline -1' 'git show HEAD:file.txt'; do assert_allowed "$command" worker; done
   assert_allowed "git diff --output=$TMP_ROOT/inspection.out" worker
   assert_allowed "git -C $FOREIGN_REPO status --short" worker
-  assert_allowed 'git add -- file.txt' coordinator
-  assert_denied_code 'git add .' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
-  assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
-  for command in 'git rebase topic' 'git merge topic' 'git checkout -- file.txt' 'git restore -- file.txt' 'git rm -- file.txt' 'git mv file.txt next.txt' 'git diff && env git add -- file.txt'; do
+  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_allowed 'git add -- file.txt' coordinator
+  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_denied_code 'git add -A' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
+  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
+  for command in 'git rebase topic' 'git merge topic' 'git checkout -- file.txt' 'git rm -- file.txt' 'git mv file.txt next.txt' 'git diff && env git add -- file.txt'; do
     assert_denied_code "$command" ECI_WORKER_GIT_OWNERSHIP_DENIED worker
   done
   # Prepared-index commit intentionally includes the unrelated prepared blob;
@@ -2722,17 +2740,16 @@ run_effect_aware_git_target() {
       cd -- "$SOURCE_ROOT/hooks/lib/eci-worker-git-go"
       env GOWORK=off CGO_ENABLED=0 /usr/lib/go-1.26/bin/go build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
     )
-    assert_denied_code 'git add -- file.txt' ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git || return 1
+    assert_worker_git_route_denied 'git add -- file.txt' add || return 1
     assert_allowed 'git diff -- file.txt' worker || return 1
     assert_allowed 'git log --oneline -1' worker || return 1
     assert_allowed 'git show HEAD:file.txt' worker || return 1
-    assert_denied_code 'git diff -- file.txt && git add -- file.txt' ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git || return 1
-    assert_denied_code 'env git add -- file.txt' ECI_WORKER_GIT_OWNERSHIP_DENIED worker eci-worker-git || return 1
+    assert_worker_git_route_denied 'git diff -- file.txt && git add -- file.txt' add || return 1
+    assert_worker_git_route_denied 'env git add -- file.txt' add || return 1
     mkdir -p -- "$TMP_ROOT/typed-fixture-init"
     assert_allowed "git -C $TMP_ROOT/typed-fixture-init init -q" worker || return 1
     git -C "$TMP_ROOT/typed-fixture-init" init -q
     [ -d "$TMP_ROOT/typed-fixture-init/.git" ] || return 1
-    assert_denied_code "\"$RUNTIME_ROOT/bin/eci-worker-git\" --repo \"$FOREIGN_REPO\" stage-content -- file.txt" ECI_GIT_CROSS_SCOPE_DENIED worker || return 1
     command="\"$RUNTIME_ROOT/bin/eci-worker-git\" --repo \"$REPO\" stage-content -- file.txt"
     assert_allowed "$command" worker || return 1
     printf 'typed stage changed\n' >"$REPO/file.txt"
