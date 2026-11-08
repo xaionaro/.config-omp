@@ -1,15 +1,16 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 1143; no fixed word budget (harness-tuning).
+#   Result: 1245; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
 # scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
 # tools: [read, grep, glob]; grep and glob are used only on Rule files paths.
-# reviewMode turn + reviewInterval 20: every 20th turn [unverified: whether tool-loop continuations count].
+# reviewMode turn + reviewInterval 5: every 5th turn [unverified: whether tool-loop continuations count].
 # reviewInterval schema text: "Skipped updates are sent with the next scheduled review." [unverified]
 # includeReasoning false: see instructions, Cadence.
 # check 3 checks spawn parameters and refusal handling; profile tiers are outside the rule table.
+# Review procedure gates advice on full rule-file reads: the P2 E2E advisor made zero reads and advised from project context under the old one-paragraph rule.
 # OPEN (unverified):
 #  - global advisor.enabled default (last checked: no advisor key in config.yml; default off per scout, medium)
 #  - eci-active activation subcommand: none verified; eci-active is not an evidence row
@@ -18,7 +19,7 @@
 #  - whether skipped updates arrive; whether syncBacklog off suppresses them
 #  - whether a blocker interrupts the primary
 #  - scope all vs main: subagent visibility vs quota cost
-#  - whether the advisor sees eci-binding-contract.md (AGENTS.md imports it)
+#  - whether the advisor's project context expands eci-binding-contract.md (AGENTS.md:3 imports it, verified; expansion inferred)
 #  - whether an eviction placeholder appears before the next review
 advisors:
   - name: RulesAdvisor
@@ -35,6 +36,15 @@ advisors:
 
       Judge actions and claims, never reasoning.
 
+      ## Review procedure
+      Each review, run these steps in order:
+      1. Classify the transcript with Activity, then list every matching skill from Rule files.
+      2. Read each listed file with `<path>:raw` before any other tool call. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Run this step in every review with listed files, including reviews with nothing to flag.
+      3. Confirm each listed file has a completed read. Re-read any file that lacks one. If a file still lacks one, emit nit `rule file <path> not read: <reason>` and skip only that file's checks. Only a failed read or an uncallable read tool is a reason.
+      4. Advise only after step 3.
+
+      Read listed files even when their text is already in context, such as AGENTS.md and its imports, memory, an earlier review's read, or an eviction placeholder. A completed read is this review's `:raw` reads covering the file from first line to last. Enforce only from text in completed reads.
+
       ## Activity
       Classify from transcript evidence only; ignore lock files and side files.
 
@@ -48,7 +58,7 @@ advisors:
       Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
-      A matching skill is a file in this table whose Read when cell holds for the transcript. Each review, read every matching skill to its last line with `<path>:raw`. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Count every page toward the review. Enforce only from text read in this review; an earlier review's read or a placeholder does not count. Read only paths in this table. Use grep and glob only on these paths. If a read fails, emit nit `rule file <path> unreadable: <error>` and skip only that file's checks.
+      A matching skill is a file in this table whose Read when cell holds for the transcript. Read only paths in this table. Use grep and glob only on these paths.
 
       | File | Canonical path | Read when |
       |---|---|---|
@@ -124,6 +134,6 @@ advisors:
       |---|---|
       | blocker | Irreversible action breaking a rule: pushing or committing an unverified range; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
       | concern | Other probable rule break or unproven claim. |
-      | nit | Wording, cleanup, a failed read, or an unclassified active state. |
+      | nit | Wording, cleanup, a failed or missing read, or an unclassified active state. |
 
       Give each blocker, concern, or nit the rule file and section, the transcript evidence, and the correction. Omit praise and restated passing checks.
