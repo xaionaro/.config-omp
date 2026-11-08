@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 HOST_HOME="${HOME:?}"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-dynamic-pipeline.XXXXXX")"
 fixture_hook="$(mktemp "$ROOT/hooks/.validate-bash-dynamic-pipeline.${BASHPID}.XXXXXX")"
@@ -17,7 +18,7 @@ trap 'rm -f -- "$fixture_hook"; rm -rf -- "$TMP_ROOT"' EXIT
 
 # Exercise the private hook body, removing a line-2 bypass if present.
 cp -- "$ROOT/hooks/validate-bash.sh" "$fixture_hook"
-sed -i '2{/^exit 0$/d;}' -- "$fixture_hook"
+eci_sed_inplace '2{/^exit 0$/d;}' "$fixture_hook"
 cmp -- "$fixture_hook" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh") || {
   printf '%s\n' 'dynamic-pipeline fixture changed bytes other than an optional line-2 bypass' >&2
   exit 1

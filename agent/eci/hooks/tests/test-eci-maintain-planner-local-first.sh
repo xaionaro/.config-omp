@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_PARENT="${ECI_TMPDIR:-${HOME:?HOME must be set}/tmp}"
 mkdir -p -- "$TMP_PARENT"
 TEST_ROOT="$(mktemp -d "$TMP_PARENT/eci-maintain-planner-local-first.XXXXXX")"
@@ -39,8 +40,8 @@ fi
 
 for name in eci-command-plan eci-safe-import eci-hook-helper; do
   [ -f "$BIN/$name" ] && [ ! -L "$BIN/$name" ]
-  [ "$(stat -c '%a' -- "$BIN/$name")" = 755 ]
-  [ "$(cat -- "$BIN/$name.sha256")" = "$(sha256sum -- "$BIN/$name" | cut -d ' ' -f 1)  $name" ]
+  [ "$(eci_stat mode "$BIN/$name")" = 755 ]
+  [ "$(cat -- "$BIN/$name.sha256")" = "$(eci_sha256_hex "$BIN/$name")  $name" ]
 done
 cmp -- "$BIN/eci-command-plan" "$MODULE_PLANNER"
 (

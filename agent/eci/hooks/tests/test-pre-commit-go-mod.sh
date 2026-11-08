@@ -64,6 +64,7 @@ new_repo() {
   cp "$checker_source" "$case_root/hooks/pre-commit-go-mod.sh"
   cp "$installer_source" "$case_root/hooks/install-pre-commit-go-mod.sh"
   cp "$script_dir/../lib/eci-diagnostic.sh" "$case_root/hooks/lib/eci-diagnostic.sh"
+  cp "$script_dir/../lib/eci-portable.sh" "$case_root/hooks/lib/eci-portable.sh"
   chmod 755 "$case_root/hooks/pre-commit-go-mod.sh" "$case_root/hooks/install-pre-commit-go-mod.sh"
 }
 
@@ -206,6 +207,7 @@ git -C "$peer_root" config user.name test
 cp "$checker_source" "$peer_root/hooks/pre-commit-go-mod.sh"
 cp "$installer_source" "$peer_root/hooks/install-pre-commit-go-mod.sh"
 cp "$script_dir/../lib/eci-diagnostic.sh" "$peer_root/hooks/lib/eci-diagnostic.sh"
+cp "$script_dir/../lib/eci-portable.sh" "$peer_root/hooks/lib/eci-portable.sh"
 chmod 755 "$peer_root/hooks/pre-commit-go-mod.sh" "$peer_root/hooks/install-pre-commit-go-mod.sh"
 expect_status 0 run_installer --repair-hardlink "$peer_root"
 [[ "$case_root/hooks/pre-commit-go-mod.sh" -ef "$peer_root/hooks/pre-commit-go-mod.sh" ]] || fail 'hard-link repair did not share an inode'

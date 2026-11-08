@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # TODO: Remove ECI marker discovery from this no-op callback; native goals own lifecycle.
+case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" PostCompact ;; *) . ./lib/eci-bash-guard.sh PostCompact ;; esac
 
 # PostCompact hook: validate the event without touching session state.
 # The provider does not accept event-specific output fields for PostCompact, so

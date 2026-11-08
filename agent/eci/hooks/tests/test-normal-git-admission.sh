@@ -4,8 +4,9 @@ set -Eeuo pipefail
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$SOURCE_ROOT/hooks/tests/require-go.sh"
+. "$SOURCE_ROOT/hooks/tests/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-normal-git-admission.XXXXXX")"
-TMP_ROOT="$(realpath -e -- "$TMP_ROOT")"
+TMP_ROOT="$(eci_realpath_existing "$TMP_ROOT")"
 trap 'chmod -R -- u+w "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 trap 'printf "fixture failed: target=%s line=%s\n" "${NORMAL_GIT_ADMISSION_TARGET:-full}" "$LINENO" >&2' ERR
 
@@ -26,11 +27,11 @@ PLANNER_DIR="$RUNTIME_ROOT/hooks/lib/eci-command-plan-go"
   "$ECI_TEST_GO" build -trimpath -buildvcs=false -o eci-command-plan .
 )
 chmod 755 -- "$PLANNER_DIR/eci-command-plan"
-planner_go_mod_sha="$(sha256sum -- "$PLANNER_DIR/go.mod" | awk '{print $1}')"
-planner_main_sha="$(sha256sum -- "$PLANNER_DIR/main.go" | awk '{print $1}')"
-planner_classifier_sha="$(sha256sum -- "$PLANNER_DIR/classifier.go" | awk '{print $1}')"
-planner_binary_sha="$(sha256sum -- "$PLANNER_DIR/eci-command-plan" | awk '{print $1}')"
-planner_binary_size="$(stat -Lc '%s' -- "$PLANNER_DIR/eci-command-plan")"
+planner_go_mod_sha="$(eci_sha256_hex "$PLANNER_DIR/go.mod")"
+planner_main_sha="$(eci_sha256_hex "$PLANNER_DIR/main.go")"
+planner_classifier_sha="$(eci_sha256_hex "$PLANNER_DIR/classifier.go")"
+planner_binary_sha="$(eci_sha256_hex "$PLANNER_DIR/eci-command-plan")"
+planner_binary_size="$(eci_stat size "$(eci_realpath_existing "$PLANNER_DIR/eci-command-plan")")"
 [ -e "$PLANNER_DIR/.eci-command-plan.provenance" ] || : >"$PLANNER_DIR/.eci-command-plan.provenance"
 awk \
   -v go_mod="$planner_go_mod_sha" \
@@ -56,7 +57,7 @@ cp -- "$PLANNER_DIR/eci-command-plan" "$RUNTIME_ROOT/bin/eci-command-plan"
   "$ECI_TEST_GO" build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-safe-import" .
 )
 for planner_tool in eci-command-plan eci-safe-import; do
-  printf '%s  %s\n' "$(sha256sum -- "$RUNTIME_ROOT/bin/$planner_tool" | awk '{print $1}')" "$planner_tool" >"$RUNTIME_ROOT/bin/$planner_tool.sha256"
+  printf '%s  %s\n' "$(eci_sha256_hex "$RUNTIME_ROOT/bin/$planner_tool")" "$planner_tool" >"$RUNTIME_ROOT/bin/$planner_tool.sha256"
 done
 
 # Build the disposable runtime from its copied sources. Clean archives contain
@@ -64,7 +65,7 @@ done
 source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
 HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
   eci-command-gate-mode eci-command-plan eci-safe-import eci-worker-git
-source_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
+source_hook_sha="$(eci_sha256_hex "$RUNTIME_ROOT/hooks/validate-bash.sh")"
 if cmp -s -- <(head -n 9 -- "$RUNTIME_ROOT/hooks/validate-bash.sh") <(cat <<'BRIDGE'
 #!/usr/bin/env bash
 # PreToolUse hook: validate Bash commands before execution.
@@ -80,7 +81,7 @@ BRIDGE
   sed '4,9d' "$RUNTIME_ROOT/hooks/validate-bash.sh" >"$RUNTIME_ROOT/hooks/validate-bash.sh.tmp"
   mv -- "$RUNTIME_ROOT/hooks/validate-bash.sh.tmp" "$RUNTIME_ROOT/hooks/validate-bash.sh"
 fi
-exercised_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
+exercised_hook_sha="$(eci_sha256_hex "$RUNTIME_ROOT/hooks/validate-bash.sh")"
 printf 'registered_hook source_sha256=%s exercised_sha256=%s\n' "$source_hook_sha" "$exercised_hook_sha"
 BASH_LAUNCHER="$(jq -er '.hooks.PreToolUse[] | select(.matcher == "^Bash$") | .hooks[] | select(.type == "command") | .command' "$RUNTIME_ROOT/hooks.json")"
 [ "$BASH_LAUNCHER" = 'bash "$HOME/.omp/agent/eci/hooks/validate-bash.sh"' ] || {
@@ -104,10 +105,10 @@ for path in "$REPO" "$FOREIGN_REPO"; do
   git -C "$path" add -- file.txt hooks.json README.md
   git -C "$path" commit -qm initial
 done
-REPO="$(realpath -e -- "$REPO")"
-FOREIGN_REPO="$(realpath -e -- "$FOREIGN_REPO")"
+REPO="$(eci_realpath_existing "$REPO")"
+FOREIGN_REPO="$(eci_realpath_existing "$FOREIGN_REPO")"
 mkdir -p -- "$NON_REPO"
-NON_REPO="$(realpath -e -- "$NON_REPO")"
+NON_REPO="$(eci_realpath_existing "$NON_REPO")"
 
 SESSION='normal-git-session'
 PROOF_ROOT="$TMP_ROOT/proof"
@@ -126,7 +127,7 @@ printf '%s\n' \
 
 KIMI_PROOF_ROOT_RAW="$TMP_ROOT/kimi-proof"
 mkdir -p -- "$KIMI_PROOF_ROOT_RAW"
-KIMI_PROOF_ROOT="$(realpath -e -- "$KIMI_PROOF_ROOT_RAW")"
+KIMI_PROOF_ROOT="$(eci_realpath_existing "$KIMI_PROOF_ROOT_RAW")"
 KIMI_FOREIGN_SESSION='foreign-kimi-session'
 KIMI_FOREIGN_MARKER="$KIMI_PROOF_ROOT/$KIMI_FOREIGN_SESSION/eci_active"
 mkdir -p -- "${KIMI_FOREIGN_MARKER%/*}"
@@ -226,7 +227,7 @@ run_hook() {
   local command="$1" role="${2:-coordinator}" path_mode="${3:-configured}" probe_required="${4:-absent}" callback_cwd="${5:-$REPO}" timeout_replays="${6:-[]}" compound_replay="${7:-false}" compound_handoff="${8:-true}" output="$TMP_ROOT/output.json" stderr=/dev/null
   local compound_cwd="${9:-$callback_cwd}"
   local compound_physical
-  compound_physical="$(realpath -e -- "$compound_cwd" 2>/dev/null || true)"
+  compound_physical="$(eci_realpath_existing "$compound_cwd" 2>/dev/null || true)"
   local compound_handoff_token=normal-git-test-handoff
   local fd9_mode="${10:-none}" fd9_token="${11:-$compound_handoff_token}"
   local subagent=false
@@ -819,7 +820,7 @@ run_foreign_timeout_marker_target() {
 
   # The current marker remains covered by its existing direct-control route.
   assert_denied_code "cd $current_timeout_inner; ./timeout 5 rm eci_active" ECI_PLAN_LIVE_CONTROL_DENIED worker \
-    "path=$(realpath -e -- "$current_timeout_inner/eci_active")"
+    "path=$(eci_realpath_existing "$current_timeout_inner/eci_active")"
 
   # A pathname observation alone is advisory. Missing, malformed, and
   # path/session-owner-mismatched candidates must not become foreign-marker
@@ -915,7 +916,7 @@ typed_run() {
 
 typed_reject() {
   local command before_index before_head before_branch status=0
-  before_index="$(sha256sum "$REPO/.git/index")"
+  before_index="$(eci_sha256 "$REPO/.git/index")"
   before_head="$(git -C "$REPO" rev-parse HEAD)"
   before_branch="$(git -C "$REPO" symbolic-ref HEAD)"
   printf -v command '%q ' "$RUNTIME_ROOT/bin/eci-worker-git" --repo "$REPO" "$@"
@@ -925,7 +926,7 @@ typed_reject() {
   [ "$status" -ne 0 ] && [ -s "$TMP_ROOT/typed-rejection.log" ] || {
     printf 'expected CLI rejection: %s\n' "$command" >&2; return 1;
   }
-  [ "$(sha256sum "$REPO/.git/index")" = "$before_index" ]
+  [ "$(eci_sha256 "$REPO/.git/index")" = "$before_index" ]
   [ "$(git -C "$REPO" rev-parse HEAD)" = "$before_head" ]
   [ "$(git -C "$REPO" symbolic-ref HEAD)" = "$before_branch" ]
   printf 'typed rejected with state preserved: %s\n' "$*"
@@ -1111,7 +1112,7 @@ run_worker_git_index_aliases() {
     fi
     [ "$(readlink "$REPO/dir")" = "$outside" ]
     [ "$(cat "$outside/file")" = 'outside sentinel' ]
-    [ "$(stat -c %a "$outside/file")" = 640 ]
+    [ "$(eci_stat mode "$outside/file")" = 640 ]
     [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ]
     git -C "$REPO" ls-files --stage -z -- unrelated >"$TMP_ROOT/alias-unrelated-after"
     cmp -- "$TMP_ROOT/alias-unrelated-before" "$TMP_ROOT/alias-unrelated-after"
@@ -1443,7 +1444,7 @@ run_worker_git_cli_matrix() {
   cp "$REPO/file.txt" "$redirect/file.txt"
   mkdir -p "$redirect/hooks"; cp "$REPO/hooks/validate-bash.sh" "$redirect/hooks/validate-bash.sh"
   git -C "$REPO" config core.worktree "$redirect"
-  REPO="$(realpath -e "$redirect")"
+  REPO="$(eci_realpath_existing "$redirect")"
   printf '%s\n' 'scope: typed redirected worktree' "cwd: $REPO" "session_id: $SESSION" >"$PROOF_ROOT/$SESSION/eci_active"
   # --repo continues to designate the existing Git directory owner, whose
   # persisted worktree resolves to the physical callback's directory.
@@ -1457,11 +1458,11 @@ run_worker_git_cli_matrix() {
   typed_invariants
   # Native-invalid behavior is independent native component evidence; it is
   # never reinterpreted as permission for worker native mutations.
-  hook_hash="$(sha256sum "$REPO/.git/index")"
+  hook_hash="$(eci_sha256 "$REPO/.git/index")"
   native_status=0
   git -C "$REPO" checkout --definitely-invalid -- file.txt >"$TMP_ROOT/native-invalid.log" 2>&1 || native_status=$?
   [ "$native_status" -ne 0 ] && [ -s "$TMP_ROOT/native-invalid.log" ]
-  [ "$(sha256sum "$REPO/.git/index")" = "$hook_hash" ]; typed_invariants
+  [ "$(eci_sha256 "$REPO/.git/index")" = "$hook_hash" ]; typed_invariants
   printf 'helper dirty\n' >"$REPO/file.txt"
 
   typed_run restore --source head --destination both -- file.txt
@@ -1494,7 +1495,7 @@ run_effect_aware_git_target() {
   local command before_head before_branch protected_base
   # Protection binds to the configured runtime, so make that complete copied
   # runtime the actual repository instead of using a lookalike sibling path.
-  REPO="$(realpath -e -- "$RUNTIME_ROOT")"
+  REPO="$(eci_realpath_existing "$RUNTIME_ROOT")"
   git -C "$REPO" init -q
   git -C "$REPO" config user.email normal-git-test@example.invalid
   git -C "$REPO" config user.name 'Normal Git Test'

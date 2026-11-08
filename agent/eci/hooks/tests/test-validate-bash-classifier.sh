@@ -10,16 +10,17 @@ classifier_gomodcache="$("$ECI_TEST_GO" env GOMODCACHE)"
 classifier_gocache="$("$ECI_TEST_GO" env GOCACHE)"
 trap 'status=$?; printf "classifier failure: line=%s status=%s command=%q\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 # Pass this spelling to the hook literally.  It is deliberately not $ROOT:
 # lifecycle authority belongs only to the current HOME-derived ECI root.
 eci_lifecycle='$HOME/.omp/agent/eci/bin/eci-active'
-classifier_tmp_parent="$(realpath -m -- "${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}")"
+classifier_tmp_parent="$(eci_realpath_canonical "${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}")"
 mkdir -p -- "$classifier_tmp_parent"
 TMP_ROOT="$(mktemp -d "$classifier_tmp_parent/eci-classifier-${BASHPID}.XXXXXX")"
 classifier_hook_fixture="$(mktemp "$ROOT/hooks/.validate-bash-classifier.${BASHPID}.XXXXXX")"
 trap 'rm -f -- "$classifier_hook_fixture"' EXIT
 cp -- "$ROOT/hooks/validate-bash.sh" "$classifier_hook_fixture"
-sed -i '2{/^exit 0$/d;}' -- "$classifier_hook_fixture"
+eci_sed_inplace '2{/^exit 0$/d;}' "$classifier_hook_fixture"
 cmp -- "$classifier_hook_fixture" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh") || {
   printf '%s\n' 'classifier fixture changed bytes other than an optional line-2 bypass' >&2
   exit 1
@@ -46,7 +47,7 @@ kimi_root="$kimi_source_root"
 kimi_home="${HOME:-}"
 if [[ "$kimi_source_root" = /* ]] && [ -d "$kimi_source_root" ] &&
   [ ! -L "$kimi_source_root" ] &&
-  [ "$(realpath -m -- "$kimi_source_root")" = "$kimi_source_root" ] &&
+  [ "$(eci_realpath_canonical "$kimi_source_root")" = "$kimi_source_root" ] &&
   kimi_source_head="$(git -C "$kimi_source_root" rev-parse --verify HEAD^{commit} 2>/dev/null)"; then
   kimi_home="$TMP_ROOT/kimi-home"
   kimi_root="$kimi_home/.kimi-code"
@@ -59,8 +60,8 @@ if [[ "$kimi_source_root" = /* ]] && [ -d "$kimi_source_root" ] &&
   # The committed snapshot has no runtime receipt.  Add a test-local receipt
   # so the altered-peer assertion below proves lifecycle byte binding rather
   # than merely a non-canonical path denial.
-  kimi_active_digest="$(sha256sum -- "$kimi_root/bin/eci-active" | awk '{print $1}')"
-  kimi_active_mode="$(stat -c '%a' -- "$kimi_root/bin/eci-active")"
+  kimi_active_digest="$(eci_sha256_hex "$kimi_root/bin/eci-active")"
+  kimi_active_mode="$(eci_stat mode "$kimi_root/bin/eci-active")"
   printf 'bin/eci-active\t%s\t%s\n' "$kimi_active_digest" "$kimi_active_mode" >"$kimi_root/.eci-runtime-sync-manifest"
   chmod 600 -- "$kimi_root/.eci-runtime-sync-manifest"
   printf '/.eci-runtime-sync-manifest\n' >>"$kimi_root/.git/info/exclude"
@@ -119,7 +120,7 @@ printf '%s\n' '# coordinator instructions' >"$instructions_file"
 printf '%s\n' 'outside proof root' >"$TMP_ROOT/outside-proof.txt"
 ln -s -- "$TMP_ROOT/outside-proof.txt" "$evidence_dir/outside-link"
 log_bytes="$(wc -c <"$high_level_log")"
-log_sha256="$(sha256sum -- "$high_level_log" | awk '{print $1}')"
+log_sha256="$(eci_sha256_hex "$high_level_log")"
 printf '%s\n' \
   'schema: eci-high-level-log-anchor/v1' \
   'session_id: t00-session' \
@@ -140,7 +141,7 @@ ledger_append_from_marker_cwd() {
 
 # The lifecycle command must bind an append to the marker's declared CWD;
 # selecting the proof root and session alone must not authorize another CWD.
-wrong_cwd_log_sha256="$(sha256sum -- "$high_level_log" | awk '{print $1}')"
+wrong_cwd_log_sha256="$(eci_sha256_hex "$high_level_log")"
 if (
   cd "$TMP_ROOT"
   ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session ECI_HOME="$ROOT" \
@@ -150,7 +151,7 @@ if (
   exit 1
 fi
 grep -Fq 'ECI high-level log append rejected a marker bound to another session or cwd.' "$TMP_ROOT/wrong-cwd-ledger.err"
-[ "$(sha256sum -- "$high_level_log" | awk '{print $1}')" = "$wrong_cwd_log_sha256" ]
+[ "$(eci_sha256_hex "$high_level_log")" = "$wrong_cwd_log_sha256" ]
 
 # The runtime route validates the same marker/cwd binding and advances the
 # bounded prefix anchor under the mutation lock.  Entries are written to the
@@ -337,7 +338,7 @@ prepare_stale_copied_home() {
   printf '%s\n' '{"type":"session","version":3,"id":"copied-home-main","cwd":"/work"}' \
     '{"type":"message","message":{"role":"user","content":"hello"}}' >"$COPIED_TRANSCRIPT"
   cp -a -- "$ROOT"/. "$COPIED_ROOT"/
-  sed -i '2{/^exit 0$/d;}' -- "$COPIED_ROOT/hooks/validate-bash.sh"
+  eci_sed_inplace '2{/^exit 0$/d;}' "$COPIED_ROOT/hooks/validate-bash.sh"
   cmp -- "$COPIED_ROOT/hooks/validate-bash.sh" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh") || {
     printf '%s\n' 'copied-home fixture changed bytes other than an optional line-2 bypass' >&2
     return 1
@@ -1590,7 +1591,7 @@ assert_inactive_no_hook_mode_repair "chmod 755 hooks/pre-commit-go-mod.sh"
 pager_output="$(run_hook_with_transcript_pager "git -C $ROOT status --short")"
 [ ! -s "$pager_output" ]
 if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
-  [ "$(realpath -m -- "$kimi_root")" = "$kimi_root" ]; then
+  [ "$(eci_realpath_canonical "$kimi_root")" = "$kimi_root" ]; then
   if [ -f "$kimi_root/hooks/tests/test-block-no-progress.sh" ] && [ ! -L "$kimi_root/hooks/tests/test-block-no-progress.sh" ]; then
     run_hook_matrix_parallel allowed kimi-entrypoint-forms \
       "bash $kimi_root/hooks/tests/test-block-no-progress.sh" \
@@ -2286,7 +2287,7 @@ assert_isolated_worker_structural_allowed() {
 }
 
 live_worker_script="$ROOT/$isolated_worker_script_relative"
-live_worker_script_sha_before="$(sha256sum -- "$live_worker_script" | awk '{print $1}')"
+live_worker_script_sha_before="$(eci_sha256_hex "$live_worker_script")"
 isolated_clean_worker_output="$(run_isolated_worker_hook "bash $isolated_worker_script_relative")"
 [ ! -s "$isolated_clean_worker_output" ]
 printf '%s\n' '# isolated worker mutation probe' >>"$isolated_worker_script"
@@ -2342,7 +2343,7 @@ assert_isolated_worker_structural_allowed environment-wrapper "env bash $isolate
 assert_isolated_worker_structural_allowed compound \
   "bash $isolated_structural_worker_relative && bash $isolated_structural_worker_relative"
 assert_isolated_worker_structural_allowed assignment "FOO=bar bash $isolated_structural_worker_relative"
-live_worker_script_sha_after="$(sha256sum -- "$live_worker_script" | awk '{print $1}')"
+live_worker_script_sha_after="$(eci_sha256_hex "$live_worker_script")"
 [ "$live_worker_script_sha_before" = "$live_worker_script_sha_after" ]
 
 # Only exact two-token bash|sh test launches use the structural canonical-test

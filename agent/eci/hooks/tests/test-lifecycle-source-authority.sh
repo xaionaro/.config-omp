@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-lifecycle-source-authority.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -25,7 +26,7 @@ ledger_input="$TMP_ROOT/ledger-input.json"
 
 mkdir -p -- "$fixture_home" "$fixture_eci" "$fixture_kimi_home" "$fixture_kimi" "$foreign_root/hooks/lib" \
   "$poisoned_eci" "$proof_root" "$cwd"
-proof_root="$(realpath -e -- "$proof_root")"
+proof_root="$(eci_realpath_existing "$proof_root")"
 cp -a -- "$ROOT/hooks" "$fixture_eci/hooks"
 cp -a -- "$ROOT/hooks" "$fixture_kimi/hooks"
 cp -- "$ROOT/hooks/lib/eci-proof-state.sh" "$foreign_root/hooks/lib/eci-proof-state.sh"

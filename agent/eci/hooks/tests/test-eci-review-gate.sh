@@ -6,19 +6,20 @@ set -euo pipefail
 # no fabricated production evidence is admitted by the runtime gate.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 test_tmp_parent="${TMPDIR:-}"
 if [ -z "$test_tmp_parent" ] && [ -d /dev/shm ] && [ -w /dev/shm ]; then
   test_tmp_parent=/dev/shm
 else
   test_tmp_parent="${test_tmp_parent:-/tmp}"
 fi
-test_tmp_parent="$(realpath -m -- "$test_tmp_parent")"
+test_tmp_parent="$(eci_realpath_canonical "$test_tmp_parent")"
 TMP_ROOT="$(mktemp -d "$test_tmp_parent/eci-review-gate.XXXXXX")"
 untracked_target=""
 root_fixture=""
 trap 'rm -f -- "${untracked_target:-}" "${root_fixture:-}" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT
 
-sha() { sha256sum -- "$1" | awk '{print $1}'; }
+sha() { eci_sha256_hex "$1"; }
 
 # Rebind every identity-bearing artifact when a synthetic row deliberately
 # receives a fresh child identity.  The review gate treats the spawn request,
@@ -109,12 +110,12 @@ build_manifest() {
   repo_root="$test_repo"
   git_dir_raw="$(git -C "$test_repo" rev-parse --git-dir)"
   git_common_raw="$(git -C "$test_repo" rev-parse --git-common-dir)"
-  git_dir="$(realpath -m -- "$test_repo/$git_dir_raw")"
-  git_common="$(realpath -m -- "$test_repo/$git_common_raw")"
+  git_dir="$(eci_realpath_canonical "$test_repo/$git_dir_raw")"
+  git_common="$(eci_realpath_canonical "$test_repo/$git_common_raw")"
   base="$head"
-  staged="$(git -C "$test_repo" diff --cached --binary | sha256sum | awk '{print $1}')"
-  worktree="$(git -C "$test_repo" diff --binary | sha256sum | awk '{print $1}')"
-  status="$(git -C "$test_repo" status --porcelain=v1 --untracked-files=all | sha256sum | awk '{print $1}')"
+  staged="$(git -C "$test_repo" diff --cached --binary | eci_sha256 | awk '{print $1}')"
+  worktree="$(git -C "$test_repo" diff --binary | eci_sha256 | awk '{print $1}')"
+  status="$(git -C "$test_repo" status --porcelain=v1 --untracked-files=all | eci_sha256 | awk '{print $1}')"
   target_path="$test_target"
   target_version="$(sha "$target_path")"
 
@@ -397,8 +398,8 @@ test_sha256_repository_binding_accepts_object_format_oid_lengths() {
   head="$base"
   git_dir_raw="$(git -C "$repo" rev-parse --git-dir)"
   git_common_raw="$(git -C "$repo" rev-parse --git-common-dir)"
-  git_dir="$(realpath -m -- "$repo/$git_dir_raw")"
-  git_common="$(realpath -m -- "$repo/$git_common_raw")"
+  git_dir="$(eci_realpath_canonical "$repo/$git_dir_raw")"
+  git_common="$(eci_realpath_canonical "$repo/$git_common_raw")"
   [[ "$base" =~ ^[0-9a-f]{64}$ && "$head" =~ ^[0-9a-f]{64}$ ]] || return 1
   manifest="$proof_root/$sid/eci-required-critics.json"
   jq -cn --arg root "$repo" --arg gd "$git_dir" --arg gc "$git_common" --arg base "$base" --arg head "$head" \
@@ -1443,7 +1444,7 @@ test_acceptance_transaction_binds_published_prefixes() {
 
     # A recovery record whose published prefix no longer matches must not be
     # silently repaired as if the ledger/identity publication never happened.
-    sed -i 's/^ledger_sha256: .*/ledger_sha256: 0000000000000000000000000000000000000000000000000000000000000000/' "$transaction"
+    eci_sed_inplace 's/^ledger_sha256: .*/ledger_sha256: 0000000000000000000000000000000000000000000000000000000000000000/' "$transaction"
     if run_gate "$proof_root" final "$sid" "$TMP_ROOT/recovery-prefix-tampered.out" "$TMP_ROOT/recovery-prefix-tampered.err"; then
       return 1
     fi
@@ -1461,7 +1462,7 @@ test_acceptance_transaction_binds_published_prefixes() {
     grep -Fxq 'schema: eci-acceptance-transaction/v2' "$transaction" || return 1
     grep -Fxq 'state: identity-published' "$transaction" || return 1
     grep -Fq 'identity_sha256: ' "$transaction" || return 1
-    sed -i 's/^identity_sha256: .*/identity_sha256: 0000000000000000000000000000000000000000000000000000000000000000/' "$transaction"
+    eci_sed_inplace 's/^identity_sha256: .*/identity_sha256: 0000000000000000000000000000000000000000000000000000000000000000/' "$transaction"
     if run_gate "$proof_root" final "$sid" \
       "$TMP_ROOT/recovery-identity-prefix-tampered.out" "$TMP_ROOT/recovery-identity-prefix-tampered.err"; then
       return 1

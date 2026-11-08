@@ -8,9 +8,10 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
-TMP_ROOT="$(realpath -e -- "$(mktemp -d "$TMP_PARENT/eci-aggregate-coordination-residue.XXXXXX")")"
+TMP_ROOT="$(eci_realpath_existing "$(mktemp -d "$TMP_PARENT/eci-aggregate-coordination-residue.XXXXXX")")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 session_id='aggregate-coordination-residue'
@@ -61,12 +62,12 @@ assert_residue_does_not_block_selected_stage() {
 
   # A selected safe path must not relax the concrete target boundary.  This
   # invalid operand must leave the selected repository index unchanged.
-  before="$(sha256sum -- "$repo/.git/index" | awk '{print $1}')"
+  before="$(eci_sha256_hex "$repo/.git/index")"
   if run_active aggregate-stage repo-a -- "$outside" >"$TMP_ROOT/$label-outside.out" 2>&1; then
     printf 'aggregate stage accepted an outside path while testing %s residue\n' "$label" >&2
     exit 1
   fi
-  after="$(sha256sum -- "$repo/.git/index" | awk '{print $1}')"
+  after="$(eci_sha256_hex "$repo/.git/index")"
   [ "$after" = "$before" ]
 
   git -C "$repo" restore --staged -- "$target_path"

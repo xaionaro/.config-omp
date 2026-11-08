@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-security-reminder-opt-in.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -16,7 +17,7 @@ helper="$(eci_runtime_hook_helper_path)" || { printf '%s\n' 'eci-hook-helper una
 # Exercise the private dispatcher with a line-2 bypass removed if present,
 # and preserve the source bytes.
 cp -- "$ROOT/hooks/pretooluse-edit-dispatch.sh" "$TMP_ROOT/dispatcher.before"
-sed -i '2{/^exit 0$/d;}' -- "$dispatch_root/pretooluse-edit-dispatch.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$dispatch_root/pretooluse-edit-dispatch.sh"
 cmp -- "$TMP_ROOT/dispatcher.before" "$ROOT/hooks/pretooluse-edit-dispatch.sh" || {
   printf '%s\n' 'test modified the dispatcher source' >&2
   exit 1

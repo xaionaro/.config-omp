@@ -7,6 +7,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
 TMP_ROOT="$(mktemp -d "$TMP_PARENT/eci-marker-metadata-advisory.XXXXXX")"
@@ -21,7 +22,7 @@ TEST_HOOK_ROOT="$TMP_ROOT/private-hooks"
 # Exercise the private hook body, removing a line-2 bypass if present.
 cp -- "$ROOT/hooks/validate-bash.sh" "$TMP_ROOT/validate-bash.before"
 cp -a -- "$ROOT/hooks" "$TEST_HOOK_ROOT"
-sed -i '2{/^exit 0$/d;}' -- "$TEST_HOOK_ROOT/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$TEST_HOOK_ROOT/validate-bash.sh"
 cmp -- "$TMP_ROOT/validate-bash.before" "$ROOT/hooks/validate-bash.sh" || {
   printf '%s\n' 'private hook setup modified the source' >&2
   exit 1
@@ -140,13 +141,13 @@ shared_proof="$TMP_ROOT/shared-proof"
 shared_marker="$shared_proof/$SESSION_ID/eci_active"
 write_marker "$shared_marker" "$ROOT" "$SESSION_ID"
 ln -- "$shared_marker" "$TMP_ROOT/ordinary-marker-hardlink"
-shared_marker="$(realpath -e -- "$shared_marker")"
+shared_marker="$(eci_realpath_existing "$shared_marker")"
 (
   export ECI_PROOF_ROOT="$shared_proof"
   . "$ROOT/hooks/lib/eci-proof-state.sh"
   eci_marker_metadata_is_valid "$shared_marker" "$ROOT"
   [ "$(eci_state_value "$shared_marker" cwd false)" = "$ROOT" ]
-  [ "$(eci_direct_marker_cwd "$(realpath -e -- "$shared_marker")" "$SESSION_ID")" = "$ROOT" ]
+  [ "$(eci_direct_marker_cwd "$(eci_realpath_existing "$shared_marker")" "$SESSION_ID")" = "$ROOT" ]
   [ "$(eci_marker_failure_code "$shared_marker" "$ROOT" "$SESSION_ID")" = ECI_MARKER_VALID ]
   ! eci_state_value "$shared_marker" cwd >/dev/null
   ! eci_marker_metadata_is_valid "$shared_marker" "$TMP_ROOT"

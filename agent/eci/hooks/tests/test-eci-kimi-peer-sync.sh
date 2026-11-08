@@ -3,8 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 HOST_TMP="${HOME:?HOME must be set}/tmp"
-TMP_BASE="$(realpath -e -- "$HOST_TMP" 2>/dev/null || true)"
+TMP_BASE="$(eci_realpath_existing "$HOST_TMP" 2>/dev/null || true)"
 case "$TMP_BASE" in
   /tmp|/tmp/*|/) printf 'peer-sync test: unsafe temporary root: %s\n' "$TMP_BASE" >&2; exit 1 ;;
 esac
@@ -57,6 +58,7 @@ shared_runtime_paths() {
       ! -path 'hooks/lib/eci-command-plan-go/eci-command-plan' \
       ! -path 'hooks/lib/eci-command-plan-go/.eci-command-plan.provenance' \
       ! -path 'hooks/lib/eci-command-plan-go/.eci-command-plan.publish.lock' \
+      ! -path 'hooks/lib/eci-hook-helper-go/eci-hook-helper' \
       ! -path 'bin/.planner-importer.publish.lock' \
       ! -path '*/__pycache__/*' \
       ! -name '*.pyc' ! -name '*.pyo' ! -name '*.go' ! -name '*.bak*' \
@@ -75,7 +77,7 @@ assert_shared_runtime_matches_source() {
       printf 'peer-sync test: shared runtime differs: %s\n' "$relative" >&2
       exit 1
     }
-    [ "$(stat -c '%a' -- "$source")" = "$(stat -c '%a' -- "$target")" ] || {
+    [ "$(eci_stat mode "$source")" = "$(eci_stat mode "$target")" ] || {
       printf 'peer-sync test: shared runtime mode differs: %s\n' "$relative" >&2
       exit 1
     }
@@ -89,7 +91,7 @@ assert_peer_receipt() {
     printf 'peer-sync test: peer receipt is missing or unsafe\n' >&2
     exit 1
   }
-  [ "$(stat -c '%a' -- "$receipt")" = 600 ] || {
+  [ "$(eci_stat mode "$receipt")" = 600 ] || {
     printf 'peer-sync test: peer receipt mode is not 0600\n' >&2
     exit 1
   }
@@ -153,7 +155,7 @@ cmp -- "$TEST_ROOT/kimi-config.before" "$KIMI_HOME/config.toml"
 # safety requires rejecting a symlink rather than replacing its outside target.
 rm -f -- "$KIMI_HOME/hooks/validate-bash.sh"
 cp -- "$ECI_HOME/hooks/validate-bash.sh" "$KIMI_HOME/hooks/validate-bash.sh"
-chmod -- "$(stat -c '%a' -- "$ECI_HOME/hooks/validate-bash.sh")" "$KIMI_HOME/hooks/validate-bash.sh"
+chmod -- "$(eci_stat mode "$ECI_HOME/hooks/validate-bash.sh")" "$KIMI_HOME/hooks/validate-bash.sh"
 peer_receipt="$KIMI_HOME/.eci-kimi-peer-sync-manifest"
 receipt_outside="$TEST_ROOT/peer-receipt-outside"
 printf 'peer receipt outside data must remain unchanged\n' >"$receipt_outside"

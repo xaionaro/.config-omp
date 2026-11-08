@@ -5,6 +5,7 @@ set -Eeuo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 . "$ROOT/hooks/tests/require-go.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-configured-pretooluse.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
@@ -20,7 +21,7 @@ FIXTURE_CONFIG="$TMP_ROOT/config"
 FIXTURE_STATE="$TMP_ROOT/state"
 LIVE_KIMI_ROOT="${KIMI_CODE_HOME:-${HOME:?}/.kimi-code}"
 LIVE_KIMI_CONFIG="$LIVE_KIMI_ROOT/config.toml"
-live_kimi_config_before="$(sha256sum -- "$LIVE_KIMI_CONFIG" | awk '{print $1}')"
+live_kimi_config_before="$(eci_sha256_hex "$LIVE_KIMI_CONFIG")"
 
 mkdir -p -- "$FIXTURE_ROOT" "$FIXTURE_KIMI_ROOT" "$FIXTURE_PROOF/$FIXTURE_SESSION" \
   "$FIXTURE_PROOF/$FIXTURE_KIMI_SESSION" "$FIXTURE_CONFIG/eci" "$FIXTURE_STATE"
@@ -29,9 +30,9 @@ cp -a -- "$ROOT/hooks" "$FIXTURE_KIMI_ROOT/hooks"
 cp -- "$LIVE_KIMI_CONFIG" "$FIXTURE_KIMI_CONFIG"
 mkdir -p -- "$FIXTURE_ROOT/bin"
 cp -- "$ROOT/bin/eci-runtime-sync" "$FIXTURE_ROOT/bin/eci-runtime-sync"
-sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_ROOT/hooks/validate-bash.sh"
-sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_ROOT/hooks/pretooluse-edit-dispatch.sh"
-sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_KIMI_ROOT/hooks/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$FIXTURE_ROOT/hooks/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$FIXTURE_ROOT/hooks/pretooluse-edit-dispatch.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$FIXTURE_KIMI_ROOT/hooks/validate-bash.sh"
 printf '%s\n' enforcing >"$FIXTURE_CONFIG/eci/command-gate-mode"
 printf 'scope: configured consumer regression\ncwd: %s\nsession_id: %s\ncreated_utc: 2026-09-13T00:00:00Z\n' \
   "$FIXTURE_ROOT" "$FIXTURE_SESSION" >"$FIXTURE_PROOF/$FIXTURE_SESSION/eci_active"
@@ -221,7 +222,7 @@ run_kimi_bash_consumer broad-target 'rm -rf /' broad-deny
   printf 'configured Kimi Bash consumer selected its local planner instead of canonical ECI authority\n' >&2
   exit 1
 }
-[ "$(sha256sum -- "$LIVE_KIMI_CONFIG" | awk '{print $1}')" = "$live_kimi_config_before" ] || {
+[ "$(eci_sha256_hex "$LIVE_KIMI_CONFIG")" = "$live_kimi_config_before" ] || {
   printf 'configured Kimi consumer test changed live Kimi config: %s\n' "$LIVE_KIMI_CONFIG" >&2
   exit 1
 }

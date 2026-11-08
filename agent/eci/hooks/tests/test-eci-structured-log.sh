@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 source "$ROOT/hooks/lib/eci-proof-state.sh"
 eci_session_ledger_basename high_level_log.jsonl
 eci_control_basename high_level_log.jsonl
@@ -51,14 +52,14 @@ for state in regular missing hardlinked; do
   esac
   if [ -e "$log" ]; then
     cp -- "$log" "$TMP_ROOT/before"
-    inode="$(stat -c '%i' "$log")"
+    inode="$(ls -di -- "$log" | awk '{print $1}')"
   fi
   if run_current ledger-append --json >"$TMP_ROOT/out" 2>"$TMP_ROOT/err"; then
     printf 'accepted --json without a payload (%s log)\n' "$state" >&2; exit 1
   fi
   if [ "$state" = missing ]; then [ ! -e "$log" ]; else
     cmp -- "$log" "$TMP_ROOT/before"
-    [ "$(stat -c '%i' "$log")" = "$inode" ]
+    [ "$(ls -di -- "$log" | awk '{print $1}')" = "$inode" ]
   fi
   for unflagged in 'ordinary text' "$progress"; do
     if run_current ledger-append "$unflagged" >"$TMP_ROOT/out" 2>"$TMP_ROOT/err"; then
@@ -66,7 +67,7 @@ for state in regular missing hardlinked; do
     fi
     if [ "$state" = missing ]; then [ ! -e "$log" ]; else
       cmp -- "$log" "$TMP_ROOT/before"
-      [ "$(stat -c '%i' "$log")" = "$inode" ]
+      [ "$(ls -di -- "$log" | awk '{print $1}')" = "$inode" ]
     fi
   done
   for invalid in '' 'ordinary text' '{' '{} {}' 'null' '[]' '{}' \
@@ -87,7 +88,7 @@ for state in regular missing hardlinked; do
     fi
     if [ "$state" = missing ]; then [ ! -e "$log" ]; else
       cmp -- "$log" "$TMP_ROOT/before"
-      [ "$(stat -c '%i' "$log")" = "$inode" ]
+      [ "$(ls -di -- "$log" | awk '{print $1}')" = "$inode" ]
     fi
   done
 done

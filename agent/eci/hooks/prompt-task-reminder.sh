@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: emit the status-report reminder and write the /side stop marker; never scan transcript history.
+case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" UserPromptSubmit ;; *) . ./lib/eci-bash-guard.sh UserPromptSubmit ;; esac
 
 set -Eeuo pipefail
 

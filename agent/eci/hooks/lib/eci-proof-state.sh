@@ -5,6 +5,7 @@
 
 source "${BASH_SOURCE[0]%/*}/eci-native-binary.sh" || return 1
 source "${BASH_SOURCE[0]%/*}/eci-file-lock.sh" || return 1
+source "${BASH_SOURCE[0]%/*}/eci-portable.sh" || return 1
 
 eci_configured_proof_root() {
   printf '%s\n' "${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}"
@@ -29,7 +30,7 @@ eci_context_session_rest() {
   if eci_hook_roots_fresh; then
     canonical="$eci_hook_roots_context_canonical"
   else
-    canonical="$(realpath -m -- "$(eci_context_root)" 2>/dev/null || true)"
+    canonical="$(eci_realpath_canonical "$(eci_context_root)" 2>/dev/null || true)"
   fi
   [ -n "$canonical" ] || return 1
   root="$canonical/sessions"
@@ -86,10 +87,8 @@ eci_proof_root_load() {
     # eci_proof_root_is_safe before it becomes authoritative.
     canonical="$(cd -- "$configured" 2>/dev/null && pwd -P || true)"
     eci_proof_root_cache_value="${canonical:-$configured}"
-  elif command -v realpath >/dev/null 2>&1; then
-    eci_proof_root_cache_value="$(realpath -m -- "$configured" 2>/dev/null || printf '%s' "$configured")"
   else
-    eci_proof_root_cache_value="$configured"
+    eci_proof_root_cache_value="$(eci_realpath_canonical "$configured" 2>/dev/null || printf '%s' "$configured")"
   fi
   eci_proof_root_cache_configured="$cache_key"
   eci_proof_root_value="$eci_proof_root_cache_value"
@@ -166,7 +165,7 @@ eci_hook_roots_load() {
       case "$arg" in ""|*$'\n'*) batched=false ;; esac
     done
   fi
-  if [ "$batched" = true ] && out="$(realpath -m -- "${args[@]}" 2>/dev/null)" && mapfile -t lines <<<"$out" &&
+  if [ "$batched" = true ] && out="$(eci_realpath_canonical "${args[@]}" 2>/dev/null)" && mapfile -t lines <<<"$out" &&
      [ "${#lines[@]}" -eq "${#args[@]}" ]; then
     eci_hook_roots_resolved_proof="${lines[0]}"
     eci_hook_roots_resolved_default="${lines[1]}"
@@ -182,7 +181,7 @@ eci_hook_roots_load() {
   else
     eci_hook_roots_resolved_proof="$(eci_resolve_hook_path "$PWD" "$proof" 2>/dev/null || printf '%s\n' "$proof")"
     eci_hook_roots_resolved_default="$(eci_resolve_hook_path "$PWD" "$default_root" 2>/dev/null || printf '%s\n' "$default_root")"
-    eci_hook_roots_context_canonical="$(realpath -m -- "$context" 2>/dev/null || true)"
+    eci_hook_roots_context_canonical="$(eci_realpath_canonical "$context" 2>/dev/null || true)"
     eci_hook_roots_global_override="$(eci_accidental_override_record_path global 2>/dev/null || true)"
   fi
   eci_hook_roots_key="$eci_hook_roots_current"
@@ -429,7 +428,7 @@ eci_context_state_path_is_safe() {
   base="$(eci_context_root)"
   case "$path" in
     "$base"/sessions/*) ;;
-    *) base="$(realpath -m -- "$base" 2>/dev/null)" || return 1 ;;
+    *) base="$(eci_realpath_canonical "$base" 2>/dev/null)" || return 1 ;;
   esac
   [ -n "$base" ] && [ ! -L "$base" ] && [ ! -L "$base/sessions" ] || return 1
   current="$base/sessions"
@@ -568,7 +567,7 @@ eci_resolve_hook_path() {
     *) path="$cwd/$path" ;;
   esac
 
-  realpath -m -- "$path" 2>/dev/null || printf '%s\n' "$path"
+  eci_realpath_canonical "$path" 2>/dev/null || printf '%s\n' "$path"
 }
 
 eci_lexical_hook_path() {
@@ -582,17 +581,16 @@ eci_lexical_hook_path() {
     "~/"*) path="$HOME/${path#~/}" ;;
   esac
   # A relative target names a path under the payload cwd, not the hook process
-  # cwd; realpath -ms would otherwise resolve it against the process directory.
+  # cwd; eci_realpath_lexical would otherwise resolve it against the process directory.
   case "$path" in
     /*) ;;
     *) path="$cwd/$path" ;;
   esac
-  # GNU realpath -ms performs lexical abspath/normpath without following
-  # symlink ancestors and without starting an interpreter per callback.
+  # eci_realpath_lexical (GNU realpath -ms semantics) performs lexical
+  # abspath/normpath without following symlink ancestors.
   # The shell fallback below is the non-normalizing form, as before.
   local lexical_path
-  if command -v realpath >/dev/null 2>&1 &&
-     lexical_path="$(realpath -ms -- "$path" 2>/dev/null)"; then
+  if lexical_path="$(eci_realpath_lexical "$path" 2>/dev/null)"; then
     printf '%s\n' "$lexical_path"
   else
     printf '%s\n' "$path"
@@ -766,13 +764,9 @@ eci_path_is_high_level_log_file() {
 }
 
 eci_hash_string() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    local digest
-    digest="$(printf '%s' "${1:-}" | sha256sum)" || return 1
-    printf '%s\n' "${digest%% *}"
-  else
-    return 1
-  fi
+  local digest
+  digest="$(printf '%s' "${1:-}" | eci_sha256)" || return 1
+  printf '%s\n' "${digest%% *}"
 }
 
 eci_accidental_override_tool_is_valid() {
@@ -809,8 +803,8 @@ eci_accidental_override_global_root() {
 
   root="$(eci_home_lexical_root)" || return 1
   [ -d "$root" ] && [ ! -L "$root" ] || return 1
-  canonical="$(realpath -e -- "$root" 2>/dev/null || true)"
-  [ -n "$canonical" ] && [ "$canonical" = "$(realpath -m -- "$canonical" 2>/dev/null || true)" ] || return 1
+  canonical="$(eci_realpath_existing "$root" 2>/dev/null || true)"
+  [ -n "$canonical" ] && [ "$canonical" = "$(eci_realpath_canonical "$canonical" 2>/dev/null || true)" ] || return 1
   printf '%s\n' "$canonical"
 }
 
@@ -830,7 +824,7 @@ eci_accidental_override_record_path() {
     global)
       root="$(eci_accidental_override_global_root)" || return 1
       path="$root/.eci-accidental-mistake-override"
-      [ "$(realpath -m -- "$path" 2>/dev/null || true)" = "$path" ] || return 1
+      [ "$(eci_realpath_canonical "$path" 2>/dev/null || true)" = "$path" ] || return 1
       [ ! -L "$path" ] || return 1
       ;;
   esac
@@ -856,14 +850,14 @@ eci_accidental_override_claim_path_is_canonical() {
     "$root"/*) rest="${claim#"$root"/}" ;;
     *) return 1 ;;
   esac
-  [ "$claim" = "$(realpath -m -- "$claim" 2>/dev/null || true)" ] || return 1
+  [ "$claim" = "$(eci_realpath_canonical "$claim" 2>/dev/null || true)" ] || return 1
   session_id="${rest%%/*}"
   [ "$rest" = "$session_id/.eci-accidental-mistake-override.claim" ] || return 1
   eci_valid_session_id "$session_id" || return 1
   eci_session_dir_is_safe "$root" "$session_id" || return 1
   [ "$claim" = "$root/$session_id/.eci-accidental-mistake-override.claim" ] || return 1
   [ -d "$claim" ] && [ ! -L "$claim" ] || return 1
-  [ "$claim" = "$(realpath -e -- "$claim" 2>/dev/null || true)" ] || return 1
+  [ "$claim" = "$(eci_realpath_existing "$claim" 2>/dev/null || true)" ] || return 1
 }
 
 # Prints the operator command that removes an orphaned claim. The command names
@@ -874,7 +868,7 @@ eci_accidental_override_cleanup_command() {
   local claim="${1:-}" library_path provider_root eci_root kimi_root
 
   eci_accidental_override_claim_path_is_canonical "$claim" || return 1
-  library_path="$(realpath -e -- "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+  library_path="$(eci_realpath_existing "${BASH_SOURCE[0]}" 2>/dev/null || true)"
   case "$library_path" in
     */hooks/lib/eci-proof-state.sh)
       provider_root="${library_path%/hooks/lib/eci-proof-state.sh}"
@@ -883,8 +877,8 @@ eci_accidental_override_cleanup_command() {
       return 1
       ;;
   esac
-  eci_root="$(realpath -e -- "${HOME:-}/.omp/agent/eci" 2>/dev/null || true)"
-  kimi_root="$(realpath -e -- "${KIMI_CODE_HOME:-${HOME:-}/.kimi-code}" 2>/dev/null || true)"
+  eci_root="$(eci_realpath_existing "${HOME:-}/.omp/agent/eci" 2>/dev/null || true)"
+  kimi_root="$(eci_realpath_existing "${KIMI_CODE_HOME:-${HOME:-}/.kimi-code}" 2>/dev/null || true)"
 
   case "$provider_root" in
     "$eci_root")
@@ -941,7 +935,7 @@ eci_accidental_override_record_is_valid() {
   record="$(eci_accidental_override_record_path "$scope" "$session_id")" || return 1
   [ -f "$record" ] && [ ! -L "$record" ] || return 1
   eci_state_file_owner_is_valid "$record" || return 1
-  [ "$(realpath -m -- "$record" 2>/dev/null || true)" = "$record" ] || return 1
+  [ "$(eci_realpath_canonical "$record" 2>/dev/null || true)" = "$record" ] || return 1
   [ "$(wc -c <"$record" 2>/dev/null || printf 999999)" -le 4096 ] || return 1
   [ "$(tail -c 1 -- "$record" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')" = 0a ] || return 1
   LC_ALL=C grep -q $'\r' "$record" 2>/dev/null && return 1 || true
@@ -1057,7 +1051,7 @@ eci_session_permissive_record_path() {
   else
     root="$(eci_accidental_override_global_root)" || return 1
     path="$root/.eci-permissive-mode"
-    [ "$(realpath -m -- "$path" 2>/dev/null || true)" = "$path" ] && [ ! -L "$path" ] || return 1
+    [ "$(eci_realpath_canonical "$path" 2>/dev/null || true)" = "$path" ] && [ ! -L "$path" ] || return 1
   fi
   printf '%s\n' "$path"
 }
@@ -1149,10 +1143,10 @@ eci_additional_repository_canonical_root() {
 
   [ -n "$requested" ] || return 1
   [ "${requested#/}" != "$requested" ] || return 1
-  resolved="$(realpath -e -- "$requested" 2>/dev/null || true)"
+  resolved="$(eci_realpath_existing "$requested" 2>/dev/null || true)"
   [ -n "$resolved" ] && [ -d "$resolved" ] || return 1
   actual="$(eci_git_safe -C "$resolved" rev-parse --show-toplevel 2>/dev/null || true)"
-  actual="$(realpath -e -- "$actual" 2>/dev/null || true)"
+  actual="$(eci_realpath_existing "$actual" 2>/dev/null || true)"
   [ -n "$actual" ] && [ -d "$actual" ] && [ ! -L "$actual" ] || return 1
   [ "$actual" = "$resolved" ] || return 1
   printf '%s\n' "$actual"
@@ -1162,7 +1156,7 @@ eci_additional_repository_absent_target() {
   local requested="${1-}" resolved
 
   [ -n "$requested" ] && [[ "$requested" = /* ]] || return 1
-  resolved="$(realpath -m -- "$requested" 2>/dev/null || true)"
+  resolved="$(eci_realpath_canonical "$requested" 2>/dev/null || true)"
   [ -n "$resolved" ] && [ ! -e "$resolved" ] && [ ! -L "$resolved" ] || return 1
   printf '%s\n' "$resolved"
 }
@@ -1425,24 +1419,24 @@ eci_live_repo_binding_sha256() {
   case "$repo_root:$git_dir:$git_common" in *..*|*//*|*/./*) return 1 ;; esac
 
   repo_root_actual="$(eci_git_safe -C "$repo_root" rev-parse --show-toplevel 2>/dev/null || true)"
-  repo_root_actual="$(realpath -m -- "$repo_root_actual" 2>/dev/null || true)"
+  repo_root_actual="$(eci_realpath_canonical "$repo_root_actual" 2>/dev/null || true)"
   [ "$repo_root_actual" = "$repo_root" ] || return 1
   git_dir_raw="$(eci_git_safe -C "$repo_root" rev-parse --git-dir 2>/dev/null || true)"
   git_common_raw="$(eci_git_safe -C "$repo_root" rev-parse --git-common-dir 2>/dev/null || true)"
   case "$git_dir_raw" in /*) git_dir_actual="$git_dir_raw" ;; *) git_dir_actual="$repo_root/$git_dir_raw" ;; esac
   case "$git_common_raw" in /*) git_common_actual="$git_common_raw" ;; *) git_common_actual="$repo_root/$git_common_raw" ;; esac
-  git_dir_actual="$(realpath -m -- "$git_dir_actual" 2>/dev/null || true)"
-  git_common_actual="$(realpath -m -- "$git_common_actual" 2>/dev/null || true)"
+  git_dir_actual="$(eci_realpath_canonical "$git_dir_actual" 2>/dev/null || true)"
+  git_common_actual="$(eci_realpath_canonical "$git_common_actual" 2>/dev/null || true)"
   [ "$git_dir_actual" = "$git_dir" ] && [ "$git_common_actual" = "$git_common" ] || return 1
   head="$(eci_git_safe -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
   [[ "$head" =~ ^[0-9a-f]{40,64}$ ]] || return 1
-  staged="$(eci_git_safe -C "$repo_root" diff --cached --binary | sha256sum | awk '{print $1}')"
-  worktree="$(eci_git_safe -C "$repo_root" diff --binary | sha256sum | awk '{print $1}')"
-  status="$(eci_git_safe -C "$repo_root" status --porcelain=v1 --untracked-files=all | sha256sum | awk '{print $1}')"
+  staged="$(eci_git_safe -C "$repo_root" diff --cached --binary | eci_sha256 | awk '{print $1}')"
+  worktree="$(eci_git_safe -C "$repo_root" diff --binary | eci_sha256 | awk '{print $1}')"
+  status="$(eci_git_safe -C "$repo_root" status --porcelain=v1 --untracked-files=all | eci_sha256 | awk '{print $1}')"
   [[ "$staged" =~ ^[0-9a-f]{64}$ && "$worktree" =~ ^[0-9a-f]{64} && "$status" =~ ^[0-9a-f]{64}$ ]] || return 1
   printf 'repo_root=%s\ngit_dir=%s\ngit_common_dir=%s\nbase_oid=%s\nhead_oid=%s\nstaged_diff_sha256=%s\nworktree_diff_sha256=%s\nstatus_sha256=%s\n' \
     "$repo_root" "$git_dir" "$git_common" "$base" "$head" "$staged" "$worktree" "$status" |
-    sha256sum | awk '{print $1}'
+    eci_sha256 | awk '{print $1}'
 }
 
 eci_cwd_key() {
@@ -1627,7 +1621,7 @@ eci_repo_relative_file_path() {
   esac
 
   [ ! -d "$target" ] || return 1
-  rel="$(realpath -m --relative-to="$repo" "$target" 2>/dev/null || true)"
+  rel="$(eci_realpath_relative "$repo" "$target" 2>/dev/null || true)"
   [ -n "$rel" ] || return 1
   case "$rel" in
     "."|".."|../*|/*) return 1 ;;
@@ -1726,7 +1720,7 @@ eci_aggregate_stage_path_is_safe() {
   local -a components tracked_paths
 
   [ -n "$repo_root" ] && [ -n "$relative_path" ] || return 1
-  [ "$repo_root" = "$(realpath -e -- "$repo_root" 2>/dev/null || true)" ] || return 1
+  [ "$repo_root" = "$(eci_realpath_existing "$repo_root" 2>/dev/null || true)" ] || return 1
   [ -d "$repo_root" ] && [ ! -L "$repo_root" ] || return 1
   case "$relative_path" in
   /*|.|..|./*|../*|*/|*//*|*/./*|*/../*) return 1 ;;
@@ -1755,7 +1749,7 @@ eci_aggregate_stage_path_is_safe() {
   done
 
   candidate="$repo_root/$relative_path"
-  [ "$candidate" = "$(realpath -m -- "$candidate" 2>/dev/null || true)" ] || return 1
+  [ "$candidate" = "$(eci_realpath_canonical "$candidate" 2>/dev/null || true)" ] || return 1
 
   if eci_git_safe -C "$repo_root" --literal-pathspecs ls-files --error-unmatch -- "$relative_path" >/dev/null 2>&1; then
     mapfile -d '' -t tracked_paths < <(
@@ -1771,7 +1765,7 @@ eci_aggregate_stage_path_is_safe() {
 
   if [ -e "$candidate" ] || [ -L "$candidate" ]; then
     [ -f "$candidate" ] && [ ! -L "$candidate" ] || return 1
-    resolved="$(realpath -e -- "$candidate" 2>/dev/null || true)"
+    resolved="$(eci_realpath_existing "$candidate" 2>/dev/null || true)"
     case "$resolved" in
     "$repo_root"/*) ;;
     *) return 1 ;;
@@ -1795,7 +1789,7 @@ eci_aggregate_stage_path_is_safe() {
     probe="$parent"
   done
   [ -d "$probe" ] && [ ! -L "$probe" ] || return 1
-  resolved="$(realpath -e -- "$probe" 2>/dev/null || true)"
+  resolved="$(eci_realpath_existing "$probe" 2>/dev/null || true)"
   case "$resolved" in
   "$repo_root"|"$repo_root"/*) return 0 ;;
   *) return 1 ;;
@@ -1818,8 +1812,8 @@ eci_aggregate_evidence_root() {
   evidence_root="$session_dir/eci-aggregate.$repo_id.evidence"
   eci_state_path_is_safe "$evidence_root" "$root" || return 1
   [ -d "$evidence_root" ] && [ ! -L "$evidence_root" ] || return 1
-  [ "$(realpath -m -- "$evidence_root" 2>/dev/null || true)" = "$evidence_root" ] || return 1
-  [ "$(realpath -e -- "$evidence_root" 2>/dev/null || true)" = "$evidence_root" ] || return 1
+  [ "$(eci_realpath_canonical "$evidence_root" 2>/dev/null || true)" = "$evidence_root" ] || return 1
+  [ "$(eci_realpath_existing "$evidence_root" 2>/dev/null || true)" = "$evidence_root" ] || return 1
   printf '%s\n' "$evidence_root"
 }
 
@@ -1836,7 +1830,7 @@ eci_aggregate_evidence_artifact_is_scoped() {
   case "$artifact" in
     *[![:print:]]*|*//*|*/./*|*/../*|*/..|*/.) return 1 ;;
   esac
-  canonical="$(realpath -m -- "$artifact" 2>/dev/null || true)"
+  canonical="$(eci_realpath_canonical "$artifact" 2>/dev/null || true)"
   [ "$canonical" = "$artifact" ] || return 1
   case "$artifact" in
     "$evidence_root"/*) ;;
@@ -1844,7 +1838,7 @@ eci_aggregate_evidence_artifact_is_scoped() {
   esac
   eci_state_path_is_safe "$artifact" "$root" || return 1
   [ -f "$artifact" ] && [ ! -L "$artifact" ] || return 1
-  [ "$(realpath -e -- "$artifact" 2>/dev/null || true)" = "$artifact" ]
+  [ "$(eci_realpath_existing "$artifact" 2>/dev/null || true)" = "$artifact" ]
 }
 
 # Validate that every evidence-bearing member of an aggregate v2 manifest is
@@ -1935,7 +1929,7 @@ eci_direct_marker_cwd() {
   eci_session_dir_is_safe "$root" "$session_id" || return 1
   [ "$marker" = "$root/$session_id/eci_active" ] || return 1
   [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
-  [ "$(realpath -e -- "$marker" 2>/dev/null || true)" = "$marker" ] || return 1
+  [ "$(eci_realpath_existing "$marker" 2>/dev/null || true)" = "$marker" ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       'session_id: '*)
@@ -1987,19 +1981,19 @@ eci_aggregate_live_repo_metadata() {
 
   case "$repo_root" in /*) ;; *) return 1 ;; esac
   case "$repo_root" in *[![:print:]]*|*//*|*/./*|*/../*|*/..|*/.) return 1 ;; esac
-  [ "$repo_root" = "$(realpath -m -- "$repo_root" 2>/dev/null || true)" ] || return 1
+  [ "$repo_root" = "$(eci_realpath_canonical "$repo_root" 2>/dev/null || true)" ] || return 1
   [ -d "$repo_root" ] && [ ! -L "$repo_root" ] || return 1
-  [ "$(realpath -e -- "$repo_root" 2>/dev/null || true)" = "$repo_root" ] || return 1
+  [ "$(eci_realpath_existing "$repo_root" 2>/dev/null || true)" = "$repo_root" ] || return 1
   eci_aggregate_repo_is_strict_descendant "$outer_cwd" "$repo_root" || return 1
   actual_root="$(eci_git_safe -C "$repo_root" rev-parse --show-toplevel 2>/dev/null || true)"
-  actual_root="$(realpath -e -- "$actual_root" 2>/dev/null || true)"
+  actual_root="$(eci_realpath_existing "$actual_root" 2>/dev/null || true)"
   [ "$actual_root" = "$repo_root" ] || return 1
   git_dir_raw="$(eci_git_safe -C "$repo_root" rev-parse --git-dir 2>/dev/null || true)"
   git_common_raw="$(eci_git_safe -C "$repo_root" rev-parse --git-common-dir 2>/dev/null || true)"
   case "$git_dir_raw" in /*) actual_git_dir="$git_dir_raw" ;; *) actual_git_dir="$repo_root/$git_dir_raw" ;; esac
   case "$git_common_raw" in /*) actual_git_common="$git_common_raw" ;; *) actual_git_common="$repo_root/$git_common_raw" ;; esac
-  actual_git_dir="$(realpath -e -- "$actual_git_dir" 2>/dev/null || true)"
-  actual_git_common="$(realpath -e -- "$actual_git_common" 2>/dev/null || true)"
+  actual_git_dir="$(eci_realpath_existing "$actual_git_dir" 2>/dev/null || true)"
+  actual_git_common="$(eci_realpath_existing "$actual_git_common" 2>/dev/null || true)"
   [ -d "$actual_git_dir" ] && [ ! -L "$actual_git_dir" ] || return 1
   [ -d "$actual_git_common" ] && [ ! -L "$actual_git_common" ] || return 1
   eci_aggregate_live_repo_git_dir="$actual_git_dir"
@@ -2023,7 +2017,7 @@ eci_aggregate_selected_child_is_genuinely_independent() {
   /*) outer_common="$outer_common_raw" ;;
   *) outer_common="$outer_cwd/$outer_common_raw" ;;
   esac
-  outer_common="$(realpath -e -- "$outer_common" 2>/dev/null || true)"
+  outer_common="$(eci_realpath_existing "$outer_common" 2>/dev/null || true)"
   [ -d "$outer_common" ] && [ ! -L "$outer_common" ] || return 1
   [ "$eci_aggregate_live_repo_git_common_dir" != "$outer_common" ]
 }
@@ -2047,7 +2041,7 @@ eci_aggregate_plan_is_valid() {
   expected_plan="$session_dir/eci-aggregate-plan.json"
   [ "$plan" = "$expected_plan" ] || return 1
   [ -f "$plan" ] && [ ! -L "$plan" ] || return 1
-  [ "$(realpath -e -- "$plan" 2>/dev/null || true)" = "$plan" ] || return 1
+  [ "$(eci_realpath_existing "$plan" 2>/dev/null || true)" = "$plan" ] || return 1
   jq -e '
     type == "object" and
     (.repositories | type == "array" and length > 0) and
@@ -2148,10 +2142,10 @@ eci_marker_metadata_is_valid() {
   eci_proof_root_is_safe || return 1
   root="$(eci_proof_root)"
   [ -n "$root" ] && [ -d "$root" ] && [ ! -L "$root" ] || return 1
-  root_real="$(realpath -e -- "$root" 2>/dev/null || true)"
+  root_real="$(eci_realpath_existing "$root" 2>/dev/null || true)"
   [ -n "$root_real" ] && [ -d "$root_real" ] || return 1
   [ ! -L "$marker" ] || return 1
-  marker_real="$(realpath -e -- "$marker" 2>/dev/null || true)"
+  marker_real="$(eci_realpath_existing "$marker" 2>/dev/null || true)"
   [ -n "$marker_real" ] || return 1
   root="$root_real"
   marker="$marker_real"
@@ -2525,8 +2519,8 @@ eci_hook_is_omp_transcript() {
   case "$path" in
     "$raw_root"/*) return 0 ;;
   esac
-  real_root="$(realpath -e -- "$raw_root" 2>/dev/null)" || return 1
-  real_path="$(realpath -e -- "$path" 2>/dev/null)" || return 1
+  real_root="$(eci_realpath_existing "$raw_root" 2>/dev/null)" || return 1
+  real_path="$(eci_realpath_existing "$path" 2>/dev/null)" || return 1
   case "$real_path" in
     "$real_root"/*) return 0 ;;
   esac
@@ -2546,12 +2540,12 @@ eci_hook_omp_transcript_status() {
   sessions_root="$(eci_hook_omp_sessions_root)" || { printf 'unknown\n'; return 0; }
   case "$sessions_root$path" in
     *$'\n'*)
-      real_root="$(realpath -e -- "$sessions_root" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
-      real_path="$(realpath -e -- "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      real_root="$(eci_realpath_existing "$sessions_root" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      real_path="$(eci_realpath_existing "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
       ;;
     *)
-      # One realpath for both names; either one failing is unknown, as before.
-      resolved="$(realpath -e -- "$sessions_root" "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      # One resolver call for both names; either one failing is unknown, as before.
+      resolved="$(eci_realpath_existing "$sessions_root" "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
       real_root="${resolved%%$'\n'*}"
       real_path="${resolved#*$'\n'}"
       [ "$real_root"$'\n'"$real_path" = "$resolved" ] || { printf 'unknown\n'; return 0; }
@@ -2562,7 +2556,7 @@ eci_hook_omp_transcript_status() {
     *) printf 'unknown\n'; return 0 ;;
   esac
   [ -f "$real_path" ] && [ -s "$real_path" ] || { printf 'unknown\n'; return 0; }
-  size="$(stat -c %s -- "$real_path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+  size="$(eci_stat size "$real_path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
   rel="${real_path#"$real_root"/}"
   slashes="${rel//[^\/]/}"
   depth=$(( ${#slashes} + 1 ))
@@ -2856,7 +2850,7 @@ eci_teardown_report_path_is_safe() {
   case "$report_path" in
     *[![:print:]]*|*//*|*/./*|*/../*|*/..|*/.) return 1 ;;
   esac
-  canonical="$(realpath -m -- "$report_path" 2>/dev/null || true)"
+  canonical="$(eci_realpath_canonical "$report_path" 2>/dev/null || true)"
   [ "$canonical" = "$report_path" ] || return 1
   rest="${report_path#/}"; parent="/"
   while [ -n "$rest" ]; do
@@ -2893,7 +2887,7 @@ eci_commit_admission_receipt_is_valid() {
   [ "$receipt" = "$expected_receipt" ] || return 1
   manifest="$session_dir/eci-required-critics.json"
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
-  [ "$(realpath -m -- "$receipt" 2>/dev/null || true)" = "$receipt" ] || return 1
+  [ "$(eci_realpath_canonical "$receipt" 2>/dev/null || true)" = "$receipt" ] || return 1
   [ -f "$receipt" ] && [ ! -L "$receipt" ] || return 1
   receipt_bytes="$(wc -c <"$receipt" 2>/dev/null || true)"
   case "$receipt_bytes" in ''|*[!0-9]*) return 1 ;; esac
@@ -2918,19 +2912,19 @@ eci_commit_admission_receipt_is_valid() {
   [[ "$manifest_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$repo_binding" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$anchor_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
-  actual="$(sha256sum -- "$manifest" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$manifest" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$manifest_sha" ] || return 1
   [ "$(jq -r '.acceptance_version // empty' "$manifest" 2>/dev/null || true)" = "$acceptance_version" ] || return 1
 
   anchor="$session_dir/eci-acceptance-anchor"
   [ -f "$anchor" ] && [ ! -L "$anchor" ] || return 1
-  [ "$(realpath -m -- "$anchor" 2>/dev/null || true)" = "$anchor" ] || return 1
+  [ "$(eci_realpath_canonical "$anchor" 2>/dev/null || true)" = "$anchor" ] || return 1
   anchor_bytes="$(wc -c <"$anchor" 2>/dev/null || true)"
   case "$anchor_bytes" in ''|*[!0-9]*) return 1 ;; esac
   [ "$anchor_bytes" -le 16384 ] || return 1
   [ "$(tail -c 1 -- "$anchor" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')" = 0a ] || return 1
   LC_ALL=C grep -q $'\r' "$anchor" 2>/dev/null && return 1 || true
-  actual="$(sha256sum -- "$anchor" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$anchor" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$anchor_sha" ] || return 1
   grep -Fq "admission:commit:$acceptance_version:$manifest_sha:" "$anchor" 2>/dev/null || return 1
 
@@ -2981,9 +2975,9 @@ eci_teardown_receipt_is_valid() {
   [ -z "$expected_binding" ] || [ "$repo_binding" = "$expected_binding" ] || return 1
   eci_teardown_report_path_is_safe "$report_path" || return 1
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
-  actual="$(sha256sum -- "$manifest" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$manifest" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$manifest_sha" ] || return 1
-  actual="$(sha256sum -- "$report_path" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$report_path" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$report_sha" ] || return 1
   actual="$(eci_live_repo_binding_sha256 "$manifest" 2>/dev/null || true)"
   [ "$actual" = "$repo_binding" ] || return 1
@@ -3036,12 +3030,12 @@ eci_aggregate_teardown_receipt_is_valid() {
   plan="$session_dir/eci-aggregate-plan.json"
   eci_aggregate_plan_is_valid "$plan" "$session_id" || return 1
   plan_sha="$(jq -r '.plan_sha256' "$receipt")"
-  actual="$(sha256sum -- "$plan" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$plan" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$plan_sha" ] || return 1
   report_path="$(jq -r '.disengage_report_path' "$receipt")"
   report_sha="$(jq -r '.disengage_report_sha256' "$receipt")"
   eci_teardown_report_path_is_safe "$report_path" || return 1
-  actual="$(sha256sum -- "$report_path" 2>/dev/null | awk '{print $1}')"
+  actual="$(eci_sha256 -- "$report_path" 2>/dev/null | awk '{print $1}')"
   [ "$actual" = "$report_sha" ] || return 1
   repo_count="$(jq -r '.repositories | length' "$receipt" 2>/dev/null || true)"
   [ "$repo_count" = "$(jq -r '.repositories | length' "$plan" 2>/dev/null || true)" ] || return 1
@@ -3052,7 +3046,7 @@ eci_aggregate_teardown_receipt_is_valid() {
     repo_binding="$(jq -r ".repositories[$index].repo_binding_sha256" "$receipt" 2>/dev/null || true)"
     manifest="$session_dir/eci-aggregate.$repo_id.required-critics.json"
     [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
-    actual="$(sha256sum -- "$manifest" 2>/dev/null | awk '{print $1}')"
+    actual="$(eci_sha256 -- "$manifest" 2>/dev/null | awk '{print $1}')"
     [ "$actual" = "$manifest_sha" ] || return 1
     actual="$(eci_live_repo_binding_sha256 "$manifest" 2>/dev/null || true)"
     [ "$actual" = "$repo_binding" ] || return 1
@@ -3077,7 +3071,7 @@ eci_aggregate_commit_anchor_tree_is_valid() {
   eci_state_file_owner_is_valid "$anchor" || return 1
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
   version="$(jq -r '.acceptance_version // empty' "$manifest" 2>/dev/null || true)"
-  manifest_sha="$(sha256sum -- "$manifest" 2>/dev/null | awk '{print $1}')"
+  manifest_sha="$(eci_sha256 -- "$manifest" 2>/dev/null | awk '{print $1}')"
   base="$(jq -r '.base_oid // empty' "$manifest" 2>/dev/null || true)"
   [[ "$version" =~ ^[1-9][0-9]*$ && "$manifest_sha" =~ ^[0-9a-f]{64}$ && "$base" =~ ^[0-9a-f]{40,64}$ ]] || return 1
   bytes="$(wc -c <"$anchor" 2>/dev/null || true)"
@@ -3167,10 +3161,10 @@ eci_aggregate_commit_admission_receipt_is_valid() {
   eci_aggregate_commit_anchor_tree_is_valid "$anchor" "$session_id" "$repo_id" "$manifest" \
     "$eci_aggregate_selected_root" "$eci_aggregate_selected_git_dir" "$eci_aggregate_selected_git_common_dir" || return 1
   [ -f "$message_source" ] && [ ! -L "$message_source" ] || return 1
-  manifest_sha="$(sha256sum -- "$manifest" 2>/dev/null | awk '{print $1}')"
+  manifest_sha="$(eci_sha256 -- "$manifest" 2>/dev/null | awk '{print $1}')"
   binding="$(eci_live_repo_binding_sha256 "$manifest" 2>/dev/null || true)"
-  anchor_sha="$(sha256sum -- "$anchor" 2>/dev/null | awk '{print $1}')"
-  message_sha="$(sha256sum -- "$message_source" 2>/dev/null | awk '{print $1}')"
+  anchor_sha="$(eci_sha256 -- "$anchor" 2>/dev/null | awk '{print $1}')"
+  message_sha="$(eci_sha256 -- "$message_source" 2>/dev/null | awk '{print $1}')"
   [[ "$manifest_sha" =~ ^[0-9a-f]{64}$ && "$binding" =~ ^[0-9a-f]{64}$ &&
     "$anchor_sha" =~ ^[0-9a-f]{64}$ && "$message_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
   [ "$(jq -r '.manifest_sha256' "$receipt")" = "$manifest_sha" ] || return 1

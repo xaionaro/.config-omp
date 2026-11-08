@@ -3,13 +3,14 @@
 set -euo pipefail
 
 ROOT="${ECI_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-marker-scope.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 # Exercise the private hook body, removing a line-2 bypass if present.
 TEST_HOOK_ROOT="$TMP_ROOT/private-hooks"
 cp -a -- "$ROOT/hooks" "$TEST_HOOK_ROOT"
-sed -i '2{/^exit 0$/d;}' "$TEST_HOOK_ROOT/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$TEST_HOOK_ROOT/validate-bash.sh"
 
 export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"
 mkdir -p "$XDG_CONFIG_HOME/eci"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # TODO: Retire ECI marker-based refresh and cleanup decisions; native goals own lifecycle.
+case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" SessionStart ;; *) . ./lib/eci-bash-guard.sh SessionStart ;; esac
 # SessionStart hook: save git HEAD as the stop-hook baseline.
 
 set -Eeuo pipefail

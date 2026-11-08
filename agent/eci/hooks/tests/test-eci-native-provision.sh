@@ -11,6 +11,7 @@ set -euo pipefail
 umask 077
 
 tests_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$tests_dir/portable-test.sh"
 src_hooks="$(cd -P -- "$tests_dir/.." && pwd -P)"
 host_os="$(uname -s)"
 case "$host_os" in
@@ -115,9 +116,7 @@ built_names() { LC_ALL=C sort "$build_log" | tr '\n' ' ' | sed 's/ $//'; }
 expect_stdout_empty() { [ ! -s "$base/out/$1.out" ] || fail "$1: provisioner wrote to stdout: $(cat -- "$base/out/$1.out")"; }
 expect_err() { grep -F -q -- "$2" "$base/out/$1.err" || fail "$1: stderr lacks '$2': $(cat -- "$base/out/$1.err")"; }
 reset_bin() { rm -rf -- "$bin"; : >"$build_log"; }
-digest_of() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d ' ' -f 1; else shasum -a 256 -- "$1" | cut -d ' ' -f 1; fi
-}
+digest_of() { eci_sha256_hex "$1"; }
 patch_byte() { printf "$3" | dd of="$1" bs=1 seek="$2" conv=notrunc 2>/dev/null; }
 all='eci-command-plan eci-hook-helper eci-safe-import eci-worker-git'
 

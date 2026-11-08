@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,12 +18,18 @@ func TestRunReportsFixedOperationAndValidationFailure(t *testing.T) {
 	var output bytes.Buffer
 	var diagnostic bytes.Buffer
 	streams := Streams{Output: &output, Error: &diagnostic}
-	if code := Run([]string{"--repo", root, "stage-content", "--", "file.txt"}, streams); code != 0 || !strings.Contains(output.String(), "completed fixed operation") {
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("staged\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"--repo", root, "stage-content", "--", "file.txt"}, streams); code != 0 {
 		t.Fatalf("code/output/error=%d/%s/%s", code, output.String(), diagnostic.String())
 	}
-	for _, identity := range []string{"worktree=", "gitdir=", "index="} {
-		if !strings.Contains(output.String(), identity) {
-			t.Fatalf("missing resolved identity field %q", identity)
+	if got := fixtureGit(t, root, "show", ":file.txt"); got != "staged" {
+		t.Fatalf("successful stage-content staged %q", got)
+	}
+	for _, identity := range []string{root, filepath.Join(root, ".git"), filepath.Join(root, ".git", "index")} {
+		if !strings.Contains(output.String(), strconv.Quote(identity)) {
+			t.Fatalf("missing resolved identity %q", identity)
 		}
 	}
 	if code := Run([]string{"--repo", root, "commit", "--amend"}, streams); code == 0 || !strings.Contains(diagnostic.String(), "--amend") {

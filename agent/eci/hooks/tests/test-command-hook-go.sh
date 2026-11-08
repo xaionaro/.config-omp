@@ -6,12 +6,15 @@ set -euo pipefail
 umask 077
 
 source_root="$(cd -- "${BASH_SOURCE[0]%/*}/../.." && pwd -P)"
+. "$source_root/hooks/tests/portable-test.sh"
+# Inode, mtime and size: an identity that changes when the file is rewritten or replaced.
+file_identity() { printf '%s:%s:%s\n' "$(ls -di -- "$1" | awk '{print $1}')" "$(eci_mtime "$1")" "$(eci_stat size "$1")"; }
 # Keep compiler caches outside the isolated HOME; only the binary is cold.
 export GOMODCACHE="$(go env GOMODCACHE)"
 export GOCACHE="$(go env GOCACHE)"
 export GOPATH="$(go env GOPATH)"
 fixture="$(mktemp -d "${HOME:?}/tmp/command-hook-go.XXXXXX")"
-fixture="$(realpath -e -- "$fixture")"
+fixture="$(eci_realpath_existing "$fixture")"
 trap 'chmod -R u+w -- "$fixture"; rm -r -- "$fixture"' EXIT
 fixture_home="$fixture/home"
 runtime="$fixture_home/.omp/agent/eci"
@@ -44,12 +47,12 @@ printf '\377\377' | dd of="$binary" bs=1 seek=18 conv=notrunc status=none
 chmod 755 -- "$binary"
 cp -- "$binary" "$fixture/incompatible-binary"
 source "$runtime/hooks/lib/eci-native-binary.sh"
-eci_runtime_binary_is_native "$(realpath -e -- /bin/true)"
+eci_runtime_binary_is_native "$(eci_realpath_existing /bin/true)"
 ! eci_runtime_binary_is_native "$binary"
 ln -s /bin/true "$fixture/native-link"
 ! eci_runtime_binary_is_native "$fixture/native-link"
 git -C "${ECI_SOURCE_REPO:-$source_root}" rev-parse HEAD >"$fixture/source-head"
-sha256sum -- "$runtime/hooks/lib/eci-command-plan-go/"*.go \
+eci_sha256 -- "$runtime/hooks/lib/eci-command-plan-go/"*.go \
   "$runtime/hooks/lib/eci-command-plan-go/go.mod" \
   "$runtime/hooks/lib/eci-command-plan-go/go.sum" \
   "$runtime/hooks/lib/eci-native-binary.sh" "$runtime/hooks/lib/eci-runtime-sync.sh" \
@@ -120,17 +123,17 @@ cp -- "$fixture/incompatible-binary" "$binary"
 provision first
 eci_runtime_binary_is_native "$binary"
 eci_runtime_binary_is_native "$importer"
-(cd -- "$runtime/bin" && sha256sum -c --quiet -- eci-command-plan.sha256 eci-safe-import.sha256)
+(cd -- "$runtime/bin" && eci_sha256 -c --quiet -- eci-command-plan.sha256 eci-safe-import.sha256)
 run_callback repaired-cat 'cat AGENTS.md'
 [ ! -s "$fixture/repaired-cat.output" ]
 "$binary" --hook <"$fixture/repaired-cat.input" >"$fixture/native.output"
 [ ! -s "$fixture/native.output" ]
-binary_identity="$(stat -c '%i:%Y:%s' -- "$binary")"
+binary_identity="$(file_identity "$binary")"
 run_callback warm-cat 'cat AGENTS.md'
 [ ! -s "$fixture/warm-cat.output" ]
 run_callback warm-diff 'git diff -- AGENTS.md'
 [ ! -s "$fixture/warm-diff.output" ]
-[ "$(stat -c '%i:%Y:%s' -- "$binary")" = "$binary_identity" ]
+[ "$(file_identity "$binary")" = "$binary_identity" ]
 # A whole-index add is broad-destructive before any ownership check (575bb81 hook_effects_test.go:250).
 run_callback denied-add 'git add -A'
 jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_BROAD_DESTRUCTIVE_DENIED"))' \
@@ -146,12 +149,12 @@ printf '%s\n' '{"critics":[]}' >"$fixture/import-source"
 import_leaf recovery
 eci_runtime_binary_is_native "$importer"
 cmp -- "$fixture/import-source" "$fixture/proof/hook-test/eci-required-critics.json"
-importer_identity="$(stat -c '%i:%Y:%s' -- "$importer")"
+importer_identity="$(file_identity "$importer")"
 rm -- "$fixture/proof/hook-test/eci-required-critics.json"
 import_leaf warm
 cmp -- "$fixture/import-source" "$fixture/proof/hook-test/eci-required-critics.json"
-[ "$(stat -c '%i:%Y:%s' -- "$importer")" = "$importer_identity" ]
-[ "$(stat -c '%i:%Y:%s' -- "$binary")" = "$binary_identity" ]
+[ "$(file_identity "$importer")" = "$importer_identity" ]
+[ "$(file_identity "$binary")" = "$binary_identity" ]
 # Trace separately so syscall tracing does not affect the timing probes.
 env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
   ECI_PROOF_ROOT="$fixture/proof" XDG_CONFIG_HOME="$fixture/config" \
@@ -173,7 +176,7 @@ if [ -n "${COMMAND_HOOK_GO_PROOF_DIR:-}" ]; then
     "$fixture/"*.time "$fixture/"*.metadata "$fixture/exec.trace" \
     "$fixture/source-head" "$fixture/sources.sha256" "$fixture/environment" \
     "$binary" "$COMMAND_HOOK_GO_PROOF_DIR/"
-  sha256sum -- "$binary" \
+  eci_sha256 -- "$binary" \
     >"$COMMAND_HOOK_GO_PROOF_DIR/artifacts.sha256"
   printf 'proof_dir=%s\n' "$COMMAND_HOOK_GO_PROOF_DIR"
 fi

@@ -2,6 +2,7 @@
 # Published YAML guidance, native edits and actual installed actor/tool paths.
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-understanding-yaml.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 export HOME="$TMP_ROOT/home"
@@ -20,7 +21,8 @@ example="$ROOT/../skills/context-ledger/examples/project-understanding.yaml"
 parse "$example" > "$TMP_ROOT/before.json"
 # Same native record edit on a latest owned snapshot; no YAML serialization.
 cp -- "$example" "$TMP_ROOT/edited.yaml"
-sed -i 's/value: 1000000/value: 2000000/; s/title: "Receiver knowledge"/title: "Receiver configuration"/; s/state: "active"/state: "completed"/; /next_action:/d; /forecast_ref:/d; /state: "completed"/a\      completed_at: "2000-01-01T00:00:00Z"' "$TMP_ROOT/edited.yaml"
+eci_sed_inplace 's/value: 1000000/value: 2000000/; s/title: "Receiver knowledge"/title: "Receiver configuration"/; s/state: "active"/state: "completed"/; /next_action:/d; /forecast_ref:/d; /state: "completed"/a\
+\      completed_at: "2000-01-01T00:00:00Z"' "$TMP_ROOT/edited.yaml"
 # Synthetic source confirmation resolves only this fixture unknown.
 awk '/^  "unknown:receiver:units":/{drop=1} /^  "verification:receiver:clock":/{drop=0} !drop' "$TMP_ROOT/edited.yaml" > "$TMP_ROOT/no-unknown.yaml"
 mv -- "$TMP_ROOT/no-unknown.yaml" "$TMP_ROOT/edited.yaml"
@@ -79,7 +81,7 @@ denied() {
 snapshot_tmp=$(mktemp "$session_dir/.understanding-snapshot.XXXXXX")
 allowed "cp '$session_dir/project-understanding.yaml' '$snapshot_tmp'"
 cp -- "$session_dir/project-understanding.yaml" "$snapshot_tmp"
-sed -i 's/value: 1000000/value: 2000000/' "$snapshot_tmp"
+eci_sed_inplace 's/value: 1000000/value: 2000000/' "$snapshot_tmp"
 allowed "mv '$snapshot_tmp' '$session_dir/project-understanding.yaml'"
 mv -- "$snapshot_tmp" "$session_dir/project-understanding.yaml"
 parse "$session_dir/project-understanding.yaml" | jq -e '.records["context:receiver:clock"].data.value==2000000' >/dev/null

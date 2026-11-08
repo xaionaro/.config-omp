@@ -14,7 +14,8 @@ set -euo pipefail
 account="${ECI_ACCOUNT_KIMI_CODE_HOME:?run-isolated.sh must export ECI_ACCOUNT_KIMI_CODE_HOME}"
 account_home="${account%/.kimi-code}"
 tests_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-logical_home="$(getent passwd "$(id -un)" | cut -d: -f6)"
+. "$tests_dir/portable-test.sh"
+logical_home="$(eci_user_home)"
 probe="zz-isolation-probe.$$"
 # Tests that run the Kimi peer's hooks or bin; step 3 runs each one.
 peer_touching_tests=(test-eci-malformed-input-parity.sh)
@@ -29,7 +30,7 @@ note_failure() {
 account_state() {
   local dir
   for dir in "$account" "$account/hooks" "$account/bin"; do
-    printf '%s mtime=%s entries=%s\n' "${dir#"$account_home"/}" "$(stat -c '%y' -- "$dir")" \
+    printf '%s mtime=%s entries=%s\n' "${dir#"$account_home"/}" "$(eci_mtime "$dir")" \
       "$(find "$dir" -mindepth 1 -maxdepth 1 | wc -l)"
   done
 }
@@ -47,7 +48,7 @@ if [ -n "$offenders" ]; then
 fi
 
 # 2. Writes through the isolated peer path.
-[ "$(realpath -e -- "$HOME/.kimi-code")" != "$(realpath -e -- "$account")" ] ||
+[ "$(eci_realpath_existing "$HOME/.kimi-code")" != "$(eci_realpath_existing "$account")" ] ||
   note_failure 'the isolated Kimi peer resolves to the account peer'
 before="$(account_state)"
 printf 'probe\n' >"$HOME/.kimi-code/$probe"

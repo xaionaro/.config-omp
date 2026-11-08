@@ -6,6 +6,7 @@ umask 077
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$SOURCE_ROOT/hooks/tests/require-go.sh"
+. "$SOURCE_ROOT/hooks/tests/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-repository-allow.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -43,9 +44,9 @@ for path in "$WORK" "$DEPENDENCY" "$UNDECLARED_DEPENDENCY"; do
   git -C "$path" commit -qm initial
 done
 
-WORK="$(realpath -e -- "$WORK")"
+WORK="$(eci_realpath_existing "$WORK")"
 DEPENDENCY_ALIAS="$DEPENDENCY"
-DEPENDENCY="$(realpath -e -- "$DEPENDENCY")"
+DEPENDENCY="$(eci_realpath_existing "$DEPENDENCY")"
 WORKER_SCRIPT="$DEPENDENCY/allowance-script.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORKER_SCRIPT"
 chmod 755 -- "$WORKER_SCRIPT"
@@ -215,7 +216,7 @@ fi
     'active session owns narrow dependency Git work'
 )
 
-[ -f "$ALLOWANCE" ] && [ "$(stat -Lc '%a' -- "$ALLOWANCE")" = 600 ]
+[ -f "$ALLOWANCE" ] && [ "$(eci_stat mode "$(eci_realpath_existing "$ALLOWANCE")")" = 600 ]
 grep -Fqx -- "repository: $DEPENDENCY" "$ALLOWANCE"
 grep -Fqx -- 'reason: active session owns narrow dependency Git work' "$ALLOWANCE"
 assert_allowed_lifecycle '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-status'

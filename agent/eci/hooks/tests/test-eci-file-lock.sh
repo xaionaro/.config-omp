@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-file-lock.XXXXXX")"
 children=()
 cleanup() {
@@ -128,7 +129,7 @@ NATIVE_PLATFORM="$(command uname -s)"
 # Poll observable kernel state with a deadline; time never establishes readiness.
 wait_for_linux_lock_waiter() {
   local path="$1" child="$2" inode deadline=$((SECONDS + 5))
-  inode="$(stat -c %i "$path")"
+  inode="$(ls -di -- "$path" | awk '{print $1}')"
   while ! awk -v inode="$inode" '
     $2 == "->" && $3 == "FLOCK" {
       split($7, identity, ":")

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eci-review-least-restriction.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 source "$ROOT/hooks/lib/eci-file-lock.sh"
@@ -264,7 +265,7 @@ test_symlinked_current_review_cwd_resolves_within_repo() {
     cat "$err" >&2
     fail 'a review-cwd alias resolving to the current repository was rejected'
   fi
-  resolved_target="$(realpath -e -- "$repo/current.txt")"
+  resolved_target="$(eci_realpath_existing "$repo/current.txt")"
   grep -Fq "target=$resolved_target" "$out" || {
     cat "$out" >&2
     fail 'review-cwd alias did not resolve to the current repository target'
@@ -284,7 +285,7 @@ test_symlinked_current_target_resolves_within_repo() {
     cat "$err" >&2
     fail 'a current-target alias resolving within the repository was rejected'
   fi
-  resolved_target="$(realpath -e -- "$repo/current.txt")"
+  resolved_target="$(eci_realpath_existing "$repo/current.txt")"
   grep -Fq "target=$resolved_target" "$out" || {
     cat "$out" >&2
     fail 'current-target alias did not resolve to the changed file'
@@ -297,8 +298,8 @@ test_singleton_commit_history_and_lock_are_nonblocking() {
 
   setup_fixture
   printf 'stale commit receipt\n' >"$proof_root/$session_id/eci-commit-admitted"
-  receipt_before="$(sha256sum -- "$proof_root/$session_id/eci-commit-admitted" | awk '{print $1}')"
-  identity_before="$(sha256sum -- "$proof_root/$session_id/eci-critic-identities.ledger" | awk '{print $1}')"
+  receipt_before="$(eci_sha256_hex "$proof_root/$session_id/eci-commit-admitted")"
+  identity_before="$(eci_sha256_hex "$proof_root/$session_id/eci-critic-identities.ledger")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
     eci_file_lock_acquire_fd 9 nonblocking
@@ -315,9 +316,9 @@ test_singleton_commit_history_and_lock_are_nonblocking() {
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail 'commit did not route a fresh critic reminder'
-  [ "$(sha256sum -- "$proof_root/$session_id/eci-commit-admitted" | awk '{print $1}')" = "$receipt_before" ] ||
+  [ "$(eci_sha256_hex "$proof_root/$session_id/eci-commit-admitted")" = "$receipt_before" ] ||
     fail 'commit created or rewrote a legacy permission receipt'
-  [ "$(sha256sum -- "$proof_root/$session_id/eci-critic-identities.ledger" | awk '{print $1}')" = "$identity_before" ] ||
+  [ "$(eci_sha256_hex "$proof_root/$session_id/eci-critic-identities.ledger")" = "$identity_before" ] ||
     fail 'commit rewrote historical identities'
 }
 
@@ -327,8 +328,8 @@ test_singleton_off_history_and_lock_are_nonblocking() {
 
   setup_fixture
   write_marker "$repo"
-  marker_before="$(sha256sum -- "$proof_root/$session_id/eci_active" | awk '{print $1}')"
-  anchor_before="$(sha256sum -- "$proof_root/$session_id/eci-acceptance-anchor" | awk '{print $1}')"
+  marker_before="$(eci_sha256_hex "$proof_root/$session_id/eci_active")"
+  anchor_before="$(eci_sha256_hex "$proof_root/$session_id/eci-acceptance-anchor")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
     eci_file_lock_acquire_fd 9 nonblocking
@@ -345,9 +346,9 @@ test_singleton_off_history_and_lock_are_nonblocking() {
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail 'off did not route a fresh critic reminder'
-  [ "$(sha256sum -- "$proof_root/$session_id/eci_active" | awk '{print $1}')" = "$marker_before" ] ||
+  [ "$(eci_sha256_hex "$proof_root/$session_id/eci_active")" = "$marker_before" ] ||
     fail 'off gate rewrote the current marker'
-  [ "$(sha256sum -- "$proof_root/$session_id/eci-acceptance-anchor" | awk '{print $1}')" = "$anchor_before" ] ||
+  [ "$(eci_sha256_hex "$proof_root/$session_id/eci-acceptance-anchor")" = "$anchor_before" ] ||
     fail 'off gate rewrote historical anchor state'
 }
 
@@ -356,7 +357,7 @@ assert_aggregate_history_phase_is_nonblocking() {
   local lock_ready="$TMP_ROOT/aggregate-$1-lock-ready" holder anchor_before
 
   setup_aggregate_fixture
-  anchor_before="$(sha256sum -- "$proof_root/$session_id/eci-aggregate.repo-a.acceptance-anchor" | awk '{print $1}')"
+  anchor_before="$(eci_sha256_hex "$proof_root/$session_id/eci-aggregate.repo-a.acceptance-anchor")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
     eci_file_lock_acquire_fd 9 nonblocking
@@ -373,7 +374,7 @@ assert_aggregate_history_phase_is_nonblocking() {
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail "aggregate $phase did not route a fresh critic reminder"
-  [ "$(sha256sum -- "$proof_root/$session_id/eci-aggregate.repo-a.acceptance-anchor" | awk '{print $1}')" = "$anchor_before" ] ||
+  [ "$(eci_sha256_hex "$proof_root/$session_id/eci-aggregate.repo-a.acceptance-anchor")" = "$anchor_before" ] ||
     fail "aggregate $phase gate rewrote historical anchor state"
 }
 
@@ -414,7 +415,7 @@ test_aggregate_symlink_current_target_resolves_within_repo() {
     cat "$err" >&2
     fail 'an aggregate target alias resolving within the selected repository was rejected'
   fi
-  resolved_target="$(realpath -e -- "$aggregate_repo/current.txt")"
+  resolved_target="$(eci_realpath_existing "$aggregate_repo/current.txt")"
   grep -Fq "target=$resolved_target" "$out" || {
     cat "$out" >&2
     fail 'aggregate target alias did not resolve to the changed file'
@@ -454,7 +455,7 @@ test_aggregate_symlinked_repository_target_resolves_within_parent() {
     cat "$err" >&2
     fail 'an aggregate repository alias resolving within the parent was rejected'
   fi
-  resolved_target="$(realpath -e -- "$aggregate_repo/current.txt")"
+  resolved_target="$(eci_realpath_existing "$aggregate_repo/current.txt")"
   grep -Fq "target=$resolved_target" "$out" || {
     cat "$out" >&2
     fail 'aggregate repository alias did not resolve to the selected target'

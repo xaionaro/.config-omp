@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run the published command planner; command policy lives in Go.
+case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" PreToolUse ;; *) . ./lib/eci-bash-guard.sh PreToolUse ;; esac
 set -Eeuo pipefail
 # Constant deny when jq is unavailable or failed.  It names the planner and its
 # provisioning script so the agent can repair the gate without another hook.

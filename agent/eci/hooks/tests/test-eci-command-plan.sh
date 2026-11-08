@@ -5,8 +5,10 @@ set -euo pipefail
 ECI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KIMI_ROOT="${KIMI_CODE_HOME:-${HOME:?}/.kimi-code}"
 tmp_parent="${ECI_TMPDIR:-${HOME:?}/tmp}"
-eci_device="$(stat -Lc '%d' -- "$ECI_ROOT" 2>/dev/null || true)"
-tmp_device="$(stat -Lc '%d' -- "$tmp_parent" 2>/dev/null || true)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+# Device of each path after following links (stat -L).
+eci_device="$(eci_stat dev "$(eci_realpath_existing "$ECI_ROOT")" 2>/dev/null || true)"
+tmp_device="$(eci_stat dev "$(eci_realpath_existing "$tmp_parent")" 2>/dev/null || true)"
 if [ -z "$eci_device" ] || [ "$eci_device" != "$tmp_device" ]; then
   # Hardlink identity cases must be created on the same filesystem as the
   # provider source.  The fallback is fixture setup only; every production

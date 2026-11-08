@@ -5,6 +5,7 @@ umask 077
 trap 'status=$?; printf "protected Git target test failure: line=%s status=%s command=%q\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eci-protected-git-target.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT
 
@@ -16,7 +17,7 @@ fixture_root="$TMP_ROOT/home/.omp/agent/eci"
 mkdir -p -- "$(dirname -- "$fixture_root")"
 cp -a -- "$ROOT" "$fixture_root"
 rm -rf -- "$fixture_root/.git"
-sed -i '2{/^exit 0$/d;}' -- "$fixture_root/hooks/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$fixture_root/hooks/validate-bash.sh"
 git -C "$fixture_root" init --quiet
 git -C "$fixture_root" add -A
 git -C "$fixture_root" -c user.name=eci-test -c user.email=eci-test@invalid commit --quiet -m fixture

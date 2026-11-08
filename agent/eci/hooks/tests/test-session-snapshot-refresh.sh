@@ -4,7 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/hooks/lib/eci-file-lock.sh"
-TMP_ROOT="$(realpath -e -- "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-session-refresh.XXXXXX")")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_ROOT="$(eci_realpath_existing "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-session-refresh.XXXXXX")")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null; rm -rf -- "$TMP_ROOT"' EXIT
 
 # The hook derives its baseline repository from the input cwd. ROOT is a run-isolated
@@ -68,7 +69,7 @@ test_session_start_rejects_marker_owner_mismatch() {
   local proof_root="$TMP_ROOT/mismatched-owner-proof" out
   mkdir -p "$proof_root/t00-session"
   write_direct_marker "$proof_root" 'mismatched owner must not refresh'
-  sed -i 's/^session_id: t00-session$/session_id: t00-other/' "$proof_root/t00-session/eci_active"
+  eci_sed_inplace 's/^session_id: t00-session$/session_id: t00-other/' "$proof_root/t00-session/eci_active"
   out="$TMP_ROOT/mismatched-owner.out"
   run_snapshot "$proof_root" resume "$out"
   assert_matches_inactive_baseline "$out" mismatched-owner
@@ -364,7 +365,7 @@ test_source_checkout_provisions_native_tools_into_bin() {
   # the absent name only; the loader then verifies the new receipt before the import.
   local rc tamper_at byte importer_identity others_identity
   local -a sha others=()
-  if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
+  sha=("${eci_sha256_command[@]}")
   for tool in "$fixture/bin/"*.sha256; do
     tool="${tool##*/}" && tool="${tool%.sha256}"
     [ "$tool" = eci-safe-import ] || others+=("$tool" "$tool.sha256")
@@ -372,7 +373,13 @@ test_source_checkout_provisions_native_tools_into_bin() {
   [ "${#others[@]}" -ge 6 ]
   # Name, inode and mtime of bin/ entries: build-native-binaries.sh installs by mv -f, so a rebuild changes the inode.
   native_identity() (
-    cd -- "$fixture/bin" && stat -c '%n %i %Y' -- "$@"
+    local name inode mtime
+    cd -- "$fixture/bin" || exit 1
+    for name in "$@"; do
+      inode="$(ls -di -- "$name" | awk '{print $1}')" && [ -n "$inode" ] || exit 1
+      mtime="$(eci_mtime "$name")" || exit 1
+      printf '%s %s %s\n' "$name" "$inode" "$mtime"
+    done
   )
   others_identity="$(native_identity "${others[@]}")"
   mkdir -p "$TMP_ROOT/import-proof/import-on-demand"

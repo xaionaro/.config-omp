@@ -64,11 +64,11 @@ allow_current_target_or_refresh() {
   # Spelling a current directory through an in-scope symlink is not an
   # accidental mistake. Resolve it first; the resolved repository boundary
   # below decides whether it actually escapes the review scope.
-  review_cwd="$(realpath -e -- "$review_cwd_raw" 2>/dev/null || true)"
+  review_cwd="$(eci_realpath_existing "$review_cwd_raw" 2>/dev/null || true)"
   [ -n "$review_cwd" ] && [ -d "$review_cwd" ] ||
     fail_gate 'ECI required-critic review gate rejected an unsafe review cwd.'
   if [ -n "$repo_root_hint" ]; then
-    repo_root="$(realpath -e -- "$repo_root_hint" 2>/dev/null || true)"
+    repo_root="$(eci_realpath_existing "$repo_root_hint" 2>/dev/null || true)"
     [ -n "$repo_root" ] && [ -d "$repo_root" ] ||
       fail_gate 'ECI required-critic review gate rejected an unsafe current repository target.'
   else
@@ -78,7 +78,7 @@ allow_current_target_or_refresh() {
       return 0
     fi
   fi
-  repo_root="$(realpath -e -- "$repo_root" 2>/dev/null || true)"
+  repo_root="$(eci_realpath_existing "$repo_root" 2>/dev/null || true)"
   [ -n "$repo_root" ] && [ -d "$repo_root" ] ||
     fail_gate 'ECI required-critic review gate rejected an unsafe current repository target.'
   actual_repo_root="$(git -C "$repo_root" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -86,7 +86,7 @@ allow_current_target_or_refresh() {
     review_refresh_needed 'no current repository is available for review' "$repo_root"
     return 0
   fi
-  actual_repo_root="$(realpath -e -- "$actual_repo_root" 2>/dev/null || true)"
+  actual_repo_root="$(eci_realpath_existing "$actual_repo_root" 2>/dev/null || true)"
   [ -n "$actual_repo_root" ] && [ -d "$actual_repo_root" ] ||
     fail_gate 'ECI required-critic review gate rejected an unsafe current repository target.'
   repo_root="$actual_repo_root"
@@ -111,9 +111,9 @@ allow_current_target_or_refresh() {
     /*) target_candidate="$target" ;;
     *) target_candidate="$repo_root/$target" ;;
   esac
-  target_path="$(realpath -e -- "$target_candidate" 2>/dev/null || true)"
+  target_path="$(eci_realpath_existing "$target_candidate" 2>/dev/null || true)"
   if [ -z "$target_path" ]; then
-    target_path="$(realpath -m -- "$target_candidate" 2>/dev/null || true)"
+    target_path="$(eci_realpath_canonical "$target_candidate" 2>/dev/null || true)"
     review_refresh_needed 'the current target no longer exists' "$target_path"
     return 0
   fi
@@ -141,7 +141,7 @@ allow_aggregate_current_target_or_refresh() {
   local parent_cwd_raw="$1" parent_cwd="$1" repo_id="$2" plan_path="$3" manifest_path="$4"
   local repo_root actual_repo_root
 
-  parent_cwd="$(realpath -e -- "$parent_cwd_raw" 2>/dev/null || true)"
+  parent_cwd="$(eci_realpath_existing "$parent_cwd_raw" 2>/dev/null || true)"
   [ -n "$parent_cwd" ] && [ -d "$parent_cwd" ] ||
     fail_gate 'ECI aggregate review gate rejected an unsafe current aggregate parent cwd.'
 
@@ -165,7 +165,7 @@ allow_aggregate_current_target_or_refresh() {
     review_refresh_needed 'aggregate metadata has no current selected repository' "$parent_cwd"
     return 0
   fi
-  repo_root="$(realpath -e -- "$repo_root" 2>/dev/null || true)"
+  repo_root="$(eci_realpath_existing "$repo_root" 2>/dev/null || true)"
   if [ -z "$repo_root" ] || [ ! -d "$repo_root" ]; then
     review_refresh_needed 'the selected aggregate repository no longer exists' "$parent_cwd"
     return 0
@@ -176,7 +176,7 @@ allow_aggregate_current_target_or_refresh() {
     review_refresh_needed 'the selected aggregate repository is no longer a current Git worktree' "$repo_root"
     return 0
   fi
-  actual_repo_root="$(realpath -e -- "$actual_repo_root" 2>/dev/null || true)"
+  actual_repo_root="$(eci_realpath_existing "$actual_repo_root" 2>/dev/null || true)"
   [ -n "$actual_repo_root" ] && [ -d "$actual_repo_root" ] ||
     fail_gate 'ECI aggregate review gate rejected an unsafe current aggregate repository target.'
   case "$actual_repo_root" in

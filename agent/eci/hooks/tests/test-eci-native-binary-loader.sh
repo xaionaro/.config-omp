@@ -11,6 +11,7 @@ set -euo pipefail
 umask 077
 
 tests_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$tests_dir/portable-test.sh"
 loader="${1:-$tests_dir/../lib/eci-native-binary.sh}"
 host_os="$(uname -s)"
 case "$host_os" in
@@ -93,13 +94,7 @@ else
   format_reason='is not a Mach-O executable for this host'
 fi
 
-digest_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum -- "$1" | cut -d ' ' -f 1
-  else
-    shasum -a 256 -- "$1" | cut -d ' ' -f 1
-  fi
-}
+digest_of() { eci_sha256_hex "$1"; }
 write_receipt() {  # write_receipt <binary> <receipt name>
   printf '%s  %s\n' "$(digest_of "$1")" "$2" >"$1.sha256"
 }

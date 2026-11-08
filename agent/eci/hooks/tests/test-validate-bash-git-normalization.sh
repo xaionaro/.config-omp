@@ -6,6 +6,7 @@ umask 077
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$SOURCE_ROOT/hooks/tests/require-go.sh"
+. "$SOURCE_ROOT/hooks/tests/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-git-normalization.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -17,7 +18,7 @@ mkdir -p -- "$RUNTIME_ROOT" "$TMP_ROOT/config/eci" "$TMP_ROOT/state"
 cp -a -- "$SOURCE_ROOT/hooks" "$RUNTIME_ROOT"
 mkdir -p -- "$RUNTIME_ROOT/bin"
 cp -a -- "$SOURCE_ROOT/bin/eci-command-gate-mode" "$RUNTIME_ROOT/bin/"
-sed -i '2{/^exit 0$/d;}' -- "$RUNTIME_ROOT/hooks/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$RUNTIME_ROOT/hooks/validate-bash.sh"
 
 # Provision the gate binaries the hook verifies ($HOME/.omp/agent/eci/bin and
 # their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
@@ -35,9 +36,9 @@ NON_REPO="$TMP_ROOT/not-a-repository"
 mkdir -p -- "$REPO" "$FOREIGN_REPO" "$NON_REPO"
 git -C "$REPO" init -q
 git -C "$FOREIGN_REPO" init -q
-REPO="$(realpath -e -- "$REPO")"
-FOREIGN_REPO="$(realpath -e -- "$FOREIGN_REPO")"
-NON_REPO="$(realpath -e -- "$NON_REPO")"
+REPO="$(eci_realpath_existing "$REPO")"
+FOREIGN_REPO="$(eci_realpath_existing "$FOREIGN_REPO")"
+NON_REPO="$(eci_realpath_existing "$NON_REPO")"
 
 SESSION='git-normalization-session'
 PROOF_ROOT="$TMP_ROOT/proof"

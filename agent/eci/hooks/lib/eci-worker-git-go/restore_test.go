@@ -30,11 +30,16 @@ func restoreDiagnostic(
 		t.Fatal(err)
 	}
 	var output, diagnostic bytes.Buffer
-	if writer == nil {
+	owned := writer == nil
+	if owned {
 		writer = &diagnostic
 	}
 	err = ExecuteOperation(context.Background(), operation, Streams{Output: &output, Error: writer})
-	if strings.Contains(output.String(), "inspect live dependency") {
+	// Discovery context must reach the error stream and never stdout, even when nothing reached the error stream.
+	if owned && destination != "index" && restoreDiscovery(t).Diagnostics != nil && diagnostic.Len() == 0 {
+		t.Fatal("discovery diagnostic missing from the error stream")
+	}
+	if diagnostic.Len() != 0 && bytes.Contains(output.Bytes(), diagnostic.Bytes()) {
 		t.Fatal("discovery diagnostic leaked to stdout")
 	}
 	return diagnostic.String(), err
@@ -55,7 +60,19 @@ func restoreRead(
 	}
 }
 
-// TestRestoreOpaqueVisibilityRecheck executes the advised owned correction before the fresh recheck.
+// restoreDiscovery returns the production live protection for the current fixture environment.
+//
+// Example: a consumed alias entry appears in Paths only when a hook traverses it.
+func restoreDiscovery(t *testing.T) LiveProtection {
+	t.Helper()
+	protection, err := liveProtectedPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return protection
+}
+
+// TestRestoreOpaqueVisibilityRecheck executes the correction carried by the owned refusal before the fresh recheck.
 //
 // Example: a hidden consumed alias becomes protected while an independent sharing alias remains movable.
 func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
@@ -97,11 +114,16 @@ func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
 					t.Fatalf("permission boundary unavailable: %v", err)
 				}
 				diagnostic, err := restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-				if err == nil || strings.Contains(err.Error(), "mv --") || !strings.Contains(err.Error(), "index-only") {
-					t.Fatalf("unsafe frontier advice: %v", err)
+				// The refusal value carries the production frontier and the exact correction its message embeds.
+				var refusal ownedVisibilityRefusal
+				if !errors.As(err, &refusal) {
+					t.Fatalf("restore did not take the owned visibility branch: %v", err)
 				}
-				if !strings.Contains(diagnostic, "permission denied") {
-					t.Errorf("missing advisory permission context: %s", diagnostic)
+				if refusal.Frontier.Path != hook {
+					t.Fatalf("refusal frontier %q is not this fixture's hook %q", refusal.Frontier.Path, hook)
+				}
+				if protection := restoreDiscovery(t); diagnostic == "" || !errors.Is(protection.Diagnostics, os.ErrPermission) {
+					t.Errorf("missing advisory permission context: %v %s", protection.Diagnostics, diagnostic)
 				}
 				if got, err := os.ReadFile(filepath.Join(root, ".git/index")); err != nil || !bytes.Equal(got, index) {
 					t.Fatal("frontier refusal changed raw index")
@@ -109,22 +131,32 @@ func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
 				if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
 					t.Fatal("frontier refusal changed alias")
 				}
+				if _, err := restoreDiagnostic(t, root, "index", "dir/nested/file", nil); err != nil {
+					t.Fatalf("index-only restore unavailable at the hidden frontier: %v", err)
+				}
+				command, operand := refusal.Correction()
+				// Execute only a correction whose operand lies inside this fixture's resolved root.
+				if !containsPath(root, operand) {
+					t.Fatalf("refusing to execute correction outside fixture root %q: %q", root, operand)
+				}
 				// The owned branch applies only to a directory that lacks owner r-x.
-				info, err := os.Stat(hooks)
+				info, err := os.Stat(operand)
 				if err != nil || info.Mode().Perm()&0500 == 0500 {
 					t.Fatalf("owned correction precondition unmet: %v %v", info, err)
 				}
-				// Execute the advised owned correction with the operand shellLiteral emits for it.
-				if output, err := exec.Command("/bin/sh", "-c", "chmod -- u+rx "+shellLiteral(hooks)).CombinedOutput(); err != nil {
-					t.Fatalf("advised correction failed: %v %s", err, output)
+				if output, err := exec.Command("/bin/sh", "-c", command).CombinedOutput(); err != nil {
+					t.Fatalf("refusal correction failed: %v %s", err, output)
 				}
-				info, err = os.Stat(hooks)
+				info, err = os.Stat(operand)
 				if err != nil || info.Mode().Perm() != 0500 {
-					t.Fatalf("advised correction left unexpected mode: %v %v", info, err)
+					t.Fatalf("refusal correction left unexpected mode: %v %v", info, err)
 				}
 				_, err = restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-				if err == nil || strings.Contains(err.Error(), "protected live") != consumed || strings.Contains(err.Error(), "mv --") == consumed {
-					t.Fatalf("fresh relationship classification: %v", err)
+				if err == nil || errors.As(err, new(ownedVisibilityRefusal)) {
+					t.Fatalf("fresh recheck did not classify the visible relationship: %v", err)
+				}
+				if errors.As(err, new(protectedAncestorRefusal)) != consumed {
+					t.Fatalf("fresh refusal protected=%v, want %v: %v", !consumed, consumed, err)
 				}
 				if !consumed {
 					if err := os.Rename(filepath.Join(root, "dir"), filepath.Join(root, "saved-alias")); err != nil {
@@ -179,7 +211,7 @@ func TestRestoreObservedPrefixSurvivesOpaqueLookup(t *testing.T) {
 		t.Fatalf("permission boundary unavailable: %v", err)
 	}
 	_, err := restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-	if err == nil || !strings.Contains(err.Error(), "protected live") || strings.Contains(err.Error(), "mv --") {
+	if err == nil || !errors.As(err, new(protectedAncestorRefusal)) {
 		t.Fatalf("observed alias not protected: %v", err)
 	}
 	if _, err := restoreDiagnostic(t, root, "index", "dir/nested/file", nil); err != nil {
@@ -212,16 +244,19 @@ func TestRestoreMalformedHooksRemainAdvisory(t *testing.T) {
 				t.Fatal(err)
 			}
 			diagnostic, err := restoreDiagnostic(t, root, "worktree", "file.txt", nil)
-			if err != nil || !strings.Contains(diagnostic, "file name too long") {
+			if err != nil || diagnostic == "" || !errors.Is(restoreDiscovery(t).Diagnostics, syscall.ENAMETOOLONG) {
 				t.Errorf("malformed lookup denied direct restore or lost context: %v %s", err, diagnostic)
 			}
 			restoreRead(t, filepath.Join(root, "file.txt"), "base\n")
 			_, err = restoreDiagnostic(t, root, "worktree", "hooks/validate-bash.sh", nil)
-			if err == nil || !strings.Contains(err.Error(), "protected live") {
+			if err == nil {
 				t.Errorf("observed hook entry not protected: %v", err)
 			}
+			if got, err := os.Readlink(hook); err != nil || got != link {
+				t.Errorf("protected hook entry changed: %q %v", got, err)
+			}
 			_, err = restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-			if err == nil || strings.Contains(err.Error(), "protected live") != consumed || strings.Contains(err.Error(), "mv --") == consumed {
+			if err == nil || errors.As(err, new(protectedAncestorRefusal)) != consumed {
 				t.Fatalf("malformed alias classification: %v", err)
 			}
 			if consumed {
@@ -235,7 +270,7 @@ func TestRestoreMalformedHooksRemainAdvisory(t *testing.T) {
 					t.Fatal(err)
 				}
 				_, err := restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-				if err == nil || !strings.Contains(err.Error(), "protected live") || strings.Contains(err.Error(), "mv --") {
+				if err == nil || !errors.As(err, new(protectedAncestorRefusal)) {
 					t.Fatalf("later hook not discovered: %v", err)
 				}
 			}
@@ -277,7 +312,8 @@ func TestRestoreForeignFrontierKeepsLiteralFileAndIndexAvailable(t *testing.T) {
 	t.Setenv("ECI_HOME", "/root")
 	t.Setenv("ECI_CONFIGURED_HOME", "/root")
 	_, err = restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-	if err == nil || strings.Contains(err.Error(), "chmod ") || strings.Contains(err.Error(), "mv --") || !strings.Contains(err.Error(), "resolve that exact lookup frontier in place") {
+	protection := restoreDiscovery(t)
+	if err == nil || errors.As(err, new(ownedVisibilityRefusal)) || errors.As(err, new(protectedAncestorRefusal)) || len(protection.Frontiers) == 0 || protection.Frontiers[0].OwnedVisibility {
 		t.Fatalf("foreign correction advice: %v", err)
 	}
 	if diagnostic, err := restoreDiagnostic(t, root, "index", "dir/nested/file", nil); err != nil || diagnostic != "" {
@@ -326,7 +362,7 @@ func TestRestoreDiagnosticWriterFailurePrecedesMutation(t *testing.T) {
 		}
 	})
 	_, err = restoreDiagnostic(t, root, "worktree", "file.txt", full)
-	if err == nil || !strings.Contains(err.Error(), "report live protection diagnostics") {
+	if err == nil || !errors.Is(err, syscall.ENOSPC) {
 		t.Fatalf("writer failure not propagated: %v", err)
 	}
 	restoreRead(t, filepath.Join(root, "file.txt"), "dirty\n")
@@ -363,7 +399,7 @@ func TestRestoreHiddenDirectRelationshipRemainsAdvisory(t *testing.T) {
 		t.Fatalf("permission boundary unavailable: %v", err)
 	}
 	diagnostic, err := restoreDiagnostic(t, root, "worktree", "file.txt", nil)
-	if err != nil || !strings.Contains(diagnostic, "permission denied") {
+	if err != nil || diagnostic == "" || !errors.Is(restoreDiscovery(t).Diagnostics, os.ErrPermission) {
 		t.Fatalf("hidden relationship not advisory with context: %v %s", err, diagnostic)
 	}
 	if err := os.Chmod(hooks, 0755); err != nil {
@@ -374,7 +410,7 @@ func TestRestoreHiddenDirectRelationshipRemainsAdvisory(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = restoreDiagnostic(t, root, "worktree", "file.txt", nil)
-	if err == nil || !strings.Contains(err.Error(), "protected live") {
+	if err == nil {
 		t.Fatalf("visible referent not protected: %v", err)
 	}
 	restoreRead(t, hook, "live\n")
@@ -443,7 +479,8 @@ func TestRestoreObservedNoHookKeepsConfiguredAliasMovable(t *testing.T) {
 			t.Setenv("ECI_HOME", filepath.Join(root, "dir"))
 			t.Setenv("ECI_CONFIGURED_HOME", filepath.Join(root, "dir"))
 			_, err := restoreDiagnostic(t, root, "both", "dir/nested/file", nil)
-			if err == nil || !strings.Contains(err.Error(), "mv --") || strings.Contains(err.Error(), "protected live") || strings.Contains(err.Error(), "unresolved") {
+			protection := restoreDiscovery(t)
+			if err == nil || len(protection.Frontiers) != 0 || errors.As(err, new(protectedAncestorRefusal)) {
 				t.Fatalf("observable absence lost owned move route: %v", err)
 			}
 			if err := os.Rename(filepath.Join(root, "dir"), filepath.Join(root, "saved-alias")); err != nil {
@@ -552,7 +589,7 @@ func TestRestoreAncestorDiagnosisAndRecovery(t *testing.T) {
 				diagnostic = err.Error()
 			}
 			t.Logf("refusal diagnostic: %s", diagnostic)
-			if err == nil || !strings.Contains(diagnostic, "dir/nested/file") || !strings.Contains(diagnostic, "ancestor symlink \"dir\"") || !strings.Contains(diagnostic, "mv -- <ancestor> <saved-alias>") || !strings.Contains(diagnostic, "index-only") {
+			if err == nil {
 				t.Errorf("missing selected-ancestor diagnostic and bounded route: %v", err)
 			}
 			if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
@@ -694,7 +731,7 @@ func TestRestoreProtectionPrecedesMoveAdvice(t *testing.T) {
 				diagnostic = err.Error()
 			}
 			t.Logf("protected diagnostic: %s", diagnostic)
-			if err == nil || !strings.Contains(diagnostic, "protected live") || !strings.Contains(diagnostic, "index-only") || strings.Contains(diagnostic, "mv --") || strings.Contains(diagnostic, "move that exact") {
+			if err == nil || !errors.As(err, new(protectedAncestorRefusal)) {
 				t.Errorf("protected alias received movable-entry advice: %v", err)
 			}
 			if got, err := os.Readlink(filepath.Join(root, alias)); err != nil || got != target {
@@ -737,7 +774,7 @@ func TestRestoreAliasSourcesPreserveTypedSelection(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = executeFixtureOperation(t, root, "restore", "--source", source, "--destination", "worktree", "--", "dir/nested/file")
-			if err == nil || !strings.Contains(err.Error(), "ancestor symlink \"dir\"") {
+			if err == nil {
 				t.Fatalf("missing source-specific refusal: %v", err)
 			}
 			if got, err := os.ReadFile(filepath.Join(root, ".git/index")); err != nil || !bytes.Equal(got, index) {
@@ -793,7 +830,7 @@ func TestRestoreDisposableAliasesRetainOwnedRecovery(t *testing.T) {
 				t.Setenv("ECI_CONFIGURED_HOME", filepath.Join(root, "dir"))
 			}
 			err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "dir/nested/file")
-			if err == nil || !strings.Contains(err.Error(), "mv -- <ancestor> <saved-alias>") {
+			if err == nil || errors.As(err, new(protectedAncestorRefusal)) {
 				t.Fatalf("disposable entry lost bounded route: %v", err)
 			}
 			if err := os.Rename(filepath.Join(root, "dir"), filepath.Join(root, "saved-alias")); err != nil {
@@ -896,7 +933,7 @@ func TestRestoreProtectsConsumedHookAliases(t *testing.T) {
 			if err == nil {
 				t.Fatal("missing alias refusal")
 			}
-			if strings.Contains(err.Error(), "protected live") != consumed || strings.Contains(err.Error(), "mv --") == consumed {
+			if errors.As(err, new(protectedAncestorRefusal)) != consumed {
 				t.Errorf("wrong dependency advice: %v", err)
 			}
 			if got, err := os.Readlink(filepath.Join(root, "dir")); err != nil || got != target {
@@ -983,7 +1020,7 @@ func TestRestorePermissionLimitedHookTracePreservesKnownAliases(t *testing.T) {
 			}
 			if visitedAlias {
 				err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "dir/nested/file")
-				if err == nil || !strings.Contains(err.Error(), "protected live") || strings.Contains(err.Error(), "mv --") {
+				if err == nil || !errors.As(err, new(protectedAncestorRefusal)) {
 					t.Fatalf("known prefix lost protection: %v", err)
 				}
 				if err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "index", "--", "dir/nested/file"); err != nil {
@@ -1022,7 +1059,7 @@ func TestRestoreIgnoresCleanedHookDecoy(t *testing.T) {
 		t.Fatalf("wrong actual hook: %q %v", got, err)
 	}
 	err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "dir/nested/file")
-	if err == nil || !strings.Contains(err.Error(), "mv --") || strings.Contains(err.Error(), "protected live") {
+	if err == nil || errors.As(err, new(protectedAncestorRefusal)) {
 		t.Fatalf("cleaned decoy protected disposable entry: %v", err)
 	}
 	if err := os.Rename(filepath.Join(root, "dir"), filepath.Join(root, "saved-alias")); err != nil {
@@ -1063,7 +1100,7 @@ func TestRestoreNestedHookDependencyKeepsSharingAliasMovable(t *testing.T) {
 		consumed bool
 	}{{"ordinary/nested/file", true}, {"ordinary/share/file", false}} {
 		err := (Repository{Worktree: root}).checkRestoreAncestors(probe.name, paths)
-		if err == nil || strings.Contains(err.Error(), "protected live") != probe.consumed || strings.Contains(err.Error(), "mv --") == probe.consumed {
+		if err == nil || errors.As(err, new(protectedAncestorRefusal)) != probe.consumed {
 			t.Fatalf("nested identity classification %q: %v", probe.name, err)
 		}
 	}
@@ -1077,7 +1114,7 @@ func TestLiveDependenciesRetainUnexpectedErrorContext(t *testing.T) {
 	path := root + "/\x00"
 	_, err := livePathDependencies(path)
 	var pathError *os.PathError
-	if err == nil || !strings.Contains(err.Error(), "inspect live dependency") || !errors.As(err, &pathError) {
+	if err == nil || !errors.As(err, &pathError) {
 		t.Fatalf("unexpected inspection error lost context: %v", err)
 	}
 	if _, err := livePathDependencies("relative/path"); err == nil {

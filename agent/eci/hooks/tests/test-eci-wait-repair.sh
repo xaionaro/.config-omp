@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="${ECI_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-wait-repair.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
@@ -54,7 +55,7 @@ run_active on "wait repair fixture" >"$TMP_ROOT/on.out" 2>"$TMP_ROOT/on.err"
 marker="$session_dir/eci_active"
 report="$session_dir/eci_user_owned_wait.md"
 wait_report_fixture "$report"
-report="$(realpath -e -- "$report")"
+report="$(eci_realpath_existing "$report")"
 run_active wait "$report" >"$TMP_ROOT/wait.out" 2>"$TMP_ROOT/wait.err"
 state="$session_dir/eci_wait"
 marker_before="$TMP_ROOT/marker.before"

@@ -34,6 +34,9 @@ if source_repo="$(git -C "$runtime_root" rev-parse --show-toplevel 2>/dev/null)"
 fi
 test_name="${1:?usage: run-isolated.sh <test-file-in-this-dir> [args...]}"
 shift
+# Resolve go before the native build, so a missing or too-old go fails with the
+# require-go.sh message rather than a generic build failure.
+. "$here/require-go.sh"
 
 export GOPATH="${GOPATH:-$account_home/go}"
 export GOMODCACHE="${GOMODCACHE:-$GOPATH/pkg/mod}"

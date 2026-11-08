@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="${ECI_TEST_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-active-readonly-visibility.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -19,7 +20,7 @@ cp -- "$ROOT/bin/eci-active" "$copy_eci"
 ln -s -- "$copy_eci" "$path_root/eci-active"
 ln -s -- "$copy_eci" "$alias_eci"
 chmod -- 755 "$copy_eci"
-proof_root="$(realpath -e -- "$proof_root")"
+proof_root="$(eci_realpath_existing "$proof_root")"
 
 failures=0
 

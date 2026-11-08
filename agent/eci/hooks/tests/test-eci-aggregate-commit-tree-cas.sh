@@ -3,7 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TMP_ROOT="$(realpath -m -- "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-aggregate-commit-tree.XXXXXX")")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_ROOT="$(eci_realpath_canonical "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-aggregate-commit-tree.XXXXXX")")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 if grep -Fq 'ECI_AGGREGATE_COMMIT_TEST_STAGE_IGNORED_PATH' "$ROOT/bin/eci-active"; then

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-fixture="$(realpath -e -- "$(mktemp -d)")"
+. "$base_dir/hooks/tests/portable-test.sh"
+fixture="$(eci_realpath_existing "$(mktemp -d)")"
 trap 'chmod -R -- u+w "$fixture" 2>/dev/null; rm -rf -- "$fixture"' EXIT
 export HOME="$fixture/home"
 export ECI_PROOF_ROOT="$fixture/proof" ECI_SESSION_ID=retirement_test
@@ -53,7 +54,7 @@ done
 echo 'PASS marker-free ledger and retired lifecycle CLI'
 # Marker-free aggregate review accepts only its outer cwd or the selected child.
 mkdir -p "$fixture/aggregate"
-outer="$(realpath -e -- "$fixture/aggregate")"
+outer="$(eci_realpath_existing "$fixture/aggregate")"
 repo_a="$outer/repo-a"
 repo_b="$outer/repo-b"
 mkdir -p "$repo_a/nested" "$repo_b" "$fixture/outside"

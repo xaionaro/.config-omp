@@ -4,6 +4,7 @@
 
 source "${BASH_SOURCE[0]%/*}/eci-native-binary.sh"
 source "${BASH_SOURCE[0]%/*}/eci-file-lock.sh"
+source "${BASH_SOURCE[0]%/*}/eci-portable.sh"
 
 # Resolve the native hook helper in bin/. A missing or host-incompatible helper
 # is never compiled here: ensure only verifies the canonical pair that
@@ -24,8 +25,8 @@ eci_runtime_hook_helper_path() {
 eci_runtime_ensure_pair() (
   local provider="$1" source_root peer_root
   shift
-  source_root="$(realpath -e -- "$HOME/.omp/agent/eci")" || return 1
-  peer_root="$(realpath -e -- "${KIMI_CODE_HOME:-$HOME/.kimi-code}" 2>/dev/null || true)"
+  source_root="$(eci_realpath_existing "$HOME/.omp/agent/eci")" || return 1
+  peer_root="$(eci_realpath_existing "${KIMI_CODE_HOME:-$HOME/.kimi-code}" 2>/dev/null || true)"
   source "$source_root/bin/eci-runtime-sync" || return 1
   planner_sync ensure "$source_root" "$peer_root" "$provider" "$@"
 )
@@ -47,10 +48,10 @@ eci_runtime_build_missing() (
     esac
   done
   if [ "${#pair_tools[@]}" -gt 0 ]; then
-    resolved_root="$(realpath -e -- "$root")" || return 1
-    if [ "$resolved_root" = "$(realpath -e -- "$HOME/.omp/agent/eci")" ]; then
+    resolved_root="$(eci_realpath_existing "$root")" || return 1
+    if [ "$resolved_root" = "$(eci_realpath_existing "$HOME/.omp/agent/eci")" ]; then
       provider=eci
-    elif [ "$resolved_root" = "$(realpath -e -- "${KIMI_CODE_HOME:-$HOME/.kimi-code}")" ]; then
+    elif [ "$resolved_root" = "$(eci_realpath_existing "${KIMI_CODE_HOME:-$HOME/.kimi-code}")" ]; then
       provider=kimi
     else
       printf 'ECI runtime build: unknown provider: %s\n' "$root" >&2

@@ -4,13 +4,14 @@ set -Eeuo pipefail
 
 # ROOT identifies the checked-in ECI source tree under test.
 ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 # TMP_PARENT keeps the private hook fixture out of the repository tree.
 TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
 # TMP_ROOT contains the complete disposable hook fixture.
 TMP_ROOT="$(mktemp -d "$TMP_PARENT/eci-planner-protocol-fallback.XXXXXX")"
 # TMP_ROOT is canonicalized before its paths are embedded in marker records.
-TMP_ROOT="$(realpath -e -- "$TMP_ROOT")"
+TMP_ROOT="$(eci_realpath_existing "$TMP_ROOT")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 # FIXTURE_HOME is the temporary HOME whose `.eci` child owns the hook.
@@ -40,7 +41,7 @@ mkdir -p -- "$FIXTURE_ROOT" "$PROOF_ROOT/$SESSION" "$PROOF_ROOT/$FOREIGN_SESSION
 cp -a -- "$ROOT/bin" "$FIXTURE_ROOT/"
 cp -a -- "$ROOT/hooks" "$FIXTURE_ROOT/"
 
-sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_HOOK"
+eci_sed_inplace '2{/^exit 0$/d;}' "$FIXTURE_HOOK"
 cmp -- "$FIXTURE_HOOK" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh")
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"

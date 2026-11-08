@@ -3,7 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-TMP_BASE="$(realpath -e -- "${ECI_TMPDIR:-${HOME:?}/tmp}")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_BASE="$(eci_realpath_existing "${ECI_TMPDIR:-${HOME:?}/tmp}")"
 case "$TMP_BASE" in
   /tmp|/tmp/*|/) printf 'planner fd handoff test: unsafe temporary root: %s\n' "$TMP_BASE" >&2; exit 1 ;;
 esac

@@ -4,7 +4,8 @@ set -Eeuo pipefail
 trap 'status=$?; printf "maintain-planner test: line=%s status=%s command=%q\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TMP_BASE="$(realpath -e -- "${ECI_TMPDIR:-${HOME:?}/tmp}")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_BASE="$(eci_realpath_existing "${ECI_TMPDIR:-${HOME:?}/tmp}")"
 case "$TMP_BASE" in
   /tmp|/tmp/*|/) printf 'maintain-planner test: unsafe temporary root: %s\n' "$TMP_BASE" >&2; exit 1 ;;
 esac
@@ -36,7 +37,7 @@ cp -- "$ROOT/bin/eci-active-dispatch" "$FIXTURE_HOME/bin/eci-active-dispatch"
 cp -- "$ROOT/hooks.json" "$FIXTURE_HOME/hooks.json"
 cp -a -- "$ROOT/hooks/." "$FIXTURE_HOME/hooks/"
 cp -a -- "$ROOT/tools" "$FIXTURE_HOME/tools"
-sed -i '2{/^exit 0$/d;}' -- "$FIXTURE_HOME/hooks/validate-bash.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$FIXTURE_HOME/hooks/validate-bash.sh"
 
 # Keep one managed source below a private directory so the receipt test can
 # prove that a failed hook-tree enumeration is never treated as a partial
@@ -54,9 +55,9 @@ printf '%s\n' "$*" >"${ECI_TEST_DISPATCH_LOG:?}"
 EOF
 chmod 755 -- "$FIXTURE_HOME/bin/eci-active" "$KIMI_HOME/bin/eci-active" \
   "$FIXTURE_HOME/bin/eci-active-dispatch" "$FIXTURE_HOME/bin/eci-runtime-sync"
-fixture_active_digest="$(sha256sum -- "$FIXTURE_HOME/bin/eci-active" | awk '{print $1}')"
-fixture_validate_bash_digest="$(sha256sum -- "$FIXTURE_HOME/hooks/validate-bash.sh" | awk '{print $1}')"
-fixture_validate_bash_mode="$(stat -c '%a' -- "$FIXTURE_HOME/hooks/validate-bash.sh")"
+fixture_active_digest="$(eci_sha256_hex "$FIXTURE_HOME/bin/eci-active")"
+fixture_validate_bash_digest="$(eci_sha256_hex "$FIXTURE_HOME/hooks/validate-bash.sh")"
+fixture_validate_bash_mode="$(eci_stat mode "$FIXTURE_HOME/hooks/validate-bash.sh")"
 
 cat >"$FIXTURE_HOME/hooks/lib/eci-command-plan-go/eci-command-plan" <<'EOF'
 #!/usr/bin/env bash
@@ -83,8 +84,8 @@ write_full_runtime_receipt() {
     [ -n "$relative" ] || continue
     source="$FIXTURE_HOME/$relative"
     [ -f "$source" ] && [ ! -L "$source" ]
-    mode="$(stat -c '%a' -- "$source")"
-    digest="$(sha256sum -- "$source" | awk '{print $1}')"
+    mode="$(eci_stat mode "$source")"
+    digest="$(eci_sha256_hex "$source")"
     printf '%s\t%s\t%s\n' "$relative" "$digest" "$mode" >>"$RUNTIME_RECEIPT"
   done
   chmod 600 -- "$RUNTIME_RECEIPT"
@@ -275,7 +276,7 @@ rmdir -- "$planner_transaction_dir"
 # below are therefore expected to be denied by that check, and the exact-route
 # admission earlier in this file is the baseline they are compared against.
 restore_full_runtime_receipt
-fixture_root_mode="$(stat -c '%a' -- "$FIXTURE_HOME")"
+fixture_root_mode="$(eci_stat mode "$FIXTURE_HOME")"
 chmod o+w -- "$FIXTURE_HOME"
 world_writable_output="$(run_hook "$exact_command" "$MAIN_TRANSCRIPT")"
 jq -e '
@@ -304,29 +305,29 @@ restore_full_runtime_receipt
 # Any stale managed file, including the hook itself or the runtime-sync
 # deployment entrypoint, denies before the broken planner can run.
 restore_full_runtime_receipt
-sed -i "s#^bin/eci-active\t$fixture_active_digest\t#bin/eci-active\t$zero_digest\t#" "$RUNTIME_RECEIPT"
+eci_sed_inplace "s#^bin/eci-active\t$fixture_active_digest\t#bin/eci-active\t$zero_digest\t#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale eci-active digest' "$exact_command"
 assert_receipt_drift_admitted 'stale eci-active digest quoted' "$quoted_exact_command"
 assert_receipt_drift_admitted 'stale eci-active digest through PATH target' 'eci-active maintain-planner'
 
 restore_full_runtime_receipt
-sed -i "s#^hooks/validate-bash.sh\t$fixture_validate_bash_digest\t#hooks/validate-bash.sh\t$zero_digest\t#" "$RUNTIME_RECEIPT"
+eci_sed_inplace "s#^hooks/validate-bash.sh\t$fixture_validate_bash_digest\t#hooks/validate-bash.sh\t$zero_digest\t#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale validate-bash digest' "$quoted_exact_command"
 
 restore_full_runtime_receipt
 stale_validate_bash_mode=600
 [ "$fixture_validate_bash_mode" != "$stale_validate_bash_mode" ] || stale_validate_bash_mode=644
-sed -i "s#^hooks/validate-bash.sh\t$fixture_validate_bash_digest\t$fixture_validate_bash_mode\$#hooks/validate-bash.sh\t$fixture_validate_bash_digest\t$stale_validate_bash_mode#" "$RUNTIME_RECEIPT"
+eci_sed_inplace "s#^hooks/validate-bash.sh\t$fixture_validate_bash_digest\t$fixture_validate_bash_mode\$#hooks/validate-bash.sh\t$fixture_validate_bash_digest\t$stale_validate_bash_mode#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale validate-bash mode' "$exact_command"
 
-fixture_runtime_sync_digest="$(sha256sum -- "$FIXTURE_HOME/bin/eci-runtime-sync" | awk '{print $1}')"
+fixture_runtime_sync_digest="$(eci_sha256_hex "$FIXTURE_HOME/bin/eci-runtime-sync")"
 restore_full_runtime_receipt
-sed -i "s#^bin/eci-runtime-sync\t$fixture_runtime_sync_digest\t#bin/eci-runtime-sync\t$zero_digest\t#" "$RUNTIME_RECEIPT"
+eci_sed_inplace "s#^bin/eci-runtime-sync\t$fixture_runtime_sync_digest\t#bin/eci-runtime-sync\t$zero_digest\t#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale runtime-sync digest' "$exact_command"
 
-fixture_dispatch_digest="$(sha256sum -- "$FIXTURE_HOME/bin/eci-active-dispatch" | awk '{print $1}')"
+fixture_dispatch_digest="$(eci_sha256_hex "$FIXTURE_HOME/bin/eci-active-dispatch")"
 restore_full_runtime_receipt
-sed -i "s#^bin/eci-active-dispatch\t$fixture_dispatch_digest\t#bin/eci-active-dispatch\t$zero_digest\t#" "$RUNTIME_RECEIPT"
+eci_sed_inplace "s#^bin/eci-active-dispatch\t$fixture_dispatch_digest\t#bin/eci-active-dispatch\t$zero_digest\t#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale lifecycle dispatcher digest' "$exact_command"
 
 # Exact producer shape is required: reject malformed, missing, extra,
@@ -336,11 +337,11 @@ printf 'hooks/not-a-receipt\tnot-a-digest\tbogus\n' >>"$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'malformed extra record' "$exact_command"
 
 restore_full_runtime_receipt
-sed -i '/^hooks\/validate-bash.sh\t/d' "$RUNTIME_RECEIPT"
+eci_sed_inplace '/^hooks\/validate-bash.sh\t/d' "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'missing validate-bash record' "$quoted_exact_command"
 
 restore_full_runtime_receipt
-sed -i '/^bin\/eci-active-dispatch\t/d' "$RUNTIME_RECEIPT"
+eci_sed_inplace '/^bin\/eci-active-dispatch\t/d' "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'missing lifecycle dispatcher record' "$exact_command"
 
 # `find` failure must be terminal. With the late-sorting managed row removed,
@@ -348,7 +349,7 @@ assert_receipt_drift_admitted 'missing lifecycle dispatcher record' "$exact_comm
 # manifest because it lost the producer generator's nonzero status.
 restore_full_runtime_receipt
 chmod 000 -- "$UNREADABLE_MANAGED_DIR"
-sed -i '/^hooks\/zzzz-managed-private\/entry.sh\t/d' "$RUNTIME_RECEIPT"
+eci_sed_inplace '/^hooks\/zzzz-managed-private\/entry.sh\t/d' "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'unreadable managed directory and missing receipt row' "$exact_command"
 chmod 755 -- "$UNREADABLE_MANAGED_DIR"
 restore_full_runtime_receipt

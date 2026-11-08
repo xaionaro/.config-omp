@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-post-compact-refresh.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
@@ -78,12 +79,12 @@ test_post_compact_does_not_scan_or_mutate_state() {
   local proof_root="$TMP_ROOT/no-write-proof" out before after
   mkdir -p "$proof_root/t00-session"
   write_direct_marker "$proof_root" 'no-write test'
-  before="$(find "$proof_root" -mindepth 1 -maxdepth 2 -printf '%P:%y:%s\n' | sort)"
+  before="$(eci_tree_listing "$proof_root" 2)"
   out="$TMP_ROOT/no-write.out"
 
   run_post_compact "$proof_root" "$out"
 
-  after="$(find "$proof_root" -mindepth 1 -maxdepth 2 -printf '%P:%y:%s\n' | sort)"
+  after="$(eci_tree_listing "$proof_root" 2)"
   [ "$before" = "$after" ] || return 1
   [ ! -e "$proof_root/t00-session/eci_refresh_pending" ] &&
     [ ! -L "$proof_root/t00-session/eci_refresh_pending" ] || return 1
@@ -177,7 +178,7 @@ test_post_compact_rejects_marker_owner_mismatch() {
   local proof_root="$TMP_ROOT/mismatched-owner-proof" out
   mkdir -p "$proof_root/t00-session"
   write_direct_marker "$proof_root" 'mismatched owner must not refresh'
-  sed -i 's/^session_id: t00-session$/session_id: t00-other/' "$proof_root/t00-session/eci_active"
+  eci_sed_inplace 's/^session_id: t00-session$/session_id: t00-other/' "$proof_root/t00-session/eci_active"
   out="$TMP_ROOT/mismatched-owner.out"
   run_post_compact "$proof_root" "$out"
   jq -e 'type == "object" and (keys | length == 0)' "$out" >/dev/null

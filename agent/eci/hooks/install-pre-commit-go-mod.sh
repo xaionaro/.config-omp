@@ -4,6 +4,7 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 . "$script_dir/lib/eci-diagnostic.sh"
+. "$script_dir/lib/eci-portable.sh"
 
 go_installer_deny() {
   local code="$1" operation="$2" subject="$3" reason="$4" remediation="$5"
@@ -149,7 +150,7 @@ exec "$repo_root/hooks/pre-commit-go-mod.sh"
 EOF
 chmod 755 "$wrapper_tmp"
 trap 'rm -f -- "$wrapper_tmp"' EXIT HUP INT TERM
-expected_digest=$(sha256sum "$wrapper_tmp" | cut -d' ' -f1)
+expected_digest=$(eci_sha256 "$wrapper_tmp" | cut -d' ' -f1)
 
 if [[ -e $destination && ! -f $destination ]]; then
   go_installer_deny "GO_HOOK_DESTINATION_NONREGULAR" "go-hook-install" \
@@ -196,7 +197,7 @@ else
   mv -- "$wrapper_tmp" "$destination"
 fi
 
-actual_digest=$(sha256sum "$destination" | cut -d' ' -f1)
+actual_digest=$(eci_sha256 "$destination" | cut -d' ' -f1)
 if [[ $actual_digest != "$expected_digest" || ! -x $destination ]]; then
   go_installer_deny "GO_HOOK_INSTALL_VERIFY_FAILED" "go-hook-install" \
     "destination=$(eci_diagnostic_value "$destination"),digest=$(eci_diagnostic_value "$actual_digest")" \

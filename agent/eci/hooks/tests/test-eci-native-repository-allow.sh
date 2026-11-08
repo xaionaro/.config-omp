@@ -2,13 +2,14 @@
 set -euo pipefail
 
 runtime="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 scratch="$(mktemp -d "${ECI_TMPDIR:-$HOME/tmp}/eci-native-allow.XXXXXX")"
 trap 'rm -rf -- "$scratch"' EXIT
 mkdir -p "$scratch/proof/session" "$scratch/proof/other" "$scratch/work" "$scratch/dependency"
 git -C "$scratch/work" init -q
 git -C "$scratch/dependency" init -q
-work="$(realpath -e -- "$scratch/work")"
-dependency="$(realpath -e -- "$scratch/dependency")"
+work="$(eci_realpath_existing "$scratch/work")"
+dependency="$(eci_realpath_existing "$scratch/dependency")"
 export ECI_PROOF_ROOT="$scratch/proof" ECI_SESSION_ID=session
 cd -- "$work"
 "$runtime/bin/eci-active" repository-allow-on "$dependency" 'dependency repair'

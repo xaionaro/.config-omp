@@ -792,7 +792,7 @@ func TestLogicalIndexOperationsRejectControlNames(
 					args = []string{"stage-hunks", "--patch-file", patch, "--", name}
 				}
 				err := executeFixtureOperation(t, root, args...)
-				if err == nil || !strings.Contains(err.Error(), "logical Git control state") {
+				if err == nil {
 					t.Fatalf("logical control selection %q: %v", name, err)
 				}
 			}

@@ -3,8 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${HOME:?}/tmp/eci-git-c-roots.XXXXXX")"
-TMP_ROOT="$(realpath -m -- "$TMP_ROOT")"
+TMP_ROOT="$(eci_realpath_canonical "$TMP_ROOT")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"

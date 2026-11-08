@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -185,5 +186,83 @@ func TestHookTranscriptPrefixLayoutParity(t *testing.T) {
 			require.NoError(t, err, transcript)
 			require.Equal(t, layout.want, status, transcript)
 		}
+	}
+}
+
+// prefixCase is one row of testdata/transcript-prefix-cases.json, shared with the omp
+// hook runner test (agent/hooks-disabled/lib/eci-hook-runner.test.ts).
+type prefixCase struct {
+	Name  string            `json:"name"`
+	Depth int               `json:"depth"`
+	Lines []json.RawMessage `json:"lines"`
+	Tail  string            `json:"tail"`
+	Want  string            `json:"want"`
+}
+
+// content builds the case's transcript bytes; the runner test builds the same bytes.
+//
+// Example: [{"title":"slot"},"{\"type\":\"session\"}"] is a title slot and a header line.
+func (c prefixCase) content(t *testing.T) string {
+	t.Helper()
+	slot := strings.TrimSuffix(titleSlot(), "\n")
+	var out strings.Builder
+	for _, raw := range c.Lines {
+		var line string
+		if json.Unmarshal(raw, &line) == nil {
+			out.WriteString(line + "\n")
+			continue
+		}
+		var element struct {
+			Title  string `json:"title"`
+			Repeat string `json:"repeat"`
+			Count  int    `json:"count"`
+			Pad    int    `json:"pad"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &element), c.Name)
+		switch {
+		case element.Title == "slot":
+			out.WriteString(slot + "\n")
+		case element.Title == "torn":
+			out.WriteString(slot[:200] + strings.Repeat(" ", 55) + "\n")
+		case element.Title == "short":
+			out.WriteString(slot[:100] + "\n")
+		case element.Repeat != "":
+			out.WriteString(strings.Repeat(element.Repeat+"\n", element.Count))
+		default:
+			out.WriteString(`{"type":"message","pad":"` + strings.Repeat("x", element.Pad) + `"}` + "\n")
+		}
+	}
+	return out.String() + c.Tail
+}
+
+// TestHookTranscriptPrefixSharedCases classifies the shared cases; the omp hook runner
+// must mark exactly the cases whose status is not main.
+//
+// Example: a header past sixteen lines is unknown.
+func TestHookTranscriptPrefixSharedCases(t *testing.T) {
+	_, _ = contextFixture(t)
+	sessions := sessionsFixture(t)
+	data, err := os.ReadFile(filepath.Join("testdata", "transcript-prefix-cases.json"))
+	require.NoError(t, err)
+	var table struct {
+		Cases []prefixCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &table))
+	require.Greater(t, len(table.Cases), 10)
+	for _, c := range table.Cases {
+		dir := sessions
+		for range c.Depth - 2 {
+			dir = filepath.Join(dir, "nested")
+		}
+		require.NoError(t, os.MkdirAll(dir, 0700))
+		transcript := filepath.Join(dir, c.Name+".jsonl")
+		require.NoError(t, os.WriteFile(transcript, []byte(c.content(t)), 0600))
+		status, err := hookTranscriptStatus(transcript)
+		if c.Want == "unknown" {
+			require.ErrorIs(t, err, errHookTranscriptUnknown, c.Name)
+			continue
+		}
+		require.NoError(t, err, c.Name)
+		require.Equal(t, c.Want, status, c.Name)
 	}
 }

@@ -3,7 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-TMP_BASE="$(realpath -m -- "${ECI_TMPDIR:-${HOME:?}/tmp}")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_BASE="$(eci_realpath_canonical "${ECI_TMPDIR:-${HOME:?}/tmp}")"
 TMP_ROOT="$(mktemp -d "$TMP_BASE/eci-pretooluse-latency.XXXXXX")"
 # Each callback runs against a private runtime copy under a real fixture HOME,
 # so no hook, ledger, or transcript write reaches the live ~/.omp/agent/eci or ~/tmp.
@@ -50,7 +51,7 @@ fail() {
 
 [ ! -L "$TMP_ROOT/home/.omp/agent/eci" ] ||
   fail 'fixture must not make the final $HOME/.omp/agent/eci authority a symlink'
-[ "$(realpath -e -- "$TMP_ROOT/home/.omp/agent/eci")" = "$ROOT" ] ||
+[ "$(eci_realpath_existing "$TMP_ROOT/home/.omp/agent/eci")" = "$ROOT" ] ||
   fail 'fixture HOME-parent alias does not resolve to the canonical ECI root'
 
 printf '%s\n' \

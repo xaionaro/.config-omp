@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 HOST_HOME="${HOME:?}"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-edit-controls.XXXXXX")"
 control_hook_fixture="$(mktemp "$ROOT/hooks/.validate-bash-edit-controls.${BASHPID}.XXXXXX")"
@@ -17,7 +18,7 @@ trap 'rm -f -- "$control_hook_fixture"; rm -rf -- "$TMP_ROOT" "$proof_root" "$re
 
 # Exercise the private hook body, removing a line-2 bypass if present.
 cp -- "$ROOT/hooks/validate-bash.sh" "$control_hook_fixture"
-sed -i '2{/^exit 0$/d;}' -- "$control_hook_fixture"
+eci_sed_inplace '2{/^exit 0$/d;}' "$control_hook_fixture"
 cmp -- "$control_hook_fixture" <(sed '2{/^exit 0$/d;}' -- "$ROOT/hooks/validate-bash.sh") || {
   printf '%s\n' 'edit-control fixture changed bytes other than an optional line-2 bypass' >&2
   exit 1

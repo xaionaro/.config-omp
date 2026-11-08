@@ -1,0 +1,23 @@
+{
+  "about": "Shared transcript-prefix cases: the Go classifier (hook_transcript_prefix_test.go) must return want; the omp hook runner (agent/hooks-disabled/lib/eci-hook-runner.test.ts) must mark the transcript as subagent exactly when want is not main. Elements: a string is one line; {\"title\":\"slot\"} is a valid 256-byte title line, {\"title\":\"torn\"} a torn one, {\"title\":\"short\"} a torn 101-byte one; {\"repeat\":LINE,\"count\":N} repeats a line; {\"pad\":N} is a message line with N pad bytes. Every line ends with a newline; tail is appended without one. Duplicate signal keys are not covered: the runner does not detect them and only the Go classifier needs to (its flag can only force the worker role).",
+  "cases": [
+    {"name": "main", "depth": 2, "lines": [{"title": "slot"}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", "{\"type\":\"message\"}"], "want": "main"},
+    {"name": "main-torn-title", "depth": 2, "lines": [{"title": "torn"}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}"], "want": "main"},
+    {"name": "main-torn-tail", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", "{\"type\":\"message\"}"], "tail": "{\"type\":\"message\",\"con", "want": "main"},
+    {"name": "main-late-malformed", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", {"repeat": "{\"type\":\"message\"}", "count": 20}, "not json"], "want": "main"},
+    {"name": "main-late-session-init", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", {"repeat": "{\"type\":\"message\"}", "count": 20}, "{\"type\":\"session_init\"}"], "want": "main"},
+    {"name": "main-long-history", "depth": 2, "lines": [{"title": "slot"}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", {"pad": 70000}, "{\"type\":\"session_init\"}"], "want": "main"},
+    {"name": "late-header-by-lines", "depth": 2, "lines": [{"repeat": "{\"type\":\"message\"}", "count": 16}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}"], "want": "unknown"},
+    {"name": "late-header-by-bytes", "depth": 2, "lines": [{"pad": 40000}, {"pad": 40000}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}"], "want": "unknown"},
+    {"name": "no-header", "depth": 2, "lines": [{"title": "slot"}, "{\"type\":\"message\"}"], "want": "unknown"},
+    {"name": "malformed-first-line", "depth": 2, "lines": ["not json", "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}"], "want": "unknown"},
+    {"name": "torn-short-title", "depth": 2, "lines": [{"title": "short"}, "{\"type\":\"session\",\"version\":3,\"id\":\"m\"}"], "want": "unknown"},
+    {"name": "empty-line", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", ""], "want": "unknown"},
+    {"name": "torn-header", "depth": 2, "lines": [{"title": "slot"}], "tail": "{\"type\":\"session\",\"ver", "want": "unknown"},
+    {"name": "null-parent", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\",\"parentSession\":null}"], "want": "unknown"},
+    {"name": "parent-key-on-message", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", "{\"type\":\"message\",\"parentSession\":\"/p.jsonl\"}"], "want": "unknown"},
+    {"name": "session-init-type", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", "{\"type\":\"session_init\"}"], "want": "unknown"},
+    {"name": "session-init-custom", "depth": 2, "lines": ["{\"type\":\"session\",\"version\":3,\"id\":\"m\"}", "{\"type\":\"custom\",\"customType\":\"session_init\"}"], "want": "unknown"},
+    {"name": "subagent", "depth": 3, "lines": [{"title": "slot"}, "{\"type\":\"session\",\"version\":3,\"id\":\"c\",\"parentSession\":\"/p.jsonl\"}", "{\"type\":\"custom\",\"customType\":\"session_init\"}"], "want": "subagent"}
+  ]
+}

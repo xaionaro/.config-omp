@@ -285,6 +285,45 @@ func shellLiteral(path string) string {
 	return "'" + strings.ReplaceAll(path, "'", "'\\''") + "'"
 }
 
+// ownedVisibilityRefusal reports an unresolved lookup frontier whose owned visibility correction is proven.
+//
+// Example: a mode-000 hooks directory owned by this actor yields one literal chmod operand.
+type ownedVisibilityRefusal struct {
+	Leaf     string
+	Ancestor string
+	Frontier LiveFrontier
+}
+
+// Correction returns the exact owned lookup correction and the directory it changes.
+//
+// Example: a directory path containing a quote remains one literal chmod operand.
+func (r ownedVisibilityRefusal) Correction() (command string, operand string) {
+	return "chmod -- u+rx " + shellLiteral(r.Frontier.Directory), r.Frontier.Directory
+}
+
+// Error names the frontier and embeds the exact correction returned by Correction.
+//
+// Example: the rendered chmod command is the one a caller executes before rerunning restore.
+func (r ownedVisibilityRefusal) Error() string {
+	command, _ := r.Correction()
+	return fmt.Sprintf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; restore exact owned lookup visibility (%s), then rerun this exact restore; use an owned move route only if the fresh check offers it; index-only restore remains available", r.Leaf, r.Ancestor, r.Frontier.Hook, r.Frontier.Path, command)
+}
+
+// protectedAncestorRefusal reports a restore ancestor that a live hook lookup consumes.
+//
+// Example: dir is protected when hooks/validate-bash.sh resolves through dir/nested/file.
+type protectedAncestorRefusal struct {
+	Leaf     string
+	Ancestor string
+}
+
+// Error names the protected ancestor and the in-place recovery.
+//
+// Example: index-only restore stays available while the worktree leaf is refused.
+func (r protectedAncestorRefusal) Error() string {
+	return fmt.Sprintf("protected live target or ancestor %q for restore leaf %q; edit source in place and stage exact content; index-only restore remains available", r.Ancestor, r.Leaf)
+}
+
 // CheckPaths returns advisory discovery diagnostics separately from a selected-target denial.
 //
 // Example: index-only hook staging is allowed while worktree restoration is denied.
@@ -373,13 +412,13 @@ func (r Repository) checkRestoreAncestors(
 		}
 		for _, control := range protection.Paths {
 			if containsPath(ancestor, control) || containsPath(control, ancestor) {
-				return fmt.Errorf("protected live target or ancestor %q for restore leaf %q; edit source in place and stage exact content; index-only restore remains available", ancestor, name)
+				return protectedAncestorRefusal{Leaf: name, Ancestor: ancestor}
 			}
 		}
 		if len(protection.Frontiers) != 0 {
 			frontier := protection.Frontiers[0]
 			if frontier.OwnedVisibility {
-				return fmt.Errorf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; restore exact owned lookup visibility (chmod -- u+rx %s), then rerun this exact restore; use an owned move route only if the fresh check offers it; index-only restore remains available", name, ancestor, frontier.Hook, frontier.Path, shellLiteral(frontier.Directory))
+				return ownedVisibilityRefusal{Leaf: name, Ancestor: ancestor, Frontier: frontier}
 			}
 			return fmt.Errorf("restore leaf %q has ancestor alias %q whose relation to configured hook %q remains unresolved at %q; resolve that exact lookup frontier in place, then rerun this exact restore before moving the alias; index-only restore remains available", name, ancestor, frontier.Hook, frontier.Path)
 		}

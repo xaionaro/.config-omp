@@ -7,9 +7,10 @@
 set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
-TMP_ROOT="$(realpath -e -- "$(mktemp -d "$TMP_PARENT/eci-aggregate-lifecycle-normalization.XXXXXX")")"
+TMP_ROOT="$(eci_realpath_existing "$(mktemp -d "$TMP_PARENT/eci-aggregate-lifecycle-normalization.XXXXXX")")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
 session_id='aggregate-lifecycle-normalization'
@@ -71,7 +72,7 @@ plan="$session_dir/eci-aggregate-plan.json"
   printf '%s\n' 'aggregate-migrate did not publish a normal selected plan' >&2
   exit 1
 }
-resolved_repo="$(realpath -e -- "$repo")"
+resolved_repo="$(eci_realpath_existing "$repo")"
 jq -e --arg repo "$resolved_repo" '.repositories[0].repo_root == $repo' "$plan" >/dev/null || {
   printf '%s\n' 'aggregate-migrate did not normalize the selected repository alias' >&2
   cat -- "$plan" >&2
@@ -88,12 +89,12 @@ printf '%s\n' 'ordinary separator-named file' >"$repo/--"
 run_active aggregate-stage repo-a -- --
 git -C "$repo" diff --cached --name-only | grep -Fqx -- --
 
-index_before="$(sha256sum -- "$repo/.git/index" | awk '{print $1}')"
+index_before="$(eci_sha256_hex "$repo/.git/index")"
 if run_active aggregate-stage repo-a ../outside.txt; then
   printf '%s\n' 'aggregate-stage accepted an outside selected-repository path' >&2
   exit 1
 fi
-[ "$(sha256sum -- "$repo/.git/index" | awk '{print $1}')" = "$index_before" ] || {
+[ "$(eci_sha256_hex "$repo/.git/index")" = "$index_before" ] || {
   printf '%s\n' 'aggregate-stage changed the selected repository index for an outside path' >&2
   exit 1
 }

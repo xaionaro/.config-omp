@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="${ECI_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-coordinator-edit.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
@@ -22,7 +23,7 @@ cp -a -- "$ROOT/hooks/." "$fixture_hooks/"
 # Exercise the private dispatcher with a line-2 bypass removed if present,
 # and preserve the source bytes.
 cp -- "$ROOT/hooks/pretooluse-edit-dispatch.sh" "$TMP_ROOT/dispatcher.before"
-sed -i '2{/^exit 0$/d;}' -- "$fixture_hooks/pretooluse-edit-dispatch.sh"
+eci_sed_inplace '2{/^exit 0$/d;}' "$fixture_hooks/pretooluse-edit-dispatch.sh"
 cmp -- "$TMP_ROOT/dispatcher.before" "$ROOT/hooks/pretooluse-edit-dispatch.sh" || {
   printf '%s\n' 'test modified the dispatcher source' >&2
   exit 1
@@ -377,7 +378,7 @@ assert_control_deny other-anchor "$other_anchor_output"
 
 malformed_marker="$proof_root/$session_id/eci_active"
 cp -- "$malformed_marker" "$TMP_ROOT/marker.before"
-sed -i 's/^session_id: .*/session_id: another-session/' -- "$malformed_marker"
+eci_sed_inplace 's/^session_id: .*/session_id: another-session/' "$malformed_marker"
 malformed_output="$(run_dispatch malformed-marker "$normal_input")"
 # Marker metadata is discovery state, not the ordinary repository target.
 # Keep a malformed sibling/current marker advisory here; the healthy direct

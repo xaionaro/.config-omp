@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 tmp="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-home-authority.XXXXXX")"
 trap 'rm -rf -- "$tmp"' EXIT
 
@@ -29,7 +30,7 @@ global_paths="$(
     bash -c '. "$1"; eci_accidental_override_global_root; eci_accidental_override_record_path global' \
       bash "$ROOT/hooks/lib/eci-proof-state.sh"
 )"
-expected_global_root="$(realpath -e -- "$global_eci")"
+expected_global_root="$(eci_realpath_existing "$global_eci")"
 expected_global_paths="$expected_global_root"$'\n'"$expected_global_root/.eci-accidental-mistake-override"
 [ "$global_paths" = "$expected_global_paths" ] || {
   printf 'global authority paths followed poisoned ECI_HOME: %s\n' "$global_paths" >&2

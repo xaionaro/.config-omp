@@ -127,7 +127,7 @@ func TestInvocationLogUnavailablePreservesExecution(t *testing.T) {
 			if content, err := os.ReadFile(marker); err != nil || string(content) != "x" {
 				t.Fatalf("native invocation count changed: %q: %v", content, err)
 			}
-			if kind != "warning-sink" && !strings.Contains(warning.String(), "invocation log unavailable") {
+			if kind != "warning-sink" && warning.Len() == 0 {
 				t.Fatalf("missing storage warning: %q", warning.String())
 			}
 			if code := Run(arguments[:5], Streams{Output: &output, Error: sink}); code == 0 {

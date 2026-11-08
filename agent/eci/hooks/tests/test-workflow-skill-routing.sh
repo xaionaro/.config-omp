@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="${WORKFLOW_SKILL_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 AGENTS="$ROOT/../AGENTS.md"
 ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 # Engineering priorities and security follow-up rules are canonical in the binding contract; the ECI skill keeps no copy.
@@ -197,7 +198,7 @@ assert_local_links_resolve() {
       case "$target" in
         ''|http://*|https://*|mailto:*) continue ;;
       esac
-      resolved="$(realpath -m "$(dirname "$file")/$target")"
+      resolved="$(eci_realpath_canonical "$(dirname "$file")/$target")"
       [ -e "$resolved" ] || fail "dangling link from $file: $target"
     done < <(grep -oE '\]\([^)]+' "$file" || true)
   done

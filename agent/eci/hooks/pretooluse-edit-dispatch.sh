@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # TODO: Reconcile the ECI control-gate dispatch after its marker-dependent hooks are migrated.
+case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" PreToolUse ;; *) . ./lib/eci-bash-guard.sh PreToolUse ;; esac
 
 set -Eeuo pipefail
 

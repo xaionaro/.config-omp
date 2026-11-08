@@ -3,7 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-TMP_ROOT="$(realpath -m -- "$(mktemp -d "${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}/eci-safe-import-lifecycle.XXXXXX")")"
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
+TMP_ROOT="$(eci_realpath_canonical "$(mktemp -d "${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}/eci-safe-import-lifecycle.XXXXXX")")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
 proof_root="$TMP_ROOT/proof"
@@ -191,7 +192,7 @@ assert_unsafe_destination_is_preserved() {
     [ -d "$destination" ] && [ ! -L "$destination" ] || exit 1
     ;;
   hardlink)
-    cmp -s -- "$foreign" "$destination" && [ "$(stat -c '%h' -- "$foreign")" -eq 2 ] || exit 1
+    cmp -s -- "$foreign" "$destination" && [ "$(ls -ld -- "$foreign" | awk '{print $2}')" -eq 2 ] || exit 1
     ;;
   esac
 }

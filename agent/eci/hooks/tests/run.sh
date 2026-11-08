@@ -2873,6 +2873,10 @@ run_case "session snapshot refresh and active-marker cleanup safety" \
   "$ROOT/hooks/tests/test-session-snapshot-refresh.sh"
 run_case "portable runtime file-lock selection and lifecycle" \
   "$ROOT/hooks/tests/test-eci-file-lock.sh"
+run_case "portable sha256, realpath and stat match GNU under BSD emulation" \
+  bash "$ROOT/hooks/tests/test-eci-portable.sh"
+run_case "hook entry points name the bash 4.4 requirement under an older bash" \
+  bash "$ROOT/hooks/tests/test-eci-bash-guard.sh"
 run_case "direct lifecycle visibility accepts semantic current markers" \
   bash "$ROOT/hooks/tests/test-eci-lifecycle-visibility.sh"
 run_case "ECI lifecycle source authority outside command validation" \
