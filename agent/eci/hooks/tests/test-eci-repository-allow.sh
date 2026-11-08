@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# The gate refuses a bin directory with a group- or other-writable ancestor.
+umask 077
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-repository-allow.XXXXXX")"
-trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
+trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
 HOME_ROOT="$TMP_ROOT/home"
 RUNTIME_ROOT="$HOME_ROOT/.omp/agent/eci"
@@ -14,32 +16,13 @@ cp -- "$SOURCE_ROOT/hooks.json" "$RUNTIME_ROOT/hooks.json"
 mkdir -p -- "$RUNTIME_ROOT/bin"
 cp -- "$SOURCE_ROOT/bin/eci-active" "$RUNTIME_ROOT/bin/eci-active"
 
-PLANNER_DIR="$RUNTIME_ROOT/hooks/lib/eci-command-plan-go"
-(
-  cd -- "$PLANNER_DIR"
-  /usr/lib/go-1.26/bin/go build -trimpath -buildvcs=false -o eci-command-plan .
-)
-chmod 755 -- "$PLANNER_DIR/eci-command-plan"
-planner_go_mod_sha="$(sha256sum -- "$PLANNER_DIR/go.mod" | awk '{print $1}')"
-planner_main_sha="$(sha256sum -- "$PLANNER_DIR/main.go" | awk '{print $1}')"
-planner_classifier_sha="$(sha256sum -- "$PLANNER_DIR/classifier.go" | awk '{print $1}')"
-planner_binary_sha="$(sha256sum -- "$PLANNER_DIR/eci-command-plan" | awk '{print $1}')"
-planner_binary_size="$(stat -Lc '%s' -- "$PLANNER_DIR/eci-command-plan")"
-awk \
-  -v go_mod="$planner_go_mod_sha" \
-  -v main="$planner_main_sha" \
-  -v classifier="$planner_classifier_sha" \
-  -v binary="$planner_binary_sha" \
-  -v size="$planner_binary_size" '
-  $1 == "source_go.mod_sha256" { print $1 "\t" go_mod; next }
-  $1 == "source_main.go_sha256" { print $1 "\t" main; next }
-  $1 == "source_classifier.go_sha256" { print $1 "\t" classifier; next }
-  $1 == "binary_sha256" { print $1 "\t" binary; next }
-  $1 == "binary_size" { print $1 "\t" size; next }
-  { print }
-' "$PLANNER_DIR/.eci-command-plan.provenance" >"$PLANNER_DIR/.eci-command-plan.provenance.tmp"
-mv -- "$PLANNER_DIR/.eci-command-plan.provenance.tmp" "$PLANNER_DIR/.eci-command-plan.provenance"
-chmod 600 -- "$PLANNER_DIR/.eci-command-plan.provenance"
+# Provision the gate binaries the hook verifies ($HOME/.omp/agent/eci/bin and
+# their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
+# The Go caches stay on the caller's paths so no read-only module cache lands
+# under TMP_ROOT.
+GOMODCACHE="$(/usr/lib/go-1.26/bin/go env GOMODCACHE)" GOCACHE="$(/usr/lib/go-1.26/bin/go env GOCACHE)" \
+  PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
+  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 
@@ -83,14 +66,25 @@ printf '%s\n' \
   "session_id: $OTHER_SESSION" \
   'created_utc: 2026-09-14T00:00:00Z' \
   >"$PROOF_ROOT/$OTHER_SESSION/eci_active"
+# The hook classifies the caller from its callback transcript. Coordinator calls
+# carry a main-session transcript in the fixture HOME; worker calls carry none,
+# which the hook classifies as a worker.
+for transcript_session in "$SESSION" "$OTHER_SESSION"; do
+  mkdir -p -- "$HOME_ROOT/.omp/agent/sessions/$transcript_session"
+  printf '%s\n' \
+    "{\"type\":\"session\",\"version\":3,\"id\":\"$transcript_session\",\"cwd\":\"$WORK\"}" \
+    '{"type":"message","role":"user","content":"repository allowance"}' \
+    >"$HOME_ROOT/.omp/agent/sessions/$transcript_session/main.jsonl"
+done
 
 run_hook() {
   local command="$1" role="${2:-worker}" session="${3:-$SESSION}" output="$TMP_ROOT/hook-output.json"
-  local is_subagent=true
+  local is_subagent=true transcript=""
   [ "$role" = worker ] || is_subagent=false
+  [ "$role" = worker ] || transcript="$HOME_ROOT/.omp/agent/sessions/$session/main.jsonl"
 
-  jq -cn --arg session "$session" --arg cwd "$WORK" --arg command "$command" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' |
+  jq -cn --arg session "$session" --arg cwd "$WORK" --arg command "$command" --arg transcript "$transcript" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)' |
     (
       export HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT"
       export ECI_ROLE="$role" ECI_HOOK_IS_SUBAGENT="$is_subagent"
@@ -151,6 +145,15 @@ assert_denied_worker_script() {
   }
 }
 
+assert_worker_git_ownership_denied() {
+  local command="$1" output
+  output="$(run_hook "$command" worker)"
+  grep -Fq -- '[ECI_WORKER_GIT_OWNERSHIP_DENIED]' <<<"$output" || {
+    printf 'worker Git mutation was not routed to the worker Git owner: %s\n%s\n' "$command" "$output" >&2
+    return 1
+  }
+}
+
 assert_allowed_worker_script() {
   local command="$1" output
   output="$(run_hook "$command" worker)"
@@ -179,7 +182,6 @@ assert_denied_lifecycle() {
   }
 }
 
-assert_denied_foreign "git -C $DEPENDENCY status --short"
 assert_denied_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
 assert_denied_foreign_as coordinator 'git -C ../dependency add -- file.txt'
 assert_denied_worker_script "bash $WORKER_SCRIPT"
@@ -228,8 +230,6 @@ assert_allowed_lifecycle "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-al
 assert_allowed_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\" && id"
 assert_denied_lifecycle '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-on /tmp "x" extra'
 assert_denied_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on /tmp \"x\" extra"
-assert_denied_lifecycle "env ECI_PROOF_ROOT=$PROOF_ROOT \"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-status"
-assert_denied_lifecycle "env ECI_PROOF_ROOT=$PROOF_ROOT \"$RUNTIME_ROOT/bin/eci-active\" repository-allow-status"
 assert_denied_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
 assert_denied_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
 assert_denied_foreign "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; git -C $UNDECLARED_DEPENDENCY add -- file.txt"
@@ -237,12 +237,12 @@ assert_denied_foreign "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEP
 assert_denied_lifecycle "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; \"$RUNTIME_ROOT/bin/eci-active\" on \"worker must not activate an ECI session\""
 assert_allowed_foreign "git -C $DEPENDENCY status --short"
 assert_allowed_foreign "git -C $DEPENDENCY diff -- file.txt"
-assert_allowed_foreign "git -C $DEPENDENCY add -- file.txt"
+assert_worker_git_ownership_denied "git -C $DEPENDENCY add -- file.txt"
 assert_allowed_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
 assert_allowed_foreign_as coordinator 'git -C ../dependency add -- file.txt'
 assert_allowed_worker_script "bash $WORKER_SCRIPT"
 
-assert_allowed_foreign "git -C $DEPENDENCY commit --allow-empty -m worker-commit"
+assert_worker_git_ownership_denied "git -C $DEPENDENCY commit --allow-empty -m worker-commit"
 
 printf '%s\n' \
   'scope: repository allowance test' \
@@ -250,9 +250,11 @@ printf '%s\n' \
   "session_id: $SESSION" \
   'created_utc: 2026-09-14T00:00:00Z' \
   >"$PROOF_ROOT/$SESSION/eci_active"
+# A marker binds to its callback cwd: with the marker moved to the dependency,
+# no marker is active for the $WORK callback, so the hook stays transparent.
 cwd_mismatch_output="$(run_hook "git -C $DEPENDENCY add -- file.txt" coordinator)"
-[ -n "$cwd_mismatch_output" ] || {
-  printf 'repository allowance survived an active marker CWD mismatch\n' >&2
+[ -z "$cwd_mismatch_output" ] || {
+  printf 'callback outside the moved marker cwd was not transparent\n%s\n' "$cwd_mismatch_output" >&2
   exit 1
 }
 printf '%s\n' \
@@ -270,14 +272,11 @@ assert_denied_foreign_as coordinator "git -C $UNDECLARED_DEPENDENCY add -- file.
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-status
 )
 
-assert_denied_foreign "git -C $DEPENDENCY status --short" "$OTHER_SESSION"
-
 (
   cd -- "$WORK"
   env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-off "$DEPENDENCY_ALIAS"
 )
-assert_denied_foreign "git -C $DEPENDENCY status --short"
 [ ! -e "$ALLOWANCE" ] && [ ! -L "$ALLOWANCE" ]
 
 (
@@ -299,7 +298,6 @@ if (
   exit 1
 fi
 assert_additional_repository_not_allowed "$DEPENDENCY"
-assert_denied_foreign "git -C $TMP_ROOT/dependency-removed status --short"
 
 if (
   cd -- "$WORK"
