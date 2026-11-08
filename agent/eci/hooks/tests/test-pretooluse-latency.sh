@@ -118,7 +118,9 @@ patch_input() {
 # payload session_id) and ECI_HOOK_IS_SUBAGENT. hooks.json commands are `bash "$HOME/<script>"`, so the
 # script path is taken from the command and resolved against the fixture HOME.
 # The runner's Bun-native deadline is modelled by the measured elapsed time
-# (run_sample fails any call >= 1000 ms); `timeout 10` is only a hang guard.
+# (run_sample fails any call >= 1000 ms); a background watchdog (TERM to the
+# callback's process group at 10 s, KILL 5 s later; GNU `timeout` is absent on
+# macOS) is only a hang guard.
 run_callback() {
   local callback="$1" role="$2" payload_session="$3" payload_cwd="$4" script is_subagent=0
   [[ "$callback" =~ ^bash\ \"\$HOME/([^\"]+)\"$ ]] ||
@@ -130,7 +132,25 @@ run_callback() {
     export ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
       XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" HOME="$TMP_ROOT/home" \
       ECI_SESSION_ID="$payload_session" ECI_THREAD_ID="$payload_session" ECI_HOOK_IS_SUBAGENT="$is_subagent"
-    exec timeout --kill-after=5 10 "${ECI_BASH:-bash}" "$script"
+    # set -m gives the job its own process group (pgid = pid), so the watchdog
+    # reaches the callback's children too.
+    set -m
+    "${ECI_BASH:-bash}" "$script" <&0 &
+    set +m
+    local pid=$! watchdog status=0
+    # fds closed so an orphaned sleep can never hold the caller's pipes open.
+    (
+      trap 'kill "${nap:-}" 2>/dev/null; exit 0' TERM
+      sleep 10 & nap=$!; wait "$nap"
+      kill -TERM -- "-$pid" 2>/dev/null || exit 0
+      sleep 5 & nap=$!; wait "$nap"
+      kill -KILL -- "-$pid" 2>/dev/null || true
+    ) </dev/null >/dev/null 2>&1 &
+    watchdog=$!
+    wait "$pid" || status=$?
+    kill -TERM "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    exit "$status"
   )
 }
 
