@@ -11,7 +11,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 tmp_base="${ECI_TMPDIR:-${XDG_RUNTIME_DIR:-/tmp}}"
 tmp="$(mktemp -d "$tmp_base/eci-no-go-run.XXXXXX")"
-trap 'chmod -R u+w -- "$tmp" 2>/dev/null || true; rm -rf -- "$tmp"' EXIT
+trap 'chmod -R -- u+w "$tmp" 2>/dev/null || true; rm -rf -- "$tmp"' EXIT
 
 real_go="$(type -P go)" || { printf 'no-go-run: go is required on PATH\n' >&2; exit 1; }
 gocache="$("$real_go" env GOCACHE)"
