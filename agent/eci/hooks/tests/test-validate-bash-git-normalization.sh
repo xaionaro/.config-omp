@@ -16,34 +16,10 @@ mkdir -p -- "$RUNTIME_ROOT/bin"
 cp -a -- "$SOURCE_ROOT/bin/eci-command-gate-mode" "$RUNTIME_ROOT/bin/"
 sed -i '2{/^exit 0$/d;}' -- "$RUNTIME_ROOT/hooks/validate-bash.sh"
 
-# Build and attest the planner only inside the disposable fixture.  This keeps
-# the test on the ordinary hook path without changing the shared runtime.
-PLANNER_DIR="$RUNTIME_ROOT/hooks/lib/eci-command-plan-go"
-(
-  cd -- "$PLANNER_DIR"
-  /usr/lib/go-1.26/bin/go build -trimpath -buildvcs=false -o eci-command-plan .
-)
-chmod 755 -- "$PLANNER_DIR/eci-command-plan"
-planner_go_mod_sha="$(sha256sum -- "$PLANNER_DIR/go.mod" | awk '{print $1}')"
-planner_main_sha="$(sha256sum -- "$PLANNER_DIR/main.go" | awk '{print $1}')"
-planner_classifier_sha="$(sha256sum -- "$PLANNER_DIR/classifier.go" | awk '{print $1}')"
-planner_binary_sha="$(sha256sum -- "$PLANNER_DIR/eci-command-plan" | awk '{print $1}')"
-planner_binary_size="$(stat -Lc '%s' -- "$PLANNER_DIR/eci-command-plan")"
-awk \
-  -v go_mod="$planner_go_mod_sha" \
-  -v main="$planner_main_sha" \
-  -v classifier="$planner_classifier_sha" \
-  -v binary="$planner_binary_sha" \
-  -v size="$planner_binary_size" '
-  $1 == "source_go.mod_sha256" { print $1 "\t" go_mod; next }
-  $1 == "source_main.go_sha256" { print $1 "\t" main; next }
-  $1 == "source_classifier.go_sha256" { print $1 "\t" classifier; next }
-  $1 == "binary_sha256" { print $1 "\t" binary; next }
-  $1 == "binary_size" { print $1 "\t" size; next }
-  { print }
-' "$PLANNER_DIR/.eci-command-plan.provenance" >"$PLANNER_DIR/.eci-command-plan.provenance.tmp"
-mv -- "$PLANNER_DIR/.eci-command-plan.provenance.tmp" "$PLANNER_DIR/.eci-command-plan.provenance"
-chmod 600 -- "$PLANNER_DIR/.eci-command-plan.provenance"
+# Provision the gate binaries the hook verifies ($HOME/.omp/agent/eci/bin and
+# their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
+PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
+  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 
@@ -66,11 +42,19 @@ printf '%s\n' \
   "session_id: $SESSION" \
   'created_utc: 2026-08-28T00:00:00Z' \
   >"$PROOF_ROOT/$SESSION/eci_active"
+# The hook classifies the caller from its callback transcript; these are
+# coordinator actions, so give them a main-session transcript in the fixture HOME.
+MAIN_TRANSCRIPT="$HOME_ROOT/.omp/agent/sessions/git-normalization/main.jsonl"
+mkdir -p -- "$(dirname -- "$MAIN_TRANSCRIPT")"
+printf '%s\n' \
+  "{\"type\":\"session\",\"version\":3,\"id\":\"$SESSION\",\"cwd\":\"$REPO\"}" \
+  '{"type":"message","role":"user","content":"git normalization"}' >"$MAIN_TRANSCRIPT"
 
 run_hook() {
   local command="$1" output="$TMP_ROOT/output.json"
   jq -cn --arg session "$SESSION" --arg cwd "$REPO" --arg command "$command" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' |
+    --arg transcript "$MAIN_TRANSCRIPT" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \
       ECI_ROLE=coordinator ECI_HOOK_IS_SUBAGENT=false \
       XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_STATE_HOME="$TMP_ROOT/state" \
