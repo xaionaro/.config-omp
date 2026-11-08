@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# The gate refuses a bin directory with a group- or other-writable ancestor.
+umask 077
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-git-normalization.XXXXXX")"
-trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
+trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
 # Exercise the real hook in a private runtime, removing a line-2 bypass if
 # present. No command supplied to the hook is executed by this test.
@@ -18,7 +20,10 @@ sed -i '2{/^exit 0$/d;}' -- "$RUNTIME_ROOT/hooks/validate-bash.sh"
 
 # Provision the gate binaries the hook verifies ($HOME/.omp/agent/eci/bin and
 # their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
-PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
+# The Go caches stay on the caller's paths so no read-only module cache lands
+# under TMP_ROOT.
+GOMODCACHE="$(/usr/lib/go-1.26/bin/go env GOMODCACHE)" GOCACHE="$(/usr/lib/go-1.26/bin/go env GOCACHE)" \
+  PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
   eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
