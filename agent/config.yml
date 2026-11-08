@@ -15,6 +15,6 @@ task:
   perCallModel: "on"
   softRequestBudget: 0
   agentSoftRequestBudget: {}
-defaultThinkingLevel: max
+defaultThinkingLevel: low
 advisor:
   enabled: true
