@@ -23,7 +23,7 @@
 advisors:
   - name: RulesAdvisor
     enabled: true
-    model: anthropic/claude-haiku-5-5:max
+    model: anthropic/claude-opus-5-5:low
     tools: [read, grep, glob]
     reviewMode: turn
     reviewInterval: 5
