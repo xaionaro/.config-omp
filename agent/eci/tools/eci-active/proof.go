@@ -236,7 +236,36 @@ func acquireSessionLock(dir string) (*os.File, error) {
 		f.Close()
 		return nil, lockBusy(wait, lockPath)
 	}
+	// Old-session cleanup (session-snapshot.sh) may unlink the file while we
+	// wait; a lock on an unlinked inode excludes nobody. Fail closed when the
+	// path no longer names the locked inode. Residual risk: the cleanup can
+	// still remove the directory after this check, while the lock is held.
+	held, herr := f.Stat()
+	now, nerr := os.Lstat(lockPath)
+	if herr != nil || nerr != nil || !os.SameFile(held, now) {
+		f.Close()
+		return nil, fmt.Errorf("ECI session lock was replaced while waiting; refusing state mutation: %s", lockPath)
+	}
 	return f, nil
+}
+
+// acquireProofSessionLock takes the lock for session-scoped proof records in
+// <proof>/<sid>. It keeps the proof-root checks of the per-user lock. When
+// <proof>/<sid> is absent there is no session state to guard: it returns a nil
+// file, takes no lock and creates no directory; the caller's own absence
+// handling applies. Closing the nil file is a harmless no-op error.
+func acquireProofSessionLock(sid string) (*os.File, error) {
+	if err := proofRootReady(); err != nil {
+		return nil, err
+	}
+	dir, err := resolveSessionDir(sid)
+	if err != nil {
+		return nil, err
+	}
+	if !isDir(dir) {
+		return nil, nil
+	}
+	return acquireSessionLock(dir)
 }
 
 // contextSessionDir creates and returns <home>/.agent/context/sessions/<sid>.

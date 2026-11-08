@@ -318,11 +318,7 @@ func aggregateReview(args []string) error {
 	if filepath.Base(sessionDir) != sid {
 		return exitError{code: 1, msg: "aggregate-review resolved a different session than the current identity."}
 	}
-	lock, err := acquireLock()
-	if err != nil {
-		return exitError{code: 1, msg: err.Error()}
-	}
-	defer lock.Close()
+	// Read-only gate: it writes no state, so it takes no lock (as the shell gate).
 
 	plan, outer, err := aggregateCurrentContext(sid, sessionDir)
 	if err != nil {

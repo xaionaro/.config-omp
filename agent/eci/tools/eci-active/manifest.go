@@ -29,7 +29,7 @@ func manifestWrite(args []string) error {
 	if filepath.Base(sessionDir) != sid {
 		return exitError{code: 1, msg: "manifest-write resolved a different session than the current identity."}
 	}
-	lock, err := acquireLock()
+	lock, err := acquireProofSessionLock(sid)
 	if err != nil {
 		return err
 	}

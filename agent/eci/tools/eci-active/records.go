@@ -250,7 +250,7 @@ func repositoryAllowOn(args []string) error {
 	if active == repo {
 		return exitError{code: 1, msg: "Repository is already the active work repository."}
 	}
-	lock, err := acquireLock()
+	lock, err := acquireProofSessionLock(sid)
 	if err != nil {
 		return err
 	}
@@ -290,7 +290,7 @@ func repositoryAllowOff(args []string) error {
 			return exitError{code: 1, msg: err.Error()}
 		}
 	}
-	lock, err := acquireLock()
+	lock, err := acquireProofSessionLock(sid)
 	if err != nil {
 		return err
 	}
@@ -466,7 +466,18 @@ func permissiveOff(args []string) error {
 	if err := permissiveRequest(scope, gate, op, req); err != nil {
 		return err
 	}
-	lock, err := acquireLock()
+	// Session scope guards the record where it lives; global stays per-user.
+	var lock *os.File
+	var err error
+	if scope == "session" {
+		sid, serr := currentSession()
+		if serr != nil {
+			return serr
+		}
+		lock, err = acquireProofSessionLock(sid)
+	} else {
+		lock, err = acquireLock()
+	}
 	if err != nil {
 		return err
 	}

@@ -206,3 +206,93 @@ func TestPerUserLockTimeoutMessage(t *testing.T) {
 		t.Error("record written despite timeout")
 	}
 }
+
+func gitInit(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	r, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// repository-allow-on in session B succeeds while the per-user lock is held.
+func TestRepositoryAllowOtherSessionIgnoresPerUserLock(t *testing.T) {
+	fx := newWrapperFixture(t)
+	base := t.TempDir()
+	work := gitInit(t, filepath.Join(base, "work"))
+	dep := gitInit(t, filepath.Join(base, "dep"))
+	if err := os.MkdirAll(filepath.Join(fx.proof, "other-session"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	holdLock(t, perUserLock(fx), -1)
+	_, stderr, code := fx.runAs(t, "other-session", work, []string{"ECI_LOCK_WAIT_SECONDS=1"},
+		"repository-allow-on", dep, "dependency repair")
+	if code != 0 {
+		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+}
+
+// With <proof>/<sid> absent there is nothing to guard: no lock, HEAD output.
+func TestPermissiveOffSessionMissingDirTakesNoLock(t *testing.T) {
+	fx := newWrapperFixture(t)
+	stdout, stderr, code := fx.runAs(t, "absent-session", cwdNow(t), nil,
+		"permissive-off", "session", "gate-a", "op-a", "request")
+	if code != 0 || !strings.Contains(stdout, "ECI permissive mode inactive") {
+		t.Fatalf("permissive-off session with absent proof dir: exit %d stdout %q stderr %q", code, stdout, stderr)
+	}
+	if exists(filepath.Join(fx.proof, "absent-session")) {
+		t.Error("proof session dir created")
+	}
+}
+
+// Session-scoped proof records wait on <proof>/<sid>/.eci-session.lock.
+func TestPermissiveOffSessionWaitsOnProofSessionLock(t *testing.T) {
+	fx := newWrapperFixture(t)
+	lock := filepath.Join(fx.proof, wrapperSessionID, ".eci-session.lock")
+	holdLock(t, lock, -1)
+	start := time.Now()
+	_, stderr, code := fx.runAs(t, wrapperSessionID, cwdNow(t), []string{"ECI_LOCK_WAIT_SECONDS=1"},
+		"permissive-off", "session", "gate-a", "op-a", "request")
+	if code != 1 || !strings.Contains(stderr, lock) {
+		t.Fatalf("exit %d stderr %q; want 1 naming %s", code, stderr, lock)
+	}
+	if el := time.Since(start); el < time.Second {
+		t.Errorf("failed after %v, before the 1 s wait", el)
+	}
+}
+
+// A lock file unlinked and replaced while a writer waits fails closed.
+func TestSessionLockReplacedWhileWaitingFailsClosed(t *testing.T) {
+	fx := newWrapperFixture(t)
+	lock := filepath.Join(fx.proof, wrapperSessionID, ".eci-session.lock")
+	f, err := os.OpenFile(lock, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		os.Remove(lock)
+		os.WriteFile(lock, nil, 0o600)
+		f.Close()
+	}()
+	start := time.Now()
+	_, stderr, code := fx.runAs(t, wrapperSessionID, cwdNow(t), []string{"ECI_LOCK_WAIT_SECONDS=5"},
+		"permissive-off", "session", "gate-a", "op-a", "request")
+	if code != 1 || !strings.Contains(stderr, lock) {
+		t.Fatalf("exit %d stderr %q; want 1 naming %s", code, stderr, lock)
+	}
+	// It failed on the replacement, not by running out the 5 s wait.
+	if el := time.Since(start); el >= 4*time.Second {
+		t.Errorf("failed after %v; the replacement went unnoticed", el)
+	}
+}
