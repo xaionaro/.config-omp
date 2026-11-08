@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Focused current-contract proof uses the real registered private launcher and
-# a CLI compiled from current module source. Historical native grammar remains
-# explicitly available through test-normal-git-admission.sh component targets.
+# a CLI compiled from current module source.
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 case "${1:-matrix}" in
   native) export NORMAL_GIT_ADMISSION_TARGET=worker-git-native ;;

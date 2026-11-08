@@ -2872,6 +2872,12 @@ run_case "planner-maintenance runtime receipt binding" \
   bash "$ROOT/hooks/tests/test-eci-maintain-planner.sh"
 run_case "planner provenance uses a descriptor-pinned execution handoff" \
   bash "$ROOT/hooks/tests/test-eci-planner-fd-handoff.sh"
+run_case "normal Git admission current worker contract" \
+  env NORMAL_GIT_ADMISSION_TARGET=full bash "$ROOT/hooks/tests/test-normal-git-admission.sh"
+run_case "normal Git admission run-once route" \
+  env NORMAL_GIT_ADMISSION_TARGET=git-run-once bash "$ROOT/hooks/tests/test-normal-git-admission.sh"
+run_case "normal Git admission compound handoff boundary" \
+  env NORMAL_GIT_ADMISSION_TARGET=compound-handoff-boundary bash "$ROOT/hooks/tests/test-normal-git-admission.sh"
 # TODO: Legacy on-based fixtures in mixed authority/command tests and unchanged
 # session-snapshot/PostCompact hooks still need migration. Keep their generic
 # checks and fixtures; the focused retirement tests below cover the new contract.
