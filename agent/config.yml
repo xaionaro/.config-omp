@@ -48,7 +48,7 @@ statusLine:
       showThinkingLevel: true
     path:
       abbreviate: true
-      maxLength: 6
+      maxLength: 10
     git:
       showBranch: true
       showStaged: true
