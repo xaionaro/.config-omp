@@ -24,6 +24,13 @@ cp -- "$SOURCE_ROOT/../AGENTS.md" "$ROOT/../AGENTS.md"
 # denies gate-mode-identity when it is absent (classifier.go inspectHookGateModeTarget).
 # eci-hook-helper serves the subagent-status route; without it worker samples
 # fail closed as "unknown" instead of taking the production path.
+# Keep Go's caches on the account (resolved under the real HOME before it is
+# swapped), as run-isolated.sh does: a fixture-local GOCACHE/GOMODCACHE means a
+# cold build whose load skews the cold samples, and a read-only modcache in the fixture.
+GOPATH="${GOPATH:-$(go env GOPATH)}"
+GOMODCACHE="${GOMODCACHE:-$(go env GOMODCACHE)}"
+GOCACHE="${GOCACHE:-$(go env GOCACHE)}"
+export GOPATH GOMODCACHE GOCACHE
 HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode eci-hook-helper eci-verexec
 proof_root="$TMP_ROOT/proof"
 session_id="t00-session"
@@ -39,7 +46,7 @@ export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"
 export XDG_STATE_HOME="$TMP_ROOT/xdg-state"
 mkdir -p "$session_dir" "$(dirname -- "$status_file")" "$XDG_CONFIG_HOME/eci" "$(dirname -- "$main_transcript")"
 chmod 700 "$XDG_CONFIG_HOME" "$XDG_CONFIG_HOME/eci"
-trap 'rm -f -- "$worker_transcript" "$helper_hardlink"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
+trap 'rm -f -- "$worker_transcript" "$helper_hardlink"; chmod -R u+w -- "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 # HOME is a real fixture directory whose .omp/agent/eci is the private runtime copy, so
 # the provenance guard sees a real final $HOME/.omp/agent/eci directory (no symlink).
 ln -- "$ROOT/hooks/lib/eci-environment-command.sh" "$helper_hardlink"
