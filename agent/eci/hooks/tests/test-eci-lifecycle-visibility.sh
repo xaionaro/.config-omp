@@ -35,7 +35,7 @@ printf '%s\n' \
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$copy_eci"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$fake_bin/eci-active"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$fake_bin/eci-active-dispatch"
-chmod 755 -- "$copy_eci" "$fake_bin/eci-active" "$fake_bin/eci-active-dispatch"
+chmod -- 755 "$copy_eci" "$fake_bin/eci-active" "$fake_bin/eci-active-dispatch"
 copy_eci_resolved="$(realpath -e -- "$copy_eci")"
 
 run_hook() {
