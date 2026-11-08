@@ -3055,10 +3055,7 @@ func TestUniqInspectionGrammar(t *testing.T) {
 func TestInstalledBinaryStatMetadataGrammar(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	testCases := []struct {
 		name      string
 		command   string
@@ -3108,10 +3105,7 @@ func TestInstalledBinaryStatMetadataGrammar(t *testing.T) {
 // TestInstalledBinaryRejectsRawGitFastCapabilities verifies the shipped
 // planner leaves raw Git calls on their provider-owned route.
 func TestInstalledBinaryRejectsRawGitFastCapabilities(t *testing.T) {
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, command := range []string{
 		"git --no-pager rev-parse HEAD",
 		"git archive HEAD",
@@ -4300,10 +4294,7 @@ func TestRepositoryDefaultGitArchiveHasNoFastCapability(t *testing.T) {
 // Example: a hook can consume the binary response without re-tokenizing any
 // accepted or rejected original shell command.
 func TestInstalledBinaryRejectsRepositoryDefaultGitArchiveFastCapability(t *testing.T) {
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 
 	for _, testCase := range repositoryDefaultGitArchiveCapabilityCases {
 		testCase := testCase
@@ -4488,10 +4479,7 @@ func TestDirectPathGitStatusHasNoFastCapability(t *testing.T) {
 //
 // Example: /tmp/fake-bin/git status emits no generic capability.
 func TestInstalledBinaryRejectsDirectPathGitStatusFastCapability(t *testing.T) {
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 
 	for _, testCase := range directPathGitStatusCapabilityCases {
 		testCase := testCase
@@ -4998,6 +4986,9 @@ func TestCurrentControlCopyOperandRoles(t *testing.T) {
 				segment    int
 				argvIndex  int
 				workerOnly bool
+				// deferred marks a command whose operand list holds an unresolved word, so the
+				// planner can neither admit it nor name a write target.
+				deferred bool
 			}{
 				{name: "marker input", command: "cp " + marker + " " + ordinary},
 				{name: "flagged marker input", command: "cp -f -- " + marker + " " + ordinary},
@@ -5019,9 +5010,10 @@ func TestCurrentControlCopyOperandRoles(t *testing.T) {
 				{name: "unknown option", command: "cp --unknown " + ordinary + " " + marker},
 				{name: "too many operands", command: "cp " + ordinary + " " + marker + " elsewhere"},
 				{name: "one operand", command: "cp " + marker},
-				{name: "heredoc remains unsupported", command: "cp " + ordinary + " << " + marker + " " + marker},
+				// The heredoc consumes only its delimiter word; the second path stays cp's destination.
+				{name: "heredoc delimiter leaves copy destination", command: "cp " + ordinary + " << " + marker + " " + marker, target: marker, argvIndex: 2},
 				{name: "descriptor duplication remains unsupported", command: "cp " + ordinary + " <& " + marker + " " + marker},
-				{name: "process substitution remains visible", command: "cp " + ordinary + " <(printf) " + marker},
+				{name: "process substitution operand defers", command: "cp " + ordinary + " <(printf) " + marker, deferred: true},
 				{name: "brace grouping remains visible", command: "cp " + ordinary + " < { printf } " + marker},
 				{name: "invalid generic output assignment", command: "cp --output=" + marker + " ordinary elsewhere"},
 				{name: "invalid generic output pair", command: "cp --output " + marker + " ordinary elsewhere"},
@@ -5056,6 +5048,12 @@ func TestCurrentControlCopyOperandRoles(t *testing.T) {
 						Command:       testCase.command,
 						ActiveMarkers: []string{marker},
 					})
+					if testCase.deferred {
+						if result.Decision != DecisionDefer || result.Diagnostic != nil {
+							t.Fatalf("unresolved operand command: decision=%s diagnostic=%#v, want defer", result.Decision, result.Diagnostic)
+						}
+						return
+					}
 					if testCase.target == "" {
 						if result.Decision != DecisionAllow || result.Diagnostic != nil {
 							t.Fatalf("input/data command: decision=%s diagnostic=%#v, want allow", result.Decision, result.Diagnostic)
@@ -5598,6 +5596,8 @@ func TestReviewGateCapabilityDefersToProviderAdapters(t *testing.T) {
 		"env FOO=bar bash -- hooks/eci-review-gate.sh prewrite test-session",
 		"bash /opt/eci/hooks/eci-review-gate.sh unknown test-session",
 		"bash /opt/eci/hooks/eci-review-gate.sh commit",
+		// bash -c runs its command string, the bare gate name; later words are $0 and $1.
+		"bash -c eci-review-gate.sh commit test-session",
 	}
 	ordinaryCommands := []string{
 		"./tools/eci-review-gate.sh verify",
@@ -5606,9 +5606,8 @@ func TestReviewGateCapabilityDefersToProviderAdapters(t *testing.T) {
 		"bash scripts/ordinary-review.sh",
 		"printf hooks/eci-review-gate.sh",
 		"bash -O eci-review-gate.sh commit test-session",
-	}
-	malformedInterpreterCommands := []string{
-		"bash -c eci-review-gate.sh commit test-session",
+		// A bash -c string that only names the gate does not run it.
+		"bash -c 'printf eci-review-gate.sh' commit test-session",
 	}
 
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
@@ -5641,20 +5640,6 @@ func TestReviewGateCapabilityDefersToProviderAdapters(t *testing.T) {
 				})
 				if result.Decision != DecisionAllow || result.Diagnostic != nil {
 					t.Fatalf("ordinary %q: decision=%q diagnostic=%#v, want allowed without diagnostic", command, result.Decision, result.Diagnostic)
-				}
-			}
-
-			for _, command := range malformedInterpreterCommands {
-				result := Classify(Request{
-					Provider:      provider,
-					Role:          RoleWorker,
-					CWD:           "/opt/eci",
-					Marker:        MarkerActive,
-					ActiveSession: "test-session",
-					Command:       command,
-				})
-				if result.Decision != DecisionAllow || result.Diagnostic != nil {
-					t.Fatalf("ordinary interpreter form %q: decision=%q diagnostic=%#v, want allow", command, result.Decision, result.Diagnostic)
 				}
 			}
 		})

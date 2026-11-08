@@ -54,82 +54,159 @@ func fileSHA256(t *testing.T, path string) string {
 	return fmt.Sprintf("%x", sha256.Sum256(contents))
 }
 
+// TestProviderValidatorsUseCompiledJSONInterface runs the source omp validator
+// against the TestMain-provisioned planner, republished with its receipt in a
+// fixture home. The callback JSON on stdin reaches the compiled planner: the
+// active marker and the role change the verdict, the validator output is the
+// planner's own --hook output, and an unverified planner fails closed. The
+// validator holds no command routing of its own (hooks/validate-bash.sh runs the
+// verified planner with --hook and passes its decision through); the Git fast-capability checks are
+// TestInstalledBinaryRejectsRepositoryDefaultGitArchiveFastCapability and
+// TestInstalledBinaryRejectsDirectPathGitStatusFastCapability.
+//
+// Example: an active coordinator's "rm -rf /" is denied with the planner's broad
+// destructive code; with no marker the same callback is admitted.
 func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	t.Parallel()
 
-	for _, validator := range []string{
-		filepath.Join(providerHome(ProviderOmp), "hooks", "validate-bash.sh"),
-		filepath.Join(providerHome(ProviderKimi), "hooks", "validate-bash.sh"),
-	} {
-		source, err := os.ReadFile(validator)
-		if err != nil {
-			t.Fatalf("read %s: %v", validator, err)
-		}
-		text := string(source)
-		if !strings.Contains(text, `lib/eci-command-plan-go/eci-command-plan`) {
-			t.Errorf("%s does not invoke the compiled classifier", validator)
-		}
-		if strings.Contains(text, `python3 "$HOOK_DIR/lib/eci-command-plan.py"`) {
-			t.Errorf("%s still invokes the Python classifier at runtime", validator)
-		}
-		for _, field := range []string{
-			`provider:$provider`,
-			`role:$role`,
-			`active_markers:$ARGS.positional`,
-		} {
-			if !strings.Contains(text, field) {
-				t.Errorf("%s JSON request is missing %s", validator, field)
-			}
+	planner := testPlannerBinary
+	sourceRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatalf("resolve repository root: %v", err)
+	}
+	fixtureRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonicalize fixture root: %v", err)
+	}
+	// The native loader rejects a bin directory with a group/other-writable ancestor.
+	if err := os.Chmod(fixtureRoot, 0o700); err != nil {
+		t.Fatalf("restrict fixture root: %v", err)
+	}
+	home := filepath.Join(fixtureRoot, "home")
+	canonicalRoot := filepath.Join(home, ".omp", "agent", "eci")
+	binDirectory := filepath.Join(canonicalRoot, "bin")
+	proofRoot := filepath.Join(fixtureRoot, "proof")
+	sessionsProject := filepath.Join(home, ".omp", "agent", "sessions", "project")
+	temporaryRoot := filepath.Join(fixtureRoot, "tmp")
+	const sessionID = "validator-interface"
+	for _, directory := range []string{binDirectory, filepath.Join(proofRoot, sessionID), sessionsProject, temporaryRoot} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatalf("create %s: %v", directory, err)
 		}
 	}
-}
+	copyStopGateSyntaxFixtureTree(t, filepath.Join(sourceRoot, "hooks"), filepath.Join(canonicalRoot, "hooks"))
+	contents, err := os.ReadFile(planner)
+	if err != nil {
+		t.Fatalf("read provisioned planner: %v", err)
+	}
+	published := filepath.Join(binDirectory, "eci-command-plan")
+	if err := os.WriteFile(published, contents, 0o755); err != nil {
+		t.Fatalf("publish planner: %v", err)
+	}
+	receipt := published + ".sha256"
+	if err := os.WriteFile(receipt, []byte(fileSHA256(t, published)+"  eci-command-plan\n"), 0o644); err != nil {
+		t.Fatalf("write planner receipt: %v", err)
+	}
+	transcript := filepath.Join(sessionsProject, "main.jsonl")
+	if err := os.WriteFile(transcript, []byte(`{"type":"session","version":3,"id":"`+sessionID+`"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("write main transcript: %v", err)
+	}
+	marker := filepath.Join(proofRoot, sessionID, "eci_active")
 
-// TestProviderValidatorsDoNotExposeArchiveOrPathGitFastCapabilities verifies
-// that raw Git archive output and an arbitrary slash-qualified Git basename
-// always reach an identity-aware/legacy route rather than a generic fast path.
-//
-// Example: git archive HEAD and /tmp/attacker/git status have no planner
-// capability helper in either provider validator.
-func TestProviderValidatorsDoNotExposeArchiveOrPathGitFastCapabilities(t *testing.T) {
-	t.Parallel()
-
-	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
-		provider := provider
-		t.Run(string(provider), func(t *testing.T) {
-			validator := filepath.Join(providerHome(provider), "hooks", "validate-bash.sh")
-			source, err := os.ReadFile(validator)
-			if err != nil {
-				t.Fatalf("read %s: %v", validator, err)
-			}
-			text := string(source)
-			for _, forbidden := range []string{
-				"repository_default_git_archive_capability",
-				"repository_default_git_read_only_capability",
-				"direct_path_git_status_capability",
-				"direct_path_git_plan_capability",
-				"repository-default-git-archive",
-				"repository-default-git-read-only",
-				"direct-path-git-status",
-				"direct-path-git-plan",
-			} {
-				if strings.Contains(text, forbidden) {
-					t.Errorf("%s still exposes removed Git fast-path token %q", validator, forbidden)
-				}
-			}
-			if !strings.Contains(text, "deferred_route_git_shape() {") {
-				t.Errorf("%s has no deferred Git route", validator)
-			}
+	// run feeds one callback envelope to argv (the validator or the planner) and
+	// returns stdout; a non-zero exit fails the test.
+	run := func(worker bool, command string, argv ...string) string {
+		t.Helper()
+		request, err := json.Marshal(map[string]any{
+			"session_id":      sessionID,
+			"tool_name":       "Bash",
+			"transcript_path": transcript,
+			"cwd":             fixtureRoot,
+			"tool_input":      map[string]string{"command": command},
 		})
+		if err != nil {
+			t.Fatalf("marshal callback: %v", err)
+		}
+		hook := exec.Command(argv[0], argv[1:]...)
+		hook.Dir = fixtureRoot
+		hook.Env = []string{
+			"HOME=" + home,
+			"PATH=/usr/local/bin:/usr/bin:/bin",
+			"ECI_PROOF_ROOT=" + proofRoot,
+			fmt.Sprintf("ECI_HOOK_IS_SUBAGENT=%t", worker),
+			"TMPDIR=" + temporaryRoot,
+			"ECI_TMPDIR=" + temporaryRoot,
+			"XDG_CONFIG_HOME=" + filepath.Join(fixtureRoot, "xdg-config"),
+		}
+		hook.Stdin = bytes.NewReader(request)
+		var stdout, stderr bytes.Buffer
+		hook.Stdout, hook.Stderr = &stdout, &stderr
+		if err := hook.Run(); err != nil {
+			t.Fatalf("%v %q: %v; stdout=%s stderr=%s", argv, command, err, stdout.String(), stderr.String())
+		}
+		return stdout.String()
+	}
+	validator := []string{"/usr/bin/bash", filepath.Join(canonicalRoot, "hooks", "validate-bash.sh")}
+	// denial returns the permission decision and reason of a validator output.
+	denial := func(output string) (string, string) {
+		t.Helper()
+		var result struct {
+			HookSpecificOutput struct {
+				PermissionDecision       string `json:"permissionDecision"`
+				PermissionDecisionReason string `json:"permissionDecisionReason"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
+			t.Fatalf("decode validator output: %v; output=%s", err, output)
+		}
+		return result.HookSpecificOutput.PermissionDecision, result.HookSpecificOutput.PermissionDecisionReason
+	}
+
+	if output := run(false, "rm -rf /", validator...); strings.TrimSpace(output) != "" {
+		t.Fatalf("inactive scope: validator output=%s, want admission", output)
+	}
+	if err := os.WriteFile(marker, []byte("scope: validator interface\ncwd: "+fixtureRoot+"\nsession_id: "+sessionID+"\ncreated_utc: 2026-08-27T00:00:00Z\n"), 0o600); err != nil {
+		t.Fatalf("write active marker: %v", err)
+	}
+	for _, testCase := range []struct {
+		name     string
+		worker   bool
+		command  string
+		wantCode DiagnosticCode
+	}{
+		{name: "coordinator ordinary", command: "true"},
+		{name: "coordinator broad destructive", command: "rm -rf /", wantCode: CodeBroadDestructiveDenied},
+		{name: "worker broad live control", worker: true, command: "rm -rf /", wantCode: CodeControlOwnerRequired},
+		{name: "coordinator marker write", command: "touch " + marker, wantCode: CodePlanLiveControlDenied},
+	} {
+		output := run(testCase.worker, testCase.command, validator...)
+		if direct := run(testCase.worker, testCase.command, published, "--hook"); output != direct {
+			t.Errorf("%s: validator output=%q, want the planner's --hook output %q", testCase.name, output, direct)
+		}
+		if testCase.wantCode == "" {
+			if strings.TrimSpace(output) != "" {
+				t.Errorf("%s: validator output=%s, want admission", testCase.name, output)
+			}
+			continue
+		}
+		decision, reason := denial(output)
+		if decision != "deny" || !strings.HasPrefix(reason, "["+string(testCase.wantCode)+"]") {
+			t.Errorf("%s: decision=%q reason=%q, want deny with code %s", testCase.name, decision, reason, testCase.wantCode)
+		}
+	}
+
+	if err := os.Remove(receipt); err != nil {
+		t.Fatalf("remove planner receipt: %v", err)
+	}
+	if decision, _ := denial(run(false, "true", validator...)); decision != "deny" {
+		t.Fatalf("unverified planner: decision=%q, want deny", decision)
 	}
 }
 
 func TestInstalledBinaryProviderParity(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		request := activeWorker("printf before | env | printf after")
 		request.Provider = provider
@@ -162,10 +239,7 @@ func TestInstalledBinaryProviderParity(t *testing.T) {
 func TestInstalledBinaryRoutesReadOnlyLifecycleStateByRole(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	testCases := []struct {
 		name            string
 		role            Role
@@ -258,10 +332,7 @@ func TestInstalledBinaryRoutesReadOnlyLifecycleStateByRole(t *testing.T) {
 func TestInstalledBinaryRoutesActiveGitByRole(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	runInstalled := func(t *testing.T, request Request) (int, Result) {
 		t.Helper()
 		input, err := json.Marshal(request)
@@ -452,10 +523,7 @@ func TestInstalledBinaryRoutesActiveGitByRole(t *testing.T) {
 func TestInstalledBinaryRoutesActivePreCommitHookModeRepairByRole(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	const command = "chmod 755 hooks/pre-commit-go-mod.sh"
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
@@ -575,10 +643,7 @@ func TestInstalledBinaryRoutesActivePreCommitHookModeRepairByRole(t *testing.T) 
 func TestInstalledBinaryDeniesActiveWorkerProtectedHookModeMutations(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
@@ -672,10 +737,7 @@ func TestInstalledBinaryDeniesActiveWorkerProtectedHookModeMutations(t *testing.
 func TestInstalledBinaryDefersActiveCoordinatorProtectedHookModeMutations(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
@@ -750,10 +812,7 @@ func TestInstalledBinaryDefersActiveCoordinatorProtectedHookModeMutations(t *tes
 func TestInstalledBinaryAllowsSameNamedHookPathOutsideProviderRoot(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
@@ -794,10 +853,7 @@ func TestInstalledBinaryAllowsSameNamedHookPathOutsideProviderRoot(t *testing.T)
 func TestInstalledBinaryAllowsActiveWorkerOrdinaryChmod(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
 		provider := provider
 		t.Run(string(provider), func(t *testing.T) {
@@ -853,10 +909,7 @@ func TestInstalledBinaryAllowsActiveWorkerOrdinaryChmod(t *testing.T) {
 func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) {
 	t.Parallel()
 
-	binary, err := filepath.Abs("eci-command-plan")
-	if err != nil {
-		t.Fatalf("resolve installed binary: %v", err)
-	}
+	binary := testPlannerBinary
 	proofRoot := t.TempDir()
 	sessionDir := filepath.Join(proofRoot, "proof", "session")
 	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
@@ -870,6 +923,12 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 	ordinaryPath := filepath.Join(ordinaryRoot, "ordinary.md")
 	if err := os.WriteFile(ordinaryPath, []byte("ordinary\n"), 0o600); err != nil {
 		t.Fatalf("write ordinary file: %v", err)
+	}
+	// The read and ordinary-write cases run from an existing cwd outside the session
+	// directory; the planner treats a cwd that is not a verified directory as unknown and defers.
+	unrelatedCWD := filepath.Join(proofRoot, "unrelated-cwd")
+	if err := os.MkdirAll(unrelatedCWD, 0o700); err != nil {
+		t.Fatalf("create unrelated cwd: %v", err)
 	}
 
 	for _, provider := range []Provider{ProviderOmp, ProviderKimi} {
@@ -923,8 +982,14 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 					if diagnostic.Predicate != "append-only-ledger" {
 						t.Errorf("%s predicate: got %q, want append-only-ledger", name, diagnostic.Predicate)
 					}
-					if err := eciActiveRemediationError(diagnostic.Remediation); err != nil {
-						t.Errorf("%s remediation: %v", name, err)
+					// omp names its literal current-home executable; Kimi intentionally names no
+					// omp home path (ledgerAppendRemediation in classifier.go).
+					if provider == ProviderOmp {
+						if err := eciActiveRemediationError(diagnostic.Remediation); err != nil {
+							t.Errorf("%s remediation: %v", name, err)
+						}
+					} else if diagnostic.Remediation == "" || eciActivePathPattern.MatchString(diagnostic.Remediation) {
+						t.Errorf("%s remediation: got %q, want non-empty guidance naming no $HOME executable path", name, diagnostic.Remediation)
 					}
 				})
 			}
@@ -941,7 +1006,7 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 					request := Request{
 						Provider:      provider,
 						Role:          RoleCoordinator,
-						CWD:           filepath.Join(proofRoot, "unrelated-cwd"),
+						CWD:           unrelatedCWD,
 						Marker:        MarkerActive,
 						ActiveSession: "session",
 						Command:       testCase.command,
@@ -968,10 +1033,7 @@ func TestInstalledBinaryDeniesActiveLedgerWritersForBothProviders(t *testing.T) 
 // Example: a compound is admitted only when the syntax check and every other
 // parser-attested direct segment are admitted by their ordinary routes.
 func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repository root: %v", err)
-	}
+	root := providerHome(ProviderOmp)
 
 	fixtureRoot, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -985,6 +1047,8 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 	xdgStateHome := filepath.Join(fixtureRoot, "xdg-state")
 	temporaryRoot := filepath.Join(fixtureRoot, "tmp")
 	const sessionID = "stop-gate-syntax"
+	sessionsProject := filepath.Join(home, ".omp", "agent", "sessions", "project")
+	mainTranscript := filepath.Join(sessionsProject, "main.jsonl")
 
 	for _, directory := range []string{
 		canonicalRoot,
@@ -993,10 +1057,16 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 		filepath.Join(xdgConfigHome, "eci"),
 		xdgStateHome,
 		temporaryRoot,
+		sessionsProject,
 	} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			t.Fatalf("create %s: %v", directory, err)
 		}
+	}
+	// A depth-two transcript with a session header and no parentSession is the main
+	// (coordinator) transcript; worker cases still set ECI_HOOK_IS_SUBAGENT=true.
+	if err := os.WriteFile(mainTranscript, []byte(`{"type":"session","version":3,"id":"`+sessionID+`"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("write main transcript: %v", err)
 	}
 
 	copyStopGateSyntaxFixtureTree(t, filepath.Join(root, "hooks"), filepath.Join(canonicalRoot, "hooks"))
@@ -1061,9 +1131,11 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 
 	runHook := func(cwd, command string, worker bool, bashEnvironment string, compoundSegment bool) string {
 		request, err := json.Marshal(map[string]any{
-			"session_id": sessionID,
-			"cwd":        cwd,
-			"tool_input": map[string]string{"command": command},
+			"session_id":      sessionID,
+			"tool_name":       "Bash",
+			"transcript_path": mainTranscript,
+			"cwd":             cwd,
+			"tool_input":      map[string]string{"command": command},
 		})
 		if err != nil {
 			t.Fatalf("marshal hook request: %v", err)
@@ -1160,7 +1232,7 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 		compoundSegment bool
 		reasonContains  string
 	}{
-		{name: "worker ownership", cwd: canonicalRoot, command: "bash -n hooks/stop-gate.sh", worker: true, reasonContains: "[ECI_WORKER_CONTROL_SCRIPT_DENIED]"},
+		{name: "worker ownership", cwd: canonicalRoot, command: "bash -n hooks/stop-gate.sh", worker: true},
 		{name: "direct execution", cwd: canonicalRoot, command: "hooks/stop-gate.sh"},
 		{name: "execution tracing", cwd: canonicalRoot, command: "bash -x hooks/stop-gate.sh"},
 		{name: "combined tracing and syntax", cwd: canonicalRoot, command: "bash -x -n hooks/stop-gate.sh"},
@@ -1190,13 +1262,21 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 			}
 		})
 	}
+	// Worker execution of the Supervisor-owned control script is denied as control
+	// ownership; the worker's syntax-only check of it is admitted above ("worker ownership").
 	assertDenied("worker control execution", canonicalRoot, "bash hooks/stop-gate.sh", true, "", false,
-		"ECI_WORKER_CONTROL_SCRIPT_DENIED")
+		"["+string(CodeControlOwnerRequired)+"]")
 	for _, worker := range []bool{false, true} {
 		assertDenied(fmt.Sprintf("syntax with control redirect worker=%t", worker), canonicalRoot,
 			"bash -n hooks/stop-gate.sh > "+marker+" | true", worker, "", false, "eci_active")
+		// The broad segment is denied for both roles. For a worker, "/" is an ancestor of
+		// the session's marker, so the control-ownership check reports the denial first.
+		broadReason := "[" + string(CodeControlOwnerRequired) + "]"
+		if !worker {
+			broadReason = "ECI_BROAD_DESTRUCTIVE_DENIED"
+		}
 		assertDenied(fmt.Sprintf("syntax with broad segment worker=%t", worker), canonicalRoot,
-			"bash -n hooks/stop-gate.sh | rm -rf /", worker, "", false, "ECI_BROAD_DESTRUCTIVE_DENIED")
+			"bash -n hooks/stop-gate.sh | rm -rf /", worker, "", false, broadReason)
 	}
 }
 
