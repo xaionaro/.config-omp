@@ -20,11 +20,17 @@ eci_context_session_rest() {
   local path="$1" root canonical
 
   [ -n "$path" ] || return 1
-  root="$(eci_context_root)/sessions"
+  root="$HOME/.agent/context"
+  eci_strip_trailing_newlines root
+  root="$root/sessions"
   case "$path" in
     "$root"/*) printf '%s\n' "${path#"$root"/}"; return 0 ;;
   esac
-  canonical="$(realpath -m -- "$(eci_context_root)" 2>/dev/null || true)"
+  if eci_hook_roots_fresh; then
+    canonical="$eci_hook_roots_context_canonical"
+  else
+    canonical="$(realpath -m -- "$(eci_context_root)" 2>/dev/null || true)"
+  fi
   [ -n "$canonical" ] || return 1
   root="$canonical/sessions"
   case "$path" in
@@ -33,24 +39,45 @@ eci_context_session_rest() {
   return 1
 }
 
+# Drop trailing newlines from the named variable, as a command substitution of
+# its printed value would, so in-shell values equal the old $(...) values.
+eci_strip_trailing_newlines() {
+  local -n eci_strip_ref="$1"
+  while [[ "$eci_strip_ref" == *$'\n' ]]; do
+    eci_strip_ref="${eci_strip_ref%$'\n'}"
+  done
+}
+
 eci_proof_root_cache_configured=""
 eci_proof_root_cache_value=""
+# Set by eci_proof_root_load in the calling shell, so callers read the root
+# without a command substitution: a $(eci_proof_root) subshell cannot carry the
+# cache above back to the hook process.
+eci_proof_root_value=""
+eci_proof_root_configured_value=""
 
-eci_proof_root() {
-  local configured canonical
+eci_proof_root_load() {
+  local configured canonical cache_key
+  configured="${ECI_PROOF_ROOT:-$HOME/tmp/agent/proof}"
+  eci_strip_trailing_newlines configured
+  eci_proof_root_configured_value="$configured"
   # stop-gate exports its already validated canonical root for the lifetime
   # of one callback.  This is deliberately process-local: it avoids repeated
   # cd/pwd command substitutions on the active hot path without creating a
   # persistent cache or trusting caller-provided state (stop-gate clears the
   # variable before computing the root).
   if [ -n "${ECI_STOP_GATE_ROOT:-}" ]; then
-    printf '%s\n' "$ECI_STOP_GATE_ROOT"
+    eci_proof_root_value="$ECI_STOP_GATE_ROOT"
+    eci_strip_trailing_newlines eci_proof_root_value
     return 0
   fi
-  configured="$(eci_configured_proof_root)"
-  if [ "$configured" = "$eci_proof_root_cache_configured" ] &&
+  # A relative root resolves against PWD, so the cache is keyed on it too.
+  cache_key="$configured"
+  case "$configured" in /*) ;; *) cache_key="$configured"$'\n'"$PWD" ;; esac
+  if [ "$cache_key" = "$eci_proof_root_cache_configured" ] &&
     [ -n "$eci_proof_root_cache_value" ]; then
-    printf '%s\n' "$eci_proof_root_cache_value"
+    eci_proof_root_value="$eci_proof_root_cache_value"
+    eci_strip_trailing_newlines eci_proof_root_value
     return 0
   fi
   if [ -d "$configured" ] && [ ! -L "$configured" ]; then
@@ -64,8 +91,101 @@ eci_proof_root() {
   else
     eci_proof_root_cache_value="$configured"
   fi
-  eci_proof_root_cache_configured="$configured"
-  printf '%s\n' "$eci_proof_root_cache_value"
+  eci_proof_root_cache_configured="$cache_key"
+  eci_proof_root_value="$eci_proof_root_cache_value"
+  eci_strip_trailing_newlines eci_proof_root_value
+}
+
+eci_proof_root() {
+  eci_proof_root_load
+  printf '%s\n' "$eci_proof_root_value"
+}
+
+# Process-local memo of the roots eci_path_is_eci_control_file and
+# eci_context_session_rest compare against: the resolved proof root, the
+# resolved default proof root, the canonical context root and the global
+# accidental-override record path (empty when that record path is invalid).
+# One realpath call resolves them all.  The memo is keyed on every input, so a
+# changed HOME, PWD or proof root recomputes it; subshells inherit it, which is
+# why hooks load it once in the hook process (eci_hook_roots_load).
+eci_hook_roots_key=""
+eci_hook_roots_resolved_proof=""
+eci_hook_roots_resolved_default=""
+eci_hook_roots_context_canonical=""
+eci_hook_roots_global_override=""
+
+eci_hook_roots_current_key() {
+  eci_proof_root_load
+  eci_hook_roots_current="${ECI_STOP_GATE_ROOT:-}"$'\n'"$eci_proof_root_configured_value"$'\n'"$eci_proof_root_value"$'\n'"${HOME:-}"$'\n'"$PWD"
+}
+
+eci_hook_roots_fresh() {
+  local eci_hook_roots_current
+  [ -n "$eci_hook_roots_key" ] || return 1
+  eci_hook_roots_current_key
+  [ "$eci_hook_roots_current" = "$eci_hook_roots_key" ]
+}
+
+# eci_resolve_hook_path's argument preparation, without the realpath call.
+eci_hook_path_absolute() {
+  local cwd="$1" path="$2"
+  case "$path" in
+    "~") path="$HOME" ;;
+    "~/"*) path="$HOME/${path#~/}" ;;
+  esac
+  case "$path" in
+    /*) ;;
+    *) path="$cwd/$path" ;;
+  esac
+  printf '%s' "$path"
+}
+
+eci_hook_roots_load() {
+  local eci_hook_roots_current proof default_root context eci_root override
+  local -a args=() lines=()
+  local arg out rc=0 batched=false canonical
+
+  eci_hook_roots_current_key
+  [ "$eci_hook_roots_current" != "$eci_hook_roots_key" ] || [ -z "$eci_hook_roots_key" ] || return 0
+  proof="$eci_proof_root_value"
+  default_root="$HOME/tmp/agent/proof"
+  context="$HOME/.agent/context"
+  eci_strip_trailing_newlines context
+  eci_root="$(eci_home_lexical_root 2>/dev/null || true)"
+  if [ -n "$eci_root" ] && [ -d "$eci_root" ] && [ ! -L "$eci_root" ]; then
+    override="$eci_root/.eci-accidental-mistake-override"
+  else
+    eci_root=""
+    override=""
+  fi
+  if [ -n "$proof" ]; then
+    args=("$(eci_hook_path_absolute "$PWD" "$proof")" "$(eci_hook_path_absolute "$PWD" "$default_root")" "$context")
+    [ -z "$eci_root" ] || args+=("$eci_root" "$override")
+    batched=true
+    for arg in "${args[@]}"; do
+      case "$arg" in ""|*$'\n'*) batched=false ;; esac
+    done
+  fi
+  if [ "$batched" = true ] && out="$(realpath -m -- "${args[@]}" 2>/dev/null)" && mapfile -t lines <<<"$out" &&
+     [ "${#lines[@]}" -eq "${#args[@]}" ]; then
+    eci_hook_roots_resolved_proof="${lines[0]}"
+    eci_hook_roots_resolved_default="${lines[1]}"
+    eci_hook_roots_context_canonical="${lines[2]}"
+    eci_hook_roots_global_override=""
+    if [ -n "$eci_root" ]; then
+      canonical="${lines[3]}"
+      if [ -n "$canonical" ] && [ "${lines[4]}" = "$canonical/.eci-accidental-mistake-override" ] &&
+         [ ! -L "$canonical/.eci-accidental-mistake-override" ]; then
+        eci_hook_roots_global_override="$canonical/.eci-accidental-mistake-override"
+      fi
+    fi
+  else
+    eci_hook_roots_resolved_proof="$(eci_resolve_hook_path "$PWD" "$proof" 2>/dev/null || printf '%s\n' "$proof")"
+    eci_hook_roots_resolved_default="$(eci_resolve_hook_path "$PWD" "$default_root" 2>/dev/null || printf '%s\n' "$default_root")"
+    eci_hook_roots_context_canonical="$(realpath -m -- "$context" 2>/dev/null || true)"
+    eci_hook_roots_global_override="$(eci_accidental_override_record_path global 2>/dev/null || true)"
+  fi
+  eci_hook_roots_key="$eci_hook_roots_current"
 }
 
 eci_valid_session_id() {
@@ -137,7 +257,8 @@ eci_marker_file_is_bounded() {
 eci_marker_candidates_bounded() {
   local session="${1:-}" root entry listing name count=0
 
-  root="$(eci_proof_root)"
+  eci_proof_root_load
+  root="$eci_proof_root_value"
   if ! eci_proof_root_is_safe; then
     printf '%s\n' "$eci_marker_scan_unsafe_token"
     return 0
@@ -195,7 +316,8 @@ eci_marker_active_or_unknown() {
 eci_proof_root_is_safe() {
   local configured root parent
 
-  configured="$(eci_configured_proof_root)"
+  eci_proof_root_load
+  configured="$eci_proof_root_configured_value"
   # A trailing slash changes how `test -L` treats a final symlink on some
   # platforms.  Normalize it before checking the configured final component;
   # keep the filesystem root itself intact.
@@ -209,7 +331,7 @@ eci_proof_root_is_safe() {
   # Resolve ancestor symlinks for a stable canonical root.  The configured
   # final proof-root component itself must never be a symlink: accepting it
   # would let a replaced cache entry redirect all session state elsewhere.
-  root="$(eci_proof_root)"
+  root="$eci_proof_root_value"
   case "$root" in
     ""|*[![:print:]]*) return 1 ;;
     /*) ;;
@@ -235,7 +357,8 @@ eci_proof_root_is_safe() {
 
 eci_equivalent_proof_root_for_path() {
   local path="$1" configured candidate prefix current
-  configured="$(eci_configured_proof_root)"
+  eci_proof_root_load
+  configured="$eci_proof_root_configured_value"
   case "$configured" in
     */tmp/agent/proof) ;;
     *) return 1 ;;
@@ -267,14 +390,15 @@ eci_state_path_is_safe() {
   local rest component current alias_root
 
   eci_proof_root_is_safe || return 1
-  [ "$root" = "$(eci_proof_root)" ] || return 1
+  eci_proof_root_load
+  [ "$root" = "$eci_proof_root_value" ] || return 1
   current="$root"
   case "$path" in
     "$root"/*) rest="${path#"$root"/}" ;;
-    "$(eci_configured_proof_root)"/*)
+    "$eci_proof_root_configured_value"/*)
       eci_proof_roots_equivalent || return 1
-      rest="${path#"$(eci_configured_proof_root)"/}"
-      current="$(eci_configured_proof_root)" ;;
+      rest="${path#"$eci_proof_root_configured_value"/}"
+      current="$eci_proof_root_configured_value" ;;
     *)
       alias_root="$(eci_equivalent_proof_root_for_path "$path" 2>/dev/null || true)"
       [ -n "$alias_root" ] || return 1
@@ -330,7 +454,8 @@ eci_session_path_is_unsafe() {
 
   [ -n "$path" ] || return 1
   if eci_path_is_under_proof_root "$path"; then
-    ! eci_state_path_is_safe "$path" "$(eci_proof_root)"
+    eci_proof_root_load
+    ! eci_state_path_is_safe "$path" "$eci_proof_root_value"
   elif eci_context_session_rest "$path" >/dev/null; then
     ! eci_context_state_path_is_safe "$path"
   else
@@ -339,8 +464,9 @@ eci_session_path_is_unsafe() {
 }
 
 eci_proof_roots_equivalent() {
-  local candidate="${1:-$(eci_configured_proof_root)}"
-  local configured="$(eci_configured_proof_root)" canonical="$(eci_proof_root)"
+  eci_proof_root_load
+  local candidate="${1:-$eci_proof_root_configured_value}"
+  local configured="$eci_proof_root_configured_value" canonical="$eci_proof_root_value"
   [ "$candidate" = "$canonical" ] && return 0
   [ -d "$candidate" ] && [ -d "$configured" ] && [ -d "$canonical" ] || return 1
   [ ! -L "$candidate" ] && [ ! -L "$configured" ] && [ ! -L "$canonical" ] || return 1
@@ -356,7 +482,8 @@ eci_session_dir_is_safe() {
   local dir
 
   eci_valid_session_id "$session_id" || return 1
-  [ "$root" = "$(eci_proof_root)" ] || return 1
+  eci_proof_root_load
+  [ "$root" = "$eci_proof_root_value" ] || return 1
   eci_proof_root_is_safe || return 1
   dir="$root/$session_id"
   [ ! -L "$dir" ] || return 1
@@ -404,7 +531,8 @@ eci_proof_alias_session_id() {
   # Validate every component before reading the alias record so an alias
   # cannot redirect ownership through a replaced/symlinked directory.
   [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
-  eci_state_path_is_safe "$dir" "$(eci_proof_root)" || return 1
+  eci_proof_root_load
+  eci_state_path_is_safe "$dir" "$eci_proof_root_value" || return 1
   eci_alias_record_session_id "$dir"
 }
 
@@ -473,9 +601,10 @@ eci_lexical_hook_path() {
 
 eci_path_is_under_proof_root() {
   local path="${1:-}" alias_root
+  eci_proof_root_load
   case "${1:-}" in
-    "$(eci_proof_root)"/*) return 0 ;;
-    "$(eci_configured_proof_root)"/*) eci_proof_roots_equivalent ;;
+    "$eci_proof_root_value"/*) return 0 ;;
+    "$eci_proof_root_configured_value"/*) eci_proof_roots_equivalent ;;
     *)
       alias_root="$(eci_equivalent_proof_root_for_path "$path" 2>/dev/null || true)"
       [ -n "$alias_root" ] && eci_proof_roots_equivalent "$alias_root" ;;
@@ -529,7 +658,8 @@ eci_path_is_eci_control_alias() {
   [ -f "$path" ] && [ ! -L "$path" ] || return 1
   links="$(stat -Lc '%h' -- "$path" 2>/dev/null || true)"
   [[ "$links" =~ ^[0-9]+$ ]] && [ "$links" -gt 1 ] || return 1
-  root="$(eci_proof_root)"
+  eci_proof_root_load
+  root="$eci_proof_root_value"
   [ -d "$root" ] && [ ! -L "$root" ] || return 1
   for marker in "$root"/*/eci_active; do
     session="${marker%/*}"
@@ -562,8 +692,9 @@ eci_path_is_eci_control_file() {
   [ -n "$path" ] || return 1
   filename="${path##*/}"
 
-  actual_root="$(eci_resolve_hook_path "$PWD" "$(eci_proof_root)" 2>/dev/null || eci_proof_root)"
-  default_root="$(eci_resolve_hook_path "$PWD" "$HOME/tmp/agent/proof" 2>/dev/null || printf '%s\n' "$HOME/tmp/agent/proof")"
+  eci_hook_roots_load
+  actual_root="$eci_hook_roots_resolved_proof"
+  default_root="$eci_hook_roots_resolved_default"
   for root in "$actual_root" "$default_root"; do
     [ -n "$root" ] || continue
     case "$path" in
@@ -600,7 +731,7 @@ eci_path_is_eci_control_file() {
     fi
   fi
   eci_path_is_session_ledger_file "$path" && return 0
-  global_override="$(eci_accidental_override_record_path global 2>/dev/null || true)"
+  global_override="$eci_hook_roots_global_override"
   if [ -n "$global_override" ] && [ "$path" = "$global_override" ]; then
     return 0
   fi
@@ -690,7 +821,8 @@ eci_accidental_override_record_path() {
   case "$scope" in
     session)
       eci_valid_session_id "$session_id" || return 1
-      root="$(eci_proof_root)"
+      eci_proof_root_load
+      root="$eci_proof_root_value"
       eci_session_dir_is_safe "$root" "$session_id" || return 1
       path="$root/$session_id/.eci-accidental-mistake-override"
       eci_state_path_is_safe "$path" "$root" || return 1
@@ -2408,11 +2540,23 @@ eci_hook_is_omp_transcript() {
 # unknown. With no session header among the records and more file beyond them, the
 # header is unreadable, so the transcript is unknown.
 eci_hook_omp_transcript_status() {
-  local path="$1" real_root real_path rel slashes depth size status
+  local path="$1" real_root real_path rel slashes depth size status sessions_root resolved
 
   [ ! -L "$path" ] && [ -f "$path" ] || { printf 'unknown\n'; return 0; }
-  real_root="$(realpath -e -- "$(eci_hook_omp_sessions_root)" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
-  real_path="$(realpath -e -- "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+  sessions_root="$(eci_hook_omp_sessions_root)" || { printf 'unknown\n'; return 0; }
+  case "$sessions_root$path" in
+    *$'\n'*)
+      real_root="$(realpath -e -- "$sessions_root" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      real_path="$(realpath -e -- "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      ;;
+    *)
+      # One realpath for both names; either one failing is unknown, as before.
+      resolved="$(realpath -e -- "$sessions_root" "$path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
+      real_root="${resolved%%$'\n'*}"
+      real_path="${resolved#*$'\n'}"
+      [ "$real_root"$'\n'"$real_path" = "$resolved" ] || { printf 'unknown\n'; return 0; }
+      ;;
+  esac
   case "$real_path" in
     "$real_root"/*) ;;
     *) printf 'unknown\n'; return 0 ;;
@@ -2439,6 +2583,21 @@ eci_hook_omp_transcript_status() {
   esac
 }
 
+# A hook that already parsed its stdin with one jq call seeds the two values
+# eci_hook_subagent_status would otherwise read with two more; they are used
+# only for that exact input.  present is yes or no, transcript is the
+# .transcript_path string with trailing newlines dropped, as $(jq -r) does.
+eci_hook_parsed_ready=""
+eci_hook_parsed_input=""
+eci_hook_parsed_present=""
+eci_hook_parsed_transcript=""
+eci_hook_subagent_status_seed() {
+  eci_hook_parsed_input="$1"
+  eci_hook_parsed_present="$2"
+  eci_hook_parsed_transcript="$3"
+  eci_hook_parsed_ready=1
+}
+
 # Publishes main, subagent, or unknown in ECI_HOOK_SUBAGENT_STATUS and prints
 # nothing, so no caller runs the verified helper in a subshell. Only a verified
 # transcript without a thread_spawn parent is main. A missing helper, a helper
@@ -2446,16 +2605,25 @@ eci_hook_omp_transcript_status() {
 # unknown.
 eci_hook_subagent_status() {
   local input="${1:-}"
-  local present kind transcript
+  local present kind transcript seeded=false
 
   ECI_HOOK_SUBAGENT_STATUS=unknown
-  present="$(printf '%s' "$input" | jq -r 'if type == "object" and has("transcript_path") and (.transcript_path != null) then "yes" else "no" end' 2>/dev/null)" || present=""
+  if [ "$eci_hook_parsed_ready" = 1 ] && [ "$input" = "$eci_hook_parsed_input" ]; then
+    seeded=true
+    present="$eci_hook_parsed_present"
+  else
+    present="$(printf '%s' "$input" | jq -r 'if type == "object" and has("transcript_path") and (.transcript_path != null) then "yes" else "no" end' 2>/dev/null)" || present=""
+  fi
   case "$present" in
     no) ECI_HOOK_SUBAGENT_STATUS=main; return 0 ;;
     yes) ;;
     *) return 0 ;;
   esac
-  transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)" || transcript=""
+  if [ "$seeded" = true ]; then
+    transcript="$eci_hook_parsed_transcript"
+  else
+    transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)" || transcript=""
+  fi
   if [ -n "$transcript" ] && eci_hook_is_omp_transcript "$transcript"; then
     ECI_HOOK_SUBAGENT_STATUS="$(eci_hook_omp_transcript_status "$transcript")"
     return 0
@@ -2502,7 +2670,8 @@ eci_path_owner_session_id() {
 
   [ -n "$path" ] || return 1
 
-  root="$(eci_proof_root)"
+  eci_proof_root_load
+  root="$eci_proof_root_value"
   default_root="$HOME/tmp/agent/proof"
   for root in "$root" "$default_root"; do
     [ -n "$root" ] || continue

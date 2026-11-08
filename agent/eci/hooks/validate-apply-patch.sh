@@ -25,7 +25,7 @@ if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || !
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
+for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_hook_subagent_status_seed eci_strip_trailing_newlines eci_proof_root_load eci_hook_roots_load eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
   declare -F "$fn" >/dev/null 2>&1 || { deny_stdout_usable || deny_write_failed validate-apply-patch; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
 done
 eci_init_tmp || true
@@ -33,10 +33,36 @@ eci_require_jq_or_deny validate-apply-patch
 eci_install_fail_closed_trap validate-apply-patch
 
 input=$(cat)
-session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+# One jq call reads every stdin field this hook uses.  Its NUL-separated fast
+# path covers a single JSON object whose fields are strings (or absent, null or
+# false) without NUL bytes; any other input takes the per-field reads below, so
+# every value, and every decision built from it, is the same either way.
+parsed_fields=()
+mapfile -d '' -t parsed_fields < <(printf '%s' "$input" | jq -nj '[inputs]
+  | if length != 1 or (.[0] | type) != "object" then empty else .[0]
+    | [(.session_id // ""), (.cwd // ""),
+       (.tool_input.command // .tool_input.patch // .tool_input.input // ""),
+       (if has("transcript_path") and (.transcript_path != null) then "yes" else "no" end),
+       (.transcript_path // "")]
+    | if all(.[]; type == "string" and (test("\u0000") | not)) then (.[] + "\u0000"), "ok\u0000" else empty end
+    end' 2>/dev/null || true)
+if [ "${#parsed_fields[@]}" -eq 6 ] && [ "${parsed_fields[5]}" = ok ]; then
+  session_id="${parsed_fields[0]}"
+  cwd="${parsed_fields[1]}"
+  patch_text="${parsed_fields[2]}"
+  parsed_transcript="${parsed_fields[4]}"
+  # As $(jq -r ...) would, drop trailing newlines.
+  eci_strip_trailing_newlines session_id
+  eci_strip_trailing_newlines cwd
+  eci_strip_trailing_newlines patch_text
+  eci_strip_trailing_newlines parsed_transcript
+  eci_hook_subagent_status_seed "$input" "${parsed_fields[3]}" "$parsed_transcript"
+else
+  session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 
-patch_text=$(printf '%s' "$input" | jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' 2>/dev/null || true)
+  patch_text=$(printf '%s' "$input" | jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' 2>/dev/null || true)
+fi
 
 # Thread ownership is resolved once.  "unknown" means the transcript could not
 # be verified; subagent-guarded control and ledger edits fail closed on it.
@@ -100,12 +126,23 @@ patch_paths=$(printf '%s\n' "$patch_text" | awk '
   }
 ')
 
+# Resolve the proof, default-proof and context roots once in this process;
+# the path predicates below and their subshells reuse them.
+eci_hook_roots_load
+
+# The lexical and resolved form of each target, in patch_paths order, computed
+# once here and reused by the loops below.
+patch_lexical_forms=()
+patch_resolved_forms=()
+
 # Session-scoped patch targets must not traverse symlinks.  Resolved paths are
 # checked separately so an in-repo symlink cannot launder a proof-root target.
 while IFS= read -r path; do
   [ -n "$path" ] || continue
   lexical_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
   resolved_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
+  patch_lexical_forms+=("$lexical_path")
+  patch_resolved_forms+=("$resolved_path")
   case "${ECI_PROOF_ROOT:-}" in
     ""|/*) ;;
     *)
@@ -130,10 +167,12 @@ while IFS= read -r path; do
 done <<<"$patch_paths"
 
 if [ "$hook_subagent_status" != main ]; then
+  form_index=0
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    resolved_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
-    lexical_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
+    resolved_path="${patch_resolved_forms[form_index]}"
+    lexical_path="${patch_lexical_forms[form_index]}"
+    form_index=$((form_index + 1))
     control_alias=false
     if [ -n "$lexical_path" ] && eci_path_is_eci_control_alias "$lexical_path"; then
       control_alias=true
@@ -143,7 +182,7 @@ if [ "$hook_subagent_status" != main ]; then
     fi
     if { eci_path_is_session_ledger_file "$resolved_path" ||
          eci_path_is_eci_control_file "$lexical_path" ||
-         eci_path_is_eci_control_file "$resolved_path" ||
+         { [ "$resolved_path" != "$lexical_path" ] && eci_path_is_eci_control_file "$resolved_path"; } ||
          [ "$control_alias" = true ] ||
          eci_path_is_git_approval_file "$lexical_path" ||
          eci_path_is_git_approval_file "$resolved_path"; }; then
@@ -168,10 +207,12 @@ trap 'ownership_failure_deny "$?"' ERR
 # Session ownership applies to every target under a proof or context root.  An
 # owner that resolves must match an allowed session; a session-scoped target
 # with no resolvable session id is denied rather than allowed through.
+form_index=0
 while IFS= read -r path; do
   [ -n "$path" ] || continue
-  lexical_owner_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
-  resolved_owner_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$path" 2>/dev/null || true)"
+  lexical_owner_path="${patch_lexical_forms[form_index]}"
+  resolved_owner_path="${patch_resolved_forms[form_index]}"
+  form_index=$((form_index + 1))
   # Ordinary repository paths have no session owner to resolve.  Skip the
   # metadata probe unless the target is under a proof or context root.
   if ! eci_path_is_under_proof_root "$lexical_owner_path" &&
@@ -199,7 +240,8 @@ eci_install_fail_closed_trap validate-apply-patch
 # Active ECI edit callbacks are deliberately marker-only and read-only.  Keep
 # the legacy activity bookkeeping for ordinary edits, but do not take its
 # lock/write path while a direct marker is active.
-eci_direct_marker="$(eci_proof_root)/${session_id}/eci_active"
+eci_proof_root_load
+eci_direct_marker="$eci_proof_root_value/${session_id}/eci_active"
 if [ ! -f "$eci_direct_marker" ] || [ -L "$eci_direct_marker" ]; then
   while IFS= read -r path; do
     [ -n "$path" ] || continue

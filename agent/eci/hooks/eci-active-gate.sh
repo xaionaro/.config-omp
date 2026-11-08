@@ -11,7 +11,7 @@ if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.s
 fi
 # Every lib function this gate calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id; do
+for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id eci_hook_roots_load; do
   declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn"; exit 0; }
 done
 
@@ -74,20 +74,51 @@ _eci_gate_error_trap() {
 }
 trap '_eci_gate_error_trap "$LINENO" "$?" "$BASH_COMMAND"' ERR
 
-if ! printf '%s' "$input" | jq -e '
-  type == "object" and (.tool_name | type) == "string" and
-  (.tool_name | length > 0) and
-  (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null")
-' >/dev/null 2>&1; then
-  # Typed tool_name and session_id must be strings while an active marker
-  # exists; a malformed callback is then a repair task, not a silent allow.
-  # An absent cwd is denied while an active marker exists; with no marker the ordinary path keeps.
-  malformed_identity_exit
-fi
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name' 2>/dev/null || true)
+# One jq call validates the identity and reads every stdin field this gate
+# uses.  Its NUL-separated fast path covers a single JSON object that passes
+# the identity check below and whose target field is a string (or absent, null
+# or false) without NUL bytes; any other input takes the per-field reads, so
+# every value, and every decision built from it, is the same either way.
+parsed_fields=()
+mapfile -d '' -t parsed_fields < <(printf '%s' "$input" | jq -nj '[inputs]
+  | if length != 1 then empty else .[0]
+    | if type == "object" and (.tool_name | type) == "string" and
+        (.tool_name | length > 0) and
+        (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null")
+      then [.tool_name, .session_id, (.cwd // ""),
+            (if .tool_name == "apply_patch" then (.tool_input.command // .tool_input.patch // .tool_input.input // "")
+             elif .tool_name == "Edit" or .tool_name == "Write" or .tool_name == "MultiEdit" or .tool_name == "NotebookEdit"
+             then (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // "")
+             else "" end)]
+        | if all(.[]; type == "string" and (test("\u0000") | not)) and all(.[0:3][]; endswith("\n") | not)
+          then (.[] + "\u0000"), "ok\u0000" else empty end
+      else empty end
+    end' 2>/dev/null || true)
+if [ "${#parsed_fields[@]}" -eq 5 ] && [ "${parsed_fields[4]}" = ok ]; then
+  tool_name="${parsed_fields[0]}"
+  session_id="${parsed_fields[1]}"
+  cwd="${parsed_fields[2]}"
+  tool_path_source="${parsed_fields[3]}"
+  # The fast path admits no identity field ending in a newline, so these equal
+  # the $(jq -r ...) values, which drop trailing newlines.
+  parsed_input=true
+else
+  parsed_input=false
+  if ! printf '%s' "$input" | jq -e '
+    type == "object" and (.tool_name | type) == "string" and
+    (.tool_name | length > 0) and
+    (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null")
+  ' >/dev/null 2>&1; then
+    # Typed tool_name and session_id must be strings while an active marker
+    # exists; a malformed callback is then a repair task, not a silent allow.
+    # An absent cwd is denied while an active marker exists; with no marker the ordinary path keeps.
+    malformed_identity_exit
+  fi
+  tool_name=$(printf '%s' "$input" | jq -r '.tool_name' 2>/dev/null || true)
 
-session_id=$(printf '%s' "$input" | jq -r '.session_id' 2>/dev/null || true)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+  session_id=$(printf '%s' "$input" | jq -r '.session_id' 2>/dev/null || true)
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+fi
 case "$session_id" in
   ""|*[!A-Za-z0-9_-]*)
     malformed_identity_exit "hook identity has an empty or invalid session_id while an active marker exists; session_id must be made of letters, digits, underscore, and hyphen"
@@ -105,11 +136,24 @@ case "$tool_name" in
   *) exit 0 ;;
 esac
 
+# The tool's target text as `jq -r '<target expression> // empty'` prints it;
+# an empty string and an absent target both yield no path below.
+tool_path_text() {
+  if [ "$parsed_input" = true ]; then
+    [ -z "$tool_path_source" ] || printf '%s\n' "$tool_path_source"
+  elif [ "$1" = apply_patch ]; then
+    printf '%s' "$input" |
+      jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' 2>/dev/null
+  else
+    printf '%s' "$input" |
+      jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' 2>/dev/null
+  fi
+}
+
 tool_paths() {
   case "$tool_name" in
     apply_patch)
-      printf '%s' "$input" |
-        jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' 2>/dev/null |
+      tool_path_text apply_patch |
         awk '
           /^\*\*\* (Add|Update|Delete) File: / {
             sub(/^\*\*\* (Add|Update|Delete) File: /, "")
@@ -122,8 +166,7 @@ tool_paths() {
         '
       ;;
     Edit|Write|MultiEdit|NotebookEdit)
-      printf '%s' "$input" |
-        jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' 2>/dev/null
+      tool_path_text file
       ;;
   esac
 }
@@ -167,6 +210,10 @@ current_session_working_document() {
 
 tool_path_list="$(tool_paths)"
 
+# Resolve the proof, default-proof and context roots once in this process;
+# the control-path predicates below and their subshells reuse them.
+eci_hook_roots_load
+
 # A coordinator's ordinary repository edit must not become a control edit
 # solely because it is made from the main thread.  Preserve the real target
 # boundary, including lexical aliases and resolved proof-root controls, before
@@ -183,7 +230,8 @@ while IFS= read -r control_path; do
     control_alias=true
   fi
   if { eci_path_is_eci_control_file "$lexical_control_path" ||
-       eci_path_is_eci_control_file "$resolved_control_path" ||
+       { [ "$resolved_control_path" != "$lexical_control_path" ] &&
+         eci_path_is_eci_control_file "$resolved_control_path"; } ||
        [ "$control_alias" = true ]; } &&
      ! current_session_working_document "${resolved_control_path:-$lexical_control_path}"; then
     target_value="$(eci_diagnostic_value "${resolved_control_path:-$control_path}")"
