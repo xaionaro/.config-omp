@@ -66,6 +66,16 @@ func TestHookUnresolvedControlTargetKeepsIdentity(t *testing.T) {
 		allow("help", RoleCoordinator, spelling+" --help")
 		allow("worker allow-on owner", RoleWorker, "env ECI_SESSION_ID=owner "+spelling+" repository-allow-on "+dependency+` "same session"`)
 		allow("worker allow-on", RoleWorker, spelling+" repository-allow-on "+dependency+` "same session"`)
+		for _, verb := range []string{"maintain-planner", "sync-runtime"} {
+			allow(verb+" wrong session", RoleCoordinator, "ECI_SESSION_ID=wrong-session "+spelling+" "+verb)
+			allow(verb+" wrong session extra", RoleCoordinator, "ECI_SESSION_ID=wrong-session "+spelling+" "+verb+" extra")
+			allow(verb+" kimi wrong session", RoleCoordinator, "KIMI_SESSION_ID=wrong-session "+spelling+" "+verb)
+			allow(verb+" foreign flag", RoleCoordinator, spelling+" "+verb+" --session wrong-session")
+		}
+		allow("sync-runtime invalid env", RoleCoordinator, "env ECI_SESSION_ID=invalid/session "+spelling+" sync-runtime")
+		allow("sync-runtime invalid env extra", RoleCoordinator, "env ECI_SESSION_ID=invalid/session "+spelling+" sync-runtime extra")
+		deny("ledger wrong session control", RoleCoordinator, "ECI_SESSION_ID=wrong-session "+spelling+ledger, CodeControlIdentityDenied, "lifecycle-session")
+		deny("worker maintain-planner wrong session", RoleWorker, "ECI_SESSION_ID=wrong-session "+spelling+" maintain-planner", CodeControlOwnerRequired, "worker-lifecycle-control")
 	}
 	for _, spelling := range []string{spellings[0], spellings[1], spellings[2], spellings[5], spellings[6]} {
 		deny("bash off foreign", RoleCoordinator, "env ECI_SESSION_ID=foreign bash "+spelling+" off", CodeControlIdentityDenied, "lifecycle-session")

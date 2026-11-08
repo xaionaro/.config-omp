@@ -1010,9 +1010,11 @@ func inspectHookLifecycle(
 		diagnostic.Path = resolved
 		return diagnostic
 	}
+	// Session-independent verbs keep the worker owner and target identity checks.
+	sessionIndependent := isLifecycleSessionIndependentInvocation(argv)
 	for index, argument := range record.Argv {
 		name, value, assignment := strings.Cut(argument, "=")
-		if index >= argv[0].offset || !assignment || name != "ECI_SESSION_ID" || !hookArgumentKnown(record, index) || value == request.ActiveSession {
+		if sessionIndependent || index >= argv[0].offset || !assignment || name != "ECI_SESSION_ID" || !hookArgumentKnown(record, index) || value == request.ActiveSession {
 			continue
 		}
 		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation environment selects another session: "+value,
@@ -1022,6 +1024,9 @@ func inspectHookLifecycle(
 	}
 	if request.Role == RoleWorker && !isWorkerRepositoryAllowInvocation(argv) {
 		return workerLifecycleIdentityDiagnostic(argv, argv[0], record.Segment, canonical)
+	}
+	if sessionIndependent {
+		return nil
 	}
 	for index := 1; index+1 < len(argv); index++ {
 		if argv[index].value != "--session" && argv[index].value != "--session-id" {

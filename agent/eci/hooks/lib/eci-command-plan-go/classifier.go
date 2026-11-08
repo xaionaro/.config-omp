@@ -660,6 +660,25 @@ func isLifecycleReadOnlyInvocation(argv []token) bool {
 	return len(argv) >= 2 && isLifecycleReadOnlyVerb(argv[1].value)
 }
 
+// isLifecycleSessionIndependentInvocation reports whether an unwrapped
+// lifecycle argv starts with a verb whose eci-active handler never reads a
+// session, so session selectors cannot redirect it.  Trailing arguments stay
+// eci-active's usage errors.
+//
+// Example: ECI_SESSION_ID=other eci-active sync-runtime refreshes the shared
+// runtime exactly like the owner-session invocation.
+func isLifecycleSessionIndependentInvocation(argv []token) bool {
+	if len(argv) < 2 {
+		return false
+	}
+	switch argv[1].value {
+	case "maintain-planner", "sync-runtime":
+		return true
+	default:
+		return false
+	}
+}
+
 // isWorkerRepositoryAllowInvocation recognizes the one lifecycle route that
 // an owning worker may use to declare an additional dependency repository.
 // The lifecycle binary performs the marker, repository, and reason checks;
