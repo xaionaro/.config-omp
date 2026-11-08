@@ -12,7 +12,7 @@ set -euo pipefail
 ROOT="${HOME:?}/.omp/agent/eci"
 HOOKS_JSON="$ROOT/hooks.json"
 CONFIG_TOML="$ROOT/config.toml"
-ECI_BIN="${ECI_BIN:-/home/pheona/.local/lib/eci-patched/eci}"
+ECI_BIN="${ECI_BIN:-$HOME/.local/lib/eci-patched/eci}"
 TMP_ROOT=""
 failures=0
 
@@ -48,7 +48,7 @@ SOURCE_STOP_COMMAND="$(jq -er '
   | .command
 ' "$HOOKS_JSON")"
 
-TMP_ROOT="$(mktemp -d /home/pheona/tmp/eci-stop-hook-trust.XXXXXX)"
+TMP_ROOT="$(mktemp -d "${TMPDIR:-$HOME/tmp}/eci-stop-hook-trust.XXXXXX")"
 TEST_HOME="$TMP_ROOT/eci-home"
 TEST_HOME_CANONICAL=""
 FIXTURE_HOOKS_JSON="$TEST_HOME/hooks.json"
@@ -66,9 +66,11 @@ jq --arg suffix ' # stop-hook-trust-regression' '
   .hooks.Stop[0].hooks[0].command |= . + $suffix
 ' "$HOOKS_JSON" >"$FIXTURE_HOOKS_JSON"
 
-# Hook-state keys use the runtime's canonical source path.  Rewrite only the
-# source-path portion so the copied config retains the original trusted hash.
+# Hook-state keys are the tracked ~/.omp/agent/eci template, or the source path
+# once run-isolated.sh has filled it.  Rewrite only the path portion so the
+# copied config retains the original trusted hash.
 sed \
+  -e "s|\"~/.omp/agent/eci/hooks.json:|\"$FIXTURE_HOOKS_CANONICAL:|g" \
   -e "s|$HOOKS_JSON|$FIXTURE_HOOKS_CANONICAL|g" \
   -e "s|$SOURCE_HOOKS_CANONICAL|$FIXTURE_HOOKS_CANONICAL|g" \
   "$CONFIG_TOML" >"$TEST_HOME/config.toml"

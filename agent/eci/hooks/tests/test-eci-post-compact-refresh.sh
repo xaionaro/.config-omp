@@ -208,12 +208,13 @@ test_post_compact_hook_is_registered_and_session_start_is_restricted() {
       | any(contains("/hooks/eci-post-compact-refresh.sh")))
   ' "$ROOT/hooks.json" >/dev/null
   postcompact_hook_state="[hooks.state.\"$ROOT/hooks.json:post_compact:0:0\"]"
+  postcompact_hook_template='[hooks.state."~/.omp/agent/eci/hooks.json:post_compact:0:0"]'
   # This is only the existing user-owned trust-state key. The test exercises
   # source command shape directly and must not claim that the changed command
   # has already been trusted by a fresh ECI launch.
-  # config.toml records the canonical account path literally; the key matches only
-  # when ROOT is that path.
-  if ! grep -Fq "$postcompact_hook_state" "$ROOT/config.toml"; then
+  # Tracked config.toml holds the ~/.omp/agent/eci template key; run-isolated.sh
+  # fills it with the copied ROOT. Either form is the same key.
+  if ! grep -Fq -e "$postcompact_hook_state" -e "$postcompact_hook_template" "$ROOT/config.toml"; then
     printf 'PostCompact trust-state key missing from %s: %s\n' "$ROOT/config.toml" "$postcompact_hook_state" >&2
     return 1
   fi

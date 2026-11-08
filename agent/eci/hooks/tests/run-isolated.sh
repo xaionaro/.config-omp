@@ -112,11 +112,11 @@ else
   ln -f -- "$gate_source" "$kimi_home/bin/eci-command-gate-mode"
 fi
 
-# config.toml keys trust state by the account's canonical hooks.json path. This
-# per-host rewrite points the copy's hooks.state keys at the copied hooks.json,
-# so the copy names the hooks.json the test runs. Only headers starting with the
-# account key prefix change, and only in the copy; the real tree is never
-# written. The runtime sync will own this rewrite.
+# Tracked config.toml keys hooks.state by the template root
+# "~/.omp/agent/eci/hooks.json:"; ECI looks trust up by the canonical absolute
+# hooks.json path. This rewrite fills the template with the copied hooks.json,
+# so the copy names the hooks.json the test runs. Only template headers change,
+# and only in the copy; the real tree is never written.
 rewrite_copied_hooks_state_prefix() {
   local config="$1" from_prefix="$2" to_prefix="$3" line tmp
   [ -f "$config" ] || return 0
@@ -131,7 +131,7 @@ rewrite_copied_hooks_state_prefix() {
   rm -f -- "$tmp"
 }
 rewrite_copied_hooks_state_prefix "$work/home/.omp/agent/eci/config.toml" \
-  "[hooks.state.\"$account_home/.omp/agent/eci/hooks.json:" \
+  "[hooks.state.\"~/.omp/agent/eci/hooks.json:" \
   "[hooks.state.\"$work/home/.omp/agent/eci/hooks.json:"
 
 export HOME="$work/home"

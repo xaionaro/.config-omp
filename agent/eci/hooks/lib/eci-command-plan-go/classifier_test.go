@@ -2255,7 +2255,7 @@ func TestActiveBareGitCloneSourceAcquisitionCapability(t *testing.T) {
 	}
 
 	const expectedCapability Capability = "git-clone-source-acquisition"
-	const cloneCommand = "git clone --branch main --depth 1 https://example.invalid/owner/repo.git /home/pheona/tmp/eci-stop-gate-src"
+	const cloneCommand = "git clone --branch main --depth 1 https://example.invalid/owner/repo.git /home/user/tmp/eci-stop-gate-src"
 	const opaqueCloneOptionsCommand = "git clone --template=/templates/clone --reference=/cache/repository --shared --upload-pack=/usr/lib/git-core/git-upload-pack --future-clone-option source destination"
 	const quotedGitCloneCommand = "'git' clone source destination"
 	launchCases := []struct {
@@ -6938,11 +6938,11 @@ func TestCoordinatorCompoundMutationRemainsProviderOwned(t *testing.T) {
 	}{
 		{
 			name:    "cleanup after inspection",
-			command: "realpath -e evidence.txt && rm -f /home/pheona/tmp/compound-cleanup",
+			command: "realpath -e evidence.txt && rm -f /home/user/tmp/compound-cleanup",
 		},
 		{
 			name:    "source writer after inspection",
-			command: "realpath -e evidence.txt && touch /home/pheona/tmp/compound-touch",
+			command: "realpath -e evidence.txt && touch /home/user/tmp/compound-touch",
 		},
 		{
 			name:    "source writer in cwd after inspection",
@@ -7915,7 +7915,7 @@ func TestEciLifecycleHelpCandidatesDefer(t *testing.T) {
 	for _, command := range []string{
 		`$HOME/not-omp/bin/eci-active --help`,
 		`"$HOME/.omp/agent/other/bin/eci-active" --help`,
-		`/mnt/nvme0n1/home/pheona/.omp/agent/eci/bin/eci-active --help`,
+		"/mnt/data" + os.Getenv("HOME") + "/.omp/agent/eci/bin/eci-active --help",
 	} {
 		result := Classify(Request{
 			Provider:      ProviderOmp,
@@ -8032,7 +8032,7 @@ func TestEciLifecycleTargetResolutionDoesNotUseRawSpelling(t *testing.T) {
 		`$ECI_HOME/bin/eci-active --help`,
 		`eci-active --help`,
 		`~/.omp/agent/eci/bin/eci-active --help`,
-		`/home/pheona/.omp/agent/eci/bin/eci-active --help`,
+		os.Getenv("HOME") + "/.omp/agent/eci/bin/eci-active --help",
 		`env ECI_SESSION_ID=test-session '$HOME/.omp/agent/eci/bin/eci-active' --help`,
 		`env ECI_SESSION_ID=test-session ECI_ROLE=worker "$HOME/.omp/agent/eci/bin/eci-active" maintain-planner`,
 		`env ECI_SESSION_ID=test-session ECI_ROLE=reviewer "$HOME/.omp/agent/eci/bin/eci-active" maintain-planner`,

@@ -103,15 +103,17 @@ func TestRegisteredBashHook(t *testing.T) {
 	}))
 	defer server.Close()
 	config := fmt.Sprintf("model = 'fixture'\nmodel_provider = 'fixture'\napproval_policy = 'never'\nsandbox_mode = 'danger-full-access'\n[features]\nhooks = true\n[model_providers.fixture]\nname = 'Local fixture'\nbase_url = '%s'\nwire_api = 'responses'\nrequires_openai_auth = false\n", server.URL)
-	// Reuse persisted trust for identical registered commands, adjusting only the fixture location.
+	// Reuse tracked trust for identical registered commands. Tracked keys use the
+	// portable "~/.omp/agent/eci" root; rewrite it to the fixture location.
 	liveConfig, err := os.ReadFile(filepath.Join(root, "config.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(string(liveConfig), "\n")
+	const trackedRoot = "~/.omp/agent/eci"
 	for i, line := range lines {
-		if strings.HasPrefix(line, "[hooks.state.\"") && strings.Contains(line, root+"/hooks.json:") {
-			config += strings.ReplaceAll(line, root, eciHome) + "\n"
+		if strings.HasPrefix(line, "[hooks.state.\""+trackedRoot+"/hooks.json:") {
+			config += strings.Replace(line, trackedRoot, eciHome, 1) + "\n"
 			for j := i + 1; j < len(lines) && !strings.HasPrefix(lines[j], "["); j++ {
 				config += lines[j] + "\n"
 			}

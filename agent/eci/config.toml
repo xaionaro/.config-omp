@@ -154,233 +154,52 @@ model_provider = "kimi_api"
 model = "zai-coding-plan/glm-5.2"
 model_provider = "zai"
 
-[projects."/home/pheona"]
-trust_level = "trusted"
-
-[projects."/home/pheona/.omp/agent/eci"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/src/worldcontrol"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/ffstream"]
-trust_level = "trusted"
-
-[projects."/home/pheona/.kimi-code"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/youtube-live-chat-downloader"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/streaming-e2e"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/avpipeline"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/streamer"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/avd"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/streamctl"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/wingout"]
-trust_level = "trusted"
-
-[projects."/home/pheona/.crush"]
-trust_level = "trusted"
-
-[projects."/home/pheona/.config/nvim"]
-trust_level = "trusted"
-
-[projects."/home/pheona/docs/pass"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/src/my-devices"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-cli-active.sYBksa"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-cp-input-repair.gwH3XA/actual-cli/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-cp-input-repair.gwH3XA/actual-cli-final/work"]
-trust_level = "trusted"
-
-[projects."/var/tmp/eci-independent-6a907e8.tIZiAN/coordinator/work"]
-trust_level = "trusted"
-
-[projects."/var/tmp/eci-independent-6a907e8.tIZiAN/worker/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-final-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-final-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-final-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-final-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-handoff-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-handoff-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-handoff-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-handoff-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-verified-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-verified-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/worker-verified-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-implementation.9RMmRd/actual-cli/coordinator-verified-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-e2e.KjrDOp/worker/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-effect-e2e.KjrDOp/coordinator/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli/coordinator-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli/worker-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli/coordinator-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli/worker-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli-final/coordinator-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli-final/coordinator-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli-final/worker-planner/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/.cache/eci-fidelity-implementation.EwaJ8V/actual-cli-final/worker-fallback/work"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/dxobs"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/owon"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/ndk"]
-trust_level = "trusted"
-
-[projects."/home/pheona/.config/crush"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/tmp"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/AndroidGoLab/jni-proxy"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/uefisettings"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/src/php2shell"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/binder"]
-trust_level = "trusted"
-
-[projects."/mnt/nvme0n1/home/pheona/go/src/github.com/xaionaro-go/reverse-engineering-dji"]
-trust_level = "trusted"
-
 [hooks.state]
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:0:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:0:0"]
 trusted_hash = "sha256:b7770093cebd447b3aade519a54a6eda7e4c337e34bbb65c17a8d8136611bd45"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:0:1"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:0:1"]
 trusted_hash = "sha256:121624ab18ae91a6979f69911c1a19c6368f71aec17ad40920b19f707fe7fedd"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:1:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:1:0"]
 trusted_hash = "sha256:2a9f9fd16000c2981a15b1be550c933bbb41da8184744df26e4e67e8d0fcc69d"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:1:1"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:1:1"]
 trusted_hash = "sha256:0a6dc7c78d6ade6930697265feeaad766808ab76033800fa9e308a52b8597e4c"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:1:2"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:1:2"]
 trusted_hash = "sha256:da63cd5afcf2f9c629468b2fc84556ab89df65a2569a7f715dd7de7929592a58"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:1:3"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:1:3"]
 trusted_hash = "sha256:92c608d98deb1cf2f6a1c40a788ea76e2b72ca719bb7799c82b15771b39b4b9c"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:1:4"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:1:4"]
 trusted_hash = "sha256:336fd4c1cab68f54aadc664457e15cf703f668ac5cfa4de1c965778922429bab"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:2:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:2:0"]
 trusted_hash = "sha256:5eac6d5e6cb7aecedf7eeb4961f766ee0fdc91da90bda58a3d9b5d0af5760995"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:2:1"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:2:1"]
 trusted_hash = "sha256:fde3ebd46b39069717ef505bdfc9f2dd18aba0ea7a5fe4cfe6cd479318e229c4"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:2:2"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:2:2"]
 trusted_hash = "sha256:2b9272de0401b4522f2e38f1e8c34bb3a3e2c085b9a5dfdca69532af5ad314bc"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:2:3"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:2:3"]
 trusted_hash = "sha256:ad862083459f94099fad7c47ff61aa26ae181016c469608385da5556848ad065"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:pre_tool_use:2:4"]
+[hooks.state."~/.omp/agent/eci/hooks.json:pre_tool_use:2:4"]
 trusted_hash = "sha256:81414eeea797f35696bc57ca06dba6ea65e254041713ad2df84e7800ec2bbb4e"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:session_start:0:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:session_start:0:0"]
 trusted_hash = "sha256:857d8c2bd93b39b718228bb36ded5a79d84caead4de8122dfe1d61cc000d9d99"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:user_prompt_submit:0:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:user_prompt_submit:0:0"]
 trusted_hash = "sha256:e7a006852249c5ff99a70213e2e01ca13e7896e29b08691d960b200a019ed443"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:stop:0:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:stop:0:0"]
 trusted_hash = "sha256:468974840464ddf975ed694dc144cbdeff9af559707e2eb59514ac28823ef7ec"
 
-[hooks.state."/home/pheona/.omp/agent/eci/hooks.json:post_compact:0:0"]
+[hooks.state."~/.omp/agent/eci/hooks.json:post_compact:0:0"]
 trusted_hash = "sha256:c6433d827f21e329f9da84e696791f95719af510090818f777ccd7070f6e8860"
-
-[plugins."visualize@openai-bundled"]
-enabled = true
-
-[marketplaces.openai-bundled]
-source_type = "local"
-source = "/home/pheona/.omp/agent/eci/.tmp/bundled-marketplaces/openai-bundled"

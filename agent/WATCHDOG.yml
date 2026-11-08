@@ -62,31 +62,31 @@ advisors:
 
       | File | Canonical path | Read when |
       |---|---|---|
-      | ECI router | /home/pheona/.omp/agent/skills/explore-critique-implement/SKILL.md | ECI row |
-      | coordinator | /home/pheona/.omp/agent/skills/explore-critique-implement/references/coordinator.md | ECI row |
-      | task-orchestrator | /home/pheona/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md | ECI row |
-      | fast-path | /home/pheona/.omp/agent/skills/explore-critique-implement/references/fast-path.md | ECI row |
-      | explore | /home/pheona/.omp/agent/skills/explore-critique-implement/references/explore.md | ECI row |
-      | critique | /home/pheona/.omp/agent/skills/explore-critique-implement/references/critique.md | ECI row |
-      | implement | /home/pheona/.omp/agent/skills/explore-critique-implement/references/implement.md | ECI row |
-      | review | /home/pheona/.omp/agent/skills/explore-critique-implement/references/review.md | ECI row |
-      | coordinator-runtime | /home/pheona/.omp/agent/skills/references/workflow-runtime/coordinator-runtime.md | ECI row |
-      | review-policy | /home/pheona/.omp/agent/skills/references/workflow-runtime/review-policy.md | ECI row |
-      | pause-all-work | /home/pheona/.omp/agent/skills/references/workflow-runtime/pause-all-work.md | ECI row |
-      | stop-recovery | /home/pheona/.omp/agent/skills/references/workflow-runtime/stop-recovery.md | ECI row |
-      | review-investigation | /home/pheona/.omp/agent/skills/references/review-investigation.md | ECI row |
-      | owned-command | /home/pheona/.omp/agent/skills/owned-command/SKILL.md | ECI row |
-      | context-ledger | /home/pheona/.omp/agent/skills/context-ledger/SKILL.md | ECI row |
-      | writing-status-reports | /home/pheona/.omp/agent/skills/writing-status-reports/SKILL.md | ECI row |
-      | coding-style-admission | /home/pheona/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md | ECI or Code row |
-      | policy-pressure-tests | /home/pheona/.omp/agent/skills/references/workflow-runtime/policy-pressure-tests.md | ECI or Harness row |
-      | binding contract | /home/pheona/.omp/agent/eci-binding-contract.md | Any row |
-      | coding-common | /home/pheona/.omp/agent/skills/coding-common/SKILL.md | Code or Harness row |
-      | coding-go | /home/pheona/.omp/agent/skills/coding-go/SKILL.md | Code row with *.go, go.mod, go.sum |
-      | coding-python | /home/pheona/.omp/agent/skills/coding-python/SKILL.md | Code row with *.py, pyproject.toml, setup.cfg |
-      | verification-before-completion | /home/pheona/.omp/agent/skills/verification-before-completion/SKILL.md | Any row with a commit, PR, todo marked done, or status claim |
-      | harness-tuning | /home/pheona/.omp/agent/skills/harness-tuning/SKILL.md | Harness row |
-      | debugging-discipline | /home/pheona/.omp/agent/skills/debugging-discipline/SKILL.md | Bug diagnosis, ECI, or Code row |
+      | ECI router | ~/.omp/agent/skills/explore-critique-implement/SKILL.md | ECI row |
+      | coordinator | ~/.omp/agent/skills/explore-critique-implement/references/coordinator.md | ECI row |
+      | task-orchestrator | ~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md | ECI row |
+      | fast-path | ~/.omp/agent/skills/explore-critique-implement/references/fast-path.md | ECI row |
+      | explore | ~/.omp/agent/skills/explore-critique-implement/references/explore.md | ECI row |
+      | critique | ~/.omp/agent/skills/explore-critique-implement/references/critique.md | ECI row |
+      | implement | ~/.omp/agent/skills/explore-critique-implement/references/implement.md | ECI row |
+      | review | ~/.omp/agent/skills/explore-critique-implement/references/review.md | ECI row |
+      | coordinator-runtime | ~/.omp/agent/skills/references/workflow-runtime/coordinator-runtime.md | ECI row |
+      | review-policy | ~/.omp/agent/skills/references/workflow-runtime/review-policy.md | ECI row |
+      | pause-all-work | ~/.omp/agent/skills/references/workflow-runtime/pause-all-work.md | ECI row |
+      | stop-recovery | ~/.omp/agent/skills/references/workflow-runtime/stop-recovery.md | ECI row |
+      | review-investigation | ~/.omp/agent/skills/references/review-investigation.md | ECI row |
+      | owned-command | ~/.omp/agent/skills/owned-command/SKILL.md | ECI row |
+      | context-ledger | ~/.omp/agent/skills/context-ledger/SKILL.md | ECI row |
+      | writing-status-reports | ~/.omp/agent/skills/writing-status-reports/SKILL.md | ECI row |
+      | coding-style-admission | ~/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md | ECI or Code row |
+      | policy-pressure-tests | ~/.omp/agent/skills/references/workflow-runtime/policy-pressure-tests.md | ECI or Harness row |
+      | binding contract | ~/.omp/agent/eci-binding-contract.md | Any row |
+      | coding-common | ~/.omp/agent/skills/coding-common/SKILL.md | Code or Harness row |
+      | coding-go | ~/.omp/agent/skills/coding-go/SKILL.md | Code row with *.go, go.mod, go.sum |
+      | coding-python | ~/.omp/agent/skills/coding-python/SKILL.md | Code row with *.py, pyproject.toml, setup.cfg |
+      | verification-before-completion | ~/.omp/agent/skills/verification-before-completion/SKILL.md | Any row with a commit, PR, todo marked done, or status claim |
+      | harness-tuning | ~/.omp/agent/skills/harness-tuning/SKILL.md | Harness row |
+      | debugging-discipline | ~/.omp/agent/skills/debugging-discipline/SKILL.md | Bug diagnosis, ECI, or Code row |
 
       ## Skill checks
       Verify every instruction in each matching skill is followed.
