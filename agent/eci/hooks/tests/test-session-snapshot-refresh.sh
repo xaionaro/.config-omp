@@ -351,28 +351,68 @@ test_source_checkout_provisions_native_tools_into_bin() {
     --leaf wait-report --source "$TMP_ROOT/import-report"
   cmp "$TMP_ROOT/import-report" "$TMP_ROOT/import-proof/build-test/eci_user_owned_wait.md"
 
-  # manifest-write never recovers a missing importer: it fails closed and names
-  # the provisioning step. Restoring the provisioned binary then succeeds.
-  importer_saved="$TMP_ROOT/eci-safe-import.provisioned"
-  cp -p -- "$fixture/bin/eci-safe-import" "$importer_saved"
-  rm -- "$fixture/bin/eci-safe-import"
+  # manifest-write provisions an absent importer on first use: bin/eci-active runs
+  # hooks/lib/eci-native-provision.sh, which runs the real build-native-binaries.sh for
+  # the absent name only; the loader then verifies the new receipt before the import.
+  local rc tamper_at byte importer_identity others_identity
+  local -a sha others=()
+  if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
+  for tool in "$fixture/bin/"*.sha256; do
+    tool="${tool##*/}" && tool="${tool%.sha256}"
+    [ "$tool" = eci-safe-import ] || others+=("$tool" "$tool.sha256")
+  done
+  [ "${#others[@]}" -ge 6 ]
+  # Name, inode and mtime of bin/ entries: build-native-binaries.sh installs by mv -f, so a rebuild changes the inode.
+  native_identity() (
+    cd -- "$fixture/bin" && stat -c '%n %i %Y' -- "$@"
+  )
+  others_identity="$(native_identity "${others[@]}")"
   mkdir -p "$TMP_ROOT/import-proof/import-on-demand"
   printf '%s\n' '{"critics":[]}' >"$TMP_ROOT/import-manifest.json"
-  if (
-    cd "$fixture"
-    export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
-    "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null 2>"$TMP_ROOT/manifest.err"
-  ); then
-    return 1
-  fi
-  grep -Fq 'requires the native eci-safe-import binary; run hooks/build-native-binaries.sh.' "$TMP_ROOT/manifest.err"
-  cp -p -- "$importer_saved" "$fixture/bin/eci-safe-import"
+  rm -- "$fixture/bin/eci-safe-import"
+  rc=0
   (
     cd "$fixture"
     export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
-    "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null
-  )
+    "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null 2>"$TMP_ROOT/manifest.err"
+  ) || rc=$?
+  [ "$rc" -eq 0 ]
+  grep -Fq 'eci-active: building native ECI tools (eci-safe-import);' "$TMP_ROOT/manifest.err"
+  [ "$(grep -c 'building native ECI tools' "$TMP_ROOT/manifest.err")" -eq 1 ]
+  grep -Fqx 'build-native-binaries: building eci-safe-import' "$TMP_ROOT/manifest.err"
+  [ "$(grep -c '^build-native-binaries: building ' "$TMP_ROOT/manifest.err")" -eq 1 ]
+  [ -f "$fixture/bin/eci-safe-import" ]
+  [ -x "$fixture/bin/eci-safe-import" ]
+  (cd -- "$fixture/bin" && "${sha[@]}" -c eci-safe-import.sha256 >/dev/null)
   cmp "$TMP_ROOT/import-manifest.json" "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  [ "$(native_identity "${others[@]}")" = "$others_identity" ]
+
+  # A present importer whose bytes no longer match its receipt is never rebuilt over:
+  # manifest-write fails closed with the loader's reason and leaves the bytes in place.
+  rm -- "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  importer_saved="$("${sha[@]}" "$fixture/bin/eci-safe-import" | cut -d ' ' -f 1)"
+  tamper_at=$(($(wc -c <"$fixture/bin/eci-safe-import") - 1))
+  byte="$(od -An -tu1 -j "$tamper_at" -N1 "$fixture/bin/eci-safe-import" | tr -d ' ')"
+  printf "\\$(printf '%03o' "$((byte ^ 1))")" |
+    dd of="$fixture/bin/eci-safe-import" bs=1 seek="$tamper_at" conv=notrunc 2>/dev/null
+  [ "$("${sha[@]}" "$fixture/bin/eci-safe-import" | cut -d ' ' -f 1)" != "$importer_saved" ]
+  importer_saved="$("${sha[@]}" "$fixture/bin/eci-safe-import" | cut -d ' ' -f 1)"
+  importer_identity="$(native_identity eci-safe-import eci-safe-import.sha256)"
+  rc=0
+  (
+    cd "$fixture"
+    export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
+    "$fixture/bin/eci-active" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null 2>"$TMP_ROOT/manifest.err"
+  ) || rc=$?
+  [ "$rc" -ne 0 ]
+  grep -Fq 'ECI native gate binary eci-safe-import is unavailable or unverified (sha256 does not match its receipt)' "$TMP_ROOT/manifest.err"
+  if grep -q -e 'building native ECI tools' -e '^build-native-binaries:' "$TMP_ROOT/manifest.err"; then
+    return 1
+  fi
+  [ "$("${sha[@]}" "$fixture/bin/eci-safe-import" | cut -d ' ' -f 1)" = "$importer_saved" ]
+  [ "$(native_identity eci-safe-import eci-safe-import.sha256)" = "$importer_identity" ]
+  [ "$(native_identity "${others[@]}")" = "$others_identity" ]
+  [ ! -e "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json" ]
 }
 
 if [ "${1:-}" = --lock-paths-only ]; then
