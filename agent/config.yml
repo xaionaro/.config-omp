@@ -2,6 +2,7 @@ modelRoles:
   eci-max: anthropic/claude-opus-5-5
   default: anthropic/claude-opus-5-5:low
   smol: anthropic/claude-haiku-5-5:low
+  slow: anthropic/claude-opus-5-5:xhigh
 symbolPreset: nerd
 composer:
   shape: band
