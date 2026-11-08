@@ -342,6 +342,9 @@ func appendLedgerEntry(raw string, announce bool) error {
 	if err != nil {
 		return err
 	}
+	if err := verifyCallerSession("ledger-append", sid, contextSessionsRoot()); err != nil {
+		return err
+	}
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {
 		return exitError{code: 1, msg: "eci-active: no current session directory found under the proof root."}
@@ -438,6 +441,9 @@ func statusRefresh(args []string) error {
 	}
 	sid, err := currentSession()
 	if err != nil {
+		return err
+	}
+	if err := verifyCallerSession("status-refresh", sid, contextSessionsRoot()); err != nil {
 		return err
 	}
 	sessionDir, err := resolveSessionDir(sid)

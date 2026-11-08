@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -110,6 +115,189 @@ func currentSession() (string, error) {
 		return "", exitError{code: 1, msg: "Invalid " + name + "; use only letters, digits, '_' or '-'."}
 	}
 	return sid, nil
+}
+
+const (
+	envHarnessSessionID   = "PI_SESSION_ID"   // set by the omp bash tool on every call
+	envHarnessSessionFile = "PI_SESSION_FILE" // the calling session's transcript
+	// maxTranscriptHeaderBytes bounds the transcript prefix searched for the session header.
+	maxTranscriptHeaderBytes = 64 << 10
+	// maxSessionAncestors bounds the parentSession walk.
+	maxSessionAncestors = 32
+)
+
+// harnessSessionsDir is the default omp sessions tree below the home that owns a transcript;
+// harnessProfilesDir holds named profiles, each with its own agent/sessions tree.
+var (
+	harnessSessionsDir = sep + filepath.Join(".omp", "agent", "sessions") + sep
+	harnessProfilesDir = sep + filepath.Join(".omp", "profiles") + sep
+	profileSessionsDir = sep + filepath.Join("agent", "sessions") + sep
+	sep                = string(filepath.Separator)
+)
+
+// accountHome is the home directory of the account running eci-active, independent of $HOME.
+func accountHome() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return u.HomeDir
+}
+
+// harnessLayout returns the omp home that owns transcript file and the boundary of its
+// parentSession walk: the default sessions tree or a profile's sessions tree under that home.
+// Any other session directory (--session-dir, custom session files) belongs to the account home
+// and gets an empty boundary, which limits parents to the caller's own top-level session directory.
+func harnessLayout(file string) (home, sessions string) {
+	if i := strings.Index(file, harnessSessionsDir); i > 0 {
+		return file[:i], file[:i+len(harnessSessionsDir)]
+	}
+	if i := strings.Index(file, harnessProfilesDir); i > 0 {
+		rest := file[i+len(harnessProfilesDir):]
+		if j := strings.Index(rest, profileSessionsDir); j > 0 && !strings.Contains(rest[:j], sep) {
+			return file[:i], file[:i+len(harnessProfilesDir)+j+len(profileSessionsDir)]
+		}
+	}
+	return accountHome(), ""
+}
+
+// verifyCallerSession refuses a session-state mutation whose selected session is neither the
+// calling omp session nor one of its parent sessions. The omp bash tool sets PI_SESSION_ID and
+// PI_SESSION_FILE on every call, so a stale exported ECI_SESSION_ID cannot hide the caller.
+//   - Only the default stores of the omp home that owns the caller transcript are bound (the
+//     account home when the transcript is outside an omp home or absent); a fixture with a
+//     private HOME or proof root is not.
+//   - A call without either variable is outside an omp tool call and is not checked.
+//   - The transcript header names the caller; a differing inherited PI_SESSION_ID is ignored.
+//   - A bound call whose harness identity cannot be verified fails closed.
+//
+// Example: a Supervisor child exporting its root session id appends to the root ledger.
+func verifyCallerSession(verb, sid, store string) error {
+	callerID, file := os.Getenv(envHarnessSessionID), os.Getenv(envHarnessSessionFile)
+	if callerID == "" && file == "" {
+		return nil
+	}
+	unverified := func(reason string) error {
+		return exitError{code: 1, msg: fmt.Sprintf("[ECI_SESSION_IDENTITY_UNVERIFIED] The omp caller identity (%s, %s) cannot be verified: %s; %s refused, no state was changed. Run the command from an omp bash tool call, which sets both, and retry.", envHarnessSessionID, envHarnessSessionFile, reason, verb)}
+	}
+	validFile := file == "" || (filepath.IsAbs(file) && strings.HasSuffix(file, ".jsonl"))
+	var home, sessions string
+	if file != "" && validFile {
+		home, sessions = harnessLayout(file)
+	} else {
+		home = accountHome()
+	}
+	if !harnessStore(store, home) {
+		return nil
+	}
+	if !validFile {
+		return unverified(envHarnessSessionFile + " is not an absolute .jsonl transcript path: " + file)
+	}
+	lineage, err := sessionLineage(callerID, file, sessions)
+	if err != nil {
+		return unverified(err.Error())
+	}
+	if slices.Contains(lineage, sid) {
+		return nil
+	}
+	name, _ := sessionIdentity()
+	return exitError{code: 1, msg: fmt.Sprintf("[ECI_SESSION_IDENTITY_MISMATCH] %s=%s is neither the calling omp session %s nor one of its parent sessions; %s refused, no state was changed. A stale exported %s (copied environment or resumed shell) selects another session's state. Run `unset ECI_SESSION_ID ECI_THREAD_ID`, then set ECI_SESSION_ID=%s (the calling session) or the owning parent session id, and retry.", name, sid, lineage[0], verb, name, lineage[0])}
+}
+
+// harnessStore reports whether store is the context-session root or the proof root of home.
+func harnessStore(store, home string) bool {
+	if home == "" {
+		return false
+	}
+	store = resolvedPath(store)
+	return store == resolvedPath(filepath.Join(home, ".agent", "context", "sessions")) ||
+		store == resolvedPath(filepath.Join(home, "tmp", "agent", "proof"))
+}
+
+// resolvedPath resolves the deepest existing ancestor of p and appends the remainder.
+func resolvedPath(p string) string {
+	p, rest := filepath.Clean(p), ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest, p = filepath.Join(filepath.Base(p), rest), parent
+	}
+}
+
+// sessionLineage returns the caller session id followed by its parent session ids. With a
+// transcript, its header names the caller and a differing callerID (an inherited PI_SESSION_ID)
+// is ignored. The walk follows parentSession transcripts inside sessions or, when sessions is
+// empty, only the parent transcript of the caller's own top-level session directory
+// (<dir>.jsonl for a child at <dir>/<child>.jsonl). A bare session id ends it (a recovery agent
+// names the recovered session that way). An unreadable, foreign or repeated parent ends it.
+func sessionLineage(callerID, file, sessions string) ([]string, error) {
+	if file == "" {
+		if !validSessionID(callerID) {
+			return nil, fmt.Errorf("%s is invalid", envHarnessSessionID)
+		}
+		return []string{callerID}, nil
+	}
+	id, parent, err := transcriptHeader(file)
+	if err != nil {
+		return nil, err
+	}
+	lineage, seen, cur := []string{id}, map[string]bool{file: true}, file
+	for len(lineage) <= maxSessionAncestors && parent != "" {
+		if validSessionID(parent) {
+			return append(lineage, parent), nil
+		}
+		inTree := strings.HasPrefix(parent, sessions)
+		if sessions == "" {
+			inTree = parent == filepath.Dir(cur)+".jsonl"
+		}
+		if !inTree || !strings.HasSuffix(parent, ".jsonl") || seen[parent] {
+			break
+		}
+		seen[parent], cur = true, parent
+		if id, parent, err = transcriptHeader(parent); err != nil {
+			break
+		}
+		lineage = append(lineage, id)
+	}
+	return lineage, nil
+}
+
+// transcriptHeader reads the session record of an omp transcript from its first 64 KiB: the
+// session id and the parentSession string, empty when absent or not a string.
+func transcriptHeader(path string) (string, string, error) {
+	if !isRegularNoFollow(path) {
+		return "", "", fmt.Errorf("transcript is not a regular file: %s", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", "", err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxTranscriptHeaderBytes))
+	if err != nil {
+		return "", "", err
+	}
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		var record struct {
+			Type   string `json:"type"`
+			ID     string `json:"id"`
+			Parent any    `json:"parentSession"`
+		}
+		if json.Unmarshal(line, &record) != nil || record.Type != "session" {
+			continue
+		}
+		if !validSessionID(record.ID) {
+			return "", "", fmt.Errorf("transcript session id is invalid: %s", path)
+		}
+		parent, _ := record.Parent.(string)
+		return record.ID, parent, nil
+	}
+	return "", "", fmt.Errorf("transcript has no session header in its first 64 KiB: %s", path)
 }
 
 // resolveSessionDir returns <proof-root>/<session> after safety checks.
@@ -268,12 +456,15 @@ func acquireProofSessionLock(sid string) (*os.File, error) {
 	return acquireSessionLock(dir)
 }
 
+// contextSessionsRoot is <home>/.agent/context/sessions, the store of session ledgers and reports.
+func contextSessionsRoot() string { return filepath.Join(homeDir(), ".agent", "context", "sessions") }
+
 // contextSessionDir creates and returns <home>/.agent/context/sessions/<sid>.
 func contextSessionDir(sid string) (string, error) {
 	if !validSessionID(sid) {
 		return "", fmt.Errorf("invalid session id")
 	}
-	dir := filepath.Join(homeDir(), ".agent", "context", "sessions", sid)
+	dir := filepath.Join(contextSessionsRoot(), sid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

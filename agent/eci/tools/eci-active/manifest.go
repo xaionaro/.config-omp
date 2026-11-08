@@ -22,6 +22,9 @@ func manifestWrite(args []string) error {
 	if !validSessionID(sid) {
 		return exitError{code: 1, msg: "manifest-write requires an explicit current ECI_SESSION_ID or ECI_THREAD_ID."}
 	}
+	if err := verifyCallerSession("manifest-write", sid, proofRoot()); err != nil {
+		return err
+	}
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {
 		return exitError{code: 1, msg: "eci-active: no current session directory found under the proof root."}

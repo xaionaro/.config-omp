@@ -33,6 +33,9 @@ func requirementAssignment(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := verifyCallerSession("requirement-assignment", sid, contextSessionsRoot()); err != nil {
+		return err
+	}
 	sessionDir, err := resolveSessionDir(sid)
 	if err != nil {
 		return exitError{code: 1, msg: "eci-active: no current session directory found under the proof root."}

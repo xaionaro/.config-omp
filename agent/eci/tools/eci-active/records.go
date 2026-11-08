@@ -235,6 +235,9 @@ func repositoryAllowOn(args []string) error {
 	if err != nil {
 		return exitError{code: 1, msg: err.Error()}
 	}
+	if err := verifyCallerSession("repository-allow-on", sid, proofRoot()); err != nil {
+		return err
+	}
 	repo, err := canonicalRepoRoot(args[1])
 	if err != nil {
 		return exitError{code: 1, msg: err.Error()}
@@ -282,6 +285,9 @@ func repositoryAllowOff(args []string) error {
 	sid, cwd, err := repoContext()
 	if err != nil {
 		return exitError{code: 1, msg: err.Error()}
+	}
+	if err := verifyCallerSession("repository-allow-off", sid, proofRoot()); err != nil {
+		return err
 	}
 	repo, err := canonicalRepoRoot(args[1])
 	if err != nil {
@@ -473,6 +479,9 @@ func permissiveOff(args []string) error {
 		sid, serr := currentSession()
 		if serr != nil {
 			return serr
+		}
+		if err := verifyCallerSession("permissive-off", sid, proofRoot()); err != nil {
+			return err
 		}
 		lock, err = acquireProofSessionLock(sid)
 	} else {
