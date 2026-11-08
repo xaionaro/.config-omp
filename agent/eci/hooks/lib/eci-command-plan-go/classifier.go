@@ -4210,6 +4210,7 @@ func inspectGateMode(
 
 // inspectHookGateModeTarget checks the resolved mode mutation and its owner.
 // Quoting, wrappers and unknown CLI arguments do not create a control effect.
+// A statable non-canonical set target denies gate-mode-identity.
 //
 // Example: a quoted canonical set invocation belongs to the coordinator.
 func inspectHookGateModeTarget(
@@ -4240,7 +4241,7 @@ func inspectHookGateModeTarget(
 		diagnostic.Path = canonical
 		return diagnostic
 	}
-	return nil
+	return gateModeEnvelopeDiagnostic(argv, target, segmentIndex, "gate-mode-identity", "command-gate mode target is not a canonical provider command-gate binary")
 }
 
 // isExactGateModeEnvelope reports whether parsed is the direct current-provider

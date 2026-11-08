@@ -7,8 +7,9 @@ import (
 )
 
 // TestHookGateModeUnstatableTargetDenies covers --hook gate-mode sets whose
-// target cannot be resolved or statted. D1-D5 and W1 must deny
-// gate-mode-identity; B1 is a get control that stays allowed.
+// target cannot be resolved or statted, or resolves to a statable
+// non-canonical copy. D1-D5, D7, W1 and D7W must deny gate-mode-identity; B1
+// is a get control that stays allowed.
 //
 // Example: D1 is an omp coordinator set on a dangling symlink, which denies.
 func TestHookGateModeUnstatableTargetDenies(t *testing.T) {
@@ -39,6 +40,13 @@ func TestHookGateModeUnstatableTargetDenies(t *testing.T) {
 	if err := os.Symlink(filepath.Join(scratch, "missing-kimi"), fixture.kimiGate); err != nil {
 		t.Fatalf("create dangling kimi gate: %v", err)
 	}
+	copied := filepath.Join(scratch, "copy", "eci-command-gate-mode")
+	if err := os.MkdirAll(filepath.Dir(copied), 0o755); err != nil {
+		t.Fatalf("create copy dir: %v", err)
+	}
+	if err := os.WriteFile(copied, []byte("gate-v1\n"), 0o755); err != nil {
+		t.Fatalf("write copied gate: %v", err)
+	}
 	t.Setenv("PATH", t.TempDir())
 
 	rows := []struct {
@@ -56,6 +64,8 @@ func TestHookGateModeUnstatableTargetDenies(t *testing.T) {
 		{name: "W1 worker set enforcing dangling", role: RoleWorker, command: dangling + " set enforcing", decision: DecisionDeny},
 		{name: "B1 coordinator get dangling", role: RoleCoordinator, command: dangling + " get", decision: DecisionAllow},
 		{name: "C1 coordinator set enforcing canonical statable", role: RoleCoordinator, command: fixture.eciGate + " set enforcing", decision: DecisionAllow},
+		{name: "D7 coordinator set enforcing statable copy", role: RoleCoordinator, command: copied + " set enforcing", decision: DecisionDeny},
+		{name: "D7W worker set enforcing statable copy", role: RoleWorker, command: copied + " set enforcing", decision: DecisionDeny},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
