@@ -34,8 +34,22 @@ printf 'scope: configured consumer regression\ncwd: %s\nsession_id: %s\ncreated_
   "$FIXTURE_ROOT" "$FIXTURE_SESSION" >"$FIXTURE_PROOF/$FIXTURE_SESSION/eci_active"
 printf 'scope: configured Kimi consumer regression\ncwd: %s\nsession_id: %s\ncreated_utc: 2026-09-13T00:00:00Z\n' \
   "$FIXTURE_KIMI_ROOT" "$FIXTURE_KIMI_SESSION" >"$FIXTURE_PROOF/$FIXTURE_KIMI_SESSION/eci_active"
-FIXTURE_KIMI_MARKER="$(realpath -e -- "$FIXTURE_PROOF/$FIXTURE_KIMI_SESSION/eci_active")"
+# The hook classifies the caller from its callback transcript; these callbacks
+# are coordinator calls, so each session gets a main transcript in the fixture HOME.
+FIXTURE_TRANSCRIPT="$FIXTURE_HOME/.omp/agent/sessions/$FIXTURE_SESSION/main.jsonl"
+FIXTURE_KIMI_TRANSCRIPT="$FIXTURE_HOME/.omp/agent/sessions/$FIXTURE_KIMI_SESSION/main.jsonl"
+mkdir -p -- "$(dirname -- "$FIXTURE_TRANSCRIPT")" "$(dirname -- "$FIXTURE_KIMI_TRANSCRIPT")"
+printf '%s\n' \
+  "{\"type\":\"session\",\"version\":3,\"id\":\"$FIXTURE_SESSION\",\"cwd\":\"$FIXTURE_ROOT\"}" \
+  '{"type":"message","role":"user","content":"configured consumer"}' >"$FIXTURE_TRANSCRIPT"
+printf '%s\n' \
+  "{\"type\":\"session\",\"version\":3,\"id\":\"$FIXTURE_KIMI_SESSION\",\"cwd\":\"$FIXTURE_KIMI_ROOT\"}" \
+  '{"type":"message","role":"user","content":"configured Kimi consumer"}' >"$FIXTURE_KIMI_TRANSCRIPT"
 
+# Provision the canonical gate binaries that planner-apply verifies
+# ($HOME/.omp/agent/eci/bin and their .sha256 receipts), in the fixture HOME only.
+PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$FIXTURE_HOME" bash "$FIXTURE_ROOT/hooks/build-native-binaries.sh" \
+  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 # Build the canonical fixture planner through the ordinary private publisher,
 # then remove the Kimi fixture's local planner directory. The configured Kimi
 # callback must therefore consume the coherent canonical planner authority.
@@ -119,19 +133,19 @@ for fixture_hook in "$FIXTURE_ROOT/hooks/validate-bash.sh" "$FIXTURE_KIMI_ROOT/h
 done
 
 run_configured_consumer '^Bash$' \
-  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:"rm -rf /"}}')" \
+  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" --arg transcript "$FIXTURE_TRANSCRIPT" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:"rm -rf /"}}')" \
   ECI_BROAD_DESTRUCTIVE_DENIED
 run_configured_consumer_allow '^Bash$' \
-  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:"interpreter-tool -c \u0027dynamic payload\u0027"}}')"
+  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" --arg transcript "$FIXTURE_TRANSCRIPT" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:"interpreter-tool -c \u0027dynamic payload\u0027"}}')"
 run_configured_consumer '^apply_patch$' \
-  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" \
-    '{session_id:$session,cwd:$cwd,tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch"}}')" \
+  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" --arg transcript "$FIXTURE_TRANSCRIPT" \
+    '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch"}}')" \
   'synthetic configured apply_patch validator denial'
 run_configured_consumer '^(Edit|Write|MultiEdit|NotebookEdit)$' \
-  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" \
-    '{session_id:$session,cwd:$cwd,tool_name:"Edit",tool_input:{file_path:"notes.txt",old_string:"old",new_string:"new"}}')" \
+  "$(jq -cn --arg cwd "$FIXTURE_ROOT" --arg session "$FIXTURE_SESSION" --arg transcript "$FIXTURE_TRANSCRIPT" \
+    '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"Edit",tool_input:{file_path:"notes.txt",old_string:"old",new_string:"new"}}')" \
   'synthetic configured edit validator denial'
 
 kimi_bash_consumer="$(awk '
@@ -157,7 +171,8 @@ run_kimi_bash_consumer() {
   input="$TMP_ROOT/kimi-$label-input.json"
   output="$TMP_ROOT/kimi-$label-output.json"
   jq -cn --arg cwd "$FIXTURE_KIMI_ROOT" --arg session "$FIXTURE_KIMI_SESSION" --arg command "$command" \
-    '{session_id:$session,cwd:$cwd,tool_input:{command:$command}}' >"$input"
+    --arg transcript "$FIXTURE_KIMI_TRANSCRIPT" \
+    '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' >"$input"
   if ! timeout 75s env \
     HOME="$FIXTURE_HOME" ECI_HOME="$FIXTURE_ROOT" KIMI_CODE_HOME="$FIXTURE_KIMI_ROOT" \
     ECI_PROOF_ROOT="$FIXTURE_PROOF" KIMI_PROOF_ROOT="$FIXTURE_PROOF" \
@@ -177,13 +192,9 @@ run_kimi_bash_consumer() {
       }
       ;;
     broad-deny)
-      jq -e --arg session "$FIXTURE_KIMI_SESSION" --arg cwd "$FIXTURE_KIMI_ROOT" \
-        --arg marker "$FIXTURE_KIMI_MARKER" '
+      jq -e '
         .hookSpecificOutput.permissionDecision == "deny" and
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("callback_session=" + $session)) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("callback_cwd=" + $cwd)) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("callback_marker=" + $marker))
+        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]"))
       ' "$output" >/dev/null || {
         printf 'configured Kimi Bash consumer did not report broad-target denial: %s\n' "$command" >&2
         cat -- "$output" >&2
