@@ -42,7 +42,7 @@ else
 fi
 base="$(mktemp -d -- "${base_parent%/}/eci-native-binary-loader.XXXXXX")"
 base="$(cd -P -- "$base" && pwd -P)"
-trap 'chmod -R u+rwx -- "$base" 2>/dev/null || true; rm -rf -- "$base"' EXIT
+trap 'chmod -R -- u+rwx "$base" 2>/dev/null || true; rm -rf -- "$base"' EXIT
 
 home="$base/home"
 bin="$home/.omp/agent/eci/bin"
