@@ -47,6 +47,20 @@ trap cleanup EXIT
 
 mkdir -p "$work/home/.omp/agent" "$work/home/tmp/mtlog"
 cp -a "$runtime_root" "$work/home/.omp/agent/eci"
+# cp -a keeps the checkout's modes; a checkout made under umask 0002 would leave
+# group-writable runtime directories that the native gate loader rejects.
+chmod -R go-w -- "$work/home/.omp/agent/eci"
+# Provision the native gate binaries under the isolated HOME, the documented
+# first-use step; the checkout itself carries no build outputs.
+native_bin="$work/home/.omp/agent/eci/bin"
+HOME="$work/home" bash "$work/home/.omp/agent/eci/hooks/build-native-binaries.sh" \
+  eci-command-plan eci-safe-import eci-hook-helper >&2 ||
+  { printf 'run-isolated: build-native-binaries.sh failed; native gate binaries are not provisioned\n' >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then native_sha256=(sha256sum); else native_sha256=(shasum -a 256); fi
+for native_name in eci-command-plan eci-safe-import eci-hook-helper; do
+  (cd "$native_bin" && "${native_sha256[@]}" -c --status "$native_name.sha256") ||
+    { printf 'run-isolated: receipt mismatch for %s\n' "$native_name" >&2; exit 1; }
+done
 if [ -d "$account_home/tmp/eci-runtime" ]; then
   cp -a "$account_home/tmp/eci-runtime" "$work/home/tmp/eci-runtime"
 fi

@@ -251,7 +251,7 @@ assert_planner_allows() {
   planner_output="$(
     jq -cn --arg cwd "$ROOT" --arg command "$command" \
       '{provider:"omp",role:"coordinator",cwd:$cwd,marker:"active",active_session:"t00-session",command:$command,active_markers:[],approved_roots:[$cwd]}' |
-      "$ROOT/hooks/lib/eci-command-plan-go/eci-command-plan"
+      "$subagent_eci_home/bin/eci-command-plan"
   )" || {
     printf 'planner rejected expected finite shell argv: %q output=%s\n' \
       "$command" "$planner_output" >&2
@@ -274,7 +274,7 @@ assert_planner_reviewed_trace_deferred() {
   if planner_output="$(
     jq -cn --arg cwd "$ROOT" --arg command "$command" \
       '{provider:"omp",role:"coordinator",cwd:$cwd,marker:"active",active_session:"t00-session",command:$command,active_markers:[],approved_roots:[$cwd]}' |
-      "$ROOT/hooks/lib/eci-command-plan-go/eci-command-plan"
+      "$subagent_eci_home/bin/eci-command-plan"
   )"; then
     planner_status=0
   else
