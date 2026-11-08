@@ -24,6 +24,8 @@ agent/eci/bin/*
 !agent/eci/bin/eci-active
 # eci-requirement-assignment is an on-demand wrapper: track the script; its built .eci-requirement-assignment.<key> and build lock stay ignored.
 !agent/eci/bin/eci-requirement-assignment
+# eci-active-dispatch is a tracked provider-routing script; its built siblings stay ignored.
+!agent/eci/bin/eci-active-dispatch
 
 # Secrets and credentials
 auth*.json

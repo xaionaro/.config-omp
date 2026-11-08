@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+provider=eci
+if [ -n "${ECI_SESSION_ID:-${ECI_THREAD_ID:-}}" ] || [ -n "${ECI_PROOF_ROOT:-}" ]; then
+  provider=eci
+elif [ -n "${KIMI_SESSION_ID:-${KIMI_THREAD_ID:-}}" ] || [ -n "${KIMI_PROOF_ROOT:-}" ]; then
+  provider=kimi
+else
+  probe_pid=$PPID
+  while [ "$probe_pid" -gt 1 ] 2>/dev/null; do
+    read -r probe_name probe_parent < <(awk '{print $2, $4}' "/proc/$probe_pid/stat" 2>/dev/null) || break
+    probe_name="${probe_name#(}"; probe_name="${probe_name%)}"
+    if [ "$probe_name" = kimi ]; then provider=kimi; break; fi
+    probe_pid="$probe_parent"
+  done
+fi
+
+if [ "$provider" = kimi ]; then
+  provider_home="${KIMI_CODE_HOME:-${HOME:?}/.kimi-code}"
+else
+  provider_home="${HOME:?}/.omp/agent/eci"
+fi
+entrypoint="$provider_home/bin/eci-active"
+[ -x "$entrypoint" ] && [ ! -L "$entrypoint" ] || {
+  printf 'eci-active: %s provider entrypoint is unavailable\n' "$provider" >&2
+  exit 1
+}
+exec "$entrypoint" "$@"
