@@ -56,7 +56,7 @@ printf '%s\n' \
 # under TMP_ROOT.
 GOMODCACHE="$("$ECI_TEST_GO" env GOMODCACHE)" GOCACHE="$("$ECI_TEST_GO" env GOCACHE)" \
   HOME="$FIXTURE_HOME" bash "$FIXTURE_ROOT/hooks/build-native-binaries.sh" \
-  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
+  eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec) >/dev/null
 # Build the canonical fixture planner through the ordinary private publisher,
 # then remove the Kimi fixture's local planner directory. The configured Kimi
 # callback must therefore consume the coherent canonical planner authority.

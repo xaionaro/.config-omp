@@ -26,7 +26,7 @@ eci_sed_inplace '2{/^exit 0$/d;}' "$RUNTIME_ROOT/hooks/validate-bash.sh"
 # under TMP_ROOT.
 GOMODCACHE="$("$ECI_TEST_GO" env GOMODCACHE)" GOCACHE="$("$ECI_TEST_GO" env GOCACHE)" \
   HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
-  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
+  eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec) >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 

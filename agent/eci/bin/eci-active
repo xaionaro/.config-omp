@@ -53,8 +53,7 @@ case ${1-} in
     source "$eci_home/hooks/lib/eci-native-provision.sh"
     eci_native_provision || true
     if [ "$1" = manifest-write ]; then
-      eci_runtime_open_verified eci-safe-import || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
-      eci_runtime_close_verified
+      eci_runtime_verify eci-safe-import || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
     fi
     ;;
 esac

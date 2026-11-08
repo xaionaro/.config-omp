@@ -49,14 +49,19 @@ awk \
 mv -- "$PLANNER_DIR/.eci-command-plan.provenance.tmp" "$PLANNER_DIR/.eci-command-plan.provenance"
 chmod 600 -- "$PLANNER_DIR/.eci-command-plan.provenance"
 
-# Publish and receipt the planner pair that the build call verifies in this bin/:
-# eci-command-plan is the binary built above; eci-safe-import is built from its module.
+# Publish and receipt the planner pair that the build call verifies in this bin/, and the
+# verifier eci-verexec that runs the planner: eci-command-plan is the binary built above;
+# eci-safe-import and eci-verexec are built from their modules.
 cp -- "$PLANNER_DIR/eci-command-plan" "$RUNTIME_ROOT/bin/eci-command-plan"
 (
   cd -- "$RUNTIME_ROOT/hooks/lib/eci-safe-import-go"
   "$ECI_TEST_GO" build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-safe-import" .
 )
-for planner_tool in eci-command-plan eci-safe-import; do
+(
+  cd -- "$RUNTIME_ROOT/hooks/lib/eci-verexec-go"
+  CGO_ENABLED=0 "$ECI_TEST_GO" build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-verexec" .
+)
+for planner_tool in eci-command-plan eci-safe-import eci-verexec; do
   printf '%s  %s\n' "$(eci_sha256_hex "$RUNTIME_ROOT/bin/$planner_tool")" "$planner_tool" >"$RUNTIME_ROOT/bin/$planner_tool.sha256"
 done
 

@@ -7,6 +7,7 @@
 # eci-worker-git is built with a receipt but not launcher-wired: the typed Worker Git route is unavailable during active ECI, so Workers use native Git, and the receipt is not verified at runtime.
 # eci-active and owned-command are on-demand wrappers in bin/ that build from source on first use; this script does not build them.
 # eci-command-gate-mode is built only on Linux hosts; its sources carry //go:build linux.
+# eci-verexec (Linux only) is the native verifier the Linux launcher execs; it checks its own image against eci-verexec.sha256 before any gate binary.
 # Every built binary must pass eci_runtime_binary_is_native for this host (ELF on Linux, Mach-O on macOS) before any file is installed.
 # Runs under macOS system bash 3.2 with BSD userland; no GNU-only utilities.
 set -euo pipefail
@@ -44,9 +45,9 @@ fi
 
 names=(eci-command-plan eci-safe-import eci-hook-helper eci-worker-git)
 if [ "$host_os" = linux ]; then
-  names+=(eci-command-gate-mode)
+  names+=(eci-verexec eci-command-gate-mode)
 elif [ "$#" -eq 0 ]; then
-  echo "build-native-binaries: skipping eci-command-gate-mode (Linux-only source)"
+  echo "build-native-binaries: skipping eci-verexec and eci-command-gate-mode (Linux-only; macOS keeps the bash verifier)"
 fi
 if [ "$#" -gt 0 ]; then
   requested=' '

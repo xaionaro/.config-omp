@@ -235,9 +235,10 @@ func provisionTestHome(root string) error {
 		}
 	}
 	// The suite runs the planner and, on Linux, stats the gate; the other natives have no test consumer.
+	// On Linux the planner is verified and run through eci-verexec.
 	natives := []string{"eci-command-plan"}
 	if runtime.GOOS == "linux" {
-		natives = append(natives, "eci-command-gate-mode")
+		natives = append(natives, "eci-command-gate-mode", "eci-verexec")
 	}
 	installed := append(os.Environ(), "HOME="+home, "TMPDIR="+temporary)
 	build := exec.Command("bash", append([]string{filepath.Join(eci, "hooks", "build-native-binaries.sh")}, natives...)...)
@@ -246,7 +247,7 @@ func provisionTestHome(root string) error {
 		return fmt.Errorf("build-native-binaries.sh: %w\n%s", err, output)
 	}
 	verify := exec.Command("bash", "-c",
-		`source "$1" && eci_runtime_open_verified eci-command-plan || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }`,
+		`source "$1" && eci_runtime_verify eci-command-plan || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }`,
 		"verify", filepath.Join(eci, "hooks", "lib", "eci-native-binary.sh"))
 	verify.Env = installed
 	if output, err := verify.CombinedOutput(); err != nil {

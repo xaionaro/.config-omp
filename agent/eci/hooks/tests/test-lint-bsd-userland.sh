@@ -85,8 +85,6 @@ must_fail 'case-modification' '${v^^}' 'upper=${name^^}'
 must_fail 'grep-P' 'grep -P' "grep -P '\\d' \"\$f\""
 must_fail 'long option --parents' 'cp --parents' 'cp --parents a b'
 must_fail 'long option --no-copy' 'mv --no-copy' 'mv --no-copy -f -- a b'
-must_fail 'calls the loader'"'"'s Linux-only eci_runtime_verify_fd' 'a call to eci_runtime_verify_fd' 'eci_runtime_verify_fd eci-hook-helper 3 "$p" "$s" "$r"'
-must_fail 'calls the loader'"'"'s Linux-only eci_runtime_directory_chain_is_trusted' 'a call to eci_runtime_directory_chain_is_trusted' 'eci_runtime_directory_chain_is_trusted "$dir"'
 # Forms added from the Gap17 review.
 must_fail 'stat-c' 'stat split by a backslash continuation' 'mode=$(stat \
   -c %a "$f")'
@@ -133,28 +131,18 @@ eci_runtime_close_verified'
 must_pass 'the allowed --help case pattern' 'case $1 in --help|-h) ;; esac'
 
 # The new lib with one planted line in eci_native_classify.
-mkdir -p "$base/lib1" "$base/lib2" "$base/lib3"
+mkdir -p "$base/lib1"
 awk '{print} /^eci_native_classify\(\) \{/{print "  mode=$(stat -c %a \"$HOME\")"}' "$provision" >"$base/lib1/eci-native-provision.sh"
 copy_fail 'stat-c in eci_native_classify' 'stat -c planted in the new lib' "$base/lib1/eci-native-provision.sh"
-awk '{print} /^eci_native_classify\(\) \{/{print "  eci_runtime_verify_fd \"$1\" 3 \"$path\" \"$TMPDIR\" \"$path.sha256\" || return 1"}' "$provision" >"$base/lib2/eci-native-provision.sh"
-copy_fail 'Linux-only eci_runtime_verify_fd' 'the new lib calling eci_runtime_verify_fd' "$base/lib2/eci-native-provision.sh"
-awk '{print} /^eci_native_classify\(\) \{/{print "  eci_runtime_directory_chain_is_trusted \"$HOME\" || return 1"}' "$provision" >"$base/lib3/eci-native-provision.sh"
-copy_fail 'Linux-only eci_runtime_directory_chain_is_trusted' 'the new lib calling eci_runtime_directory_chain_is_trusted' "$base/lib3/eci-native-provision.sh"
 
 # Loader copies; the file name keeps the allow-list in force.
-for k in 1 2 3 4 5 6 7; do mkdir -p "$base/loader$k"; done
+for k in 1 2 3 7; do mkdir -p "$base/loader$k"; done
 awk '{print} /^_eci_runtime_darwin_copy_inode\(\) \{/{print "  x=$(stat -c %a \"$2\")"}' "$loader" >"$base/loader1/eci-native-binary.sh"
 copy_fail 'stat-c in _eci_runtime_darwin_copy_inode' 'stat -c planted in a darwin function' "$base/loader1/eci-native-binary.sh"
-awk '/stat -c .%u %a. -- "\$dir"/{next} {print} /^eci_runtime_darwin_directory_chain_is_trusted\(\) \{/{print "  read -r owner mode < <(stat -c '"'"'%u %a'"'"' -- \"$dir\" 2>/dev/null) || return 1"}' "$loader" >"$base/loader2/eci-native-binary.sh"
-copy_fail 'stat-c in eci_runtime_darwin_directory_chain_is_trusted' 'the :92 stat -c line moved into the darwin chain function' "$base/loader2/eci-native-binary.sh"
+awk '{print} /^eci_runtime_darwin_directory_chain_is_trusted\(\) \{/{print "  read -r owner mode < <(stat -c '"'"'%u %a'"'"' -- \"$dir\" 2>/dev/null) || return 1"}' "$loader" >"$base/loader2/eci-native-binary.sh"
+copy_fail 'stat-c in eci_runtime_darwin_directory_chain_is_trusted' 'stat -c planted in the darwin chain function' "$base/loader2/eci-native-binary.sh"
 grep -v -F 'Darwin) _eci_runtime_binary_is_native_darwin "$1"; return ;;' "$loader" >"$base/loader3/eci-native-binary.sh"
 copy_fail 'od-w in eci_runtime_binary_is_native' 'G3 Darwin dispatch removed' "$base/loader3/eci-native-binary.sh"
-grep -v -F 'Darwin) _eci_runtime_open_verified_darwin "${1:-}"; return ;;' "$loader" >"$base/loader4/eci-native-binary.sh"
-copy_fail 'in _eci_runtime_open_verified_in' 'G1 Darwin dispatch removed' "$base/loader4/eci-native-binary.sh"
-grep -v -F 'if [ -n "$ECI_RUNTIME_BINARY_FD" ]; then' "$loader" >"$base/loader5/eci-native-binary.sh"
-copy_fail 'exec-named-fd in eci_runtime_close_verified' 'the guard before :189 removed' "$base/loader5/eci-native-binary.sh"
-awk '{print} /^_eci_runtime_darwin_stage_verified_copy\(\) \{/{print "  eci_runtime_directory_chain_is_trusted \"$1\" || return 1"}' "$loader" >"$base/loader6/eci-native-binary.sh"
-copy_fail 'stat-c in eci_runtime_directory_chain_is_trusted' 'chain_is_trusted called from a darwin function' "$base/loader6/eci-native-binary.sh"
 awk '{print} /^_eci_runtime_darwin_stage_verified_copy\(\) \{/{print "  x=$(stat \\"; print "    -c %a \"$1\")"}' "$loader" >"$base/loader7/eci-native-binary.sh"
 copy_fail 'stat-c in _eci_runtime_darwin_stage_verified_copy' 'a continued stat -c in a darwin function' "$base/loader7/eci-native-binary.sh"
 

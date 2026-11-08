@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -106,6 +107,21 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	receipt := published + ".sha256"
 	if err := os.WriteFile(receipt, []byte(fileSHA256(t, published)+"  eci-command-plan\n"), 0o644); err != nil {
 		t.Fatalf("write planner receipt: %v", err)
+	}
+	// On Linux validate-bash.sh runs the planner through bin/eci-verexec; republish the TestMain-provisioned one.
+	if runtime.GOOS == "linux" {
+		provisioned := filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci", "bin", "eci-verexec")
+		verifier, err := os.ReadFile(provisioned)
+		if err != nil {
+			t.Fatalf("read provisioned eci-verexec: %v", err)
+		}
+		publishedVerifier := filepath.Join(binDirectory, "eci-verexec")
+		if err := os.WriteFile(publishedVerifier, verifier, 0o755); err != nil {
+			t.Fatalf("publish eci-verexec: %v", err)
+		}
+		if err := os.WriteFile(publishedVerifier+".sha256", []byte(fileSHA256(t, publishedVerifier)+"  eci-verexec\n"), 0o644); err != nil {
+			t.Fatalf("write eci-verexec receipt: %v", err)
+		}
 	}
 	transcript := filepath.Join(sessionsProject, "main.jsonl")
 	if err := os.WriteFile(transcript, []byte(`{"type":"session","version":3,"id":"`+sessionID+`"}`+"\n"), 0o600); err != nil {

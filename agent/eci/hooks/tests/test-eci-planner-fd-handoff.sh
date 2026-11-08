@@ -38,15 +38,13 @@ exec {planner_fd}<&-
   exit 1
 }
 
-# Keep the hook contract explicit: validate-bash opens the validated planner once through
-# eci_runtime_open_verified (hooks/lib/eci-native-binary.sh) and execs it through
-# ECI_RUNTIME_BINARY_EXEC: /proc/self/fd/N on Linux, the verified private copy on macOS. It
-# never execs the planner by pathname (hooks/validate-bash.sh).
-open_line="$(grep -n -F 'eci_runtime_open_verified eci-command-plan' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
-exec_line="$(grep -n -F '"$ECI_RUNTIME_BINARY_EXEC" --hook' "$ROOT/hooks/validate-bash.sh" | cut -d: -f1)"
-[[ "$open_line" =~ ^[0-9]+$ ]] && [[ "$exec_line" =~ ^[0-9]+$ ]] &&
-  [ "$open_line" -lt "$exec_line" ] || {
-    printf '%s\n' 'validate-bash does not open the planner descriptor before exec through /proc/self/fd' >&2
+# Keep the hook contract explicit: validate-bash runs the validated planner once through
+# eci_runtime_verexec (hooks/lib/eci-native-binary.sh): on Linux bin/eci-verexec verifies it and
+# execveat()s the verified descriptor; on macOS the verified private copy runs. It never execs the
+# planner by pathname (hooks/validate-bash.sh).
+[ "$(grep -c -F 'eci_runtime_verexec eci-command-plan - -- --hook' "$ROOT/hooks/validate-bash.sh")" = 1 ] &&
+  ! grep -q -e 'ECI_RUNTIME_BINARY_EXEC' -e 'bin/eci-command-plan' "$ROOT/hooks/validate-bash.sh" || {
+    printf '%s\n' 'validate-bash does not run the planner exactly once through eci_runtime_verexec' >&2
     exit 1
   }
 

@@ -55,17 +55,14 @@ if ! . "$HOOK_DIR/lib/eci-proof-state.sh" 2>/dev/null; then
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_runtime_open_verified eci_marker_active_or_unknown eci_proof_root eci_valid_session_id eci_ensure_cwd_state_dir; do
+for fn in eci_runtime_verexec eci_marker_active_or_unknown eci_proof_root eci_valid_session_id eci_ensure_cwd_state_dir; do
   declare -F "$fn" >/dev/null 2>&1 || { eci_prompt_marker_verified_absent && exit 0; deny_stdout_usable || prompt_write_failed; printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry","additionalContext":"[ECI_HOOK_LIB_UNAVAILABLE] ECI prompt reminder denied: library function %s is not defined; reinstall the ECI hooks and retry"}}\n' "$fn" "$fn" || prompt_write_failed; exit 0; }
 done
 if ! command -v jq >/dev/null 2>&1; then
   prompt_skip_or_deny "[ECI_JQ_UNAVAILABLE] ECI prompt reminder denied: jq is not installed; install jq and retry"
 fi
 private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-prompt-reminder.XXXXXX")" || prompt_skip_or_deny "[ECI_PROMPT_SCRATCH_UNAVAILABLE] ECI prompt reminder denied: the private scratch directory cannot be created; ensure TMPDIR is writable and retry"
-trap 'eci_runtime_close_verified; rm -rf -- "$private_dir"' EXIT
-if ! eci_runtime_open_verified eci-hook-helper; then
-  prompt_skip_or_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
-fi
+trap 'rm -rf -- "$private_dir"' EXIT
 input_file="$private_dir/input"
 helper_output="$private_dir/output"
 head -c 65537 >"$input_file" || prompt_skip_or_deny "[ECI_PROMPT_INPUT_INVALID] ECI prompt reminder denied: the prompt input could not be read; retry"
@@ -104,12 +101,12 @@ while IFS= read -r clause; do
     break
   fi
 done < <(printf '%s\n' "$normalized_prompt" | sed -E 's/[,;.!?]/\n/g; s/[[:space:]]+then[[:space:]]+/\n/g; s/[[:space:]]+and[[:space:]]+(show|give|provide|write|send|what|how|where|can[[:space:]]+you)[[:space:]]+/\n\1 /g')
-# Run the verified helper before any reminder is emitted; a helper runtime failure is an explicit deny, not a silent exit.
+# Run the verified helper before any reminder is emitted; a verification denial or a helper runtime failure is an explicit deny, not a silent exit.
 helper_rc=0
-if [ "$helper_rc" -eq 0 ]; then
-  "$ECI_RUNTIME_BINARY_EXEC" stdin <"$input_file" >"$helper_output" || helper_rc=$?
+eci_runtime_verexec eci-hook-helper "$private_dir/deny" -- stdin <"$input_file" >"$helper_output" || helper_rc=$?
+if [ "$helper_rc" -eq 125 ] && [ -n "$ECI_RUNTIME_DENY_REASON" ]; then
+  prompt_skip_or_deny "[ECI_NATIVE_HELPER_UNVERIFIED] $ECI_RUNTIME_DENY_REASON"
 fi
-eci_runtime_close_verified
 if [ "$helper_rc" -ne 0 ]; then
   prompt_skip_or_deny "[ECI_NATIVE_HELPER_FAILED] ECI native gate binary eci-hook-helper failed to run; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry"
 fi

@@ -44,11 +44,14 @@ for name in eci-command-plan eci-safe-import eci-hook-helper; do
   [ "$(cat -- "$BIN/$name.sha256")" = "$(eci_sha256_hex "$BIN/$name")  $name" ]
 done
 cmp -- "$BIN/eci-command-plan" "$MODULE_PLANNER"
+# On Linux the gate verifies through eci-verexec, which maintain-planner does not build; provision it here.
+if [ "$(uname -s)" = Linux ]; then
+  HOME="$TEST_HOME" bash "$ECI_HOME/hooks/build-native-binaries.sh" eci-verexec >/dev/null
+fi
 (
   HOME="$TEST_HOME"
   source "$ECI_HOME/hooks/lib/eci-native-binary.sh"
-  eci_runtime_open_verified eci-command-plan || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
-  eci_runtime_close_verified
+  eci_runtime_verify eci-command-plan || { printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2; exit 1; }
 )
 [ -z "$(find "$BIN" -maxdepth 1 -name '.planner-importer.txn.*')" ]
 grep -Fq "PLANNER_LOCAL_SYNCED $BIN" "$OUTPUT"

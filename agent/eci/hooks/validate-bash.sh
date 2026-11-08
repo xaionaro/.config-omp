@@ -36,7 +36,7 @@ if ! . "$lib_dir/eci-proof-state.sh" 2>/dev/null; then
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_runtime_open_verified eci_install_fail_closed_trap eci_marker_active_or_unknown; do
+for fn in eci_runtime_verexec eci_install_fail_closed_trap eci_marker_active_or_unknown; do
   declare -F "$fn" >/dev/null 2>&1 || hook_deny "[ECI_HOOK_LIB_UNAVAILABLE] hook validate-bash: ECI library function $fn is not defined; reinstall the ECI hooks and retry"
 done
 # The proof root is $HOME-rooted (eci_configured_proof_root) unless ECI_PROOF_ROOT
@@ -64,14 +64,13 @@ native_gate_fail() {
   hook_deny "$2"
 }
 eci_install_fail_closed_trap validate-bash
-if ! eci_runtime_open_verified eci-command-plan; then
+# The planner runs as a child of eci_runtime_verexec, which holds nothing open afterwards. Status 125
+# with a reason is a verification denial; without one it is the planner's own exit.
+rc=0
+eci_runtime_verexec eci-command-plan - -- --hook || rc=$?
+if [ "$rc" -eq 125 ] && [ -n "$ECI_RUNTIME_DENY_REASON" ]; then
   native_gate_fail 0 "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] $ECI_RUNTIME_DENY_REASON"
 fi
-rc=0
-"$ECI_RUNTIME_BINARY_EXEC" --hook || rc=$?
-# The verified descriptor (Linux) or private copy (macOS) is needed only for the planner call;
-# release it before the exit-status classification so no later branch can hold it.
-eci_runtime_close_verified
 case "$rc" in
   0|2) ;;
   126|127) native_gate_fail "$rc" "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan failed to run (exit $rc); provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" ;;

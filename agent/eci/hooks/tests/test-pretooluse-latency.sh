@@ -17,14 +17,14 @@ rsync -a --exclude='sessions/' --exclude='*.sqlite*' --exclude='auth*.json' \
   "$SOURCE_ROOT/hooks.json" "$ROOT/"
 # Hooks read the omp guidance as $HOME/.omp/agent/AGENTS.md (the parent of the ECI root).
 cp -- "$SOURCE_ROOT/../AGENTS.md" "$ROOT/../AGENTS.md"
-# Publish the native planner and its receipt into the fixture runtime bin/ (the path
-# lib/eci-native-binary.sh verifies) so the probe needs no untracked build output;
+# Publish the native planner, the verifier eci-verexec that runs it, and their receipts into the
+# fixture runtime bin/ (the paths eci_runtime_verexec verifies) so the probe needs no untracked build output;
 # the 1000 ms budget measures hook work only. The gate-mode-set rows also need
 # bin/eci-command-gate-mode: in hook mode the planner stats that canonical target and
 # denies gate-mode-identity when it is absent (classifier.go inspectHookGateModeTarget).
 # eci-hook-helper serves the subagent-status route; without it worker samples
 # fail closed as "unknown" instead of taking the production path.
-HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode eci-hook-helper
+HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode eci-hook-helper eci-verexec
 proof_root="$TMP_ROOT/proof"
 session_id="t00-session"
 session_dir="$proof_root/$session_id"

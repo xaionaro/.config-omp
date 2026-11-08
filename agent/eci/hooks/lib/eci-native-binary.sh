@@ -4,8 +4,10 @@
 # it must be a regular file owned by the current user and not group/other-writable, match the host
 # executable format (ELF on Linux, a thin Mach-O for the host CPU type on macOS), and hash to the
 # receipt written by hooks/build-native-binaries.sh. Ancestor directories must be owned by the current
-# user or root and not group/other-writable. Linux executes the verified descriptor (/proc/self/fd/N);
-# macOS has no such path, so it executes a private copy made through a descriptor.
+# user or root and not group/other-writable. Callers use eci_runtime_verexec (verify, then run) or
+# eci_runtime_verify (verify only). On Linux the static bin/eci-verexec applies these checks natively
+# and execveat()s the verified descriptor; there is no bash verifier on Linux. macOS has no such call,
+# so eci_runtime_open_verified verifies in bash and executes a private copy made through a descriptor.
 
 # The host OS and host ELF header are set once per shell process. validate-bash.sh sources this file and then
 # sources eci-proof-state.sh, which sources it again; the second sourcing keeps both values. The guard is
@@ -25,9 +27,7 @@ if [ "${eci_native_binary_guard[1]:-}" != "$$" ]; then
 fi
 # Set when a verification fails; names the binary and the provisioning step.
 ECI_RUNTIME_DENY_REASON=''
-# Set when a verification succeeds on Linux; the descriptor stays open until eci_runtime_close_verified.
-ECI_RUNTIME_BINARY_FD=''
-# Set when a verification succeeds: the path to execute, /proc/self/fd/N on Linux or the private copy on macOS.
+# Set when a verification succeeds on macOS: the path of the private copy to execute.
 ECI_RUNTIME_BINARY_EXEC=''
 # macOS only: the private directory that holds the copy. eci_runtime_close_verified removes it.
 eci_runtime_copy_dir=''
@@ -44,27 +44,6 @@ eci_runtime_artifact_path() {
   case "${HOME:-}" in /*) ;; *) return 1 ;; esac
   case "$name" in eci-command-plan|eci-safe-import|eci-hook-helper) ;; *) return 1 ;; esac
   printf '%s/.omp/agent/eci/bin/%s\n' "$HOME" "$name"
-}
-
-# The file at $1 must be an ELF executable whose class, byte order and machine match the host.
-# The host header is read once per process into eci_native_host_header.
-eci_runtime_elf_matches_host() {
-  local path="$1" candidate_header index
-  local -a candidate=() host=()
-  candidate_header="$(od -An -v -tx1 -w20 -N20 -- "$path" 2>/dev/null)" || return 1
-  if [ -z "$eci_native_host_header" ]; then
-    eci_native_host_header="$(od -An -v -tx1 -w20 -N20 -- "/proc/$$/exe" 2>/dev/null)" || return 1
-  fi
-  read -r -a candidate <<<"$candidate_header" || true
-  read -r -a host <<<"$eci_native_host_header"
-  [ "${#candidate[@]}" -eq 20 ] && [ "${#host[@]}" -eq 20 ] || return 1
-  [ "${candidate[*]:0:4}" = '7f 45 4c 46' ] || return 1
-  # ELF class, byte order and machine identify the host execution format.
-  # Ignore the executable/shared-object distinction and padding bytes.
-  for index in 4 5 18 19; do
-    [ "${candidate[$index]}" = "${host[$index]}" ] || return 1
-  done
-  case "${candidate[7]}" in 00|03) ;; *) return 1 ;; esac
 }
 
 # Path-based host check used by runtime sync (pre-migration source 575bb81:6-25); the descriptor loader does not use it. macOS checks the Mach-O header instead of the ELF header.
@@ -94,114 +73,96 @@ eci_runtime_binary_is_native() {
   case "${candidate[7]}" in 00|03) ;; *) return 1 ;; esac
 }
 
-# Every directory from $1 up to / must be owned by the current user or root and must not be group/other-writable.
-# $1 is a canonical absolute path. One stat call reads every directory of the chain.
-eci_runtime_directory_chain_is_trusted() {
-  local dir="$1" records owner mode count=0
-  local -a chain=()
-  while :; do
-    chain[count]="$dir"
-    count=$((count + 1))
-    [ "$dir" = / ] && break
-    dir="${dir%/*}"
-    dir="${dir:-/}"
-  done
-  records="$(stat -c '%u %a' -- "${chain[@]}" 2>/dev/null)" || return 1
-  while read -r owner mode; do
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-    [ "$owner" = "$EUID" ] || [ "$owner" = 0 ] || return 1
-    (( 8#$mode & 022 )) && return 1
-    count=$((count - 1))
-  done <<<"$records"
-  [ "$count" -eq 0 ]
+# Run a verified gate binary: eci_runtime_verexec NAME DENY_FILE|- [-- ARGS...]. The binary runs as a
+# child with this shell's stdin, stdout and stderr; the status is the binary's. A denial is status 125
+# with ECI_RUNTIME_DENY_REASON set; a binary that itself exits 125 leaves the reason empty.
+# Linux: bin/eci-verexec, after a self-check of its own image, verifies the target and execveat()s the
+# verified descriptor; it writes the denial on descriptor 3, which goes to DENY_FILE, or with "-" is
+# captured by a command substitution while stdout passes through on descriptor 4. The shell holds no
+# descriptor afterwards. Only builtin tests guard the verifier itself: it lives in the bin directory it
+# checks, as this file lives in the hooks directory, and is trusted the same way.
+# macOS keeps eci_runtime_open_verified and runs the private copy. Parses and runs under bash 3.2.
+eci_runtime_verexec() {
+  local name="${1:-}" deny_file="${2:-}" rc=0
+  ECI_RUNTIME_DENY_REASON=''
+  if [ "$#" -ge 2 ]; then shift 2; else shift "$#"; fi
+  if [ "${1:-}" = -- ]; then shift; fi
+  if [ "$eci_runtime_platform" = Darwin ]; then
+    eci_runtime_open_verified "$name" || return 125
+    "$ECI_RUNTIME_BINARY_EXEC" ${1+"$@"} || rc=$?
+    eci_runtime_close_verified
+    return "$rc"
+  fi
+  _eci_runtime_verifier "$name" || return 125
+  if [ "$deny_file" = - ]; then
+    { ECI_RUNTIME_DENY_REASON="$("$eci_runtime_verifier_path" --deny-fd 3 "$name" -- ${1+"$@"} 3>&1 1>&4 4>&-)"; } 4>&1 || rc=$?
+  else
+    "$eci_runtime_verifier_path" --deny-fd 3 "$name" -- ${1+"$@"} 3>"$deny_file" || rc=$?
+    if [ "$rc" -eq 125 ]; then
+      IFS= read -r ECI_RUNTIME_DENY_REASON <"$deny_file" || true
+    fi
+  fi
+  [ "$rc" -eq 125 ] || ECI_RUNTIME_DENY_REASON=''
+  return "$rc"
 }
 
-# Verify the open descriptor $2 for artifact $1, which must be the file at $3; $4 is its receipt.
-# The descriptor must be the inode at $3 and that inode must have no other name (link count 1),
-# so it cannot have been opened through another path. Hashing reads the verified descriptor
-# through its path, so the bytes hashed are those of the opened inode.
-eci_runtime_verify_fd() {
-  local name="$1" fd="$2" expected_path="$3" receipt_path="$4" fdpath="/proc/self/fd/$2"
-  local stat_line owner mode links kind receipt_line expected actual hash_line
-
-  [ -e "$fdpath" ] || { eci_runtime_denial "$name" "descriptor cannot be resolved"; return 1; }
-  [ "$fdpath" -ef "$expected_path" ] || { eci_runtime_denial "$name" "resolves outside the verified bin directory"; return 1; }
-  stat_line="$(stat -L -c '%u %a %h %F' -- "$fdpath" 2>/dev/null)" || { eci_runtime_denial "$name" "cannot be stat'ed"; return 1; }
-  read -r owner mode links kind <<<"$stat_line" || true
-  case "$kind" in 'regular file'|'regular empty file') ;; *) eci_runtime_denial "$name" "is not a regular file"; return 1 ;; esac
-  [ "$links" = 1 ] || { eci_runtime_denial "$name" "resolves outside the verified bin directory"; return 1; }
-  [ "$owner" = "$EUID" ] || { eci_runtime_denial "$name" "is not owned by the current user"; return 1; }
-  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || { eci_runtime_denial "$name" "has an unreadable mode"; return 1; }
-  (( 8#$mode & 022 )) && { eci_runtime_denial "$name" "is group- or other-writable"; return 1; }
-  (( 8#$mode & 0111 )) || { eci_runtime_denial "$name" "is not executable"; return 1; }
-  eci_runtime_elf_matches_host "$fdpath" || { eci_runtime_denial "$name" "is not an ELF binary for this host"; return 1; }
-
-  [ -f "$receipt_path" ] && [ ! -L "$receipt_path" ] || { eci_runtime_denial "$name" "has no sha256 receipt"; return 1; }
-  IFS= read -r receipt_line <"$receipt_path" || true
-  local name_re='^[a-z0-9-]+$' receipt_re
-  [[ "$name" =~ $name_re ]] || { eci_runtime_denial "$name" "is not an allowed artifact name"; return 1; }
-  receipt_re="^([0-9a-f]{64})  ${name}\$"
-  [[ "$receipt_line" =~ $receipt_re ]] || { eci_runtime_denial "$name" "has a malformed sha256 receipt"; return 1; }
-  expected="${BASH_REMATCH[1]}"
-  hash_line="$(sha256sum -- "$fdpath" 2>/dev/null)" || { eci_runtime_denial "$name" "cannot be hashed"; return 1; }
-  actual="${hash_line%% *}"
-  [ "$actual" = "$expected" ] || { eci_runtime_denial "$name" "sha256 does not match its receipt"; return 1; }
+# Verify bin/NAME without running it: eci_runtime_verify NAME. Status 0 accepts; otherwise
+# ECI_RUNTIME_DENY_REASON is set. Linux runs eci-verexec --check; macOS opens and releases the copy.
+eci_runtime_verify() {
+  local name="${1:-}" rc=0
+  ECI_RUNTIME_DENY_REASON=''
+  if [ "$eci_runtime_platform" = Darwin ]; then
+    eci_runtime_open_verified "$name" || return 1
+    eci_runtime_close_verified
+    return 0
+  fi
+  _eci_runtime_verifier "$name" || return 1
+  ECI_RUNTIME_DENY_REASON="$("$eci_runtime_verifier_path" --check --deny-fd 3 "$name" 3>&1 >/dev/null)" || rc=$?
+  if [ "$rc" -ne 0 ] && [ -z "$ECI_RUNTIME_DENY_REASON" ]; then
+    eci_runtime_denial eci-verexec "cannot be opened"
+  fi
+  [ "$rc" -eq 0 ] || return 1
+  ECI_RUNTIME_DENY_REASON=''
 }
 
-# Open and verify $HOME/.omp/agent/eci/bin/<name>. On success ECI_RUNTIME_BINARY_EXEC names the
-# verified binary: on Linux the descriptor stays open in ECI_RUNTIME_BINARY_FD; on macOS it is a
-# private copy. Release either with eci_runtime_close_verified. A new open first releases any
+# Linux and other non-macOS hosts: sets eci_runtime_verifier_path to bin/eci-verexec, or denies for
+# NAME. The verifier gets builtin tests only; it checks its own image before anything else.
+_eci_runtime_verifier() {
+  eci_runtime_verifier_path=''
+  case "$eci_runtime_platform" in
+    Linux) ;;
+    *) eci_runtime_denial "$1" "host OS ${eci_runtime_platform:-unknown} is not supported"; return 1 ;;
+  esac
+  case "${HOME:-}" in
+    /*) ;;
+    *) eci_runtime_denial "$1" "not an allowed artifact name or HOME is not absolute"; return 1 ;;
+  esac
+  eci_runtime_verifier_path="$HOME/.omp/agent/eci/bin/eci-verexec"
+  if [ ! -f "$eci_runtime_verifier_path" ] || [ -L "$eci_runtime_verifier_path" ] || [ ! -O "$eci_runtime_verifier_path" ] || [ ! -x "$eci_runtime_verifier_path" ]; then
+    eci_runtime_denial eci-verexec "is missing or a symlink"
+    return 1
+  fi
+}
+
+# macOS only: open and verify $HOME/.omp/agent/eci/bin/<name> into a private copy named by
+# ECI_RUNTIME_BINARY_EXEC; release it with eci_runtime_close_verified. A new open first releases any
 # earlier one, so a failed open never leaves EXEC naming an earlier binary. On failure
-# ECI_RUNTIME_DENY_REASON is set.
-# The platform switch comes first, so macOS never reaches the Linux body and its named descriptors.
+# ECI_RUNTIME_DENY_REASON is set. Any other host denies; Linux callers use eci_runtime_verify.
 eci_runtime_open_verified() {
   eci_runtime_close_verified
   case "$eci_runtime_platform" in
     Darwin) _eci_runtime_open_verified_darwin "${1:-}"; return ;;
   esac
-  ECI_RUNTIME_BINARY_FD=''
-  ECI_RUNTIME_DENY_REASON=''
-  _eci_runtime_open_verified_in "${1:-}"
+  eci_runtime_denial "${1:-}" "host OS ${eci_runtime_platform:-unknown} is not supported"
+  return 1
 }
 
-_eci_runtime_open_verified_in() {
-  local name="$1" path bin_dir real_bin fd receipt_path
-  case "$eci_runtime_platform" in
-    Linux) ;;
-    *) eci_runtime_denial "$name" "host OS ${eci_runtime_platform:-unknown} is not supported"; return 1 ;;
-  esac
-
-  path="$(eci_runtime_artifact_path "$name")" || { eci_runtime_denial "$name" "not an allowed artifact name or HOME is not absolute"; return 1; }
-  bin_dir="${path%/*}"
-  receipt_path="$path.sha256"
-  real_bin="$(realpath -e -- "$bin_dir" 2>/dev/null)" || { eci_runtime_denial "$name" "bin directory is missing"; return 1; }
-  eci_runtime_directory_chain_is_trusted "$real_bin" || { eci_runtime_denial "$name" "bin directory or an ancestor is not owned by the current user or root, or is group/other-writable"; return 1; }
-  if [ -L "$path" ] || [ ! -f "$path" ]; then
-    eci_runtime_denial "$name" "is missing or a symlink"
-    return 1
-  fi
-  if ! exec {fd}<"$path"; then
-    eci_runtime_denial "$name" "cannot be opened"
-    return 1
-  fi
-  if ! eci_runtime_verify_fd "$name" "$fd" "$real_bin/$name" "$receipt_path"; then
-    exec {fd}<&-
-    return 1
-  fi
-  ECI_RUNTIME_BINARY_FD="$fd"
-  ECI_RUNTIME_BINARY_EXEC="/proc/self/fd/$fd"
-}
-
-# Releases what a successful open holds: the Linux descriptor and the macOS copy directory.
-# Idempotent, so any exit path after an open may call it.
+# Releases what a successful open holds: the macOS copy directory. Idempotent, so any exit path
+# after an open may call it.
 eci_runtime_close_verified() {
-  if [ -n "$ECI_RUNTIME_BINARY_FD" ]; then
-    exec {ECI_RUNTIME_BINARY_FD}<&-
-  fi
   if [ -n "$eci_runtime_copy_dir" ]; then
     rm -rf -- "$eci_runtime_copy_dir"
   fi
-  ECI_RUNTIME_BINARY_FD=''
   ECI_RUNTIME_BINARY_EXEC=''
   eci_runtime_copy_dir=''
 }
@@ -251,7 +212,8 @@ eci_runtime_macho_header_check() {
   }
 }
 
-# Darwin twin of eci_runtime_directory_chain_is_trusted: BSD stat prints the owner (%u) and the octal
+# Every directory from $1 up to / must be owned by the current user or root and not group/other-writable
+# (macOS; eci-verexec applies the same rule on Linux). BSD stat prints the owner (%u) and the octal
 # permission bits (%Lp). Regular expressions live in variables so that bash 3.2 parses them.
 eci_runtime_darwin_directory_chain_is_trusted() {
   local dir="$1" uid record owner='' mode='' mode_re='^[0-7]{3,4}$'

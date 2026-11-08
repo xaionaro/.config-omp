@@ -65,30 +65,24 @@ case-modification	[$][{][A-Za-z_][A-Za-z0-9_]*(,,|\\^\\^|,|\\^)[}]
 grep-P	${w}gre[p]([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alpha:]]*P"
 
 # Long options the linted files use, NAME<TAB>REASON. Any other --option FAILs.
-lint_long_allow="help	bin/eci-active matches its own --help argument; it is not a coreutils option"
+lint_long_allow="help	bin/eci-active matches its own --help argument; it is not a coreutils option
+deny-fd	eci_runtime_verexec passes it to bin/eci-verexec, the ECI native verifier; it is not a coreutils option
+check	eci_runtime_verify passes it to bin/eci-verexec (verify without running); it is not a coreutils option"
 long_re='(^|[[:space:]|(])-[-]([A-Za-z][A-Za-z0-9-]*)'
 
 # Allow-list for lib/eci-native-binary.sh: FUNCTION<TAB>FORMS<TAB>GUARD. GUARD is either
 #   before:TEXT          - TEXT (a platform-switch line) occurs in FUNCTION before every allowed use;
 #   caller:NAME          - FUNCTION is called only from NAME, which is itself Linux-only;
 #   caller:NAME:TEXT     - called only from NAME, after TEXT (a platform-switch line in NAME).
-# The switch lines: G1 eci_runtime_open_verified dispatches Darwin and returns (eci-native-binary.sh:159-161);
-# G2 _eci_runtime_open_verified_in admits only Linux (:169-171); G3 eci_runtime_binary_is_native returns the
-# Darwin twin, or 1 for another OS, before its Linux part (:72-75). eci_runtime_close_verified closes
-# ECI_RUNTIME_BINARY_FD only when it is set, which only the Linux body does (:191, reset at :29 and :204).
-lint_loader_allow="eci_runtime_elf_matches_host	od-w proc-path	caller:eci_runtime_verify_fd
-eci_runtime_binary_is_native	od-w proc-path	before:    Darwin) _eci_runtime_binary_is_native_darwin \"\$1\"; return ;;
-eci_runtime_directory_chain_is_trusted	stat-c	caller:_eci_runtime_open_verified_in
-eci_runtime_verify_fd	proc-path stat-c sha256sum	caller:_eci_runtime_open_verified_in
-_eci_runtime_open_verified_in	realpath-e exec-named-fd proc-path	before:    Linux) ;;
-_eci_runtime_open_verified_in	-	caller:eci_runtime_open_verified:    Darwin) _eci_runtime_open_verified_darwin \"\${1:-}\"; return ;;
-eci_runtime_close_verified	exec-named-fd	before:  if [ -n \"\$ECI_RUNTIME_BINARY_FD\" ]; then"
-# Linux-only loader functions that no other linted file may call.
-lint_linux_only='eci_runtime_elf_matches_host eci_runtime_directory_chain_is_trusted eci_runtime_verify_fd _eci_runtime_open_verified_in'
-# RELEASE:ACQUIRE. eci_runtime_close_verified is the paired, idempotent release of eci_runtime_open_verified and runs on
-# every platform; its only Linux branch, the descriptor close at eci-native-binary.sh:199, is guarded at :198 by
-# `[ -n "$ECI_RUNTIME_BINARY_FD" ]`, which only the Linux open sets. A file may call it only if it also runs the open
-# as a command (a mention in a comment or a string does not count).
+# The switch line: G3 eci_runtime_binary_is_native returns the Darwin twin, or 1 for another OS, before its
+# Linux part. Linux verification is native (bin/eci-verexec), so the loader has no other Linux-only form.
+lint_loader_allow="eci_runtime_binary_is_native	od-w proc-path	before:    Darwin) _eci_runtime_binary_is_native_darwin \"\$1\"; return ;;"
+# Linux-only loader functions that no other linted file may call. Linux verification moved to bin/eci-verexec,
+# so none remain; the check stays for any that are added.
+lint_linux_only=''
+# RELEASE:ACQUIRE. eci_runtime_close_verified is the paired, idempotent release of eci_runtime_open_verified (macOS)
+# and has no Linux branch. A file may call it only if it also runs the open as a command (a mention in a comment or a
+# string does not count).
 lint_paired_release='eci_runtime_close_verified:eci_runtime_open_verified'
 paired_release_re=$(printf '(^|[^[:alnum:]_])%s([^[:alnum:]_]|$)' "${lint_paired_release%%:*}")
 paired_acquire_re=$(printf '(^|[;&|])[[:space:]]*((if|while|until)[[:space:]]+)?(![[:space:]]+)?%s([[:space:]]|;|$)' "${lint_paired_release#*:}")

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Builds the native ECI tools on first use. bin/eci-active calls eci_native_provision before exec. Sourced, never executed.
-# The set is the loader-verified gate binaries (eci-command-plan, eci-hook-helper, eci-safe-import) and eci-worker-git,
-# whose receipt the contract keeps informational. Each lives in $HOME/.omp/agent/eci/bin with a <name>.sha256 receipt.
+# The set is the loader-verified gate binaries (eci-command-plan, eci-hook-helper, eci-safe-import), eci-worker-git,
+# whose receipt the contract keeps informational, and on Linux eci-verexec, the native verifier the gate binaries run
+# through. Each lives in $HOME/.omp/agent/eci/bin with a <name>.sha256 receipt.
 # A name is rebuilt only when its binary or receipt is absent, or when the binary is a regular file that is not native
 # to this host and so can never run; this is the rule of pre-migration source 575bb81 (hooks/lib/eci-runtime-sync.sh:8,18-19).
-# Nothing is built over a symlink or a non-regular entry. A present gate binary that the unchanged loader
-# (lib/eci-native-binary.sh) denies stops the run before anything is built; a stuck eci-worker-git is reported and skipped.
+# Nothing is built over a symlink or a non-regular entry. A present gate binary that the loader (lib/eci-native-binary.sh,
+# eci_runtime_verify) denies stops the run before anything is built, except in the Linux verifier bootstrap described at
+# eci_native_provision_locked; a stuck eci-worker-git or eci-verexec is reported and skipped.
 # hooks/build-native-binaries.sh is the only builder. Hooks never build: they verify every use with the loader.
 # The warm path checks file type, receipt presence and host format only; full loader verification runs on the cold
 # path, under bin/.native-provision.lock. Every message goes to stderr.
@@ -17,6 +19,9 @@ source "$eci_native_provision_lib/eci-native-binary.sh"
 source "$eci_native_provision_lib/eci-file-lock.sh"
 eci_native_gate_set='eci-command-plan eci-hook-helper eci-safe-import'
 eci_native_receipt_only='eci-worker-git'
+# Linux runs the gate binaries through bin/eci-verexec, which checks itself on every run; provisioning only
+# makes sure it is present, native and has a receipt, like eci-worker-git.
+if [ "$eci_runtime_platform" = Linux ]; then eci_native_receipt_only='eci-worker-git eci-verexec'; fi
 
 # Sets eci_native_class for bin/$1:
 #   stuck   - the binary or its receipt is a symlink or a non-regular entry; never built over;
@@ -42,12 +47,10 @@ eci_native_is_gate() {
 # Gate binaries pass the unchanged loader. eci-worker-git, outside the loader allow-list, must classify as present.
 eci_native_check() {
   if eci_native_is_gate "$1"; then
-    if ! eci_runtime_open_verified "$1"; then
+    if ! eci_runtime_verify "$1"; then
       printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
-      eci_runtime_close_verified
       return 1
     fi
-    eci_runtime_close_verified
     return 0
   fi
   eci_native_classify "$1"
@@ -61,14 +64,27 @@ eci_native_stuck_advisory() {
 }
 
 # Under the lock: decide again, stop on a denied or stuck gate binary, build the rest, then check what was built.
+# Gate binaries are verified through eci-verexec on Linux. When eci-verexec itself must be built (first use,
+# or a missing or foreign verifier), nothing can verify the present gate binaries yet: that bootstrap builds
+# every missing name in one run, verifier included, and then verifies every gate binary, present or built.
 eci_native_provision_locked() {
-  local name build='' start rc=0
+  local name build='' start rc=0 bootstrap=0 deferred=''
+  case " $eci_native_receipt_only " in
+    *" eci-verexec "*)
+      eci_native_classify eci-verexec
+      [ "$eci_native_class" != build ] || bootstrap=1
+      ;;
+  esac
   for name in $eci_native_gate_set $eci_native_receipt_only; do
     eci_native_classify "$name"
     case $eci_native_class in
       build) build="$build $name" ;;
       stuck)
         if eci_native_is_gate "$name"; then
+          if [ "$bootstrap" = 1 ]; then
+            deferred="$deferred $name"
+            continue
+          fi
           eci_native_check "$name" || true
           return 1
         fi
@@ -76,6 +92,10 @@ eci_native_provision_locked() {
         ;;
       present)
         if eci_native_is_gate "$name"; then
+          if [ "$bootstrap" = 1 ]; then
+            deferred="$deferred $name"
+            continue
+          fi
           eci_native_check "$name" || return 1
         fi
         ;;
@@ -87,7 +107,7 @@ eci_native_provision_locked() {
   # Word splitting of $build is intended: each word is one allowed name.
   "$BASH" "$eci_native_provision_lib/../build-native-binaries.sh" $build >&2 || return $?
   printf 'eci-active: built native ECI tools in %ss\n' "$((SECONDS - start))" >&2
-  for name in $build; do
+  for name in $build $deferred; do
     eci_native_check "$name" || rc=1
   done
   return "$rc"

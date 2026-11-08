@@ -37,21 +37,23 @@ filter_violations() {
   )
 
   local filter_ok=0 filter_rc=0 private_dir=""
-  if . "$reviewer_filter_lib_dir/eci-native-binary.sh" 2>/dev/null && eci_runtime_open_verified eci-hook-helper; then
+  if . "$reviewer_filter_lib_dir/eci-native-binary.sh" 2>/dev/null; then
     private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-reviewer-filter.XXXXXX")" || filter_rc=1
     if [ "$filter_rc" -eq 0 ]; then
       printf '%s' "$result_json" >"$private_dir/input" || filter_rc=1
     fi
     if [ "$filter_rc" -eq 0 ]; then
-      "$ECI_RUNTIME_BINARY_EXEC" reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || filter_rc=$?
+      eci_runtime_verexec eci-hook-helper "$private_dir/deny" -- reviewer-filter "$static_corpus_text" "$extra_text" "$REVIEWER_FILTER_THRESHOLD" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || filter_rc=$?
+      if [ "$filter_rc" -eq 125 ] && [ -n "$ECI_RUNTIME_DENY_REASON" ]; then
+        printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
+      fi
     fi
-    eci_runtime_close_verified
     if [ "$filter_rc" -eq 0 ]; then
       filtered="$(cat -- "$private_dir/output")" && filter_ok=1
     fi
     [ -z "$private_dir" ] || rm -rf -- "$private_dir"
   else
-    printf '%s\n' "${ECI_RUNTIME_DENY_REASON:-ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry}" >&2
+    printf '%s\n' "ECI native gate binary eci-hook-helper is unavailable: lib/eci-native-binary.sh failed to load; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" >&2
   fi
   if [ "$filter_ok" = 1 ] && [ -n "$filtered" ]; then
     REVIEWER_FILTER_RESULT="$filtered"

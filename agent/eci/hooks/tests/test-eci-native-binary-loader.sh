@@ -4,6 +4,8 @@
 # darwin receipt check and the receipt-case table. Linux runs every section. macOS runs
 # the copy path and the portable sections. Sections that need the Linux descriptor path
 # (named descriptors, bash 4.1+) are skipped with a message under older shells.
+# On Linux every open check also runs through eci_runtime_verexec and bin/eci-verexec, and the deny text
+# must equal the bash loader's byte for byte; the verifier's own checks follow the bash sections.
 # Usage: test-eci-native-binary-loader.sh [path/to/eci-native-binary.sh]
 set -euo pipefail
 # Fixture directories must be private: a group-writable ancestor is denied by the loader, and
@@ -52,34 +54,38 @@ scratch="$base/scratch"
 mkdir -p -- "$bin" "$fixtures" "$base/src" "$base/tmp" "$scratch"
 export HOME="$home" TMPDIR="$base/tmp"
 
-linux_descriptor_supported() {  # the Linux path uses named descriptors (bash 4.1+)
-  [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 1 ]; }
-}
-full_loader=0
-if [ "$host_os" = Darwin ] || linux_descriptor_supported; then full_loader=1; fi
-
-if ! . "$loader" || ! declare -F eci_runtime_open_verified >/dev/null 2>&1; then
-  fail "$loader does not define eci_runtime_open_verified under bash $BASH_VERSION"
+if ! . "$loader" || ! declare -F eci_runtime_verexec >/dev/null 2>&1 || ! declare -F eci_runtime_verify >/dev/null 2>&1; then
+  fail "$loader does not define eci_runtime_verexec and eci_runtime_verify under bash $BASH_VERSION"
 fi
-
-# The fixture chain must be trusted before any denial below can be read as meaningful.
 real_bin="$(cd -P -- "$bin" && pwd -P)"
-if [ "$host_os" = Linux ]; then
-  chain_fn=eci_runtime_directory_chain_is_trusted
-else
-  chain_fn=eci_runtime_darwin_directory_chain_is_trusted
-fi
-"$chain_fn" "$real_bin" || fail "fixture chain $real_bin is not trusted; denials below would be for the wrong reason"
-pass "fixture chain trusted ($chain_fn)"
 
 printf 'module eciloaderfixture\n\ngo 1.21\n' >"$base/src/go.mod"
 cat >"$base/src/main.go" <<'EOF'
 package main
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"syscall"
+)
 
+// --fds lists the open descriptors above 2; ECI_LOADER_FIXTURE_EXIT sets the exit status.
 func main() {
-	os.Stdout.WriteString("eci-native-binary-loader fixture ok\n")
+	if len(os.Args) > 1 && os.Args[1] == "--fds" {
+		open := []int{}
+		for fd := 3; fd < 1024; fd++ {
+			var st syscall.Stat_t
+			if syscall.Fstat(fd, &st) == nil {
+				open = append(open, fd)
+			}
+		}
+		fmt.Printf("fds=%v\n", open)
+	} else {
+		os.Stdout.WriteString("eci-native-binary-loader fixture ok\n")
+	}
+	code, _ := strconv.Atoi(os.Getenv("ECI_LOADER_FIXTURE_EXIT"))
+	os.Exit(code)
 }
 EOF
 (cd -- "$base/src" && env CGO_ENABLED=0 GOTOOLCHAIN=local go build -buildvcs=false -o "$fixtures/native" .)
@@ -87,6 +93,13 @@ EOF
 (cd -- "$base/src" && env GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 GOTOOLCHAIN=local go build -buildvcs=false -o "$fixtures/macho-amd64" .)
 chmod -- 0755 "$fixtures/native" "$fixtures/macho-arm64" "$fixtures/macho-amd64"
 if [ "$host_goarch" = arm64 ]; then other_arch_macho="$fixtures/macho-amd64"; else other_arch_macho="$fixtures/macho-arm64"; fi
+# Linux runs gate binaries through bin/eci-verexec (eci_runtime_verexec); every fixture bin gets it.
+verexec_on=0
+if [ "$host_os" = Linux ]; then
+  verexec_on=1
+  (cd -- "$tests_dir/../lib/eci-verexec-go" && env CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off GOFLAGS=' ' go build -mod=readonly -trimpath -buildvcs=false -o "$fixtures/eci-verexec" .)
+  chmod -- 0755 "$fixtures/eci-verexec"
+fi
 
 if [ "$host_os" = Linux ]; then
   format_reason='is not an ELF binary for this host'
@@ -104,9 +117,49 @@ install_binary() {  # install_binary <source> installs eci-hook-helper with a ma
   chmod -- 0755 "$bin/eci-hook-helper"
   write_receipt "$bin/eci-hook-helper" eci-hook-helper
 }
+install_verexec() {  # Linux: bin/eci-verexec with its receipt
+  [ "$verexec_on" = 1 ] || return 0
+  rm -f -- "$bin/eci-verexec" "$bin/eci-verexec.sha256"
+  cp -- "$fixtures/eci-verexec" "$bin/eci-verexec"
+  chmod -- 0755 "$bin/eci-verexec"
+  write_receipt "$bin/eci-verexec" eci-verexec
+}
 reset_bin() {
   rm -rf -- "$bin"
   mkdir -p -- "$bin"
+  install_verexec
+}
+# Descriptors above 2 open in this shell, for the no-handle-left checks of eci_runtime_verexec.
+shell_fds() {
+  local fd list=''
+  for fd in 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if { true <&"$fd"; } 2>/dev/null || { true >&"$fd"; } 2>/dev/null; then list="$list $fd"; fi
+  done
+  printf '%s\n' "$list"
+}
+
+# expect_verexec <label> <want status> <want reason or ''> [args...]: run eci-hook-helper through the
+# shim in both call forms, a deny file and "-" capture. A denial must be status 125 with the exact
+# text, run nothing, and leave no descriptor open in this shell.
+expect_verexec() {
+  local label="$1" want_rc="$2" reason="$3" want='' form rc out fds_before fds_after
+  shift 3
+  [ -z "$reason" ] || want="$(deny_text eci-hook-helper "$reason")"
+  for form in file -; do
+    rc=0; out="$base/verexec.out"
+    fds_before="$(shell_fds)"
+    if [ "$form" = file ]; then
+      eci_runtime_verexec eci-hook-helper "$scratch/deny" -- ${1+"$@"} >"$out" 2>&1 || rc=$?
+    else
+      eci_runtime_verexec eci-hook-helper - -- ${1+"$@"} >"$out" 2>&1 || rc=$?
+    fi
+    fds_after="$(shell_fds)"
+    rm -f -- "$scratch/deny"
+    [ "$rc" -eq "$want_rc" ] || fail "verexec $label ($form): status $rc, expected $want_rc; reason [$ECI_RUNTIME_DENY_REASON]"
+    [ "$ECI_RUNTIME_DENY_REASON" = "$want" ] || fail "verexec $label ($form): deny text was [$ECI_RUNTIME_DENY_REASON], expected [$want]"
+    [ "$fds_before" = "$fds_after" ] || fail "verexec $label ($form): shell descriptors changed: [$fds_before] -> [$fds_after]"
+    if [ -n "$want" ] && [ -s "$out" ]; then fail "verexec $label ($form): a denied target ran: $(cat -- "$out")"; fi
+  done
 }
 byte_at() { od -An -tx1 -j "$2" -N1 -- "$1" | tr -d ' \n'; }
 patch_bytes() { printf "$3" | dd of="$1" bs=1 seek="$2" conv=notrunc 2>/dev/null; }
@@ -114,16 +167,24 @@ deny_text() {  # deny_text <name> <reason>: the exact message the loader builds
   printf 'ECI native gate binary %s is unavailable or unverified (%s); provision it with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry' "$1" "$2"
 }
 
-expect_accept() {  # expect_accept <label>: open, exec through the verified handle, close
+# Path 1 of every accept and deny: verification without running. Linux: eci_runtime_verify, which runs
+# eci-verexec --check; macOS: eci_runtime_open_verified and the private copy. Path 2 is eci_runtime_verexec.
+expect_accept() {  # expect_accept <label>: verify, exec through the verified handle, close
   local label="$1" exec_path copy_dir out rc=0
+  if [ "$host_os" = Linux ]; then
+    eci_runtime_verify eci-hook-helper || fail "$label: verify denied: $ECI_RUNTIME_DENY_REASON"
+    [ -z "$ECI_RUNTIME_DENY_REASON" ] || fail "$label: verify accepted with a reason set"
+    pass "accept $label: eci_runtime_verify (eci-verexec --check) rc 0"
+    expect_verexec "$label" 0 '' --check
+    [ "$(cat -- "$base/verexec.out")" = 'eci-native-binary-loader fixture ok' ] || fail "verexec $label: ran something else"
+    pass "verexec accept $label: rc 0, no deny text, fixture output, no descriptor left in the shell"
+    return 0
+  fi
   if ! eci_runtime_open_verified eci-hook-helper; then
     fail "$label: open denied: $ECI_RUNTIME_DENY_REASON"
   fi
   exec_path="$ECI_RUNTIME_BINARY_EXEC"
   copy_dir="$eci_runtime_copy_dir"
-  if [ "$host_os" = Linux ]; then
-    case "$exec_path" in /proc/self/fd/*) ;; *) fail "$label: Linux exec path is not a descriptor: $exec_path" ;; esac
-  fi
   [ -e "$exec_path" ] || fail "$label: verified handle is absent before exec: $exec_path"
   out="$base/accept.out"
   "$exec_path" --check >"$out" 2>&1 || rc=$?
@@ -133,25 +194,40 @@ expect_accept() {  # expect_accept <label>: open, exec through the verified hand
   eci_runtime_close_verified
   [ ! -e "$exec_path" ] || fail "$label: handle or copy survives close: $exec_path"
   if [ -n "$copy_dir" ] && [ -e "$copy_dir" ]; then fail "$label: copy directory survives close: $copy_dir"; fi
-  [ -z "$ECI_RUNTIME_BINARY_FD" ] && [ -z "$ECI_RUNTIME_BINARY_EXEC" ] && [ -z "$eci_runtime_copy_dir" ] ||
+  [ -z "$ECI_RUNTIME_BINARY_EXEC" ] && [ -z "$eci_runtime_copy_dir" ] ||
     fail "$label: close left state set"
   pass "accept $label: exec rc 0; handle and copy removed by close"
 }
 
-expect_deny() {  # expect_deny <label> <reason>: the open must deny with exactly this reason
+expect_deny() {  # expect_deny <label> <reason>: verification must deny with exactly this reason
   local label="$1" reason="$2" want
   ECI_RUNTIME_DENY_REASON=''
-  if eci_runtime_open_verified eci-hook-helper; then
+  if [ "$host_os" = Linux ]; then
+    if eci_runtime_verify eci-hook-helper; then fail "$label: accepted, expected deny ($reason)"; fi
+  elif eci_runtime_open_verified eci-hook-helper; then
     fail "$label: accepted, expected deny ($reason)"
   fi
   want="$(deny_text eci-hook-helper "$reason")"
   [ "$ECI_RUNTIME_DENY_REASON" = "$want" ] || fail "$label: deny text was [$ECI_RUNTIME_DENY_REASON], expected [$want]"
-  [ -z "$ECI_RUNTIME_BINARY_FD" ] && [ -z "$ECI_RUNTIME_BINARY_EXEC" ] && [ -z "$eci_runtime_copy_dir" ] ||
+  [ -z "$ECI_RUNTIME_BINARY_EXEC" ] && [ -z "$eci_runtime_copy_dir" ] ||
     fail "$label: denied open left state set"
   pass "deny $label: $reason"
+  [ "$verexec_on" = 1 ] || return 0
+  expect_verexec "$label" 125 "$reason"
+  pass "verexec deny $label: status 125, the same text, nothing ran, no descriptor left"
 }
 
-if [ "$full_loader" = 1 ]; then
+# The fixture chain must be trusted before any denial below can be read as meaningful.
+if [ "$host_os" = Linux ]; then
+  reset_bin; install_binary "$fixtures/native"
+  eci_runtime_verify eci-hook-helper || fail "fixture chain $real_bin is not trusted; denials below would be for the wrong reason: $ECI_RUNTIME_DENY_REASON"
+  pass "fixture chain trusted (eci-verexec --check accepts)"
+else
+  eci_runtime_darwin_directory_chain_is_trusted "$real_bin" || fail "fixture chain $real_bin is not trusted; denials below would be for the wrong reason"
+  pass "fixture chain trusted (eci_runtime_darwin_directory_chain_is_trusted)"
+fi
+
+{
   pass "full loader sections run (host $host_os, bash $BASH_VERSION)"
   reset_bin; install_binary "$fixtures/native"
   expect_accept native-binary
@@ -204,11 +280,9 @@ if [ "$full_loader" = 1 ]; then
     chmod -- 0755 "$bin/eci-hook-helper"; write_receipt "$bin/eci-hook-helper" eci-hook-helper
     expect_deny macho-cputype-patched-with-receipt "$format_reason"
   fi
-else
-  skip "open-path sections need the Linux descriptor path (bash 4.1+); this shell is bash $BASH_VERSION"
-fi
+}
 
-if [ "$host_os" = Linux ] && [ "$full_loader" = 1 ]; then
+if [ "$host_os" = Linux ]; then
   # Wrong owner: a root-owned binary is bind-mounted over the fixture in a user namespace chroot.
   foreign=/usr/bin/gnutrue
   if ! unshare -rm true >/dev/null 2>&1; then
@@ -228,14 +302,10 @@ if [ "$host_os" = Linux ] && [ "$full_loader" = 1 ]; then
 #!/bin/bash
 export HOME=/fixture-home TMPDIR=/tmp PATH=/usr/bin:/bin LC_ALL=C
 . /opt/eci/eci-native-binary.sh
-if eci_runtime_open_verified eci-hook-helper; then
-  rc=0
-  "$ECI_RUNTIME_BINARY_EXEC" --check >/tmp/out 2>&1 || rc=$?
-  eci_runtime_close_verified
-  printf 'ACCEPT exec_rc=%s %s\n' "$rc" "$(cat /tmp/out)"
-else
-  printf 'DENY %s\n' "$ECI_RUNTIME_DENY_REASON"
-fi
+if eci_runtime_verify eci-hook-helper; then printf 'ACCEPT\n'; else printf 'DENY %s\n' "$ECI_RUNTIME_DENY_REASON"; fi
+rc=0
+eci_runtime_verexec eci-hook-helper /tmp/deny -- --check >/tmp/out 2>&1 || rc=$?
+printf 'VEREXEC rc=%s %s%s\n' "$rc" "$ECI_RUNTIME_DENY_REASON" "$(cat /tmp/out)"
 EOF
     chmod -- 0755 "$root/opt/eci/driver.sh"
     run_chroot() {  # run_chroot <mode: control|foreign>
@@ -256,56 +326,126 @@ EOF
     cp -- "$fixtures/native" "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
     chmod -- 0755 "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
     write_receipt "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper" eci-hook-helper
+    cp -- "$fixtures/eci-verexec" "$root/fixture-home/.omp/agent/eci/bin/eci-verexec"
+    chmod -- 0755 "$root/fixture-home/.omp/agent/eci/bin/eci-verexec"
+    write_receipt "$root/fixture-home/.omp/agent/eci/bin/eci-verexec" eci-verexec
     control_out="$(run_chroot control)"
     case "$control_out" in
-      ACCEPT\ exec_rc=0*) ;;
+      ACCEPT$'\n'*) ;;
       *) skip "wrong-owner chroot: control did not run the loader in the chroot: $control_out" ;;
     esac
-    if [ "${control_out%%$'\n'*}" != "" ] && [ "$control_out" != "" ] && [ "${control_out#ACCEPT}" != "$control_out" ]; then
-      pass "chroot control accepts an own-owned copy and runs it (exec rc 0)"
+    if [ "${control_out%%$'\n'*}" = ACCEPT ]; then
+      pass "chroot control accepts an own-owned copy (eci_runtime_verify)"
+      [ "${control_out#*$'\n'}" = 'VEREXEC rc=0 eci-native-binary-loader fixture ok' ] ||
+        fail "chroot control through eci-verexec: got [$control_out]"
+      pass "verexec chroot control accepts the own-owned copy and runs it (rc 0)"
       rm -f -- "$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
       : >"$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper"
       printf '%s  eci-hook-helper\n' "$(digest_of "$foreign")" >"$root/fixture-home/.omp/agent/eci/bin/eci-hook-helper.sha256"
       foreign_out="$(run_chroot foreign)"
       want_line="DENY $(deny_text eci-hook-helper 'is not owned by the current user')"
+      want_line="$want_line"$'\n'"VEREXEC rc=125 $(deny_text eci-hook-helper 'is not owned by the current user')"
       [ "$foreign_out" = "$want_line" ] || fail "wrong-owner chroot: got [$foreign_out], expected [$want_line]"
       pass "deny wrong-owner in chroot (root-owned binary bind-mounted): is not owned by the current user"
+      pass "verexec deny wrong-owner in chroot: status 125, the same text"
     fi
   fi
 
-  # A second open without a close must release the first open's handle, whether it is denied or accepted.
-  # On Linux a released descriptor number may be reused by the second open, so only "a different number
-  # that still exists" counts as a leak.
-  reset_bin; install_binary "$fixtures/native"
-  eci_runtime_open_verified eci-hook-helper || fail "reopen-denied: first open denied: $ECI_RUNTIME_DENY_REASON"
-  first_fd="$ECI_RUNTIME_BINARY_FD"; first_copy_dir="$eci_runtime_copy_dir"
-  rm -f -- "$bin/eci-hook-helper.sha256"
-  ECI_RUNTIME_DENY_REASON=''
-  if eci_runtime_open_verified eci-hook-helper; then fail "reopen-denied: second open accepted without a receipt"; fi
-  [ "$ECI_RUNTIME_DENY_REASON" = "$(deny_text eci-hook-helper 'has no sha256 receipt')" ] ||
-    fail "reopen-denied: deny text was [$ECI_RUNTIME_DENY_REASON]"
-  [ -z "$ECI_RUNTIME_BINARY_EXEC" ] || fail "reopen-denied: EXEC still names the earlier binary: $ECI_RUNTIME_BINARY_EXEC"
-  [ -z "$ECI_RUNTIME_BINARY_FD" ] && [ -z "$eci_runtime_copy_dir" ] || fail "reopen-denied: denied open left state set"
-  if [ "$host_os" = Linux ]; then
-    [ ! -e "/proc/self/fd/$first_fd" ] || fail "reopen-denied: first descriptor $first_fd leaked"
-  else
-    [ ! -e "$first_copy_dir" ] || fail "reopen-denied: first copy directory leaked: $first_copy_dir"
-  fi
-  pass "reopen-denied: a failed reopen closed the first handle and left EXEC empty"
+  # Checks 19-20 (reopen-denied, reopen-accepted) held a descriptor in the shell; eci_runtime_verexec holds none.
+  # Replaced by: no descriptor is left in the shell after an accept or a deny (every expect_verexec above), and
+  # the target sees no deny or verified descriptor (below).
+fi
 
+# eci_runtime_verexec on Linux: checks that have no bash-loader counterpart (design §2.3 new checks).
+if [ "$verexec_on" = 1 ]; then
+  # A target that itself exits 125 is not a denial: status 125, empty reason.
   reset_bin; install_binary "$fixtures/native"
-  eci_runtime_open_verified eci-hook-helper || fail "reopen-accepted: first open denied: $ECI_RUNTIME_DENY_REASON"
-  first_fd="$ECI_RUNTIME_BINARY_FD"; first_copy_dir="$eci_runtime_copy_dir"
-  eci_runtime_open_verified eci-hook-helper || fail "reopen-accepted: second open denied: $ECI_RUNTIME_DENY_REASON"
-  if [ "$host_os" = Linux ]; then
-    [ "$ECI_RUNTIME_BINARY_FD" = "$first_fd" ] || [ ! -e "/proc/self/fd/$first_fd" ] ||
-      fail "reopen-accepted: first descriptor $first_fd leaked beside $ECI_RUNTIME_BINARY_FD"
-  else
-    [ ! -e "$first_copy_dir" ] || fail "reopen-accepted: first copy directory leaked: $first_copy_dir"
+  export ECI_LOADER_FIXTURE_EXIT=125
+  expect_verexec target-exit-125 125 '' --check
+  unset ECI_LOADER_FIXTURE_EXIT
+  [ "$(cat -- "$base/verexec.out")" = 'eci-native-binary-loader fixture ok' ] || fail "verexec target-exit-125: target did not run"
+  pass "verexec target exit 125 without deny text is the target's status, not a denial"
+
+  # The target inherits the shell's descriptors but neither the deny descriptor nor the verified one.
+  for form in file -; do
+    before="$(shell_fds)"
+    if [ "$form" = file ]; then
+      eci_runtime_verexec eci-hook-helper "$scratch/deny" -- --fds >"$base/fds.out" 2>&1 || fail "verexec fds ($form): status $?"
+      drop=' 3'
+    else
+      eci_runtime_verexec eci-hook-helper - -- --fds >"$base/fds.out" 2>&1 || fail "verexec fds ($form): status $?"
+      drop=' 3 4'
+    fi
+    # The shell's own close-on-exec descriptors may be absent; anything else the target holds is a leak.
+    want=' '
+    for fd in $before; do
+      case "$drop " in *" $fd "*) ;; *) want="$want$fd " ;; esac
+    done
+    seen="$(sed -n 's/^fds=\[\(.*\)\]$/\1/p' "$base/fds.out")"
+    grep -q '^fds=\[' "$base/fds.out" || fail "verexec fds ($form): target printed [$(cat -- "$base/fds.out")]"
+    for fd in $seen; do
+      case "$want" in *" $fd "*) ;; *) fail "verexec fds ($form): target holds descriptor $fd; the shell had [$before]" ;; esac
+    done
+  done
+  pass "verexec target sees only the shell's own descriptors: no deny descriptor, no verified descriptor"
+
+  # Self-check: eci-verexec verifies its own image before the target, under its own name.
+  expect_self_deny() {  # expect_self_deny <label> <reason>
+    local rc=0 want
+    want="$(deny_text eci-verexec "$2")"
+    eci_runtime_verexec eci-hook-helper "$scratch/deny" -- --check >"$base/self.out" 2>&1 || rc=$?
+    [ "$rc" -eq 125 ] && [ "$ECI_RUNTIME_DENY_REASON" = "$want" ] ||
+      fail "verexec self $1: status $rc text [$ECI_RUNTIME_DENY_REASON], expected [$want]"
+    [ ! -s "$base/self.out" ] || fail "verexec self $1: the target ran"
+    pass "verexec self-check $1: $2"
+  }
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0775 "$bin/eci-verexec"
+  expect_self_deny group-writable 'is group- or other-writable'
+  reset_bin; install_binary "$fixtures/native"; ln -- "$bin/eci-verexec" "$bin/eci-verexec-alias"
+  expect_self_deny hard-linked 'resolves outside the verified bin directory'
+  reset_bin; install_binary "$fixtures/native"; printf '%064d  eci-verexec\n' 0 >"$bin/eci-verexec.sha256"
+  expect_self_deny receipt-mismatch 'sha256 does not match its receipt'
+  reset_bin; install_binary "$fixtures/native"; rm -f -- "$bin/eci-verexec.sha256"
+  expect_self_deny receipt-missing 'has no sha256 receipt'
+  # The shim's builtin tests: a missing or symlinked verifier is denied before anything runs.
+  reset_bin; install_binary "$fixtures/native"; rm -f -- "$bin/eci-verexec"
+  expect_self_deny missing 'is missing or a symlink'
+  reset_bin; install_binary "$fixtures/native"; mv -- "$bin/eci-verexec" "$base/verexec-target"
+  ln -s -- "$base/verexec-target" "$bin/eci-verexec"
+  expect_self_deny symlink 'is missing or a symlink'
+
+  # A NUL in the receipt line: bash read drops it and accepts; the native parser denies (design §2.2).
+  reset_bin; install_binary "$fixtures/native"
+  digest="$(digest_of "$bin/eci-hook-helper")"
+  printf '%s\000%s  eci-hook-helper\n' "${digest:0:10}" "${digest:10}" >"$bin/eci-hook-helper.sha256"
+  expect_verexec nul-in-receipt 125 'has a malformed sha256 receipt'
+  pass "verexec deny NUL in receipt: has a malformed sha256 receipt (the former bash read dropped the NUL and accepted)"
+
+  # A verified file the kernel cannot execute: 126, no deny text.
+  reset_bin; head -c 64 -- "$fixtures/native" >"$bin/eci-hook-helper"; chmod -- 0755 "$bin/eci-hook-helper"
+  write_receipt "$bin/eci-hook-helper" eci-hook-helper
+  expect_verexec exec-format-error 126 '' --check
+  pass "verexec exec failure after verification: status 126, no deny text"
+
+  # Shim-level denials with the loader's strings.
+  rc=0; ( eci_runtime_platform=FreeBSD; eci_runtime_verexec eci-hook-helper - -- --check || exit $?; ) >"$base/os.out" 2>&1 || rc=$?
+  [ "$rc" -eq 125 ] || fail "verexec unsupported OS: status $rc"
+  want="$(deny_text eci-hook-helper 'host OS FreeBSD is not supported')"
+  [ "$( eci_runtime_platform=FreeBSD; eci_runtime_verexec eci-hook-helper - -- --check >/dev/null 2>&1; printf '%s' "$ECI_RUNTIME_DENY_REASON")" = "$want" ] ||
+    fail "verexec unsupported OS: wrong text"
+  pass "verexec deny unsupported host OS in the shim: host OS FreeBSD is not supported"
+  want="$(deny_text eci-hook-helper 'not an allowed artifact name or HOME is not absolute')"
+  [ "$( HOME=relative; eci_runtime_verexec eci-hook-helper - -- --check >/dev/null 2>&1; printf '%s' "$ECI_RUNTIME_DENY_REASON")" = "$want" ] ||
+    fail "verexec relative HOME: wrong text"
+  pass "verexec deny relative HOME in the shim: not an allowed artifact name or HOME is not absolute"
+
+  # The shim must stay bash 3.2: no named descriptors, mapfile, namerefs, associative arrays or case conversion.
+  shim_body="$(sed -n '/^eci_runtime_verexec() {$/,/^}$/p' "$loader")"
+  [ -n "$shim_body" ] || fail "eci_runtime_verexec not found in $loader"
+  if printf '%s\n' "$shim_body" | grep -En '\{[A-Za-z_][A-Za-z_0-9]*\}[<>]|mapfile|readarray|declare -n|local -n|local -A|declare -A|\$\{[^}]*(,,|\^\^)\}' >&2; then
+    fail "eci_runtime_verexec uses a construct bash 3.2 lacks"
   fi
-  [ -e "$ECI_RUNTIME_BINARY_EXEC" ] || fail "reopen-accepted: second handle is absent: $ECI_RUNTIME_BINARY_EXEC"
-  eci_runtime_close_verified
-  pass "reopen-accepted: an accepted reopen released the first handle"
+  pass "eci_runtime_verexec uses no bash 4 construct"
 fi
 
 # is_native checks: the Linux ELF check on Linux, the Mach-O check on macOS, and the
@@ -774,43 +914,35 @@ reopen_child_run "$ctmp" REOPEN_BREAK_RECEIPT=1
 [ -z "$(ls -A -- "$ctmp")" ] || fail "darwin-reopen-denied: TMPDIR is not empty after close"
 pass "darwin-reopen-denied: a failed reopen released the first copy directory and left EXEC empty"
 
-# Receipt-case table (Linux). Fixed descriptor 8 keeps it runnable under bash 3.2.
+# Receipt-case table (Linux), through eci_runtime_verify (eci-verexec --check) on the installed fixture.
 if [ "$host_os" = Linux ]; then
-  tbase="$base/table"
-  mkdir -p -- "$tbase"
-  tbin="$tbase/eci-hook-helper"
-  cp -- "$fixtures/native" "$tbin"; chmod -- 0755 "$tbin"
-  treal="$(cd -P -- "$tbase" && pwd -P)"
-  trecpt="$treal/eci-hook-helper.sha256"
-  tdigest="$(digest_of "$tbin")"
-  tzero="$(printf '%064d' 0)"
-  tupper="$(printf '%s' "$tdigest" | tr 'a-f' 'A-F')"
   tcases=0
   tfailures=0
-  table_case() {  # table_case <label> <receipt line, or NONE> <verified name> <expected outcome>
-    local label="$1" content="$2" name="$3" expected="$4" got reason
-    if [ "$content" = NONE ]; then
-      rm -f -- "$trecpt"
-    else
-      printf '%s\n' "$content" >"$trecpt"
-    fi
-    ECI_RUNTIME_DENY_REASON=''
-    exec 8<"$tbin"
-    if eci_runtime_verify_fd "$name" 8 "$treal/eci-hook-helper" "$trecpt"; then
+  reset_bin; install_binary "$fixtures/native"
+  trecpt="$bin/eci-hook-helper.sha256"
+  tdigest="$(digest_of "$bin/eci-hook-helper")"
+  tzero="$(printf '%064d' 0)"
+  tupper="$(printf '%s' "$tdigest" | tr 'a-f' 'A-F')"
+  table_record() {  # table_record <kind> <label> <name> <expected outcome>: verify and compare
+    local kind="$1" label="$2" name="$3" expected="$4" got reason
+    if eci_runtime_verify "$name"; then
       got=accept
     else
       reason=${ECI_RUNTIME_DENY_REASON#*\(}
       reason=${reason%%\)*}
       got="deny|$reason"
     fi
-    exec 8<&-
     tcases=$((tcases + 1))
     if [ "$got" = "$expected" ]; then
-      pass "receipt $label: $got"
+      pass "$kind $label: $got"
     else
       tfailures=$((tfailures + 1))
-      printf 'FAIL: receipt %s: got %s, expected %s\n' "$label" "$got" "$expected" >&2
+      printf 'FAIL: %s %s: got %s, expected %s\n' "$kind" "$label" "$got" "$expected" >&2
     fi
+  }
+  table_case() {  # table_case <label> <receipt line, or NONE> <verified name> <expected outcome>
+    if [ "$2" = NONE ]; then rm -f -- "$trecpt"; else printf '%s\n' "$2" >"$trecpt"; fi
+    table_record receipt "$1" "$3" "$4"
   }
   table_case valid-receipt "$tdigest  eci-hook-helper" eci-hook-helper accept
   table_case wrong-hash "$tzero  eci-hook-helper" eci-hook-helper 'deny|sha256 does not match its receipt'
@@ -819,44 +951,23 @@ if [ "$host_os" = Linux ]; then
   table_case uppercase-hex "$tupper  eci-hook-helper" eci-hook-helper 'deny|has a malformed sha256 receipt'
   table_case missing-two-spaces "$tdigest eci-hook-helper" eci-hook-helper 'deny|has a malformed sha256 receipt'
   table_case missing-receipt NONE eci-hook-helper 'deny|has no sha256 receipt'
-  table_case name-metachar "$tdigest  eci-hook" eci.hook 'deny|is not an allowed artifact name'
-  # Descriptor cases: what descriptor 8 holds (or CLOSED), and the path it must be. Each deny returns 1.
-  fd_case() {  # fd_case <label> <file to open on descriptor 8, or CLOSED> <expected path> <expected outcome>
-    local label="$1" open="$2" want_path="$3" expected="$4" got reason rc=0
-    printf '%s  eci-hook-helper\n' "$tdigest" >"$trecpt"
-    ECI_RUNTIME_DENY_REASON=''
-    exec 8<&-
-    [ "$open" = CLOSED ] || exec 8<"$open"
-    eci_runtime_verify_fd eci-hook-helper 8 "$want_path" "$trecpt" || rc=$?
-    exec 8<&-
-    if [ "$rc" -eq 0 ]; then
-      got=accept
-    else
-      reason=${ECI_RUNTIME_DENY_REASON#*\(}
-      reason=${reason%%\)*}
-      got="deny|rc=$rc|$reason"
-    fi
-    tcases=$((tcases + 1))
-    if [ "$got" = "$expected" ]; then
-      pass "descriptor $label: $got"
-    else
-      tfailures=$((tfailures + 1))
-      printf 'FAIL: descriptor %s: got %s, expected %s\n' "$label" "$got" "$expected" >&2
-    fi
-  }
-  fd_case fd-valid "$tbin" "$treal/eci-hook-helper" accept
-  fd_case fd-closed CLOSED "$treal/eci-hook-helper" 'deny|rc=1|descriptor cannot be resolved'
-  fd_case fd-non-regular "$treal" "$treal" 'deny|rc=1|is not a regular file'
-  mkdir -p -- "$tbase/wrong-machine" "$tbase/link"
-  cp -- "$tbin" "$tbase/wrong-machine/eci-hook-helper"
+  # A metacharacter name is refused by the allow-list before any receipt is read; the receipt rule for such a
+  # name ("is not an allowed artifact name") is covered by TestReceiptTable in eci-verexec-go.
+  table_case name-metachar "$tdigest  eci-hook" eci.hook 'deny|not an allowed artifact name or HOME is not absolute'
+  # Descriptor cases (77-81): eci-verexec opens the descriptor itself. fd-closed and fd-non-regular cannot be
+  # set up from the shell; TestVerifyFDTable in eci-verexec-go covers them on verifyFD.
+  printf '%s  eci-hook-helper\n' "$tdigest" >"$trecpt"
+  table_record descriptor fd-valid eci-hook-helper accept
+  cp -- "$bin/eci-hook-helper" "$base/wrong-machine"
   # e_machine (bytes 18-19) set to 2 (SPARC), which no supported host uses.
-  patch_bytes "$tbase/wrong-machine/eci-hook-helper" 18 '\002\000'
-  fd_case fd-wrong-machine-elf "$treal/wrong-machine/eci-hook-helper" "$treal/wrong-machine/eci-hook-helper" \
-    'deny|rc=1|is not an ELF binary for this host'
-  ln -- "$tbin" "$tbase/link/eci-hook-helper"
-  fd_case fd-hardlink-path "$treal/link/eci-hook-helper" "$treal/eci-hook-helper" \
-    'deny|rc=1|resolves outside the verified bin directory'
-  rm -f -- "$tbase/link/eci-hook-helper"
+  patch_bytes "$base/wrong-machine" 18 '\002\000'
+  rm -f -- "$bin/eci-hook-helper"; cp -- "$base/wrong-machine" "$bin/eci-hook-helper"; chmod -- 0755 "$bin/eci-hook-helper"
+  write_receipt "$bin/eci-hook-helper" eci-hook-helper
+  table_record descriptor fd-wrong-machine-elf eci-hook-helper 'deny|is not an ELF binary for this host'
+  reset_bin; install_binary "$fixtures/native"
+  ln -- "$bin/eci-hook-helper" "$base/hardlink"
+  table_record descriptor fd-hardlink-path eci-hook-helper 'deny|resolves outside the verified bin directory'
+  rm -f -- "$base/hardlink"
   [ "$tfailures" -eq 0 ] || fail "receipt-case table: $tfailures of $tcases cases failed"
 fi
 

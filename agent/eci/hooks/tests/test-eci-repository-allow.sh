@@ -24,7 +24,7 @@ cp -- "$SOURCE_ROOT/bin/eci-active" "$RUNTIME_ROOT/bin/eci-active"
 # under TMP_ROOT.
 GOMODCACHE="$("$ECI_TEST_GO" env GOMODCACHE)" GOCACHE="$("$ECI_TEST_GO" env GOCACHE)" \
   HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
-  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
+  eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec) >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 

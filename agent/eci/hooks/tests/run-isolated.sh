@@ -70,13 +70,16 @@ cp -a "$runtime_root" "$work/home/.omp/agent/eci"
 # group-writable runtime directories that the native gate loader rejects.
 chmod -R go-w -- "$work/home/.omp/agent/eci"
 # Provision the native gate binaries under the isolated HOME, the documented
-# first-use step; the checkout itself carries no build outputs.
+# first-use step; the checkout itself carries no build outputs. On Linux the
+# gate binaries run through eci-verexec, which is provisioned with them.
 native_bin="$work/home/.omp/agent/eci/bin"
+native_names=(eci-command-plan eci-safe-import eci-hook-helper)
+if [ "$(uname -s)" = Linux ]; then native_names+=(eci-verexec); fi
 HOME="$work/home" bash "$work/home/.omp/agent/eci/hooks/build-native-binaries.sh" \
-  eci-command-plan eci-safe-import eci-hook-helper >&2 ||
+  "${native_names[@]}" >&2 ||
   { printf 'run-isolated: build-native-binaries.sh failed; native gate binaries are not provisioned\n' >&2; exit 1; }
 native_sha256=("${eci_sha256_command[@]}")
-for native_name in eci-command-plan eci-safe-import eci-hook-helper; do
+for native_name in "${native_names[@]}"; do
   (cd "$native_bin" && "${native_sha256[@]}" -c --status "$native_name.sha256") ||
     { printf 'run-isolated: receipt mismatch for %s\n' "$native_name" >&2; exit 1; }
 done

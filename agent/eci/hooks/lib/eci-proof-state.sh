@@ -2453,30 +2453,27 @@ eci_hook_sessions_root() {
   printf '%s/sessions\n' "$root"
 }
 
-# Run the verified helper at ECI_RUNTIME_BINARY_EXEC with arguments "$2..." and
-# stdin taken from $1. The helper runs as a simple command in this shell, with
-# stdin and stdout held in files inside a private 0700 temporary directory. The
-# verified helper is released by eci_runtime_close_verified before return, so it is
-# only usable from the shell that opened it: never call this or any caller of it
-# inside a command substitution. On success the captured stdout is in
-# ECI_HOOK_HELPER_OUTPUT; nothing is printed.
+# Run the verified eci-hook-helper with arguments "$2..." and stdin taken from $1,
+# through eci_runtime_verexec. Stdin, stdout and the denial text are held in files
+# inside a private 0700 temporary directory. A denial prints its reason to stderr
+# and returns 1. On success the captured stdout is in ECI_HOOK_HELPER_OUTPUT.
 eci_hook_run_verified_helper() {
   local input="$1" private_dir="" rc=0
   shift
   ECI_HOOK_HELPER_OUTPUT=""
-  [ -n "${ECI_RUNTIME_BINARY_EXEC:-}" ] || return 1
-  private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-hook-helper.XXXXXX")" || rc=1
+  private_dir="$(mktemp -d -- "${TMPDIR:-${ECI_TMPDIR:-/tmp}}/eci-hook-helper.XXXXXX")" || return 1
+  printf '%s' "$input" >"$private_dir/input" || rc=1
   if [ "$rc" -eq 0 ]; then
-    printf '%s' "$input" >"$private_dir/input" || rc=1
+    eci_runtime_verexec eci-hook-helper "$private_dir/deny" -- "$@" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 125 ] && [ -n "$ECI_RUNTIME_DENY_REASON" ]; then
+      printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
+      rc=1
+    fi
   fi
-  if [ "$rc" -eq 0 ]; then
-    "$ECI_RUNTIME_BINARY_EXEC" "$@" <"$private_dir/input" >"$private_dir/output" 2>/dev/null || rc=$?
-  fi
-  eci_runtime_close_verified
   if [ "$rc" -eq 0 ]; then
     ECI_HOOK_HELPER_OUTPUT="$(cat -- "$private_dir/output")" || rc=1
   fi
-  [ -z "$private_dir" ] || rm -rf -- "$private_dir"
+  rm -rf -- "$private_dir"
   return "$rc"
 }
 
@@ -2486,10 +2483,6 @@ eci_hook_transcript_first_record() {
 
   ECI_HOOK_HELPER_OUTPUT=""
   sessions_root="$(eci_hook_sessions_root)" || return 1
-  if ! eci_runtime_open_verified eci-hook-helper; then
-    printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
-    return 1
-  fi
   eci_hook_run_verified_helper "$input" hook-transcript-first-record "$sessions_root"
 }
 
@@ -2499,10 +2492,6 @@ eci_hook_thread_spawn_metadata() {
 
   ECI_HOOK_HELPER_OUTPUT=""
   sessions_root="$(eci_hook_sessions_root)" || return 1
-  if ! eci_runtime_open_verified eci-hook-helper; then
-    printf '%s\n' "$ECI_RUNTIME_DENY_REASON" >&2
-    return 1
-  fi
   eci_hook_run_verified_helper "$input" hook-transcript-thread-spawn-metadata "$sessions_root"
 }
 

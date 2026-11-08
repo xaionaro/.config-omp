@@ -70,7 +70,7 @@ if [[ "$kimi_source_root" = /* ]] && [ -d "$kimi_source_root" ] &&
   # binaries the hook verifies there too, in this fixture only.
   GOMODCACHE="$classifier_gomodcache" GOCACHE="$classifier_gocache" \
     HOME="$kimi_home" bash "$ROOT/hooks/build-native-binaries.sh" \
-    eci-command-plan eci-safe-import eci-hook-helper >/dev/null
+    eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec) >/dev/null
   # Peer callbacks are coordinator calls; name a main transcript under that HOME.
   mkdir -p -- "$kimi_home/.omp/agent/sessions/-classifier-coordinator-"
   printf '%s\n' "{\"type\":\"session\",\"version\":3,\"id\":\"t00-session\",\"cwd\":\"$ROOT\"}" \
@@ -182,14 +182,14 @@ chmod +x "$subagent_eci_home/bin/eci-active"
 # ($HOME/.omp/agent/eci/bin and their .sha256 receipts), in this fixture only.
 GOMODCACHE="$classifier_gomodcache" GOCACHE="$classifier_gocache" \
   HOME="$subagent_home" bash "$ROOT/hooks/build-native-binaries.sh" \
-  eci-command-plan eci-safe-import eci-hook-helper >/dev/null
+  eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec) >/dev/null
 # Callbacks that switch HOME verify the gate binaries under that HOME; copy the
 # built binaries and their receipts there. Coordinator callbacks under such a
 # HOME also name a main transcript in its sessions root.
 provision_gate_home() {
   local home="$1" name
   mkdir -p -- "$home/.omp/agent/eci/bin"
-  for name in eci-command-plan eci-safe-import eci-hook-helper; do
+  for name in eci-command-plan eci-safe-import eci-hook-helper $([ "$(uname -s)" != Linux ] || echo eci-verexec); do
     cp -p -- "$subagent_home/.omp/agent/eci/bin/$name" "$subagent_home/.omp/agent/eci/bin/$name.sha256" \
       "$home/.omp/agent/eci/bin/"
   done
@@ -536,9 +536,9 @@ printf '%s\n' enforcing >"$XDG_CONFIG_HOME/eci/command-gate-mode"
 # from a fake planner under a copied hook tree, bound by a provenance receipt
 # (pre-migration source 575bb81: validate-bash.sh:8, bin/eci-runtime-sync:54,71).
 # HEAD opens the planner only as $HOME/.omp/agent/eci/bin/eci-command-plan through
-# eci_runtime_open_verified (validate-bash.sh:66), which verifies it against the
+# eci_runtime_verexec (validate-bash.sh), which verifies it against the
 # .sha256 receipt that hooks/build-native-binaries.sh writes
-# (hooks/lib/eci-native-binary.sh:139-148, :174-177). The fixture plants no such
+# (hooks/lib/eci-verexec-go, through hooks/lib/eci-native-binary.sh). The fixture plants no such
 # binary, so the hook fails closed with ECI_HOOK_NATIVE_GATE_UNAVAILABLE ("is
 # missing or a symlink") before the defer path. The provenance receipt is written
 # by the planner refresh (tools/eci-active/planner.go:254, :270) and has no
