@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 CANONICAL_ECI_HOME="${HOME:?HOME must be set}/.omp/agent/eci"
 HOOKS_JSON="$CANONICAL_ECI_HOME/hooks.json"
+DISPATCHER="$CANONICAL_ECI_HOME/bin/eci-active-dispatch"
 CONFIG_TOML="$CANONICAL_ECI_HOME/config.toml"
 LAUNCHERS=(
   "$HOME/.local/bin/eci"
@@ -33,6 +34,14 @@ for launcher in "${LAUNCHERS[@]}"; do
     fail "$launcher must force ECI_HOME=\"\$HOME/.omp/agent/eci\""
   fi
 done
+
+# The provider dispatcher is itself a lifecycle authority boundary. ECI
+# must select the same literal HOME-rooted installation as the launchers, not
+# an arbitrary inherited ECI_HOME; provider-dispatch exercises the runtime
+# behavior with a conflicting environment value.
+if ! grep -Fqx '  provider_home="${HOME:?}/.omp/agent/eci"' "$DISPATCHER"; then
+  fail "$DISPATCHER must bind the ECI provider home to \${HOME}/.omp/agent/eci"
+fi
 
 # The contract is intentionally evaluated under a different HOME rather than
 # relying on the account used to run this test. The exact launcher line above
