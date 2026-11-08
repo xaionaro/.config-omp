@@ -4,14 +4,19 @@
 
 set -Eeuo pipefail
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The hook directory as `dirname` names it, without the extra process.
+case "${BASH_SOURCE[0]}" in
+  */*) HOOK_DIR="${BASH_SOURCE[0]%/*}"; HOOK_DIR="${HOOK_DIR:-/}" ;;
+  *) HOOK_DIR=. ;;
+esac
+HOOK_DIR="$(cd "$HOOK_DIR" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
 # Every lib function this gate calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id eci_hook_roots_load; do
+for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id eci_hook_roots_load eci_edit_dispatch_fields_load; do
   declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn"; exit 0; }
 done
 
@@ -80,20 +85,27 @@ trap '_eci_gate_error_trap "$LINENO" "$?" "$BASH_COMMAND"' ERR
 # or false) without NUL bytes; any other input takes the per-field reads, so
 # every value, and every decision built from it, is the same either way.
 parsed_fields=()
-mapfile -d '' -t parsed_fields < <(printf '%s' "$input" | jq -nj '[inputs]
-  | if length != 1 then empty else .[0]
-    | if type == "object" and (.tool_name | type) == "string" and
-        (.tool_name | length > 0) and
-        (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null")
-      then [.tool_name, .session_id, (.cwd // ""),
-            (if .tool_name == "apply_patch" then (.tool_input.command // .tool_input.patch // .tool_input.input // "")
-             elif .tool_name == "Edit" or .tool_name == "Write" or .tool_name == "MultiEdit" or .tool_name == "NotebookEdit"
-             then (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // "")
-             else "" end)]
-        | if all(.[]; type == "string" and (test("\u0000") | not)) and all(.[0:3][]; endswith("\n") | not)
-          then (.[] + "\u0000"), "ok\u0000" else empty end
-      else empty end
-    end' 2>/dev/null || true)
+# pretooluse-edit-dispatch.sh may already have read these fields with the same
+# identity check (eci_edit_dispatch_fields_load, field 8); otherwise this gate
+# reads them itself.
+if eci_edit_dispatch_fields_load "$input" && [ "${eci_edit_dispatch_fields[8]}" = yes ]; then
+  parsed_fields=("${eci_edit_dispatch_fields[@]:0:4}" ok)
+else
+  mapfile -d '' -t parsed_fields < <(printf '%s' "$input" | jq -nj '[inputs]
+    | if length != 1 then empty else .[0]
+      | if type == "object" and (.tool_name | type) == "string" and
+          (.tool_name | length > 0) and
+          (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null")
+        then [.tool_name, .session_id, (.cwd // ""),
+              (if .tool_name == "apply_patch" then (.tool_input.command // .tool_input.patch // .tool_input.input // "")
+               elif .tool_name == "Edit" or .tool_name == "Write" or .tool_name == "MultiEdit" or .tool_name == "NotebookEdit"
+               then (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // "")
+               else "" end)]
+          | if all(.[]; type == "string" and (test("\u0000") | not)) and all(.[0:3][]; endswith("\n") | not)
+            then (.[] + "\u0000"), "ok\u0000" else empty end
+        else empty end
+      end' 2>/dev/null || true)
+fi
 if [ "${#parsed_fields[@]}" -eq 5 ] && [ "${parsed_fields[4]}" = ok ]; then
   tool_name="${parsed_fields[0]}"
   session_id="${parsed_fields[1]}"
@@ -211,8 +223,19 @@ current_session_working_document() {
 tool_path_list="$(tool_paths)"
 
 # Resolve the proof, default-proof and context roots once in this process;
-# the control-path predicates below and their subshells reuse them.
-eci_hook_roots_load
+# the control-path predicates below and their subshells reuse them.  A single
+# Edit-family target is resolved in the same realpath call.
+gate_single_target=""
+case "$tool_name" in
+  Edit|Write|MultiEdit|NotebookEdit)
+    case "$tool_path_list" in *$'\n'*) ;; *) gate_single_target="$tool_path_list" ;; esac
+    ;;
+esac
+if [ -n "$gate_single_target" ]; then
+  eci_hook_roots_load "$cwd" "$gate_single_target"
+else
+  eci_hook_roots_load
+fi
 
 # A coordinator's ordinary repository edit must not become a control edit
 # solely because it is made from the main thread.  Preserve the real target
@@ -221,7 +244,11 @@ eci_hook_roots_load
 while IFS= read -r control_path; do
   [ -n "$control_path" ] || continue
   lexical_control_path="$(eci_lexical_hook_path "$cwd" "$control_path" 2>/dev/null || true)"
-  resolved_control_path="$(eci_resolve_hook_path "$cwd" "$control_path" 2>/dev/null || true)"
+  if [ "$eci_hook_roots_target_ready" = 1 ] && [ "$control_path" = "$gate_single_target" ]; then
+    resolved_control_path="$eci_hook_roots_target_resolved"
+  else
+    resolved_control_path="$(eci_resolve_hook_path "$cwd" "$control_path" 2>/dev/null || true)"
+  fi
   control_alias=false
   if [ -n "$lexical_control_path" ] && eci_path_is_eci_control_alias "$lexical_control_path"; then
     control_alias=true

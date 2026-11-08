@@ -17,7 +17,12 @@ deny_stdout_usable() {
   [ -e /proc/self/fd/1 ] && ! [ /proc/self/fd/1 -ef /dev/null ]
 }
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The hook directory as `dirname` names it, without the extra process.
+case "${BASH_SOURCE[0]}" in
+  */*) HOOK_DIR="${BASH_SOURCE[0]%/*}"; HOOK_DIR="${HOOK_DIR:-/}" ;;
+  *) HOOK_DIR=. ;;
+esac
+HOOK_DIR="$(cd "$HOOK_DIR" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
   deny_stdout_usable || deny_write_failed validate-edit-write
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-edit-write cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}' || deny_write_failed validate-edit-write
@@ -25,7 +30,7 @@ if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || !
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
-for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
+for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_hook_subagent_status_seed eci_edit_dispatch_fields_load eci_strip_trailing_newlines eci_proof_root_load eci_hook_roots_load eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
   declare -F "$fn" >/dev/null 2>&1 || { deny_stdout_usable || deny_write_failed validate-edit-write; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-edit-write cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-edit-write; exit 0; }
 done
 eci_init_tmp || true
@@ -33,9 +38,33 @@ eci_require_jq_or_deny validate-edit-write
 eci_install_fail_closed_trap validate-edit-write
 
 input=$(cat)
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
-session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+# pretooluse-edit-dispatch.sh parsed the fields below from this stdin with one jq
+# call (eci_edit_dispatch_fields_load); they equal the per-field reads, which
+# run instead when it did not, or could not, take its fast path.
+parsed_input=false
+parsed_edit_text_usable=no
+if eci_edit_dispatch_fields_load "$input"; then
+  parsed_input=true
+  tool_name="${eci_edit_dispatch_fields[0]}"
+  session_id="${eci_edit_dispatch_fields[1]}"
+  cwd="${eci_edit_dispatch_fields[2]}"
+  parsed_file_path="${eci_edit_dispatch_fields[3]}"
+  parsed_transcript="${eci_edit_dispatch_fields[5]}"
+  parsed_edit_text="${eci_edit_dispatch_fields[6]}"
+  parsed_edit_text_usable="${eci_edit_dispatch_fields[7]}"
+  # As $(jq -r ...) would, drop trailing newlines.
+  eci_strip_trailing_newlines tool_name
+  eci_strip_trailing_newlines session_id
+  eci_strip_trailing_newlines cwd
+  eci_strip_trailing_newlines parsed_file_path
+  eci_strip_trailing_newlines parsed_transcript
+  eci_strip_trailing_newlines parsed_edit_text
+  eci_hook_subagent_status_seed "$input" "${eci_edit_dispatch_fields[4]}" "$parsed_transcript"
+else
+  tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
+  session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+fi
 
 deny() {
   local reason="${1:-unspecified edit validation denial}"
@@ -73,7 +102,11 @@ case "$tool_name" in
   *) exit 0 ;;
 esac
 
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' 2>/dev/null || true)
+if [ "$parsed_input" = true ]; then
+  file_path="$parsed_file_path"
+else
+  file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' 2>/dev/null || true)
+fi
 
 if [ -z "$file_path" ]; then
   if eci_marker_active_or_unknown; then
@@ -87,7 +120,15 @@ fi
 eci_hook_subagent_status "$input"
 hook_subagent_status="$ECI_HOOK_SUBAGENT_STATUS"
 
-resolved_file_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$file_path" 2>/dev/null || true)"
+# Resolve the proof, default-proof and context roots once in this process, with
+# the target's resolved form in the same realpath call; the path predicates
+# below and their subshells reuse them.
+eci_hook_roots_load "${cwd:-$PWD}" "$file_path"
+if [ "$eci_hook_roots_target_ready" = 1 ]; then
+  resolved_file_path="$eci_hook_roots_target_resolved"
+else
+  resolved_file_path="$(eci_resolve_hook_path "${cwd:-$PWD}" "$file_path" 2>/dev/null || true)"
+fi
 lexical_file_path="$(eci_lexical_hook_path "${cwd:-$PWD}" "$file_path" 2>/dev/null || true)"
 # A relative ECI_PROOF_ROOT cannot be verified as a proof root, so the marker
 # state is unknown.  An edit under that root (lexically or resolved), or under
@@ -138,12 +179,16 @@ if [ "$hook_subagent_status" != main ] &&
 fi
 
 # Local relative replace directives in go.mod bypass the go.work rule; deny at edit time.
-edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null)" || {
-  edit_text=""
-  if eci_marker_active_or_unknown; then
-    deny "[ECI_EDIT_PAYLOAD_UNREADABLE] edit payload could not be read while an active marker exists; the edit cannot be checked, so it is denied"
-  fi
-}
+if [ "$parsed_edit_text_usable" = yes ]; then
+  edit_text="$parsed_edit_text"
+else
+  edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null)" || {
+    edit_text=""
+    if eci_marker_active_or_unknown; then
+      deny "[ECI_EDIT_PAYLOAD_UNREADABLE] edit payload could not be read while an active marker exists; the edit cannot be checked, so it is denied"
+    fi
+  }
+fi
 if [[ "$file_path" == go.mod || "$file_path" == */go.mod ]] &&
    printf '%s\n' "$edit_text" | grep -Eq '=>[[:space:]]*(\.\./|\./)'; then
   deny "$(eci_diagnostic_reason "ECI_GOMOD_LOCAL_REPLACE_DENIED" "PreToolUse" "edit-validation" "$file_path" "Do not add local relative replace directives to go.mod. Use a workspace, module proxy, or explicit user-approved local override." "use a workspace, module proxy, or explicit user-approved local override")"
@@ -187,7 +232,8 @@ fi
 trap - ERR
 eci_install_fail_closed_trap validate-edit-write
 
-eci_direct_marker="$(eci_proof_root)/${session_id}/eci_active"
+eci_proof_root_load
+eci_direct_marker="$eci_proof_root_value/${session_id}/eci_active"
 if [ ! -f "$eci_direct_marker" ] || [ -L "$eci_direct_marker" ]; then
   eci_note_touched_repo "$session_id" "$cwd" "$file_path" || true
   if [ "$hook_subagent_status" = main ]; then

@@ -49,6 +49,40 @@ eci_strip_trailing_newlines() {
   done
 }
 
+# pretooluse-edit-dispatch.sh parses the callback stdin once and names a file of
+# NUL-separated fields in ECI_EDIT_DISPATCH_FIELDS for an Edit-family tool:
+# tool_name, session_id, cwd, the edit target, transcript present (yes/no),
+# transcript_path, the edit text, edit text usable (yes/no), eci-active-gate
+# identity usable (yes/no), then "ok".  Values are the raw jq strings; callers
+# drop trailing newlines where a $(jq -r ...) read would.
+# eci_edit_dispatch_fields_load STDIN loads them into eci_edit_dispatch_fields
+# and returns 0 only for a complete record tied to this callback: the file and
+# its directory (the dispatcher's private scratch directory) are owned by the
+# caller and are not symlinks, and the directory's input.json, read as
+# $(cat) reads stdin, equals STDIN.  A gate run outside the dispatcher with an
+# inherited name therefore reads its own stdin.  The variable is unset either
+# way, so no later process inherits it.
+eci_edit_dispatch_fields=()
+eci_edit_dispatch_fields_load() {
+  local file="${ECI_EDIT_DISPATCH_FIELDS:-}" dir stdin_copy
+  unset ECI_EDIT_DISPATCH_FIELDS
+  eci_edit_dispatch_fields=()
+  [ -n "$file" ] && [ "$#" -ge 1 ] || return 1
+  case "$file" in */*) dir="${file%/*}" ;; *) return 1 ;; esac
+  [ -f "$file" ] && [ ! -L "$file" ] && [ -O "$file" ] && [ -d "$dir" ] && [ ! -L "$dir" ] && [ -O "$dir" ] &&
+    [ -f "$dir/input.json" ] && [ ! -L "$dir/input.json" ] || return 1
+  { stdin_copy="$(<"$dir/input.json")"; } 2>/dev/null || return 1
+  [ "$stdin_copy" = "$1" ] || return 1
+  mapfile -d '' -t eci_edit_dispatch_fields <"$file" 2>/dev/null || eci_edit_dispatch_fields=()
+  if [ "${#eci_edit_dispatch_fields[@]}" -eq 10 ] && [ "${eci_edit_dispatch_fields[9]}" = ok ]; then
+    case "${eci_edit_dispatch_fields[0]}" in
+      Edit|Write|MultiEdit|NotebookEdit) return 0 ;;
+    esac
+  fi
+  eci_edit_dispatch_fields=()
+  return 1
+}
+
 eci_proof_root_cache_configured=""
 eci_proof_root_cache_value=""
 # Set by eci_proof_root_load in the calling shell, so callers read the root
@@ -107,11 +141,18 @@ eci_proof_root() {
 # One realpath call resolves them all.  The memo is keyed on every input, so a
 # changed HOME, PWD or proof root recomputes it; subshells inherit it, which is
 # why hooks load it once in the hook process (eci_hook_roots_load).
+#
+# eci_hook_roots_load CWD TARGET also resolves one hook target in the same
+# realpath call, as eci_resolve_hook_path CWD TARGET prints it.  The result is
+# in eci_hook_roots_target_resolved with eci_hook_roots_target_ready=1 only
+# when that call computed it; otherwise the caller resolves the target itself.
 eci_hook_roots_key=""
 eci_hook_roots_resolved_proof=""
 eci_hook_roots_resolved_default=""
 eci_hook_roots_context_canonical=""
 eci_hook_roots_global_override=""
+eci_hook_roots_target_ready=0
+eci_hook_roots_target_resolved=""
 
 eci_hook_roots_current_key() {
   eci_proof_root_load
@@ -142,10 +183,27 @@ eci_hook_path_absolute() {
 eci_hook_roots_load() {
   local eci_hook_roots_current proof default_root context eci_root override
   local -a args=() lines=()
-  local arg out rc=0 batched=false canonical
+  local arg out rc=0 batched=false canonical target_cwd target=""
 
+  eci_hook_roots_target_ready=0
+  eci_hook_roots_target_resolved=""
   eci_hook_roots_current_key
   [ "$eci_hook_roots_current" != "$eci_hook_roots_key" ] || [ -z "$eci_hook_roots_key" ] || return 0
+  # The target's realpath argument, built as eci_resolve_hook_path builds it.
+  if [ "$#" -ge 2 ] && [ -n "$2" ]; then
+    target_cwd="${1:-$PWD}"
+    [ -n "$target_cwd" ] || target_cwd="$PWD"
+    target="$2"
+    case "$target" in
+      "~") target="$HOME" ;;
+      "~/"*) target="$HOME/${target#~/}" ;;
+    esac
+    case "$target" in
+      /*) ;;
+      *) target="$target_cwd/$target" ;;
+    esac
+    case "$target" in *$'\n'*) target="" ;; esac
+  fi
   proof="$eci_proof_root_value"
   default_root="$HOME/tmp/agent/proof"
   context="$HOME/.agent/context"
@@ -164,9 +222,14 @@ eci_hook_roots_load() {
     for arg in "${args[@]}"; do
       case "$arg" in ""|*$'\n'*) batched=false ;; esac
     done
+    [ "$batched" = false ] || [ -z "$target" ] || args+=("$target")
   fi
   if [ "$batched" = true ] && out="$(eci_realpath_canonical "${args[@]}" 2>/dev/null)" && mapfile -t lines <<<"$out" &&
      [ "${#lines[@]}" -eq "${#args[@]}" ]; then
+    if [ -n "$target" ]; then
+      eci_hook_roots_target_resolved="${lines[${#lines[@]}-1]}"
+      eci_hook_roots_target_ready=1
+    fi
     eci_hook_roots_resolved_proof="${lines[0]}"
     eci_hook_roots_resolved_default="${lines[1]}"
     eci_hook_roots_context_canonical="${lines[2]}"
@@ -2502,14 +2565,25 @@ eci_hook_omp_sessions_root() {
 
 # True when the transcript is lexically or physically under the omp sessions root.
 eci_hook_is_omp_transcript() {
-  local path="$1" raw_root real_root real_path
+  local path="$1" raw_root real_root real_path resolved
 
   raw_root="$(eci_hook_omp_sessions_root)" || return 1
   case "$path" in
     "$raw_root"/*) return 0 ;;
   esac
-  real_root="$(eci_realpath_existing "$raw_root" 2>/dev/null)" || return 1
-  real_path="$(eci_realpath_existing "$path" 2>/dev/null)" || return 1
+  # One resolver call for both names; either one failing is false, as before.
+  # A name with a newline, or a resolved name with one, takes the two calls.
+  resolved=""
+  case "$raw_root$path" in
+    *$'\n'*) ;;
+    *) resolved="$(eci_realpath_existing "$raw_root" "$path" 2>/dev/null)" || return 1 ;;
+  esac
+  real_root="${resolved%%$'\n'*}"
+  real_path="${resolved#*$'\n'}"
+  if [ -z "$resolved" ] || [ "$real_root" = "$resolved" ] || [[ "$real_path" == *$'\n'* ]]; then
+    real_root="$(eci_realpath_existing "$raw_root" 2>/dev/null)" || return 1
+    real_path="$(eci_realpath_existing "$path" 2>/dev/null)" || return 1
+  fi
   case "$real_path" in
     "$real_root"/*) return 0 ;;
   esac

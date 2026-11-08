@@ -3,7 +3,8 @@
 . "${BASH_SOURCE[0]%/*}/eci-diagnostic.sh" || return 1
 
 eci_init_tmp() {
-  local home="${HOME:-}" requested target canonical inherited inherited_canonical
+  local home="${HOME:-}" requested target canonical inherited inherited_canonical="" batched=""
+  local -a canonical_lines=()
   if [ -z "$home" ]; then
     printf '%s\n' "$(eci_diagnostic_reason "ECI_TMPDIR_HOME_MISSING" "PreToolUse" "tmp-init" "hook=eci" "HOME is unset; a home-scoped temporary directory cannot be selected" "set HOME to the user's home directory and retry")" >&2
     return 1
@@ -11,7 +12,25 @@ eci_init_tmp() {
 
   requested="${ECI_TMPDIR:-$home/tmp}"
   target="$requested"
-  canonical="$(realpath -m -- "$target" 2>/dev/null || true)"
+  inherited="${TMPDIR:-}"
+  # Both names in one realpath call when there are two and neither has a
+  # newline; a failure or any other line count takes the one-name calls.
+  if [ -n "$inherited" ]; then
+    case "$target$inherited" in
+      *$'\n'*) ;;
+      *)
+        if batched="$(realpath -m -- "$target" "$inherited" 2>/dev/null)" &&
+          mapfile -t canonical_lines <<<"$batched" && [ "${#canonical_lines[@]}" -eq 2 ] &&
+          [ -n "${canonical_lines[0]}" ] && [ -n "${canonical_lines[1]}" ]; then
+          canonical="${canonical_lines[0]}"
+          inherited_canonical="${canonical_lines[1]}"
+        else
+          batched=""
+        fi
+        ;;
+    esac
+  fi
+  [ -n "$batched" ] || canonical="$(realpath -m -- "$target" 2>/dev/null || true)"
   if [ -z "$canonical" ]; then
     canonical="$target"
   fi
@@ -21,9 +40,8 @@ eci_init_tmp() {
   if [ "$canonical" = /tmp ] || [[ "$canonical" == /tmp/* ]]; then
     target="$home/tmp"
   fi
-  inherited="${TMPDIR:-}"
   if [ -n "$inherited" ]; then
-    inherited_canonical="$(realpath -m -- "$inherited" 2>/dev/null || true)"
+    [ -n "$batched" ] || inherited_canonical="$(realpath -m -- "$inherited" 2>/dev/null || true)"
     if [ "$inherited_canonical" = /tmp ] || [[ "$inherited_canonical" == /tmp/* ]]; then
       target="$home/tmp"
     fi

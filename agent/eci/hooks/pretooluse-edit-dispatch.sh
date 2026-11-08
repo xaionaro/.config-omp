@@ -52,7 +52,42 @@ trap 'rm -rf -- "$tmp_dir"' EXIT HUP INT TERM
 input_file="$tmp_dir/input.json"
 cat >"$input_file"
 
-if ! tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null)"; then
+# One jq call reads tool_name and every stdin field the Edit-family gates use,
+# NUL-separated, into a file the gate children load (eci_edit_dispatch_fields_load
+# in lib/eci-proof-state.sh): tool_name, session_id, cwd, the edit target,
+# transcript present (yes/no), transcript_path, the edit text with its usable
+# flag, the eci-active-gate identity flag, then "ok".  The fast path covers a
+# single JSON object whose fields are strings (or absent, null or false) without
+# NUL bytes.  Any other input takes the original tool_name read below and the
+# children their own reads, so every value, and every decision built from it, is
+# the same either way.
+dispatch_fields=()
+dispatch_fields_file=""
+if jq -nj '[inputs]
+  | if length != 1 or (.[0] | type) != "object" then empty else .[0]
+    | (.tool_input | try ([.content, .new_string, .edits[]?.new_string] | map(select(. != null))) catch null) as $edit
+    | (if ($edit | type) == "array" and all($edit[]; type == "string")
+       then [($edit | map(. + "\n") | add // ""), "yes"] else ["", "no"] end) as $text
+    | [(.tool_name // ""), (.session_id // ""), (.cwd // ""),
+       (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // ""),
+       (if has("transcript_path") and (.transcript_path != null) then "yes" else "no" end),
+       (.transcript_path // ""), $text[0], $text[1],
+       (if (.tool_name | type) == "string" and (.tool_name | length > 0) and
+           (.session_id | type) == "string" and ((.cwd | type) == "string" or (.cwd | type) == "null") and
+           all(.tool_name, .session_id, (.cwd // ""); endswith("\n") | not)
+        then "yes" else "no" end)]
+    | if all(.[]; type == "string" and (test("\u0000") | not)) then (.[] + "\u0000"), "ok\u0000" else empty end
+    end' <"$input_file" >"$tmp_dir/fields" 2>/dev/null; then
+  mapfile -d '' -t dispatch_fields <"$tmp_dir/fields" || dispatch_fields=()
+fi
+if [ "${#dispatch_fields[@]}" -eq 10 ] && [ "${dispatch_fields[9]}" = ok ]; then
+  # As $(jq -r ...) would, drop trailing newlines.
+  tool_name="${dispatch_fields[0]}"
+  eci_strip_trailing_newlines tool_name
+  case "${dispatch_fields[0]}" in
+  Edit | Write | MultiEdit | NotebookEdit) dispatch_fields_file="$tmp_dir/fields" ;;
+  esac
+elif ! tool_name="$(jq -r '.tool_name // empty' <"$input_file" 2>/dev/null)"; then
   # Unparseable input denies only while a marker is active or unknown; with no marker exit 0 as the source does.
   if eci_marker_active_or_unknown; then
     dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_JQ_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: jq is unavailable or could not parse the tool input while an active marker exists; provision jq and retry"}}'
@@ -116,7 +151,8 @@ for index in "${!gates[@]}"; do
   output_file="$tmp_dir/output-$index"
   error_file="$tmp_dir/error-$index"
   # $BASH is this guarded interpreter (bash 4.4 or newer); a PATH lookup could pick an older bash.
-  "$BASH" "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
+  # Each child gets the parsed fields file, or an empty name, never an inherited value.
+  ECI_EDIT_DISPATCH_FIELDS="$dispatch_fields_file" "$BASH" "${gates[$index]}" <"$input_file" >"$output_file" 2>"$error_file" &
   pids[$index]=$!
 done
 
