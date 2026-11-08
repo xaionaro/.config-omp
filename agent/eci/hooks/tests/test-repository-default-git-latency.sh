@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 
 ECI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 KIMI_ROOT="$(cd "${KIMI_CODE_HOME:-${HOME:?}/.kimi-code}" && pwd -P)"
@@ -66,12 +67,14 @@ run_validator() {
       ;;
     *) fail "unknown provider: $provider" ;;
   esac
-  /usr/bin/time -f '%e' -o "$time_file" timeout 5s env \
+  local TIMEFORMAT=%R
+  # The bash time keyword (wall seconds) replaces GNU `/usr/bin/time -f '%e'`.
+  { time eci_test_run_with_deadline 5 env \
     HOME="$TMP_ROOT/home" ECI_HOME="$ECI_ROOT" ECI_PROOF_ROOT="$proof" \
     KIMI_CODE_HOME="$KIMI_ROOT" KIMI_PROOF_ROOT="$proof" \
     ECI_ROLE=coordinator KIMI_ROLE=coordinator \
     KIMI_HOOK_IS_SUBAGENT=false ECI_HOOK_IS_SUBAGENT=false \
-    bash "$validator" <"$input" >"$output" 2>"$error"
+    bash "$validator" <"$input" >"$output" 2>"$error"; } 2>"$time_file"
 }
 
 measure_provider() {

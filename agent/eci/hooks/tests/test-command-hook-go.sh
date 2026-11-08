@@ -87,14 +87,14 @@ run_callback() {
     '{session_id:"hook-test",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' >"$fixture/$name.input"
   date -u '+start_utc=%Y-%m-%dT%H:%M:%S.%NZ' >"$fixture/$name.metadata"
   read -r started_uptime idle_seconds </proc/uptime
-  if ! /usr/bin/time -f 'elapsed_seconds=%e user_seconds=%U system_seconds=%S' \
-    -o "$fixture/$name.time" \
-    env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
+  local TIMEFORMAT='elapsed_seconds=%R user_seconds=%U system_seconds=%S'
+  # The bash time keyword replaces GNU `/usr/bin/time -f ... -o`.
+  if ! { time env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
       GOOS=windows GOARCH=arm64 GOAMD64=v4 GOARM=7 GOARM64=v9.0 \
       ECI_PROOF_ROOT="$fixture/proof" XDG_CONFIG_HOME="$fixture/config" \
       XDG_STATE_HOME="$fixture/state" \
       bash -c "$launcher" <"$fixture/$name.input" >"$fixture/$name.output" \
-      2>"$fixture/$name.stderr"; then
+      2>"$fixture/$name.stderr"; } 2>"$fixture/$name.time"; then
     cat -- "$fixture/$name.stderr" >&2
     return 1
   fi

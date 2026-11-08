@@ -8,6 +8,7 @@
 # Stop hook and changes only an isolated temporary ECI_HOME.
 
 set -euo pipefail
+. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 
 ROOT="${HOME:?}/.omp/agent/eci"
 HOOKS_JSON="$ROOT/hooks.json"
@@ -113,7 +114,7 @@ if ! {
     XDG_CONFIG_HOME="$TMP_ROOT/xdg-config" \
     XDG_STATE_HOME="$TMP_ROOT/xdg-state" \
     ECI_DISABLE_SQLITE=1 \
-    timeout 15s "$ECI_BIN" app-server --stdio >"$RESPONSE_JSONL" 2>"$STDERR_LOG"; then
+    eci_test_run_with_deadline 15 "$ECI_BIN" app-server --stdio >"$RESPONSE_JSONL" 2>"$STDERR_LOG"; then
   printf 'stale Stop hook trust was rejected by app-server: PASS\n'
   exit 0
 fi

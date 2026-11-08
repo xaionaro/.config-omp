@@ -12,6 +12,10 @@
 #                                            (~user tilde expansion; getent is absent on macOS)
 #   eci_tree_listing DIR DEPTH               sorted "relpath:type:size" lines for entries up to
 #                                            DEPTH below DIR (find -printf '%P:%y:%s' stand-in)
+#   eci_test_run_with_deadline SECS CMD...   CMD with stdin passed through, in its own process
+#                                            group; at SECS (whole seconds) TERM to the group,
+#                                            KILL 5 s later. CMD's status, or 124 on timeout
+#                                            (GNU timeout stand-in)
 
 . "${BASH_SOURCE[0]%/*}/../lib/eci-portable.sh"
 
@@ -53,4 +57,35 @@ eci_tree_listing() {
   find "$dir" -mindepth 1 -maxdepth "$depth" | LC_ALL=C sort | while IFS= read -r path; do
     printf '%s:%s:%s\n' "${path#"$dir"/}" "$(eci_stat type "$path")" "$(eci_stat size "$path")"
   done
+}
+
+eci_test_run_with_deadline() {
+  local secs="${1:?seconds}"
+  shift
+  (
+    # set -m gives the job its own process group (pgid = pid), so the watchdog
+    # reaches CMD's children too.
+    set -m
+    "$@" <&0 &
+    set +m
+    pid=$! status=0 fired=0
+    # fds closed so an orphaned sleep can never hold the caller's pipes open.
+    (
+      fired=0
+      trap 'kill "${nap:-}" 2>/dev/null; exit "$fired"' TERM
+      sleep "$secs" & nap=$!; wait "$nap"
+      # Set before the kill: once the group dies, the caller may TERM this watchdog at once.
+      fired=124
+      kill -TERM -- "-$pid" 2>/dev/null || exit 0
+      sleep 5 & nap=$!; wait "$nap"
+      kill -KILL -- "-$pid" 2>/dev/null || true
+      exit 124
+    ) </dev/null >/dev/null 2>&1 &
+    watchdog=$!
+    wait "$pid" 2>/dev/null || status=$?
+    kill -TERM "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || fired=$?
+    [ "$fired" != 124 ] || exit 124
+    exit "$status"
+  )
 }

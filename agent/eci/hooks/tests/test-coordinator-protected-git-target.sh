@@ -152,7 +152,7 @@ run_hook_at() {
   local transcript="${CALLBACK_TRANSCRIPT-$MAIN_TRANSCRIPT}"
   local -a hook_command=(bash "$fixture_root/hooks/validate-bash.sh")
   if [ -n "${HOOK_TIMEOUT_SECONDS:-}" ]; then
-    hook_command=(timeout "$HOOK_TIMEOUT_SECONDS" "${hook_command[@]}")
+    hook_command=(eci_test_run_with_deadline "$HOOK_TIMEOUT_SECONDS" "${hook_command[@]}")
   fi
   jq -cn --arg session "$session" --arg cwd "$hook_cwd" --arg command "$command" --arg transcript "$transcript" \
     '{session_id:$session,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)' |

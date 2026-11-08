@@ -151,25 +151,7 @@ run_callback() {
     export ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
       XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" HOME="$TMP_ROOT/home" \
       ECI_SESSION_ID="$payload_session" ECI_THREAD_ID="$payload_session" ECI_HOOK_IS_SUBAGENT="$is_subagent"
-    # set -m gives the job its own process group (pgid = pid), so the watchdog
-    # reaches the callback's children too.
-    set -m
-    "${ECI_BASH:-bash}" "$script" <&0 &
-    set +m
-    local pid=$! watchdog status=0
-    # fds closed so an orphaned sleep can never hold the caller's pipes open.
-    (
-      trap 'kill "${nap:-}" 2>/dev/null; exit 0' TERM
-      sleep 10 & nap=$!; wait "$nap"
-      kill -TERM -- "-$pid" 2>/dev/null || exit 0
-      sleep 5 & nap=$!; wait "$nap"
-      kill -KILL -- "-$pid" 2>/dev/null || true
-    ) </dev/null >/dev/null 2>&1 &
-    watchdog=$!
-    wait "$pid" || status=$?
-    kill -TERM "$watchdog" 2>/dev/null || true
-    wait "$watchdog" 2>/dev/null || true
-    exit "$status"
+    eci_test_run_with_deadline 10 "${ECI_BASH:-bash}" "$script"
   )
 }
 

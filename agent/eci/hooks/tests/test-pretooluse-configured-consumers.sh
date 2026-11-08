@@ -180,7 +180,7 @@ run_kimi_bash_consumer() {
   jq -cn --arg cwd "$FIXTURE_KIMI_ROOT" --arg session "$FIXTURE_KIMI_SESSION" --arg command "$command" \
     --arg transcript "$FIXTURE_KIMI_TRANSCRIPT" \
     '{session_id:$session,tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' >"$input"
-  if ! timeout 75s env \
+  if ! eci_test_run_with_deadline 75 env \
     HOME="$FIXTURE_HOME" ECI_HOME="$FIXTURE_ROOT" KIMI_CODE_HOME="$FIXTURE_KIMI_ROOT" \
     ECI_PROOF_ROOT="$FIXTURE_PROOF" KIMI_PROOF_ROOT="$FIXTURE_PROOF" \
     KIMI_LOCAL_PLANNER_SENTINEL="$KIMI_LOCAL_PLANNER_SENTINEL" \

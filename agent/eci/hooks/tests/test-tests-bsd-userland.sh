@@ -3,7 +3,8 @@
 # comments, for GNU-only forms executed directly: `sha256sum`; `sed -i`/`--in-place`
 # (any option position); `realpath -e/-m/-s/--relative-to`; `readlink -e/-f/-m`;
 # `stat -c`/`--format`/`--printf`; `od -w`; `date -d`; `find -printf`; `xargs -r`;
-# and `getent`. Tests take portable forms from portable-test.sh
+# `getent`; GNU `time` options (`/usr/bin/time -f`/`-o`/`-a`/`-v`); and `timeout DURATION`
+# (not `./timeout`, a fixture script). Tests take portable forms from portable-test.sh
 # (hooks/lib/eci-portable.sh). A line may keep one only when it is test data (a command
 # string handed to the code under test), listed in ALLOWED below by file and exact line
 # text. Files whose GNU forms are themselves the subject (the BSD lint and its planted
@@ -13,7 +14,7 @@ set -euo pipefail
 
 here="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 b='(^|[^[:alnum:]_.-])'
-pattern="${b}(sha256sum|getent"
+pattern="(${b}(sha256sum|getent"
 pattern+='|sed[[:space:]]([^|;&]*[[:space:]])?(-[[:alpha:]]*i|--in-place)'
 pattern+='|realpath[[:space:]]([^|;&]*[[:space:]])?(-[[:alpha:]]*[ems]|--relative-to)'
 pattern+='|readlink[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*[efm]'
@@ -21,12 +22,37 @@ pattern+='|stat[[:space:]]([^|;&]*[[:space:]])?(-[[:alpha:]]*c|--format|--printf
 pattern+='|od[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*w'
 pattern+='|date[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*d'
 pattern+='|find[[:space:]][^|;&]*-printf'
-pattern+='|xargs[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*r)([[:space:]=]|$)'
+pattern+='|xargs[[:space:]]([^|;&]*[[:space:]])?-[[:alpha:]]*r'
+pattern+='|time[[:space:]]+(-[[:alpha:]]*[afov]|--format|--output|--append|--verbose))'
+pattern+='|(^|[^[:alnum:]_./-])timeout[[:space:]]+((-s|--signal|-k|--kill-after)[[:space:]]+[^-[:space:]][^[:space:]]*[[:space:]]+|-[^[:space:]]*[[:space:]]+)*("?\$[^[:space:]]*|[0-9.]+[smhd]?))([[:space:]=]|$)'
 exempt='lint-bsd-userland.sh test-lint-bsd-userland.sh test-eci-portable.sh test-tests-bsd-userland.sh portable-test.sh'
 
 # file<TAB>exact line text, for test data that only looks like an executed GNU form.
 # A command string the planner under test must deny; never executed by the test.
 ALLOWED="test-eci-planner-protocol-fallback.sh	    \"sed -i 's/needle/replacement/' \$marker\"; do"
+# GNU time/timeout command strings the planner or hook under test must classify; never executed.
+ALLOWED+="
+run.sh	    \"/usr/bin/time -f '%M' make test\" \\"
+ALLOWED+="
+run.sh	  out=\"\$(run_validate_bash_command \"timeout 30s make test\" \"bash-make-timeout\")\" || return 1"
+ALLOWED+="
+test-coordinator-protected-git-target.sh	assert_protected_denial 'timeout 10 git rm -- hooks/validate-bash.sh'"
+ALLOWED+="
+test-coordinator-protected-git-target.sh	assert_protected_denial 'timeout 10 env FOO=bar command git rm -- hooks/validate-bash.sh'"
+ALLOWED+="
+test-coordinator-protected-git-target.sh	assert_protected_denial 'env timeout 10 command git rm -- hooks/validate-bash.sh'"
+ALLOWED+="
+test-eci-dynamic-pipeline-visibility.sh	assert_ordinary_pipeline_allowed 'timeout 1 printf item | cat'"
+ALLOWED+="
+test-eci-review-gate.sh	    'timeout -k 1 5 git commit -m checked' \\"
+ALLOWED+="
+test-validate-bash-classifier.sh	  \"timeout 5 \$copied_eci\" \\"
+ALLOWED+="
+test-validate-bash-classifier.sh	  \"env FOO=bar timeout 5 git rebase topic\" \\"
+ALLOWED+="
+test-validate-bash-classifier.sh	  \"timeout 5 git rebase topic\" \\"
+ALLOWED+="
+test-validate-bash-classifier.sh	  \"timeout 5 git commit\" \\"
 # Command strings the planner or hook under test must classify; never executed.
 ALLOWED+="
 test-eci-command-plan.sh	        'printf one && printf two || printf three; printf four | sha256sum'"
