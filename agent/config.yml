@@ -55,3 +55,10 @@ statusLine:
 providers:
   anthropic:
     slowMode: auto
+bash:
+  gitGuard: true
+lsp:
+  diagnosticsOnEdit: true
+  formatOnWrite: true
+retry:
+  waitForUsageReset: true
