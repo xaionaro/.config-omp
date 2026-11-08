@@ -64,9 +64,12 @@ eci_native_stuck_advisory() {
 }
 
 # Under the lock: decide again, stop on a denied or stuck gate binary, build the rest, then check what was built.
-# Gate binaries are verified through eci-verexec on Linux. When eci-verexec itself must be built (first use,
-# or a missing or foreign verifier), nothing can verify the present gate binaries yet: that bootstrap builds
-# every missing name in one run, verifier included, and then verifies every gate binary, present or built.
+# Gate binaries are verified through eci-verexec on Linux. When eci-verexec itself must be built (first use, or
+# a verifier or receipt that is absent, or a regular file not native to this host), nothing can verify the
+# present gate binaries yet: that bootstrap builds every missing name in one run, verifier included, and then
+# verifies every gate binary, present or built. A present, native eci-verexec that fails its own self-check
+# (wrong digest, writable mode, extra link) is not rebuilt: every gate check denies with its reason, which
+# names build-native-binaries.sh.
 eci_native_provision_locked() {
   local name build='' start rc=0 bootstrap=0 deferred=''
   case " $eci_native_receipt_only " in

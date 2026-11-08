@@ -10,6 +10,9 @@ import (
 	"syscall"
 )
 
+// main prints what the verifier handed over.
+//
+// Example: `target --x` prints argv0, args=--x and fds=[] and exits 0.
 func main() {
 	var open []int
 	for fd := 3; fd < 1024; fd++ {

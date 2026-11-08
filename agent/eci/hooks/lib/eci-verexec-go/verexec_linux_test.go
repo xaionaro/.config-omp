@@ -12,14 +12,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 )
 
-// Fixture homes live under the module directory: the CLI denies any bin directory with an untrusted
-// ancestor, and the default temporary directory (/tmp, mode 1777) is one.
+// Paths TestMain sets up. Fixture homes live under fixtureBase, a directory whose ancestors the CLI trusts
+// (trustedFixtureBase); the default temporary directory (/tmp, mode 1777) is not one.
+//
+// Example: verexecBin is fixtureBase/eci-verexec, the binary each newHome installs as bin/eci-verexec.
 var (
 	fixtureBase string
 	verexecBin  string
@@ -27,10 +30,16 @@ var (
 	loaderPath  string
 )
 
+// TestMain builds eci-verexec and the target once for every test.
+//
+// Example: go test ./... builds both into a fixture base with trusted ancestors.
 func TestMain(m *testing.M) {
 	os.Exit(runMain(m))
 }
 
+// runMain is TestMain's body, so deferred cleanup runs before os.Exit.
+//
+// Example: it removes the fixture base after m.Run returns.
 func runMain(m *testing.M) int {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -63,6 +72,8 @@ func runMain(m *testing.M) int {
 
 // trustedFixtureBase makes a 0700 directory under the first candidate whose ancestors the CLI trusts:
 // $ECI_VEREXEC_TEST_DIR, the user cache directory, $HOME, then the module directory.
+//
+// Example: with HOME=/home/u it returns /home/u/.cache/.eci-verexec-test-123 when /home/u/.cache is trusted.
 func trustedFixtureBase(wd string) (string, error) {
 	var candidates []string
 	if d := os.Getenv("ECI_VEREXEC_TEST_DIR"); d != "" {
@@ -95,6 +106,9 @@ func trustedFixtureBase(wd string) (string, error) {
 	return "", fmt.Errorf("no fixture directory with trusted ancestors among %q; set ECI_VEREXEC_TEST_DIR to a directory whose parents are owned by you or root and not group/other-writable", candidates)
 }
 
+// home is one fixture HOME with an eci bin directory.
+//
+// Example: h := newHome(t); h.root is HOME and h.bin its .omp/agent/eci/bin.
 type home struct {
 	t    *testing.T
 	root string
@@ -103,6 +117,8 @@ type home struct {
 
 // newHome makes HOME/.omp/agent/eci/bin with eci-verexec and the test target installed as
 // eci-hook-helper, each with a receipt.
+//
+// Example: newHome(t).path("eci-verexec") is an installed verifier with its receipt.
 func newHome(t *testing.T) *home {
 	t.Helper()
 	root, err := os.MkdirTemp(fixtureBase, "home-")
@@ -124,6 +140,9 @@ func newHome(t *testing.T) *home {
 	return h
 }
 
+// mustRead returns the file's bytes or fails the test.
+//
+// Example: mustRead(t, targetBin) is the target image.
 func mustRead(t *testing.T, p string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(p)
@@ -133,9 +152,14 @@ func mustRead(t *testing.T, p string) []byte {
 	return b
 }
 
+// path names an entry of the fixture bin directory.
+//
+// Example: h.path("eci-hook-helper.sha256") is the target's receipt.
 func (h *home) path(name string) string { return filepath.Join(h.bin, name) }
 
 // install writes name with mode 0755 and a matching receipt.
+//
+// Example: h.install("eci-hook-helper", []byte("#!/bin/sh\n")) installs a script that L15 denies.
 func (h *home) install(name string, content []byte) {
 	h.t.Helper()
 	os.Remove(h.path(name))
@@ -146,6 +170,9 @@ func (h *home) install(name string, content []byte) {
 	h.receipt(name, content)
 }
 
+// receipt writes a correct receipt for content, whatever the installed bytes are.
+//
+// Example: h.receipt(name, []byte("other")) makes L20 deny the installed file.
 func (h *home) receipt(name string, content []byte) {
 	h.t.Helper()
 	sum := sha256.Sum256(content)
@@ -155,6 +182,9 @@ func (h *home) receipt(name string, content []byte) {
 	}
 }
 
+// result is one CLI run: status, stdout, deny-descriptor text and stderr.
+//
+// Example: a denial is result{rc: 125, deny: "ECI native gate binary ...\n"}.
 type result struct {
 	rc         int
 	stdout     string
@@ -163,6 +193,8 @@ type result struct {
 }
 
 // run executes bin/eci-verexec (or the binary at exe when set) with HOME=h.root and deny fd 3.
+//
+// Example: h.run("", "", []string{"--check", "--deny-fd", "3", "eci-hook-helper"}) returns rc 0 and no deny text.
 func (h *home) run(exe string, homeEnv string, args []string, env ...string) result {
 	h.t.Helper()
 	if exe == "" {
@@ -196,6 +228,8 @@ func (h *home) run(exe string, homeEnv string, args []string, env ...string) res
 
 // shimReason runs eci_runtime_verify from lib/eci-native-binary.sh, the shell entry every caller uses, for name
 // in the same HOME and returns its denial reason ("" on accept), with the trailing newline the native text carries.
+//
+// Example: after chmod 0775 of the target it returns the reasonWritable line.
 func (h *home) shimReason(homeEnv, name string) string {
 	h.t.Helper()
 	if homeEnv == "" {
@@ -212,6 +246,9 @@ func (h *home) shimReason(homeEnv, name string) string {
 	return string(out)
 }
 
+// patchedCopy returns src's bytes after patch, leaving src untouched.
+//
+// Example: patchedCopy(t, targetBin, setMachine2) is a wrong-machine ELF.
 func patchedCopy(t *testing.T, src string, patch func([]byte) []byte) []byte {
 	t.Helper()
 	return patch(append([]byte(nil), mustRead(t, src)...))
@@ -220,6 +257,8 @@ func patchedCopy(t *testing.T, src string, patch func([]byte) []byte) []byte {
 // Every deny of the CLI, with the byte-exact text, and the same text through the shell entry
 // eci_runtime_verify. The bash loader no longer verifies on Linux; TestELFRuleMatchesBash keeps the
 // Go-vs-bash differential for the host-format rule that runtime sync still applies in bash.
+//
+// Example: the L13 group-writable case expects exit 125 and the reasonWritable line on fd 3.
 func TestCLIDenials(t *testing.T) {
 	const helper = "eci-hook-helper"
 	cases := []struct {
@@ -334,6 +373,9 @@ func TestCLIDenials(t *testing.T) {
 	}
 }
 
+// TestCLIExecutesVerifiedTarget checks argv[0], argument passing and that no descriptor reaches the target.
+//
+// Example: args "a b", "" and "--" arrive as "a b||--" with fds=[].
 func TestCLIExecutesVerifiedTarget(t *testing.T) {
 	h := newHome(t)
 	r := h.run("", "", []string{"--deny-fd", "3", "eci-hook-helper", "--", "a b", "", "--"})
@@ -344,7 +386,44 @@ func TestCLIExecutesVerifiedTarget(t *testing.T) {
 	}
 }
 
+// The Go runtime raises its own soft RLIMIT_NOFILE at start; the target must see the caller's limit.
+// The target is a copy of bash, a non-Go ELF that reports the limit it was started with.
+//
+// Example: under `ulimit -Sn 512` the target reports nofile=512, not the runtime's raised limit.
+func TestCLITargetKeepsCallerNofileLimit(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash")
+	}
+	bash, err = filepath.EvalSymlinks(bash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHome(t)
+	h.install("eci-hook-helper", mustRead(t, bash))
+	var lim syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &lim); err != nil {
+		t.Fatal(err)
+	}
+	soft := uint64(512)
+	if lim.Max < soft {
+		soft = lim.Max
+	}
+	cmd := exec.Command("bash", "-c", `ulimit -Sn "$1" && exec "$2" --deny-fd 2 eci-hook-helper -- -c 'echo "nofile=$(ulimit -Sn)"'`, "bash",
+		strconv.FormatUint(soft, 10), h.path(selfName))
+	cmd.Env = []string{"HOME=" + h.root, "PATH=/usr/bin:/bin"}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run: %v %q", err, out)
+	}
+	if want := fmt.Sprintf("nofile=%d\n", soft); string(out) != want {
+		t.Fatalf("target saw %q, want %q", out, want)
+	}
+}
+
 // A target that exits 125 is not a denial: the status passes through and the deny fd stays empty.
+//
+// Example: ECI_VEREXEC_TARGET_EXIT=125 gives status 125 with an empty deny file.
 func TestCLITargetExit125IsNotADenial(t *testing.T) {
 	h := newHome(t)
 	r := h.run("", "", []string{"--deny-fd", "3", "eci-hook-helper"}, "ECI_VEREXEC_TARGET_EXIT=125")
@@ -354,6 +433,8 @@ func TestCLITargetExit125IsNotADenial(t *testing.T) {
 }
 
 // A verified file the kernel will not execute maps to 126 without deny text.
+//
+// Example: an ELF header followed by zeros verifies, then exec fails with 126.
 func TestCLIExecFormatErrorIs126(t *testing.T) {
 	h := newHome(t)
 	hdr := make([]byte, 20)
@@ -366,6 +447,8 @@ func TestCLIExecFormatErrorIs126(t *testing.T) {
 }
 
 // A verified ELF whose interpreter does not exist maps to 127 without deny text.
+//
+// Example: /bin/true with PT_INTERP pointing at /nonexistent/ld.so exits 127.
 func TestCLIMissingInterpreterIs127(t *testing.T) {
 	src, err := filepath.EvalSymlinks("/bin/true")
 	if err != nil {
@@ -403,6 +486,9 @@ func TestCLIMissingInterpreterIs127(t *testing.T) {
 	}
 }
 
+// TestCLIUsage checks that malformed command lines and a closed deny descriptor exit 2.
+//
+// Example: --deny-fd 9 with descriptor 9 closed exits 2.
 func TestCLIUsage(t *testing.T) {
 	h := newHome(t)
 	for _, args := range [][]string{{}, {"eci-hook-helper"}, {"--deny-fd", "3"}} {
@@ -421,6 +507,8 @@ func TestCLIUsage(t *testing.T) {
 }
 
 // openFixture returns the trusted bin directory descriptor of a fresh home.
+//
+// Example: h, binDir, host := openFixture(t) is ready for openVerified.
 func openFixture(t *testing.T) (*home, int, []byte) {
 	t.Helper()
 	h := newHome(t)
@@ -438,6 +526,8 @@ func openFixture(t *testing.T) (*home, int, []byte) {
 }
 
 // L7: the name is swapped to another inode between the path check and the open.
+//
+// Example: the race hook renames another file over the target and L7 denies.
 func TestRenameRaceBetweenStatAndOpen(t *testing.T) {
 	h, binDir, host := openFixture(t)
 	h.install("other", mustRead(t, targetBin))
@@ -450,6 +540,8 @@ func TestRenameRaceBetweenStatAndOpen(t *testing.T) {
 }
 
 // L5 through the race hook: the file disappears before the open.
+//
+// Example: the race hook removes the target and L5 denies.
 func TestVanishBetweenStatAndOpen(t *testing.T) {
 	h, binDir, host := openFixture(t)
 	testHookBeforeOpen = func() { os.Remove(h.path("eci-hook-helper")) }
@@ -460,6 +552,8 @@ func TestVanishBetweenStatAndOpen(t *testing.T) {
 }
 
 // The descriptor table of the loader test (checks 77-81) on verifyFD.
+//
+// Example: fd-closed gives reasonFDUnresolved.
 func TestVerifyFDTable(t *testing.T) {
 	h, binDir, host := openFixture(t)
 	euid := uint32(os.Geteuid())
@@ -515,6 +609,8 @@ func TestVerifyFDTable(t *testing.T) {
 }
 
 // L19: a read error while hashing. The CLI cannot reach it on a regular file it just opened.
+//
+// Example: hashFD(-1, 10) fails; hashFD(-1, 0) hashes nothing.
 func TestHashReadError(t *testing.T) {
 	if _, err := hashFD(-1, 10); err == nil {
 		t.Fatal("hash of a bad descriptor succeeded")
@@ -527,6 +623,8 @@ func TestHashReadError(t *testing.T) {
 
 // Differential check of the ELF rule: elfMatchesHost against the bash eci_runtime_binary_is_native on
 // the same files.
+//
+// Example: the osabi9 file is refused by both Go and eci_runtime_binary_is_native.
 func TestELFRuleMatchesBash(t *testing.T) {
 	h := newHome(t)
 	host, ok := hostHeader()
@@ -563,6 +661,8 @@ func TestELFRuleMatchesBash(t *testing.T) {
 }
 
 // The verifier finishes quickly on a FIFO swapped in after the path check (O_NONBLOCK open).
+//
+// Example: a FIFO swapped in after L4 is denied within 5 s.
 func TestFIFOAfterStatDoesNotHang(t *testing.T) {
 	h, binDir, host := openFixture(t)
 	testHookBeforeOpen = func() {
@@ -587,6 +687,8 @@ func TestFIFOAfterStatDoesNotHang(t *testing.T) {
 }
 
 // Every reason constant appears exactly once in the module's non-test sources.
+//
+// Example: a second quoted copy of a reason in any non-test file fails this test.
 func TestReasonStringsAppearOnce(t *testing.T) {
 	var src bytes.Buffer
 	files, _ := filepath.Glob("*.go")

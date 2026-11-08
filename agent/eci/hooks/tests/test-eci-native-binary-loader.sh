@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Loader test for hooks/lib/eci-native-binary.sh: the verified descriptor path (Linux),
-# the verified copy path (macOS), the Mach-O header test, the is_native check, the
-# darwin receipt check and the receipt-case table. Linux runs every section. macOS runs
-# the copy path and the portable sections. Sections that need the Linux descriptor path
-# (named descriptors, bash 4.1+) are skipped with a message under older shells.
-# On Linux every open check also runs through eci_runtime_verexec and bin/eci-verexec, and the deny text
-# must equal the bash loader's byte for byte; the verifier's own checks follow the bash sections.
+# Loader test for hooks/lib/eci-native-binary.sh: verification through bin/eci-verexec (Linux), the
+# verified copy path (macOS), the Mach-O header test, the is_native check, the darwin receipt check
+# and the receipt-case table. Every section runs under bash 3.2 and newer. On Linux each accept and
+# deny runs through eci_runtime_verify (eci-verexec --check) and both eci_runtime_verexec call forms,
+# and the deny text must equal the test's literal reason strings (deny_text) byte for byte; the
+# verifier's own checks follow. macOS runs the copy path and the portable sections.
 # Usage: test-eci-native-binary-loader.sh [path/to/eci-native-binary.sh]
 set -euo pipefail
 # Fixture directories must be private: a group-writable ancestor is denied by the loader, and

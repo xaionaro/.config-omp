@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// TestDescriptorReasonTable drives descriptorReason through every L9-L14 outcome in check order.
+//
+// Example: a 0777 file with three links gives reasonOutside (L10 before L13).
 func TestDescriptorReasonTable(t *testing.T) {
 	const euid = 1000
 	reg := uint32(modeRegular)
@@ -34,6 +37,9 @@ func TestDescriptorReasonTable(t *testing.T) {
 	}
 }
 
+// TestDirectoryTrusted covers the per-directory chain rule (L3).
+//
+// Example: a root-owned 01777 directory is untrusted.
 func TestDirectoryTrusted(t *testing.T) {
 	cases := []struct {
 		mode, uid uint32
@@ -53,6 +59,9 @@ func TestDirectoryTrusted(t *testing.T) {
 	}
 }
 
+// TestELFMatchesHost covers the L15 header rule against a synthetic arm64 host header.
+//
+// Example: patching byte 18 to 2 (SPARC) fails the match.
 func TestELFMatchesHost(t *testing.T) {
 	host := []byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0xb7, 0}
 	mut := func(i int, b byte) []byte { c := append([]byte(nil), host...); c[i] = b; return c }
@@ -82,6 +91,8 @@ func TestELFMatchesHost(t *testing.T) {
 }
 
 // The receipt table of test-eci-native-binary-loader.sh checks 48-52 and 69-76.
+//
+// Example: a receipt with uppercase hex gives reasonMalformed.
 func TestReceiptTable(t *testing.T) {
 	const name = "eci-hook-helper"
 	digest := strings.Repeat("ab", 32)
@@ -112,6 +123,9 @@ func TestReceiptTable(t *testing.T) {
 	}
 }
 
+// TestAllowedTarget pins the L1 allow-list to the three gate binaries.
+//
+// Example: eci-worker-git and eci-verexec itself are refused.
 func TestAllowedTarget(t *testing.T) {
 	for _, n := range []string{"eci-command-plan", "eci-safe-import", "eci-hook-helper"} {
 		if !allowedTarget(n) {
@@ -125,6 +139,9 @@ func TestAllowedTarget(t *testing.T) {
 	}
 }
 
+// TestDenialText pins the byte-exact deny line, $HOME literal and trailing newline included.
+//
+// Example: the reasonNotExecutable line for eci-hook-helper.
 func TestDenialText(t *testing.T) {
 	want := `ECI native gate binary eci-hook-helper is unavailable or unverified (is not executable); provision it with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry` + "\n"
 	if got := denialText("eci-hook-helper", reasonNotExecutable); got != want {
@@ -132,6 +149,9 @@ func TestDenialText(t *testing.T) {
 	}
 }
 
+// TestParseArgs covers the accepted command lines and every usage error.
+//
+// Example: "--deny-fd x n" is a usage error.
 func TestParseArgs(t *testing.T) {
 	inv, err := parseArgs([]string{"--check", "--deny-fd", "3", "eci-hook-helper"})
 	if err != nil || !inv.check || inv.denyFD != 3 || inv.name != "eci-hook-helper" || len(inv.args) != 0 {

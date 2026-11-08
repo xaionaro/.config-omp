@@ -1,8 +1,11 @@
 package main
 
-// Platform-neutral decisions, kept free of syscalls so the tests can drive every branch.
+// Platform-neutral decisions, kept free of syscalls so the tests can drive every branch. The L labels
+// are the check order in reasons.go.
 
 // allowedTarget mirrors eci_runtime_artifact_path: three gate binaries only.
+//
+// Example: allowedTarget("eci-hook-helper") is true; allowedTarget("eci-verexec") is false (L1).
 func allowedTarget(name string) bool {
 	switch name {
 	case "eci-command-plan", "eci-safe-import", "eci-hook-helper":
@@ -11,7 +14,9 @@ func allowedTarget(name string) bool {
 	return false
 }
 
-// nameIsSafe mirrors the loader's ^[a-z0-9-]+$ check.
+// nameIsSafe is the ^[a-z0-9-]+$ name rule (L17).
+//
+// Example: nameIsSafe("eci.hook") is false.
 func nameIsSafe(name string) bool {
 	if name == "" {
 		return false
@@ -25,22 +30,39 @@ func nameIsSafe(name string) bool {
 	return true
 }
 
+// st_mode file-type values (S_IFMT and three of its types), so the decisions need no syscall package.
 const (
+	// modeTypeMask is S_IFMT.
+	//
+	// Example: mode&modeTypeMask == modeRegular for a regular file.
 	modeTypeMask = 0o170000
-	modeRegular  = 0o100000
-	modeSymlink  = 0o120000
-	modeDir      = 0o040000
+	// modeRegular is S_IFREG.
+	//
+	// Example: 0o100755 is a regular file with mode 0755.
+	modeRegular = 0o100000
+	// modeSymlink is S_IFLNK.
+	//
+	// Example: directoryTrusted denies a chain component whose type is modeSymlink.
+	modeSymlink = 0o120000
+	// modeDir is S_IFDIR.
+	//
+	// Example: a directory descriptor (0o040755) denies L9 (reasonNotRegular).
+	modeDir = 0o040000
 )
 
 // fileFacts is what the descriptor checks read from fstat.
+//
+// Example: fileFacts{mode: 0o100755, nlink: 1, uid: 1000} accepts for euid 1000.
 type fileFacts struct {
 	mode  uint32 // st_mode, type and permission bits
 	nlink uint64
 	uid   uint32
 }
 
-// descriptorReason applies the loader's L9-L14 order to an fstat record; "" accepts.
+// descriptorReason applies the L9-L14 order (reasons.go) to an fstat record; "" accepts.
 // modeReadable is false only in tests: the native mode is never unparsable text (L12).
+//
+// Example: a regular 0775 file with one link, owned by euid, gives reasonWritable.
 func descriptorReason(f fileFacts, euid uint32, modeReadable bool) string {
 	switch {
 	case f.mode&modeTypeMask != modeRegular:
@@ -61,6 +83,8 @@ func descriptorReason(f fileFacts, euid uint32, modeReadable bool) string {
 
 // directoryTrusted is the chain rule for one directory: owned by euid or root, not group/other-writable,
 // and not a symlink.
+//
+// Example: directoryTrusted(0o041777, 0, 1000) is false: /tmp is other-writable.
 func directoryTrusted(mode, uid, euid uint32) bool {
 	if mode&modeTypeMask == modeSymlink {
 		return false
@@ -70,6 +94,8 @@ func directoryTrusted(mode, uid, euid uint32) bool {
 
 // elfMatchesHost is the ELF rule of eci_runtime_binary_is_native: 20 header bytes, ELF magic, class, byte order
 // and machine equal to the host's, and OS ABI SYSV or Linux.
+//
+// Example: an x86-64 header on an arm64 host is false (bytes 18-19 differ).
 func elfMatchesHost(candidate, host []byte) bool {
 	if len(candidate) < 20 || len(host) < 20 {
 		return false
@@ -87,6 +113,8 @@ func elfMatchesHost(candidate, host []byte) bool {
 
 // receiptDigest returns the hex digest from the receipt's first line when it is exactly
 // "<64 lowercase hex>  <name>". A NUL anywhere in the line is malformed.
+//
+// Example: receiptDigest("eci-hook-helper", []byte(hex64+"  eci-hook-helper\n")) returns hex64, true.
 func receiptDigest(name string, data []byte) (string, bool) {
 	line := data
 	for i, c := range data {
@@ -110,6 +138,8 @@ func receiptDigest(name string, data []byte) (string, bool) {
 }
 
 // receiptReason applies L17-L18 then L20 given the computed digest; "" accepts. Hashing (L19) happens between.
+//
+// Example: a valid receipt whose digest differs from the file's gives reasonMismatch.
 func receiptReason(name string, data []byte, digest string) string {
 	if !nameIsSafe(name) {
 		return reasonNameNotAllowed

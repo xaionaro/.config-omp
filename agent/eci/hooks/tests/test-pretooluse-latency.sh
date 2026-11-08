@@ -6,6 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 TMP_BASE="$(eci_realpath_canonical "${ECI_TMPDIR:-${HOME:?}/tmp}")"
 TMP_ROOT="$(mktemp -d "$TMP_BASE/eci-pretooluse-latency.XXXXXX")"
+# Set before anything else can fail, so a failed build or copy still removes TMP_ROOT.
+trap 'rm -f -- "${worker_transcript:-}" "${helper_hardlink:-}"; chmod -R u+w -- "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 # Each callback runs against a private runtime copy under a real fixture HOME,
 # so no hook, ledger, or transcript write reaches the live ~/.omp/agent/eci or ~/tmp.
 SOURCE_ROOT="$ROOT"
@@ -31,7 +33,10 @@ GOPATH="${GOPATH:-$(go env GOPATH)}"
 GOMODCACHE="${GOMODCACHE:-$(go env GOMODCACHE)}"
 GOCACHE="${GOCACHE:-$(go env GOCACHE)}"
 export GOPATH GOMODCACHE GOCACHE
-HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode eci-hook-helper eci-verexec
+# eci-command-gate-mode and eci-verexec are Linux-only (build-native-binaries.sh refuses them elsewhere).
+native_names=(eci-command-plan eci-hook-helper)
+if [ "$(uname -s)" = Linux ]; then native_names+=(eci-command-gate-mode eci-verexec); fi
+HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" "${native_names[@]}"
 proof_root="$TMP_ROOT/proof"
 session_id="t00-session"
 session_dir="$proof_root/$session_id"
@@ -46,7 +51,6 @@ export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"
 export XDG_STATE_HOME="$TMP_ROOT/xdg-state"
 mkdir -p "$session_dir" "$(dirname -- "$status_file")" "$XDG_CONFIG_HOME/eci" "$(dirname -- "$main_transcript")"
 chmod 700 "$XDG_CONFIG_HOME" "$XDG_CONFIG_HOME/eci"
-trap 'rm -f -- "$worker_transcript" "$helper_hardlink"; chmod -R u+w -- "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 # HOME is a real fixture directory whose .omp/agent/eci is the private runtime copy, so
 # the provenance guard sees a real final $HOME/.omp/agent/eci directory (no symlink).
 ln -- "$ROOT/hooks/lib/eci-environment-command.sh" "$helper_hardlink"
@@ -56,6 +60,14 @@ chmod 755 "$altered_mode"
 fail() {
   printf 'ECI PreToolUse latency probe: %s\n' "$1" >&2
   exit 1
+}
+
+# Milliseconds since the epoch from bash's $EPOCHREALTIME (bash 5.0+, any OS); BSD date has no %N.
+# The digits are seconds followed by exactly six microsecond digits, whatever the locale's separator.
+[ -n "${EPOCHREALTIME:-}" ] || fail "EPOCHREALTIME is unset: the probe needs bash 5.0 or newer for its millisecond clock"
+now_ms() {
+  local t="${EPOCHREALTIME//[!0-9]/}"
+  printf '%s\n' "$(( 10#$t / 1000 ))"
 }
 
 [ ! -L "$TMP_ROOT/home/.omp/agent/eci" ] ||
@@ -176,10 +188,18 @@ run_sample() {
   [ -n "$input" ] || fail "missing fixture input for matcher=$matcher role=$role scenario=$scenario"
   # The runner reads session_id and cwd from the payload; resolve them before timing.
   IFS=$'\t' read -r payload_session payload_cwd < <(jq -r '[.session_id, .cwd] | @tsv' <<<"$input")
-  started="$(date +%s%N)"
-  printf '%s' "$input" | run_callback "$callback" "$role" "$payload_session" "$payload_cwd" >"$output" 2>"$error_output" || status=$?
-  ended="$(date +%s%N)"
-  elapsed=$(( (ended - started) / 1000000 ))
+  # The runner's call ends when the callback's stdout and stderr pipes close (child.on("close")), not when
+  # the process exits: a background child holding either open delays it. Both streams go through pipes to
+  # cat, and the end stamp is taken after both cats have read EOF; the status comes back through a file.
+  rm -f -- "$TMP_ROOT/status"
+  started="$(now_ms)"
+  { { { local callback_rc=0
+        printf '%s' "$input" | run_callback "$callback" "$role" "$payload_session" "$payload_cwd" || callback_rc=$?
+        printf '%s' "$callback_rc" >"$TMP_ROOT/status"; } 2>&1 1>&3 3>&- | cat >"$error_output"
+    } 3>&1 | cat >"$output"; } || true
+  ended="$(now_ms)"
+  status="$(cat -- "$TMP_ROOT/status" 2>/dev/null || printf 255)"
+  elapsed=$(( ended - started ))
   if jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$output" >/dev/null 2>&1; then
     outcome=deny
   fi

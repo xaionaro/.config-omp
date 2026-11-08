@@ -6,7 +6,7 @@
 # receipt written by hooks/build-native-binaries.sh. Ancestor directories must be owned by the current
 # user or root and not group/other-writable. Callers use eci_runtime_verexec (verify, then run) or
 # eci_runtime_verify (verify only). On Linux the static bin/eci-verexec applies these checks natively
-# and execveat()s the verified descriptor; there is no bash verifier on Linux. macOS has no such call,
+# and execs the verified descriptor (/proc/self/fd/N); there is no bash verifier on Linux. macOS has no /proc,
 # so eci_runtime_open_verified verifies in bash and executes a private copy made through a descriptor.
 
 # The host OS and host ELF header are set once per shell process. validate-bash.sh sources this file and then
@@ -76,8 +76,8 @@ eci_runtime_binary_is_native() {
 # Run a verified gate binary: eci_runtime_verexec NAME DENY_FILE|- [-- ARGS...]. The binary runs as a
 # child with this shell's stdin, stdout and stderr; the status is the binary's. A denial is status 125
 # with ECI_RUNTIME_DENY_REASON set; a binary that itself exits 125 leaves the reason empty.
-# Linux: bin/eci-verexec, after a self-check of its own image, verifies the target and execveat()s the
-# verified descriptor; it writes the denial on descriptor 3, which goes to DENY_FILE, or with "-" is
+# Linux: bin/eci-verexec, after a self-check of its own image, verifies the target and execs the
+# verified descriptor through /proc/self/fd/N; it writes the denial on descriptor 3, which goes to DENY_FILE, or with "-" is
 # captured by a command substitution while stdout passes through on descriptor 4. The shell holds no
 # descriptor afterwards. Only builtin tests guard the verifier itself: it lives in the bin directory it
 # checks, as this file lives in the hooks directory, and is trusted the same way.
