@@ -156,8 +156,8 @@ An admitted identity remains owned after detachment or reparenting. Launch-only
 subreaper adoption is unavailable to this driver.
 
 Before initial root TERM, one finite host proc snapshot is acquired parent-first
-in finite batches. Retirement starts when the pass completes, so `-grace` does
-not include discovery. `-deadline` is
+in finite batches, with no observation pause between batches. Retirement starts
+when the pass completes, so `-grace` does not include discovery. `-deadline` is
 measured from guard start; setup and binding use it but are not cut short by it.
 During the pass, reaching it or an interruption starts retirement while TERM
 stays held, and a discovery or acquisition error starts retirement and ends the

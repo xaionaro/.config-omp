@@ -1030,6 +1030,34 @@ func TestSyntheticExternalRetirementStartsAtPassCompletion(t *testing.T) {
 	}
 }
 
+// TestSyntheticExternalPreparationNeverPauses spends no observation interval inside the finite pass.
+//
+// Example: a snapshot of three scan budgets reaches root TERM at the binding instant of a still clock.
+func TestSyntheticExternalPreparationNeverPauses(t *testing.T) {
+	g, k := newDriverControl()
+	configureDriverExternalFamily(g, k, 5, 3*scanBudget)
+	if !g.initialCancel() {
+		t.Fatal("valid root binding rejected")
+	}
+	bound := k.clock.now
+	g.drive()
+	receipt, code := g.finalize()
+	if code != 0 || !receipt.HostChildrenSettled || k.hintCalls <= 2*scanBudget {
+		t.Fatalf("multi-batch pass did not settle: code=%d hints=%d receipt=%+v", code, k.hintCalls, receipt)
+	}
+	for _, operation := range k.operations {
+		if operation == "send" {
+			break
+		}
+		if operation == "pause" {
+			t.Fatalf("pause before root TERM: operations=%v", k.operations)
+		}
+	}
+	if !k.sentAt[driverSignal{target: 24101, signal: syscall.SIGTERM}].Equal(bound) {
+		t.Fatalf("root TERM at %v, binding at %v", k.sentAt[driverSignal{target: 24101, signal: syscall.SIGTERM}], bound)
+	}
+}
+
 // TestSyntheticExternalDeadlineBoundsPreparation starts retirement at -deadline and keeps the KILL bound.
 //
 // Example: a pass finishing within grace of the deadline TERMs the whole family; one crossing grace gets TERM and KILL together.

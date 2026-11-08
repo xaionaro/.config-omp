@@ -1382,10 +1382,7 @@ func (g *guard) drive() {
 		if g.preparation != nil {
 			g.prepareFamily()
 			if g.preparation != nil {
-				// Held TERM never advances appliedStage; check KILL before yielding.
-				if !g.preparationBoundary() {
-					g.clock.Pause(observationInterval)
-				}
+				// The snapshot is finite and prepareFamily checks the clock per item; no observation pause.
 				continue
 			}
 		}
