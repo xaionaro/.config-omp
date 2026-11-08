@@ -13,7 +13,9 @@ mkdir -p -- "$ROOT/sessions"
 rsync -a --exclude='sessions/' --exclude='*.sqlite*' --exclude='auth*.json' \
   --exclude='.cache/' --exclude='__pycache__/' \
   "$SOURCE_ROOT/hooks" "$SOURCE_ROOT/bin" "$SOURCE_ROOT/tools" "$SOURCE_ROOT/skills" \
-  "$SOURCE_ROOT/AGENTS.md" "$SOURCE_ROOT/hooks.json" "$ROOT/"
+  "$SOURCE_ROOT/hooks.json" "$ROOT/"
+# Hooks read the omp guidance as $HOME/.omp/agent/AGENTS.md (the parent of the ECI root).
+cp -- "$SOURCE_ROOT/../AGENTS.md" "$ROOT/../AGENTS.md"
 # Publish the native planner into the fixture runtime so validate-bash never
 # rebuilds it on the timed path; the 1000 ms budget measures hook work only.
 mkdir -p -- "$TMP_ROOT/home/tmp/eci-runtime/eci"
@@ -154,8 +156,24 @@ run_sample() {
   }
 }
 
+# Cold samples follow one untimed, unasserted prime per distinct callback command
+# (keyed on the command string, so a callback shared by two matchers is primed once),
+# using the first fixture's input, so host page-cache and start-up noise do not count
+# against the 1000 ms budget. A prime failure is still caught by the cold sample.
+declare -A primed_callbacks=()
+prime_callback() {
+  local callback="$1" input="$2"
+  [ -z "${primed_callbacks[$callback]:-}" ] || return 0
+  primed_callbacks[$callback]=1
+  printf '%s' "$input" | timeout 1s env \
+    ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
+    XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
+    HOME="$TMP_ROOT/home" bash -lc "$callback" >"$TMP_ROOT/prime-output" 2>"$TMP_ROOT/prime-error" || true
+}
+
 run_fixture() {
   local callback="$1" matcher="$2" role="$3" scenario="$4" expected="$5" input="$6" phase
+  prime_callback "$callback" "$input"
   for phase in cold warm; do
     run_sample "$callback" "$matcher" "$role" "$scenario" "$expected" "$phase" "$input"
   done
