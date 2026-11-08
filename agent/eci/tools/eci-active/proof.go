@@ -3,12 +3,15 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -141,17 +144,59 @@ func sessionStatePath(sid, name string) (string, error) {
 	return path, nil
 }
 
-// acquireLock takes the non-blocking ECI mutation lock. The lock is held until
-// the returned file is closed.
-func acquireLock() (*os.File, error) {
+// proofRootReady applies the proof-root checks every state mutation requires,
+// including mutations whose state lives outside the proof root.
+func proofRootReady() error {
 	if err := proofRootSafe(); err != nil {
-		return nil, fmt.Errorf("ECI proof root is unsafe; refusing state mutation.")
+		return fmt.Errorf("ECI proof root is unsafe; refusing state mutation.")
 	}
-	root := proofRoot()
-	if !isDir(root) {
-		return nil, fmt.Errorf("ECI proof root is unavailable; refusing state mutation.")
+	if !isDir(proofRoot()) {
+		return fmt.Errorf("ECI proof root is unavailable; refusing state mutation.")
 	}
-	lockPath := filepath.Join(root, ".eci-active.lock")
+	return nil
+}
+
+// lockWait is the bounded wait for every ECI lock: ECI_LOCK_WAIT_SECONDS
+// (0..60), default 5 s. 0 means one attempt and no wait.
+func lockWait() time.Duration {
+	if n, err := strconv.Atoi(os.Getenv("ECI_LOCK_WAIT_SECONDS")); err == nil && n >= 0 && n <= 60 {
+		return time.Duration(n) * time.Second
+	}
+	return 5 * time.Second
+}
+
+// flockWait polls LOCK_EX|LOCK_NB until it succeeds or timeout passes. Polling
+// keeps "closing the descriptor releases the lock" and retries EINTR.
+func flockWait(f *os.File, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(25*time.Millisecond + rand.N(25*time.Millisecond))
+	}
+}
+
+// lockBusy is the caller-neutral timeout message shared by every ECI lock.
+// With ECI_LOCK_WAIT_SECONDS=0 it reads "after waiting 0s": one attempt failed.
+func lockBusy(wait time.Duration, lockPath string) error {
+	return fmt.Errorf("ECI mutation lock is busy after waiting %ds; refusing state mutation: %s", int(wait/time.Second), lockPath)
+}
+
+// acquireLock takes the non-blocking per-user ECI mutation lock. The lock is
+// held until the returned file is closed.
+func acquireLock() (*os.File, error) {
+	if err := proofRootReady(); err != nil {
+		return nil, err
+	}
+	lockPath := filepath.Join(proofRoot(), ".eci-active.lock")
 	if isSymlink(lockPath) || (exists(lockPath) && !isRegularNoFollow(lockPath)) {
 		return nil, fmt.Errorf("ECI mutation lock is unsafe: %s", lockPath)
 	}
@@ -162,6 +207,33 @@ func acquireLock() (*os.File, error) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("ECI mutation lock is busy; refusing state mutation: %s", lockPath)
+	}
+	return f, nil
+}
+
+// acquireSessionLock takes <dir>/.eci-session.lock, the lock for state that
+// lives in that session directory, with the bounded wait. The lock is held
+// until the returned file is closed.
+//   - Order: a caller that needs both takes the per-user lock first.
+//   - Never call appendLedgerEntry while holding this lock: a second flock on
+//     the same file in the same process waits against itself.
+//   - Known limit: appendLedgerEntry and requirementAssignment hold it while
+//     bin/status-report or bin/eci-requirement-assignment run. A cold build of
+//     either tool takes about a minute, so a parallel same-session mutation
+//     times out during it instead of serializing.
+func acquireSessionLock(dir string) (*os.File, error) {
+	lockPath := filepath.Join(dir, ".eci-session.lock")
+	if isSymlink(lockPath) || (exists(lockPath) && !isRegularNoFollow(lockPath)) {
+		return nil, fmt.Errorf("ECI session lock is unsafe: %s", lockPath)
+	}
+	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("ECI session lock is unavailable: %s", lockPath)
+	}
+	wait := lockWait()
+	if err := flockWait(f, wait); err != nil {
+		f.Close()
+		return nil, lockBusy(wait, lockPath)
 	}
 	return f, nil
 }

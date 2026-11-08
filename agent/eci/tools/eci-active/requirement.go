@@ -41,7 +41,10 @@ func requirementAssignment(args []string) error {
 	if err != nil {
 		return err
 	}
-	lock, err := acquireLock()
+	if err := proofRootReady(); err != nil {
+		return err
+	}
+	lock, err := acquireSessionLock(ledgerDir)
 	if err != nil {
 		return err
 	}

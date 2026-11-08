@@ -353,7 +353,10 @@ func appendLedgerEntry(raw string, announce bool) error {
 	if err != nil {
 		return err
 	}
-	lock, err := acquireLock()
+	if err := proofRootReady(); err != nil {
+		return err
+	}
+	lock, err := acquireSessionLock(ledgerDir)
 	if err != nil {
 		return err
 	}
@@ -445,7 +448,10 @@ func statusRefresh(args []string) error {
 	if err != nil {
 		return exitError{code: 1}
 	}
-	lock, err := acquireLock()
+	if err := proofRootReady(); err != nil {
+		return err
+	}
+	lock, err := acquireSessionLock(ledgerDir)
 	if err != nil {
 		return err
 	}

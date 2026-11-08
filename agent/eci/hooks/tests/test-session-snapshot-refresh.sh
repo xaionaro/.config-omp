@@ -194,7 +194,7 @@ link_fixture_runtime() {
   [ -e "$TMP_ROOT/home/.omp/agent/eci" ] || ln -s "$ROOT" "$TMP_ROOT/home/.omp/agent/eci"
 }
 
-test_eci_active_mutations_fail_closed_when_lock_is_busy() {
+test_eci_active_ledger_append_waits_then_fails_on_busy_session_lock() {
   local proof_root="$TMP_ROOT/mutation-lock-proof" session_dir log_path lock_fd entry
   session_dir="$proof_root/t00-session"
   mkdir -p "$session_dir" "$TMP_ROOT/home/tmp" "$TMP_ROOT/home/.agent/context/sessions/t00-session"
@@ -206,20 +206,24 @@ test_eci_active_mutations_fail_closed_when_lock_is_busy() {
   printf '%s\n' '{"event":"checkpoint","summary":"existing entry"}' >"$log_path"
   cp "$log_path" "$TMP_ROOT/log-before-lock"
   # The ledger commands run with HOME=$TMP_ROOT/home, so the launcher builds the tool under
-  # that HOME. Build it before the lock is held: a cold build prints a notice on stderr, and
-  # the exact comparison below would capture it.
+  # that HOME. Build it before the lock is held, so the timed run below measures
+  # only the lock wait.
   link_fixture_runtime
   HOME="$TMP_ROOT/home" "$ROOT/bin/eci-active" status >/dev/null 2>&1
-  exec {lock_fd}>>"$proof_root/.eci-active.lock"
+  # The ledger lives in the context session dir and is guarded there; the per-user
+  # lock no longer applies.
+  local session_lock="$TMP_ROOT/home/.agent/context/sessions/t00-session/.eci-session.lock"
+  exec {lock_fd}>>"$session_lock"
   eci_file_lock_acquire_fd "$lock_fd" nonblocking
 
-  if HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session \
+  local started=$SECONDS
+  if HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session ECI_LOCK_WAIT_SECONDS=1 \
       "$ROOT/bin/eci-active" ledger-append --json "$entry" >"$TMP_ROOT/append-lock.out" 2>"$TMP_ROOT/append-lock.err"; then
     return 1
   fi
-  printf 'ECI mutation lock is busy; refusing state mutation: %s/.eci-active.lock\n' "$(cd "$proof_root" && pwd -P)" \
-    >"$TMP_ROOT/expected-lock.err"
-  cmp "$TMP_ROOT/expected-lock.err" "$TMP_ROOT/append-lock.err"
+  # It waited, then refused, naming the held lock.
+  [ $((SECONDS - started)) -ge 1 ]
+  grep -qF "$session_lock" "$TMP_ROOT/append-lock.err"
   cmp "$TMP_ROOT/log-before-lock" "$log_path"
   eci_file_lock_release_fd "$lock_fd"
   HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session \
@@ -447,7 +451,7 @@ test_source_checkout_provisions_native_tools_into_bin() {
 }
 
 if [ "${1:-}" = --lock-paths-only ]; then
-  test_eci_active_mutations_fail_closed_when_lock_is_busy
+  test_eci_active_ledger_append_waits_then_fails_on_busy_session_lock
   test_session_start_skips_pruning_when_mutation_lock_is_busy
   printf '%s\n' 'SessionStart and proof-state lock paths: PASS'
   exit 0
@@ -467,7 +471,7 @@ test_session_start_rejects_malformed_types
 test_session_start_rejects_root_and_session_symlinks
 test_baseline_uses_fixed_git_and_resolves_head
 test_baseline_pair_recovers_after_publication_boundary
-test_eci_active_mutations_fail_closed_when_lock_is_busy
+test_eci_active_ledger_append_waits_then_fails_on_busy_session_lock
 test_eci_active_ledger_append_denies_marker_naming_another_cwd
 test_session_start_skips_pruning_when_mutation_lock_is_busy
 test_old_uuid_session_with_active_eci_marker_survives_cleanup
