@@ -7195,7 +7195,7 @@ func operationForCode(code DiagnosticCode) string {
 		return "worker-git-ownership"
 	case code == CodeGitExecutionContextDenied:
 		return "git-execution-context"
-	case code == CodeControlOwnerRequired, code == CodeControlIdentityDenied, code == CodePlanLiveControlDenied:
+	case code == CodeControlOwnerRequired, code == CodeControlIdentityDenied:
 		return "worker-control"
 	case code == CodeBroadDestructiveDenied:
 		return "broad-destructive"
