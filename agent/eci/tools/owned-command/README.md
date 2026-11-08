@@ -177,6 +177,10 @@ ENOENT alone is insufficient. Prebinding absence requires native pidfd_open ESRC
 without an earlier mismatch/error and the native settlement predicate. Bound
 completion uses retained pidfds independently of numeric-path replacements.
 Current descriptors close after confirmed exit; immutable receipt history remains.
+Settlement takes two fresh custody observations, each ending in an actual ECHILD,
+with no custody change between them. When the first comes at or after retirement
+plus twice `-grace`, that final attempt takes the second at once, without a
+pause; if it is incomplete, the result is unsettled with status 125.
 
 ## Status and receipts
 

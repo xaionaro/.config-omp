@@ -1372,7 +1372,7 @@ func (g *guard) signalOwned(
 //
 // Example: settlement repolls known custody and requires another actual ECHILD without rescanning the host.
 func (g *guard) drive() {
-	verifying := false
+	verifying, confirming := false, false
 	var verifiedGeneration uint64
 	for {
 		g.boundary()
@@ -1404,6 +1404,11 @@ func (g *guard) drive() {
 			}
 			// A second fresh custody observation and actual ECHILD confirm static-family settlement.
 			verifying, verifiedGeneration = true, g.custodyGeneration
+			if final && !confirming {
+				// A first observation at the final boundary gets one immediate confirming pass, never another pause.
+				confirming = true
+				continue
+			}
 		}
 		if final {
 			for _, value := range g.current {

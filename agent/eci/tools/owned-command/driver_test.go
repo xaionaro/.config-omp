@@ -1124,3 +1124,34 @@ func TestSyntheticExternalSignalDuringPreparationStartsRetirement(t *testing.T) 
 		}
 	}
 }
+
+// TestSyntheticFinalBoundarySettlementConfirmedOnce takes the second observation at once when the first lands at Final.
+//
+// Example: a guard stalled past twice grace still settles a dead root with status 0 after one confirming pass.
+func TestSyntheticFinalBoundarySettlementConfirmedOnce(t *testing.T) {
+	for _, confirmed := range []bool{true, false} {
+		t.Run(fmt.Sprintf("confirmed=%t", confirmed), func(t *testing.T) {
+			g, k := newDriverControl()
+			configureDriverExternalFamily(g, k, 0, 0)
+			k.waits = []driverWait{{result: nativeResult{Error: unix.ECHILD}, advance: 2 * g.grace}}
+			if !confirmed {
+				k.waits = append(k.waits, driverWait{result: nativeResult{Error: unix.ECHILD}}, driverWait{result: nativeResult{PID: 0}})
+			}
+			if !g.initialCancel() {
+				t.Fatal("valid root binding rejected")
+			}
+			g.drive()
+			receipt, code := g.finalize()
+			if k.waitCalls != 3 || k.clock.pauses != 1 {
+				t.Fatalf("final attempt not bounded to one confirming pass: waits=%d pauses=%d", k.waitCalls, k.clock.pauses)
+			}
+			unsettled := strings.Contains(strings.Join(receipt.Errors, "\n"), "host children unsettled")
+			if confirmed && (code != 0 || !receipt.HostChildrenSettled || len(receipt.Errors) != 0 || len(receipt.Survivors) != 0) {
+				t.Fatalf("first settlement seen at Final was not confirmed: code=%d receipt=%+v", code, receipt)
+			}
+			if !confirmed && (code != guardFailure || receipt.HostChildrenSettled || !unsettled) {
+				t.Fatalf("incomplete confirming drain settled: code=%d receipt=%+v", code, receipt)
+			}
+		})
+	}
+}
