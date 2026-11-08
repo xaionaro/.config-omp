@@ -4,6 +4,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$ROOT/hooks/tests/require-go.sh"
 cd "$ROOT"
 FIXTURES="$ROOT/hooks/tests/fixtures"
 if ! command -v strace >/dev/null 2>&1; then
@@ -1518,7 +1519,7 @@ test_stop_reviewer_timeout_and_hook_wiring() {
 }
 
 test_admission_inputs_are_bounded() {
-  (cd "$ROOT/hooks/lib/eci-hook-helper-go" && /usr/lib/go-1.26/bin/go test -count=1 ./... >/dev/null)
+  (cd "$ROOT/hooks/lib/eci-hook-helper-go" && "$ECI_TEST_GO" test -count=1 ./... >/dev/null)
 }
 
 test_hash_fails_open_without_sha256_or_python() {
@@ -3212,7 +3213,7 @@ run_case "audit sync checker detects drift" \
 run_case "audit sync checker fails when synced files are missing" \
   test_audit_sync_checker_fails_when_synced_file_missing
 run_case "port coverage manifest covers pinned units" \
-  /usr/lib/go-1.26/bin/go -C "$ROOT/tools/port-coverage-check" run . \
+  "$ECI_TEST_GO" -C "$ROOT/tools/port-coverage-check" run . \
   -manifest "$ROOT/hooks/tests/port-coverage.tsv" -root "$ROOT/../.."
 
 note "SUMMARY pass=$PASS_COUNT fail=$FAIL_COUNT xfail=$XFAIL_COUNT xpass=$XPASS_COUNT todo=$TODO_COUNT"

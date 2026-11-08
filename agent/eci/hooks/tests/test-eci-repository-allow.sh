@@ -5,6 +5,7 @@ set -euo pipefail
 umask 077
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$SOURCE_ROOT/hooks/tests/require-go.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-repository-allow.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -20,8 +21,8 @@ cp -- "$SOURCE_ROOT/bin/eci-active" "$RUNTIME_ROOT/bin/eci-active"
 # their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
 # The Go caches stay on the caller's paths so no read-only module cache lands
 # under TMP_ROOT.
-GOMODCACHE="$(/usr/lib/go-1.26/bin/go env GOMODCACHE)" GOCACHE="$(/usr/lib/go-1.26/bin/go env GOCACHE)" \
-  PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
+GOMODCACHE="$("$ECI_TEST_GO" env GOMODCACHE)" GOCACHE="$("$ECI_TEST_GO" env GOCACHE)" \
+  HOME="$HOME_ROOT" bash "$RUNTIME_ROOT/hooks/build-native-binaries.sh" \
   eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"

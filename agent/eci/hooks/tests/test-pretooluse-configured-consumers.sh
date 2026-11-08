@@ -5,6 +5,7 @@ set -Eeuo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$ROOT/hooks/tests/require-go.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-configured-pretooluse.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null || true; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 
@@ -52,8 +53,8 @@ printf '%s\n' \
 # ($HOME/.omp/agent/eci/bin and their .sha256 receipts), in the fixture HOME only.
 # The Go caches stay on the caller's paths so no read-only module cache lands
 # under TMP_ROOT.
-GOMODCACHE="$(/usr/lib/go-1.26/bin/go env GOMODCACHE)" GOCACHE="$(/usr/lib/go-1.26/bin/go env GOCACHE)" \
-  PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$FIXTURE_HOME" bash "$FIXTURE_ROOT/hooks/build-native-binaries.sh" \
+GOMODCACHE="$("$ECI_TEST_GO" env GOMODCACHE)" GOCACHE="$("$ECI_TEST_GO" env GOCACHE)" \
+  HOME="$FIXTURE_HOME" bash "$FIXTURE_ROOT/hooks/build-native-binaries.sh" \
   eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 # Build the canonical fixture planner through the ordinary private publisher,
 # then remove the Kimi fixture's local planner directory. The configured Kimi

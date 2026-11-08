@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 SOURCE_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+. "$SOURCE_ROOT/hooks/tests/require-go.sh"
 TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-normal-git-admission.XXXXXX")"
 TMP_ROOT="$(realpath -e -- "$TMP_ROOT")"
 trap 'chmod -R -- u+w "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
@@ -22,7 +23,7 @@ cp -- "$SOURCE_ROOT/bin/eci-runtime-sync" "$RUNTIME_ROOT/bin/eci-runtime-sync"
 PLANNER_DIR="$RUNTIME_ROOT/hooks/lib/eci-command-plan-go"
 (
   cd -- "$PLANNER_DIR"
-  /usr/lib/go-1.26/bin/go build -trimpath -buildvcs=false -o eci-command-plan .
+  "$ECI_TEST_GO" build -trimpath -buildvcs=false -o eci-command-plan .
 )
 chmod 755 -- "$PLANNER_DIR/eci-command-plan"
 planner_go_mod_sha="$(sha256sum -- "$PLANNER_DIR/go.mod" | awk '{print $1}')"
@@ -52,7 +53,7 @@ chmod 600 -- "$PLANNER_DIR/.eci-command-plan.provenance"
 cp -- "$PLANNER_DIR/eci-command-plan" "$RUNTIME_ROOT/bin/eci-command-plan"
 (
   cd -- "$RUNTIME_ROOT/hooks/lib/eci-safe-import-go"
-  /usr/lib/go-1.26/bin/go build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-safe-import" .
+  "$ECI_TEST_GO" build -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-safe-import" .
 )
 for planner_tool in eci-command-plan eci-safe-import; do
   printf '%s  %s\n' "$(sha256sum -- "$RUNTIME_ROOT/bin/$planner_tool" | awk '{print $1}')" "$planner_tool" >"$RUNTIME_ROOT/bin/$planner_tool.sha256"
@@ -61,7 +62,7 @@ done
 # Build the disposable runtime from its copied sources. Clean archives contain
 # neither ignored executables nor optional planner provenance.
 source "$RUNTIME_ROOT/hooks/lib/eci-runtime-sync.sh"
-PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
+HOME="$HOME_ROOT" eci_runtime_build_missing "$RUNTIME_ROOT" \
   eci-command-gate-mode eci-command-plan eci-safe-import eci-worker-git
 source_hook_sha="$(sha256sum -- "$RUNTIME_ROOT/hooks/validate-bash.sh" | awk '{print $1}')"
 if cmp -s -- <(head -n 9 -- "$RUNTIME_ROOT/hooks/validate-bash.sh") <(cat <<'BRIDGE'
@@ -1517,7 +1518,7 @@ run_effect_aware_git_target() {
   before_branch="$(git -C "$REPO" symbolic-ref HEAD)"
   (
     cd -- "$SOURCE_ROOT/hooks/lib/eci-worker-git-go"
-    env GOWORK=off CGO_ENABLED=0 /usr/lib/go-1.26/bin/go build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
+    env GOWORK=off CGO_ENABLED=0 "$ECI_TEST_GO" build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
   )
   assert_worker_git_route_denied 'git add -- file.txt' add || return 1
   assert_allowed 'git diff -- file.txt' worker || return 1

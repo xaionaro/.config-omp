@@ -5,8 +5,9 @@ set -Eeuo pipefail
 umask 077
 # Gate-binary builds under fixture HOMEs keep the Go caches on the caller's
 # paths, so no read-only module cache lands under TMP_ROOT.
-classifier_gomodcache="$(/usr/lib/go-1.26/bin/go env GOMODCACHE)"
-classifier_gocache="$(/usr/lib/go-1.26/bin/go env GOCACHE)"
+. "$(dirname -- "${BASH_SOURCE[0]}")/require-go.sh"
+classifier_gomodcache="$("$ECI_TEST_GO" env GOMODCACHE)"
+classifier_gocache="$("$ECI_TEST_GO" env GOCACHE)"
 trap 'status=$?; printf "classifier failure: line=%s status=%s command=%q\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Pass this spelling to the hook literally.  It is deliberately not $ROOT:
@@ -67,7 +68,7 @@ if [[ "$kimi_source_root" = /* ]] && [ -d "$kimi_source_root" ] &&
   # Peer callbacks run with HOME at the Kimi companion home; provision the gate
   # binaries the hook verifies there too, in this fixture only.
   GOMODCACHE="$classifier_gomodcache" GOCACHE="$classifier_gocache" \
-    PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$kimi_home" bash "$ROOT/hooks/build-native-binaries.sh" \
+    HOME="$kimi_home" bash "$ROOT/hooks/build-native-binaries.sh" \
     eci-command-plan eci-safe-import eci-hook-helper >/dev/null
   # Peer callbacks are coordinator calls; name a main transcript under that HOME.
   mkdir -p -- "$kimi_home/.omp/agent/sessions/-classifier-coordinator-"
@@ -179,7 +180,7 @@ chmod +x "$subagent_eci_home/bin/eci-active"
 # Provision the gate binaries the hook verifies under the worker HOME
 # ($HOME/.omp/agent/eci/bin and their .sha256 receipts), in this fixture only.
 GOMODCACHE="$classifier_gomodcache" GOCACHE="$classifier_gocache" \
-  PATH="/usr/lib/go-1.26/bin:$PATH" HOME="$subagent_home" bash "$ROOT/hooks/build-native-binaries.sh" \
+  HOME="$subagent_home" bash "$ROOT/hooks/build-native-binaries.sh" \
   eci-command-plan eci-safe-import eci-hook-helper >/dev/null
 # Callbacks that switch HOME verify the gate binaries under that HOME; copy the
 # built binaries and their receipts there. Coordinator callbacks under such a
