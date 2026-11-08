@@ -2402,8 +2402,13 @@ eci_hook_is_omp_transcript() {
 }
 
 # Prints main, subagent, or unknown for an omp transcript. Every failure is unknown.
+# Only the records among the first 64 KiB and 16 lines are classified, as in the
+# eci-command-plan hook: a final segment without a newline is not a record, a torn
+# 256-byte title slot on line zero is skipped, and any other unparsable record is
+# unknown. With no session header among the records and more file beyond them, the
+# header is unreadable, so the transcript is unknown.
 eci_hook_omp_transcript_status() {
-  local path="$1" real_root real_path rel slashes depth grc candidates signal
+  local path="$1" real_root real_path rel slashes depth size status
 
   [ ! -L "$path" ] && [ -f "$path" ] || { printf 'unknown\n'; return 0; }
   real_root="$(realpath -e -- "$(eci_hook_omp_sessions_root)" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
@@ -2413,22 +2418,23 @@ eci_hook_omp_transcript_status() {
     *) printf 'unknown\n'; return 0 ;;
   esac
   [ -f "$real_path" ] && [ -s "$real_path" ] || { printf 'unknown\n'; return 0; }
-  # Every line must parse; one bad line makes the transcript unknown.
-  jq -R -n 'reduce inputs as $line (0; . + ($line | fromjson | 1))' "$real_path" >/dev/null 2>&1 || { printf 'unknown\n'; return 0; }
+  size="$(stat -c %s -- "$real_path" 2>/dev/null)" || { printf 'unknown\n'; return 0; }
   rel="${real_path#"$real_root"/}"
   slashes="${rel//[^\/]/}"
   depth=$(( ${#slashes} + 1 ))
-  if [ "$depth" -ge 3 ]; then
-    printf 'subagent\n'
-    return 0
-  fi
-  grc=0
-  candidates="$(grep -F -e session_init -e parentSession -- "$real_path")" || grc=$?
-  [ "$grc" -le 1 ] || { printf 'unknown\n'; return 0; }
-  signal="$(printf '%s' "$candidates" | jq -R -n '[inputs | fromjson | select(type == "object") | select((.type == "session_init") or (.customType == "session_init") or ((.type == "session") and ((.parentSession | type) == "string")))] | length > 0' 2>/dev/null)" || signal=""
-  case "$signal" in
-    true) printf 'subagent\n' ;;
-    false) printf 'main\n' ;;
+  status="$(head -c 65536 -- "$real_path" 2>/dev/null | jq -R -s -r --argjson depth "$depth" --argjson more "$(( size > 65536 ))" '
+    split("\n") as $segments
+    | $segments[:-1] as $lines
+    | [$lines[:16] | to_entries[] | .key as $index | .value as $line
+        | try ($line | fromjson)
+          catch (if $index == 0 and ($line | utf8bytelength) == 255 then empty else error("record is not JSON") end)] as $records
+    | (($lines | length) > 16 or $segments[-1] != "" or $more == 1) as $beyond
+    | if ([$records[] | select(type == "object" and .type == "session")] | length) == 0 and $beyond then "unknown"
+      elif $depth >= 3 then "subagent"
+      elif any($records[]; type == "object" and ((.type == "session_init") or (.customType == "session_init") or ((.type == "session") and ((.parentSession | type) == "string")))) then "subagent"
+      else "main" end' 2>/dev/null)" || status=""
+  case "$status" in
+    main|subagent) printf '%s\n' "$status" ;;
     *) printf 'unknown\n' ;;
   esac
 }

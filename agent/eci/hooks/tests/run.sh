@@ -939,8 +939,8 @@ OMP_MESSAGE_LINE='{"type":"message","message":{"role":"user","content":"hello"}}
 OMP_INIT_LINE='{"type":"session_init","customType":"session_init","data":{}}'
 
 # An omp subagent transcript sits at depth three under the omp sessions root and declares a
-# string parentSession, the header that classifies it as a subagent (hook_context.go:311-322;
-# eci-proof-state.sh:2416-2421). A depth-one transcript in the pre-migration source 575bb81 thread_spawn form is classified as main.
+# string parentSession, the header that classifies it as a subagent (hook_context.go
+# hookTranscriptVerified; eci-proof-state.sh eci_hook_omp_transcript_status). A depth-one transcript in the pre-migration source 575bb81 thread_spawn form is classified as main.
 write_omp_subagent_transcript() {
   local path="$1"
   mkdir -p "$(dirname "$path")" || return 1
@@ -1013,6 +1013,34 @@ test_omp_status_large_main_is_main() {
     "$OMP_MESSAGE_LINE" >"$path"
   [ "$(stat -c %s "$path")" -gt 65536 ] || return 1
   [ "$(omp_status_of "$path")" = main ]
+}
+
+# Only the first 64 KiB and 16 lines are classified, so a torn or malformed line past
+# the classified records keeps a main transcript main.
+test_omp_status_classifies_bounded_prefix() {
+  local dir filler title
+  dir="$(omp_root)/-proj-"
+  mkdir -p "$dir" || return 1
+  filler="$(jq -cn --arg t "$(head -c 70000 /dev/zero | tr '\0' x)" '{type: "message", content: $t}')" || return 1
+  printf '%s\n' "$OMP_HEADER_LINE" "$filler" '{malformed' >"$dir/late-malformed.jsonl"
+  [ "$(omp_status_of "$dir/late-malformed.jsonl")" = main ] || return 1
+  { printf '%s\n' "$OMP_HEADER_LINE"; printf '%s' '{"type":"message","con'; } >"$dir/torn-tail.jsonl"
+  [ "$(omp_status_of "$dir/torn-tail.jsonl")" = main ] || return 1
+  title="$(printf '%-255.200s' '{"type":"title","v":1,"title":"Session","pad":"')"
+  printf '%s\n' "$title" "$OMP_HEADER_LINE" >"$dir/torn-title.jsonl"
+  [ "$(stat -c %s "$dir/torn-title.jsonl")" -eq $(( 256 + ${#OMP_HEADER_LINE} + 1 )) ] || return 1
+  [ "$(omp_status_of "$dir/torn-title.jsonl")" = main ]
+}
+
+# A session header past the classified records is unreadable, so the transcript is unknown.
+test_omp_status_late_header_is_unknown() {
+  local dir
+  dir="$(omp_root)/-proj-"
+  mkdir -p "$dir" || return 1
+  { for _ in $(seq 16); do printf '%s\n' "$OMP_MESSAGE_LINE"; done; printf '%s\n' "$OMP_HEADER_LINE"; } >"$dir/late-header.jsonl"
+  [ "$(omp_status_of "$dir/late-header.jsonl")" = unknown ] || return 1
+  printf '%s\n%s' "$OMP_MESSAGE_LINE" "$OMP_HEADER_LINE" >"$dir/torn-header.jsonl"
+  [ "$(omp_status_of "$dir/torn-header.jsonl")" = unknown ]
 }
 
 write_main_transcript() {
@@ -2951,6 +2979,10 @@ run_case "omp status: fails closed on missing, symlink, outside, empty, malforme
   test_omp_status_fails_closed
 run_case "omp status: main transcript larger than 64 KiB is main" \
   test_omp_status_large_main_is_main
+run_case "omp status: torn or malformed lines past the bounded prefix keep main" \
+  test_omp_status_classifies_bounded_prefix
+run_case "omp status: session header past the bounded prefix is unknown" \
+  test_omp_status_late_header_is_unknown
 run_case "ECI gate allows spawned-agent transcript payload" \
   test_eci_gate_allows_spawned_agent_transcript_payload
 run_case "ECI gate allows oversize spawned-agent transcript payload" \

@@ -300,65 +300,11 @@ func TestThreadSpawnRejectsOversizeWithoutFinalNewline(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
-func TestTranscriptStatus(t *testing.T) {
-	sessions := t.TempDir()
-	write := func(rel, content string) string {
-		t.Helper()
-		path := filepath.Join(sessions, rel)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	cases := []struct {
-		name    string
-		rel     string
-		content string
-		want    string
-	}{
-		{"plain session is main", "2024/main.jsonl", `{"type":"session","id":"s"}` + "\n" + `{"type":"message"}` + "\n", "main"},
-		{"string parentSession at depth three is subagent", "2024/child/sub.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "subagent"},
-		{"string parentSession at depth two is unknown", "2024/parent-two.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "unknown"},
-		{"non-string parentSession at depth two is unknown", "2024/nonstring.jsonl", `{"type":"session","parentSession":5}` + "\n", "unknown"},
-		{"null parentSession at depth two is unknown", "2024/nullparent.jsonl", `{"type":"session","parentSession":null}` + "\n", "unknown"},
-		{"header-less depth two is unknown", "2024/noheader.jsonl", `{"type":"message"}` + "\n", "unknown"},
-		{"session_init with header at depth two is unknown", "2024/headerinit.jsonl", `{"type":"session","id":"s"}` + "\n" + `{"type":"session_init"}` + "\n", "unknown"},
-		{"session_init type at depth two is unknown", "2024/init.jsonl", `{"type":"session_init"}` + "\n", "unknown"},
-		{"session_init customType at depth two is unknown", "2024/custom.jsonl", `{"type":"custom","customType":"session_init"}` + "\n", "unknown"},
-		{"depth three without parentSession is unknown", "a/b/deep.jsonl", `{"type":"session","id":"s"}` + "\n", "unknown"},
-		{"depth three with parentSession is subagent", "a/b/deep-child.jsonl", `{"type":"session","id":"s","parentSession":"/p.jsonl"}` + "\n", "subagent"},
-		{"duplicate type is unknown", "2024/duptype.jsonl", `{"type":"session","parentSession":"/p.jsonl","type":"message"}` + "\n", "unknown"},
-		{"oversize header is unknown", "2024/oversize.jsonl", `{"type":"session","pad":"` + strings.Repeat("x", inputBudget) + `"}` + "\n", "unknown"},
-		{"long post-header record is main", "2024/longmsg.jsonl", `{"type":"session","id":"s"}` + "\n" + `{"type":"message","pad":"` + strings.Repeat("m", inputBudget) + `"}` + "\n", "main"},
-		{"invalid line is unknown", "2024/bad.jsonl", `{"type":"session"}` + "\nnot json\n", "unknown"},
-		{"empty file is unknown", "2024/empty.jsonl", "", "unknown"},
-	}
-	for _, tc := range cases {
-		path := write(tc.rel, tc.content)
-		status, out := runMode(t, []string{"hook-transcript-status", sessions}, `{"transcript_path":"`+path+`"}`)
-		if status != 0 || out != tc.want+"\n" {
-			t.Fatalf("%s: status=%d out=%q want %s", tc.name, status, out, tc.want)
-		}
-	}
-	if got := classifyTranscript(sessions, ""); got != "unknown" {
-		t.Fatalf("empty raw path: want unknown, got %s", got)
-	}
-	outside := filepath.Join(t.TempDir(), "outside.jsonl")
-	if err := os.WriteFile(outside, []byte(`{"type":"session"}`+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(sessions, "2024", "link.jsonl")
-	if err := os.Symlink(write("2024/target.jsonl", `{"type":"session"}`+"\n"), link); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{link, outside} {
-		status, out := runMode(t, []string{"hook-transcript-status", sessions}, `{"transcript_path":"`+path+`"}`)
-		if status != 0 || out != "unknown\n" {
-			t.Fatalf("%s: status=%d out=%q", path, status, out)
-		}
+// TestTranscriptStatusModeRetired rejects the retired hook-transcript-status mode;
+// role classification lives in eci-command-plan and eci-proof-state.sh.
+func TestTranscriptStatusModeRetired(t *testing.T) {
+	if status := run([]string{"hook-transcript-status", t.TempDir()}, strings.NewReader(`{"transcript_path":"/x.jsonl"}`), &bytes.Buffer{}, &bytes.Buffer{}); status != statusRejected {
+		t.Fatalf("status=%d, want %d", status, statusRejected)
 	}
 }
 
