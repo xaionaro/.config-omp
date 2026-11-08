@@ -77,7 +77,15 @@ ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/
 # Refresh the scratch peer through the copied runtime's own peer-apply, as sync-runtime does.
 # HOME is the work home here (the export below is later); set -e aborts on failure.
 HOME="$work/home" "$work/home/.omp/agent/eci/bin/eci-runtime-sync" peer-apply --target "$kimi_home" >/dev/null
-ln -f -- "$work/home/.omp/agent/eci/bin/eci-command-gate-mode" "$kimi_home/bin/eci-command-gate-mode"
+gate_source="$work/home/.omp/agent/eci/bin/eci-command-gate-mode"
+if [ ! -e "$gate_source" ] && [ ! -L "$gate_source" ]; then
+  printf 'run-isolated: WARNING scratch gate source is absent; scratch gate hardlink skipped: %s\n' "$gate_source" >&2
+elif [ -L "$gate_source" ] || [ ! -f "$gate_source" ]; then
+  printf 'run-isolated: scratch gate source is a symlink or not a regular file: %s\n' "$gate_source" >&2
+  exit 1
+else
+  ln -f -- "$gate_source" "$kimi_home/bin/eci-command-gate-mode"
+fi
 
 # config.toml keys trust state by the account's canonical hooks.json path. This
 # per-host rewrite points the copy's hooks.state keys at the copied hooks.json,
