@@ -2,7 +2,7 @@
 set -euo pipefail
 base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 fixture="$(realpath -e -- "$(mktemp -d)")"
-trap 'chmod -R u+w -- "$fixture" 2>/dev/null; rm -rf -- "$fixture"' EXIT
+trap 'chmod -R -- u+w "$fixture" 2>/dev/null; rm -rf -- "$fixture"' EXIT
 export HOME="$fixture/home"
 export ECI_PROOF_ROOT="$fixture/proof" ECI_SESSION_ID=retirement_test
 mkdir -p "$ECI_PROOF_ROOT/$ECI_SESSION_ID" "$HOME/.agent/context/sessions/$ECI_SESSION_ID"
