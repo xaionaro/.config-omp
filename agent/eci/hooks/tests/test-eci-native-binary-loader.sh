@@ -782,7 +782,7 @@ pass "darwin-reopen-denied: a failed reopen released the first copy directory an
 # Receipt-case table (Linux). Fixed descriptor 8 keeps it runnable under bash 3.2.
 if [ "$host_os" = Linux ]; then
   tbase="$base/table"
-  mkdir -p -- "$tbase/scratch"
+  mkdir -p -- "$tbase"
   tbin="$tbase/eci-hook-helper"
   cp -- "$fixtures/native" "$tbin"; chmod -- 0755 "$tbin"
   treal="$(cd -P -- "$tbase" && pwd -P)"
@@ -801,7 +801,7 @@ if [ "$host_os" = Linux ]; then
     fi
     ECI_RUNTIME_DENY_REASON=''
     exec 8<"$tbin"
-    if eci_runtime_verify_fd "$name" 8 "$treal/eci-hook-helper" "$tbase/scratch" "$trecpt"; then
+    if eci_runtime_verify_fd "$name" 8 "$treal/eci-hook-helper" "$trecpt"; then
       got=accept
     else
       reason=${ECI_RUNTIME_DENY_REASON#*\(}
@@ -825,6 +825,43 @@ if [ "$host_os" = Linux ]; then
   table_case missing-two-spaces "$tdigest eci-hook-helper" eci-hook-helper 'deny|has a malformed sha256 receipt'
   table_case missing-receipt NONE eci-hook-helper 'deny|has no sha256 receipt'
   table_case name-metachar "$tdigest  eci-hook" eci.hook 'deny|is not an allowed artifact name'
+  # Descriptor cases: what descriptor 8 holds (or CLOSED), and the path it must be. Each deny returns 1.
+  fd_case() {  # fd_case <label> <file to open on descriptor 8, or CLOSED> <expected path> <expected outcome>
+    local label="$1" open="$2" want_path="$3" expected="$4" got reason rc=0
+    printf '%s  eci-hook-helper\n' "$tdigest" >"$trecpt"
+    ECI_RUNTIME_DENY_REASON=''
+    exec 8<&-
+    [ "$open" = CLOSED ] || exec 8<"$open"
+    eci_runtime_verify_fd eci-hook-helper 8 "$want_path" "$trecpt" || rc=$?
+    exec 8<&-
+    if [ "$rc" -eq 0 ]; then
+      got=accept
+    else
+      reason=${ECI_RUNTIME_DENY_REASON#*\(}
+      reason=${reason%%\)*}
+      got="deny|rc=$rc|$reason"
+    fi
+    tcases=$((tcases + 1))
+    if [ "$got" = "$expected" ]; then
+      pass "descriptor $label: $got"
+    else
+      tfailures=$((tfailures + 1))
+      printf 'FAIL: descriptor %s: got %s, expected %s\n' "$label" "$got" "$expected" >&2
+    fi
+  }
+  fd_case fd-valid "$tbin" "$treal/eci-hook-helper" accept
+  fd_case fd-closed CLOSED "$treal/eci-hook-helper" 'deny|rc=1|descriptor cannot be resolved'
+  fd_case fd-non-regular "$treal" "$treal" 'deny|rc=1|is not a regular file'
+  mkdir -p -- "$tbase/wrong-machine" "$tbase/link"
+  cp -- "$tbin" "$tbase/wrong-machine/eci-hook-helper"
+  # e_machine (bytes 18-19) set to 2 (SPARC), which no supported host uses.
+  patch_bytes "$tbase/wrong-machine/eci-hook-helper" 18 '\002\000'
+  fd_case fd-wrong-machine-elf "$treal/wrong-machine/eci-hook-helper" "$treal/wrong-machine/eci-hook-helper" \
+    'deny|rc=1|is not an ELF binary for this host'
+  ln -- "$tbin" "$tbase/link/eci-hook-helper"
+  fd_case fd-hardlink-path "$treal/link/eci-hook-helper" "$treal/eci-hook-helper" \
+    'deny|rc=1|resolves outside the verified bin directory'
+  rm -f -- "$tbase/link/eci-hook-helper"
   [ "$tfailures" -eq 0 ] || fail "receipt-case table: $tfailures of $tcases cases failed"
 fi
 

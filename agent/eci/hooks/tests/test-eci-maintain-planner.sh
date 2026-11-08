@@ -270,7 +270,7 @@ assert_receipt_drift_admitted 'planner transaction residue' "$quoted_exact_comma
 rm -f -- "$planner_transaction_dir/eci-command-plan"
 rmdir -- "$planner_transaction_dir"
 
-# The native gate's bin-chain check (eci-native-binary.sh:168) rejects any
+# The native gate's bin-chain check (eci-native-binary.sh:178) rejects any
 # group- or other-writable directory on the bin path or above it. Both cases
 # below are therefore expected to be denied by that check, and the exact-route
 # admission earlier in this file is the baseline they are compared against.

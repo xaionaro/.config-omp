@@ -537,7 +537,7 @@ printf '%s\n' enforcing >"$XDG_CONFIG_HOME/eci/command-gate-mode"
 # HEAD opens the planner only as $HOME/.omp/agent/eci/bin/eci-command-plan through
 # eci_runtime_open_verified (validate-bash.sh:66), which verifies it against the
 # .sha256 receipt that hooks/build-native-binaries.sh writes
-# (hooks/lib/eci-native-binary.sh:122-132, :164-167). The fixture plants no such
+# (hooks/lib/eci-native-binary.sh:139-148, :174-177). The fixture plants no such
 # binary, so the hook fails closed with ECI_HOOK_NATIVE_GATE_UNAVAILABLE ("is
 # missing or a symlink") before the defer path. The provenance receipt is written
 # by the planner refresh (tools/eci-active/planner.go:254, :270) and has no

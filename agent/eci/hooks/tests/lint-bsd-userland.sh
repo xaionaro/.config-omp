@@ -72,10 +72,10 @@ long_re='(^|[[:space:]|(])-[-]([A-Za-z][A-Za-z0-9-]*)'
 #   before:TEXT          - TEXT (a platform-switch line) occurs in FUNCTION before every allowed use;
 #   caller:NAME          - FUNCTION is called only from NAME, which is itself Linux-only;
 #   caller:NAME:TEXT     - called only from NAME, after TEXT (a platform-switch line in NAME).
-# The switch lines: G1 eci_runtime_open_verified dispatches Darwin and returns (eci-native-binary.sh:144-146);
-# G2 _eci_runtime_open_verified_in admits only Linux (:159-161); G3 eci_runtime_binary_is_native returns the
-# Darwin twin, or 1 for another OS, before its Linux part (:62-65). eci_runtime_close_verified closes
-# ECI_RUNTIME_BINARY_FD only when it is set, which only the Linux body does (:181, reset at :15 and :194).
+# The switch lines: G1 eci_runtime_open_verified dispatches Darwin and returns (eci-native-binary.sh:159-161);
+# G2 _eci_runtime_open_verified_in admits only Linux (:169-171); G3 eci_runtime_binary_is_native returns the
+# Darwin twin, or 1 for another OS, before its Linux part (:72-75). eci_runtime_close_verified closes
+# ECI_RUNTIME_BINARY_FD only when it is set, which only the Linux body does (:191, reset at :29 and :204).
 lint_loader_allow="eci_runtime_elf_matches_host	od-w proc-path	caller:eci_runtime_verify_fd
 eci_runtime_binary_is_native	od-w proc-path	before:    Darwin) _eci_runtime_binary_is_native_darwin \"\$1\"; return ;;
 eci_runtime_directory_chain_is_trusted	stat-c	caller:_eci_runtime_open_verified_in
@@ -86,7 +86,7 @@ eci_runtime_close_verified	exec-named-fd	before:  if [ -n \"\$ECI_RUNTIME_BINARY
 # Linux-only loader functions that no other linted file may call.
 lint_linux_only='eci_runtime_elf_matches_host eci_runtime_directory_chain_is_trusted eci_runtime_verify_fd _eci_runtime_open_verified_in'
 # RELEASE:ACQUIRE. eci_runtime_close_verified is the paired, idempotent release of eci_runtime_open_verified and runs on
-# every platform; its only Linux branch, the descriptor close at eci-native-binary.sh:189, is guarded at :188 by
+# every platform; its only Linux branch, the descriptor close at eci-native-binary.sh:199, is guarded at :198 by
 # `[ -n "$ECI_RUNTIME_BINARY_FD" ]`, which only the Linux open sets. A file may call it only if it also runs the open
 # as a command (a mention in a comment or a string does not count).
 lint_paired_release='eci_runtime_close_verified:eci_runtime_open_verified'
