@@ -190,8 +190,8 @@ func lockBusy(wait time.Duration, lockPath string) error {
 	return fmt.Errorf("ECI mutation lock is busy after waiting %ds; refusing state mutation: %s", int(wait/time.Second), lockPath)
 }
 
-// acquireLock takes the non-blocking per-user ECI mutation lock. The lock is
-// held until the returned file is closed.
+// acquireLock takes the per-user ECI mutation lock with the bounded wait. The
+// lock is held until the returned file is closed.
 func acquireLock() (*os.File, error) {
 	if err := proofRootReady(); err != nil {
 		return nil, err
@@ -204,9 +204,10 @@ func acquireLock() (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ECI mutation lock is unavailable: %s", lockPath)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	wait := lockWait()
+	if err := flockWait(f, wait); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("ECI mutation lock is busy; refusing state mutation: %s", lockPath)
+		return nil, lockBusy(wait, lockPath)
 	}
 	return f, nil
 }

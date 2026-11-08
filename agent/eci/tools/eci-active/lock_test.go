@@ -129,7 +129,7 @@ func TestLedgerAppendDifferentSessionsDoNotContend(t *testing.T) {
 	}
 }
 
-// The bounded wait expires with the exact message and leaves the log unchanged.
+// The bounded wait expires, names the lock and leaves the log unchanged.
 func TestSessionLockTimeoutMessage(t *testing.T) {
 	fx := newWrapperFixture(t)
 	lock := filepath.Join(ctxDir(fx, wrapperSessionID), ".eci-session.lock")
@@ -164,5 +164,45 @@ func TestLedgerAppendRequiresProofRoot(t *testing.T) {
 		if exists(filepath.Join(ctxDir(fx, wrapperSessionID), name)) {
 			t.Errorf("%s created without a proof root", name)
 		}
+	}
+}
+
+// A command that stays on the per-user lock (permissive-on global) waits for a
+// held per-user lock, then succeeds.
+func TestPerUserLockWaitsThenSucceedsGlobalPermissive(t *testing.T) {
+	fx := newWrapperFixture(t)
+	if err := os.MkdirAll(filepath.Join(fx.home, ".omp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	holdLock(t, perUserLock(fx), 300*time.Millisecond)
+	start := time.Now()
+	_, stderr, code := fx.runAs(t, wrapperSessionID, cwdNow(t), []string{"ECI_LOCK_WAIT_SECONDS=5"},
+		"permissive-on", "global", "gate-a", "op-a", "request", "60")
+	if code != 0 {
+		t.Fatalf("permissive-on exit %d stderr %q", code, stderr)
+	}
+	if el := time.Since(start); el < 300*time.Millisecond {
+		t.Errorf("finished in %v, before the hold ended", el)
+	}
+}
+
+// The per-user wait expires, names the lock and writes no record.
+func TestPerUserLockTimeoutMessage(t *testing.T) {
+	fx := newWrapperFixture(t)
+	if err := os.MkdirAll(filepath.Join(fx.home, ".omp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	holdLock(t, perUserLock(fx), -1)
+	start := time.Now()
+	_, stderr, code := fx.runAs(t, wrapperSessionID, cwdNow(t), []string{"ECI_LOCK_WAIT_SECONDS=1"},
+		"permissive-on", "global", "gate-a", "op-a", "request", "60")
+	if code != 1 || !strings.Contains(stderr, perUserLock(fx)) {
+		t.Fatalf("exit %d stderr %q; want 1 naming %s", code, stderr, perUserLock(fx))
+	}
+	if el := time.Since(start); el < time.Second {
+		t.Errorf("failed after %v, before the 1 s wait", el)
+	}
+	if exists(filepath.Join(fx.home, ".omp", globalPermissiveName)) {
+		t.Error("record written despite timeout")
 	}
 }
