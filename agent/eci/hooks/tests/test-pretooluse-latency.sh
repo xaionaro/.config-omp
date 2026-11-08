@@ -22,7 +22,9 @@ cp -- "$SOURCE_ROOT/../AGENTS.md" "$ROOT/../AGENTS.md"
 # the 1000 ms budget measures hook work only. The gate-mode-set rows also need
 # bin/eci-command-gate-mode: in hook mode the planner stats that canonical target and
 # denies gate-mode-identity when it is absent (classifier.go inspectHookGateModeTarget).
-HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode
+# eci-hook-helper serves the subagent-status route; without it worker samples
+# fail closed as "unknown" instead of taking the production path.
+HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode eci-hook-helper
 proof_root="$TMP_ROOT/proof"
 session_id="t00-session"
 session_dir="$proof_root/$session_id"
@@ -109,10 +111,33 @@ patch_input() {
     '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"apply_patch",tool_input:{patch:$patch}}'
 }
 
+# Spawn a registered callback the way the omp runner does (eci-hook-runner.ts
+# runEciHook: spawn(resolved.bash, [script]), bash from resolveHookBash, i.e.
+# $ECI_BASH else PATH bash): no login shell, no `timeout` in the argv, cwd = the
+# payload cwd, env = process env plus ECI_SESSION_ID and ECI_THREAD_ID (both the
+# payload session_id) and ECI_HOOK_IS_SUBAGENT. hooks.json commands are `bash "$HOME/<script>"`, so the
+# script path is taken from the command and resolved against the fixture HOME.
+# The runner's Bun-native deadline is modelled by the measured elapsed time
+# (run_sample fails any call >= 1000 ms); `timeout 10` is only a hang guard.
+run_callback() {
+  local callback="$1" role="$2" payload_session="$3" payload_cwd="$4" script is_subagent=0
+  [[ "$callback" =~ ^bash\ \"\$HOME/([^\"]+)\"$ ]] ||
+    fail "registered PreToolUse command is not bash \"\$HOME/<script>\": $callback"
+  script="$TMP_ROOT/home/${BASH_REMATCH[1]}"
+  [ "$role" = worker ] && is_subagent=1
+  (
+    cd -- "$payload_cwd"
+    export ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
+      XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" HOME="$TMP_ROOT/home" \
+      ECI_SESSION_ID="$payload_session" ECI_THREAD_ID="$payload_session" ECI_HOOK_IS_SUBAGENT="$is_subagent"
+    exec timeout --kill-after=5 10 "${ECI_BASH:-bash}" "$script"
+  )
+}
+
 run_sample() {
   local callback="$1" matcher="$2" role="$3" scenario="$4" expected="$5" phase="$6" input="$7"
   local output="$TMP_ROOT/output" error_output="$TMP_ROOT/error" route=legacy
-  local started ended elapsed status=0 outcome=allow effective_expected="$expected"
+  local payload_session payload_cwd started ended elapsed status=0 outcome=allow effective_expected="$expected"
 
   # Keep the worker fast-path sample identifiable in the per-sample trace;
   # its command is deliberately a plain plan_status=0 argv, while all other
@@ -122,11 +147,10 @@ run_sample() {
   fi
 
   [ -n "$input" ] || fail "missing fixture input for matcher=$matcher role=$role scenario=$scenario"
+  # The runner reads session_id and cwd from the payload; resolve them before timing.
+  IFS=$'\t' read -r payload_session payload_cwd < <(jq -r '[.session_id, .cwd] | @tsv' <<<"$input")
   started="$(date +%s%N)"
-  printf '%s' "$input" | timeout 1s env \
-    ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
-    XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
-    HOME="$TMP_ROOT/home" bash -lc "$callback" >"$output" 2>"$error_output" || status=$?
+  printf '%s' "$input" | run_callback "$callback" "$role" "$payload_session" "$payload_cwd" >"$output" 2>"$error_output" || status=$?
   ended="$(date +%s%N)"
   elapsed=$(( (ended - started) / 1000000 ))
   if jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$output" >/dev/null 2>&1; then
@@ -162,18 +186,16 @@ run_sample() {
 # against the 1000 ms budget. A prime failure is still caught by the cold sample.
 declare -A primed_callbacks=()
 prime_callback() {
-  local callback="$1" input="$2"
+  local callback="$1" role="$2" input="$3" payload_session payload_cwd
   [ -z "${primed_callbacks[$callback]:-}" ] || return 0
   primed_callbacks[$callback]=1
-  printf '%s' "$input" | timeout 1s env \
-    ECI_HOME="$ROOT" ECI_PROOF_ROOT="$proof_root" KIMI_CODE_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}" \
-    XDG_CONFIG_HOME="$XDG_CONFIG_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" \
-    HOME="$TMP_ROOT/home" bash -lc "$callback" >"$TMP_ROOT/prime-output" 2>"$TMP_ROOT/prime-error" || true
+  IFS=$'\t' read -r payload_session payload_cwd < <(jq -r '[.session_id, .cwd] | @tsv' <<<"$input")
+  printf '%s' "$input" | run_callback "$callback" "$role" "$payload_session" "$payload_cwd" >"$TMP_ROOT/prime-output" 2>"$TMP_ROOT/prime-error" || true
 }
 
 run_fixture() {
   local callback="$1" matcher="$2" role="$3" scenario="$4" expected="$5" input="$6" phase
-  prime_callback "$callback" "$input"
+  prime_callback "$callback" "$role" "$input"
   for phase in cold warm; do
     run_sample "$callback" "$matcher" "$role" "$scenario" "$expected" "$phase" "$input"
   done
