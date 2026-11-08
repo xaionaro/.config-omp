@@ -31,7 +31,7 @@ cat >"$dispatch_root/eci-active-gate.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-chmod 755 -- \
+chmod -- 755 \
   "$dispatch_root/pretooluse-edit-dispatch.sh" \
   "$dispatch_root/validate-edit-write.sh" \
   "$dispatch_root/eci-active-gate.sh"
