@@ -49,6 +49,15 @@ const (
 	// Example: the probe samples kill(-pgid, 0) at this period and is the only sampled wait in this backend.
 	pgroupPollInterval = 10 * time.Millisecond
 
+	// pgroupSettlementCap is how long settlement continues after the final check at twice -grace finds the group not
+	// settled. It is a fixed bound, independent of -deadline and -grace. A member with SIGKILL pending still counts until
+	// the kernel runs its exit (on Linux, until it is reaped), which CPU starvation delayed by up to 1.131 s in Linux
+	// measurements, and a member that never leaves must not hold the run open without limit.
+	//
+	// Example: a forked shell that has not run since its fork leaves the group shortly after the final check, and the run
+	// settles within this cap instead of returning pgroupFailure.
+	pgroupSettlementCap = 2 * time.Second
+
 	// pgroupCancelError is the receipt error for a cancellation request this backend cannot prove.
 	//
 	// Example: the receipt records this message and nothing is signaled.
@@ -111,12 +120,39 @@ type pgroupOptions struct {
 	Args     []string
 }
 
-// pgroupRunner holds the state of one run. Only the goroutine that called pgroupRun reads or writes it.
+// pgroupKiller sends sig to every member of process group pgid that the caller may signal; sig 0 only probes. It is
+// the runner's only access to kill(2), so a test can observe or stand in for the group.
+//
+// Example: the runner probes the command's group with KillGroup(pid, 0) and reads ESRCH as empty.
+type pgroupKiller interface {
+	// KillGroup sends sig to process group pgid and returns kill(2)'s error.
+	//
+	// Example: KillGroup(pgid, syscall.SIGKILL) returns ESRCH when the group has no member.
+	KillGroup(pgid int, sig syscall.Signal) error
+}
+
+// pgroupKernel is the pgroupKiller that calls kill(-pgid, sig).
+//
+// Example: every production runner uses pgroupKernel{}.
+type pgroupKernel struct{}
+
+// KillGroup calls kill(-pgid, sig).
+//
+// Example: KillGroup(pgid, 0) returns nil while the group has a member.
+func (pgroupKernel) KillGroup(
+	pgid int,
+	sig syscall.Signal,
+) error {
+	return syscall.Kill(-pgid, sig)
+}
+
+// pgroupRunner holds the state of one run. Only the goroutine that called execute reads or writes it.
 //
 // Example: a root reap, a notice, and a timer each update this one value in turn.
 type pgroupRunner struct {
 	options          pgroupOptions
 	notices          <-chan os.Signal
+	group            pgroupKiller
 	childExit        chan os.Signal
 	started          time.Time
 	launched         time.Time
@@ -127,6 +163,7 @@ type pgroupRunner struct {
 	settled          bool
 	killSent         bool
 	final            bool
+	extended         bool
 	waitErrRecorded  bool
 	probeErrRecorded bool
 	killTimer        *time.Timer
@@ -151,23 +188,40 @@ func pgroupNewReceipt(started time.Time) pgroupReceipt {
 	}
 }
 
-// pgroupRun launches options.Args in a new process group and supervises it until the group settles or the final
-// check runs. It returns the receipt and the process status: the command's native status only for an ordinary
-// settled exit with no errors and no interruption, and pgroupFailure otherwise.
+// pgroupRun launches options.Args in a new process group and supervises it until the group settles or the settlement
+// cap after the final check passes. It returns the receipt and the process status: the command's native status only
+// for an ordinary settled exit with no errors and no interruption, and pgroupFailure otherwise.
 //
 // Example: "sleep 60" under a 5 s deadline returns pgroupFailure after about 5 s with the group settled.
 func pgroupRun(
 	options pgroupOptions,
 	notices <-chan os.Signal,
 ) (pgroupReceipt, int) {
+	return pgroupNewRunner(options, notices).execute()
+}
+
+// pgroupNewRunner returns an unlaunched runner for options whose group signals and probes go through kill(2).
+//
+// Example: pgroupRun calls pgroupNewRunner(options, notices).execute(); a test replaces group before execute.
+func pgroupNewRunner(
+	options pgroupOptions,
+	notices <-chan os.Signal,
+) *pgroupRunner {
 	started := time.Now()
-	run := &pgroupRunner{
+	return &pgroupRunner{
 		options:   options,
 		notices:   notices,
+		group:     pgroupKernel{},
 		childExit: make(chan os.Signal, 1),
 		started:   started,
 		receipt:   pgroupNewReceipt(started),
 	}
+}
+
+// execute launches the command, supervises it, and maps the outcome to the receipt and status that pgroupRun returns.
+//
+// Example: a runner whose executable is missing returns the guard-error receipt without supervising.
+func (run *pgroupRunner) execute() (pgroupReceipt, int) {
 	if run.launch() {
 		run.supervise()
 	}
@@ -230,12 +284,7 @@ func (run *pgroupRunner) supervise() {
 			run.killSent = true
 			run.signalGroup(syscall.SIGKILL, "group KILL")
 		case <-finalDue:
-			if !run.killSent {
-				run.killSent = true
-				run.signalGroup(syscall.SIGKILL, "group KILL")
-			}
-			run.final = true
-			run.reap()
+			run.finalCheck()
 		case <-probeDue:
 		}
 		run.reap()
@@ -312,6 +361,32 @@ func (run *pgroupRunner) begin() {
 	run.signalGroup(syscall.SIGCONT, "group CONT")
 }
 
+// finalCheck runs each time the final timer fires. The first time is the final check at twice -grace: it reaps and,
+// if the root is reaped, probes; a group that is not settled gets exactly one SIGKILL in this pass. That is the first
+// KILL if the KILL timer has not been taken, otherwise a repeat for members that joined or were forked after it; once
+// this pass has run, the KILL timer sends nothing. The pass then records "settlement extended" and re-arms the final
+// timer with pgroupSettlementCap. Until that cap, only the probe is sent, once the root is reaped, every
+// pgroupPollInterval; a notice sets interrupted (status pgroupFailure) without ending the wait. The second firing
+// ends the run. The loop's reap and probe after this call are the last look in both passes.
+//
+// Example: a pre-exec straggler starved past twice -grace leaves the group during the extension, and the run settles.
+func (run *pgroupRunner) finalCheck() {
+	if run.extended {
+		run.final = true
+		return
+	}
+	run.reap()
+	run.checkSettled()
+	if run.settled {
+		return
+	}
+	run.killSent = true
+	run.signalGroup(syscall.SIGKILL, "group KILL")
+	run.extended = true
+	run.record("settlement extended", run.pid)
+	run.finalTimer = time.NewTimer(pgroupSettlementCap)
+}
+
 // checkSettled marks the run settled when the root has been reaped and the group has no member left.
 //
 // Example: a probe that reports ESRCH after the reap sets HostChildrenSettled.
@@ -330,7 +405,7 @@ func (run *pgroupRunner) checkSettled() {
 // Example: the probe samples every pgroupPollInterval because nothing signals that the group became empty in this
 // iteration; this sample is the only poll the backend makes.
 func (run *pgroupRunner) groupEmpty() bool {
-	err := syscall.Kill(-run.pid, 0)
+	err := run.group.KillGroup(run.pid, 0)
 	switch {
 	case err == nil:
 		return false
@@ -350,7 +425,7 @@ func (run *pgroupRunner) signalGroup(
 	sig syscall.Signal,
 	action string,
 ) {
-	err := syscall.Kill(-run.pid, sig)
+	err := run.group.KillGroup(run.pid, sig)
 	switch {
 	case err == nil:
 		run.record(action, run.pid)
@@ -542,7 +617,7 @@ func pgroupMain(args []string) int {
 	defer signal.Stop(notices)
 	flags := flag.NewFlagSet("owned-command", flag.ContinueOnError)
 	deadline := flags.Duration("deadline", 3*time.Second, "maximum command runtime before retirement")
-	grace := flags.Duration("grace", 250*time.Millisecond, "TERM grace and subsequent KILL settlement bound")
+	grace := flags.Duration("grace", 250*time.Millisecond, "TERM grace; KILL follows after one grace, the final check after two, then settlement for up to 2s")
 	receipt := flags.String("receipt", "", "JSON receipt path")
 	cancelPID := flags.Int("cancel-pid", 0, "cancel this exact host process (refused on darwin-pgroup)")
 	cancelBirth := flags.Uint64("cancel-birth", 0, "required birth identity (refused on darwin-pgroup)")

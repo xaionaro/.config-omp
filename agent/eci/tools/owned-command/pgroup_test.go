@@ -7,9 +7,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -597,7 +599,7 @@ func TestPgroupMainWritesReceiptWithGuarantee(t *testing.T) {
 	if receipt.FamilyCoverage != "command process group only" {
 		t.Fatalf("FamilyCoverage = %q, want %q", receipt.FamilyCoverage, "command process group only")
 	}
-	for _, phrase := range []string{"no subreaper", "setsid", "setpgid", "-cancel-pid returns 125"} {
+	for _, phrase := range []string{"no subreaper", "setsid", "setpgid", "no birth identity", "no PID-reuse guard", "-cancel-pid returns 125"} {
 		if !strings.Contains(receipt.Guarantee, phrase) {
 			t.Fatalf("Guarantee must state %q: %q", phrase, receipt.Guarantee)
 		}
@@ -694,4 +696,338 @@ func TestPgroupFinalCheckSendsKillWhenKillTimerIsLate(t *testing.T) {
 		t.Fatalf("the group KILL was never sent: events=%+v", receipt.Events)
 	}
 	pgroupRequireAbsent(t, pgroupRecordedPID(t, recorded))
+}
+
+// pgroupHeldGroup is a pgroupKiller that answers every probe "not empty" until the run has recorded "settlement
+// extended", and then probes the real group. It stands in for a member the kernel removes only after the final check,
+// such as a SIGKILL'd straggler starved of CPU. Signals always go to the real group.
+//
+// Example: TestPgroupSettlesAfterFinalCheck holds the probe of an exit-7 command through the final check.
+type pgroupHeldGroup struct {
+	run       *pgroupRunner
+	emptySeen bool
+}
+
+// KillGroup holds probes until the extension starts, then calls kill(-pgid, sig) and notes a probe that saw ESRCH.
+//
+// Example: the first probe after "settlement extended" returns ESRCH for an exited command and sets emptySeen.
+func (g *pgroupHeldGroup) KillGroup(
+	pgid int,
+	sig syscall.Signal,
+) error {
+	if sig == 0 && !pgroupEventOrder(g.run.receipt.Events, "settlement extended") {
+		return nil
+	}
+	err := syscall.Kill(-pgid, sig)
+	if sig == 0 && errors.Is(err, syscall.ESRCH) {
+		g.emptySeen = true
+	}
+	return err
+}
+
+// TestPgroupSettlesAfterFinalCheck proves that a group which empties only after the final check at twice -grace
+// settles within the settlement cap and returns the native status, and that settlement is claimed only after a probe
+// saw the group empty.
+//
+// Example: an exit-7 command whose probe is held through the final check returns 7 with "settlement extended" recorded.
+func TestPgroupSettlesAfterFinalCheck(t *testing.T) {
+	const grace = 100 * time.Millisecond
+	run := pgroupNewRunner(pgroupOptions{
+		Deadline: 10 * time.Second,
+		Grace:    grace,
+		Args:     []string{"/bin/sh", "-c", "exit 7"},
+	}, nil)
+	group := &pgroupHeldGroup{run: run}
+	run.group = group
+	receipt, status := run.execute()
+	if receipt.HostChildrenSettled && !group.emptySeen {
+		t.Fatalf("the receipt says settled although no probe saw the group empty: receipt=%+v", receipt)
+	}
+	if status != 7 || receipt.Cause != "command exited" || receipt.CommandExit != 7 || !receipt.HostChildrenSettled || len(receipt.Errors) != 0 {
+		t.Fatalf("status=%d receipt=%+v", status, receipt)
+	}
+	if !pgroupEventOrder(receipt.Events, "command reaped", "settlement extended") {
+		t.Fatalf("settlement was not extended after the final check: events=%+v", receipt.Events)
+	}
+	if limit := (2*grace + 2*time.Second).Seconds(); receipt.ElapsedSeconds >= limit {
+		t.Fatalf("settled after %.3f s, not before the 2 s cap ended at %.3f s", receipt.ElapsedSeconds, limit)
+	}
+}
+
+// pgroupJoinerGroup is a pgroupKiller that passes every call to kill(-pgid, sig) and, right after the first SIGKILL,
+// starts a sleep that joins the group: a live member that entered after the first KILL.
+//
+// Example: TestPgroupLateJoinerIsKilledAndNeverSettledAlive starts its joiner from here.
+type pgroupJoinerGroup struct {
+	kills     int
+	firstKill time.Time
+	joiner    *exec.Cmd
+	joinErr   error
+}
+
+// KillGroup calls kill(-pgid, sig), counts SIGKILLs, and starts the joiner after the first one.
+//
+// Example: the KILL at retirement plus grace is followed at once by a sleep with Pgid set to the group.
+func (g *pgroupJoinerGroup) KillGroup(
+	pgid int,
+	sig syscall.Signal,
+) error {
+	err := syscall.Kill(-pgid, sig)
+	if sig != syscall.SIGKILL {
+		return err
+	}
+	g.kills++
+	if g.kills == 1 {
+		g.firstKill = time.Now()
+		g.joiner = exec.Command("/bin/sleep", "30")
+		g.joiner.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
+		g.joinErr = g.joiner.Start()
+	}
+	return err
+}
+
+// TestPgroupLateJoinerIsKilledAndNeverSettledAlive proves that a live process that joins the group after the first
+// KILL receives the SIGKILL repeated at the final check, and that no receipt claims settlement while it is alive. On
+// Linux the zombies of the holder and the joiner, children of this test, keep the group non-empty, so the run stays
+// unsettled until the 2 s cap; XNU's killpg skips zombies, so on macOS the run may settle (not run).
+//
+// Example: a holder that ignores TERM keeps the group present; the joiner enters after the KILL and dies at the final check.
+func TestPgroupLateJoinerIsKilledAndNeverSettledAlive(t *testing.T) {
+	const grace = 200 * time.Millisecond
+	rootRecord := filepath.Join(t.TempDir(), "root")
+	notices := make(chan os.Signal, 1)
+	var holder *exec.Cmd
+	var holderErr error
+	var noticeAt time.Time
+	// holdAndInterrupt starts a TERM-ignoring holder in the command's group and then interrupts the run.
+	//
+	// Example: the holder keeps the group present after the root has been reaped, until the first KILL.
+	holdAndInterrupt := func() {
+		data, err := os.ReadFile(rootRecord)
+		if err == nil {
+			var root int
+			root, err = strconv.Atoi(strings.TrimSpace(string(data)))
+			if err == nil {
+				holderReady := rootRecord + ".holder"
+				holder = exec.Command("/bin/sh", "-c", `trap '' TERM; : >"$1"; exec sleep 30`, "sh", holderReady)
+				holder.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: root}
+				err = holder.Start()
+				for limit := time.Now().Add(10 * time.Second); err == nil && !pgroupFileExists(holderReady)() && time.Now().Before(limit); {
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+		}
+		holderErr = err
+		noticeAt = time.Now()
+		notices <- syscall.SIGINT
+	}
+	pgroupWhenReady(time.Now().Add(10*time.Second), pgroupFileExists(rootRecord), holdAndInterrupt)
+	run := pgroupNewRunner(pgroupOptions{
+		Deadline: 10 * time.Second,
+		Grace:    grace,
+		Args:     []string{"/bin/sh", "-c", `echo $$ >"$1.tmp" && mv "$1.tmp" "$1"; exec sleep 30`, "sh", rootRecord},
+	}, notices)
+	group := &pgroupJoinerGroup{}
+	run.group = group
+	receipt, status := run.execute()
+	if holderErr != nil || holder == nil {
+		t.Fatalf("start holder: %v", holderErr)
+	}
+	// stopHolder kills and reaps the holder when the test ends.
+	//
+	// Example: the holder's zombie is reaped here after the receipt has been checked.
+	stopHolder := func() {
+		_ = holder.Process.Kill()
+		_ = holder.Wait()
+	}
+	t.Cleanup(stopHolder)
+	if group.joiner == nil {
+		t.Fatalf("no SIGKILL was sent: events=%+v", receipt.Events)
+	}
+	if group.joinErr != nil {
+		if runtime.GOOS == "darwin" && errors.Is(group.joinErr, syscall.EPERM) {
+			t.Skipf("XNU removed the group when its last live member exited, so no process can join late: %v", group.joinErr)
+		}
+		t.Fatalf("start joiner: %v", group.joinErr)
+	}
+	// stopJoiner kills and reaps the joiner when the test ends.
+	//
+	// Example: a joiner that survived a failed run is killed here.
+	stopJoiner := func() {
+		_ = group.joiner.Process.Kill()
+		_ = group.joiner.Wait()
+	}
+	t.Cleanup(stopJoiner)
+	var joinerStatus syscall.WaitStatus
+	reaped, err := syscall.Wait4(group.joiner.Process.Pid, &joinerStatus, syscall.WNOHANG, nil)
+	if err != nil {
+		t.Fatalf("wait for joiner: %v", err)
+	}
+	alive := reaped == 0
+	if alive && receipt.HostChildrenSettled {
+		t.Fatalf("the receipt says settled while joiner %d is alive: receipt=%+v", group.joiner.Process.Pid, receipt)
+	}
+	if status != pgroupFailure || receipt.Cause != "signal: interrupt" {
+		t.Fatalf("status=%d receipt=%+v", status, receipt)
+	}
+	if group.firstKill.Before(noticeAt.Add(2 * grace)) {
+		if alive || !joinerStatus.Signaled() || joinerStatus.Signal() != syscall.SIGKILL || group.kills < 2 {
+			t.Fatalf("the final check did not repeat SIGKILL to the late joiner: kills=%d alive=%t status=%v events=%+v",
+				group.kills, alive, joinerStatus, receipt.Events)
+		}
+	} else {
+		t.Logf("first KILL %v after the notice, at or after the final timer; repeat not asserted", group.firstKill.Sub(noticeAt))
+	}
+	if runtime.GOOS != "linux" {
+		t.Logf("%s: settled=%t (XNU reports EPERM for a group of unreaped zombies, so false is expected; NOT RUN)", runtime.GOOS, receipt.HostChildrenSettled)
+		return
+	}
+	want := fmt.Sprintf("host children unsettled: process group %d retirement incomplete: root=true", receipt.CommandPID)
+	if receipt.HostChildrenSettled || len(receipt.Errors) != 1 || receipt.Errors[0] != want || len(receipt.Survivors) != 0 {
+		t.Fatalf("zombies of this test's children must keep the group unsettled: receipt=%+v", receipt)
+	}
+	extendedAt := -1.0
+	for _, event := range receipt.Events {
+		if event.Action == "settlement extended" {
+			extendedAt = event.ElapsedSeconds
+		}
+	}
+	if extendedAt < 0 || receipt.ElapsedSeconds-extendedAt < 2 {
+		t.Fatalf("settlement gave up before the 2 s cap: extended at %.3f s, finished at %.3f s", extendedAt, receipt.ElapsedSeconds)
+	}
+}
+
+// pgroupAfterKillJoinerGroup is a pgroupKiller. It consumes the KILL timer while begin sends CONT, so the
+// final pass is the first and only KILL decision. Right after that SIGKILL it starts a live sleep that joins the group,
+// and then reaps the killed holder, so no zombie is left and only the live joiner holds the group.
+//
+// Example: TestPgroupJoinerAfterFinalKillNeverSettles starts its joiner from here.
+type pgroupAfterKillJoinerGroup struct {
+	run           *pgroupRunner
+	holder        **exec.Cmd
+	kills         int
+	afterExtended int
+	joiner        *exec.Cmd
+	joinErr       error
+	holderErr     error
+}
+
+// KillGroup calls kill(-pgid, sig), drains the KILL timer at CONT, and adds the joiner after the first SIGKILL.
+//
+// Example: the KILL at the final check is followed at once by a joining sleep and the holder's reap.
+func (g *pgroupAfterKillJoinerGroup) KillGroup(
+	pgid int,
+	sig syscall.Signal,
+) error {
+	extended := pgroupEventOrder(g.run.receipt.Events, "settlement extended")
+	if sig != 0 && extended {
+		g.afterExtended++
+	}
+	err := syscall.Kill(-pgid, sig)
+	switch {
+	case sig == syscall.SIGCONT:
+		<-g.run.killTimer.C
+	case sig == syscall.SIGKILL && !extended:
+		g.kills++
+		if g.kills == 1 {
+			g.joiner = exec.Command("/bin/sleep", "30")
+			g.joiner.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
+			g.joinErr = g.joiner.Start()
+			g.holderErr = (*g.holder).Wait()
+		}
+	}
+	return err
+}
+
+// TestPgroupJoinerAfterFinalKillNeverSettles proves that a live member that joins after the final-pass SIGKILL
+// keeps the run unsettled until the 2 s cap, receives no signal during the wait, and that the final pass of a late KILL
+// timer sends exactly one SIGKILL. No zombie holds the group, so the result is the same on Linux and XNU.
+//
+// Example: the joiner is still alive after a 125 receipt that records "settlement extended" 2 s before its end.
+func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
+	const grace = 200 * time.Millisecond
+	rootRecord := filepath.Join(t.TempDir(), "root")
+	notices := make(chan os.Signal, 1)
+	var holder *exec.Cmd
+	var holderErr error
+	// holdAndInterrupt starts a TERM-ignoring holder in the command's group and then interrupts the run.
+	//
+	// Example: the holder keeps the group non-empty at the final check.
+	holdAndInterrupt := func() {
+		data, err := os.ReadFile(rootRecord)
+		if err == nil {
+			var root int
+			root, err = strconv.Atoi(strings.TrimSpace(string(data)))
+			if err == nil {
+				holderReady := rootRecord + ".holder"
+				holder = exec.Command("/bin/sh", "-c", `trap '' TERM; : >"$1"; exec sleep 30`, "sh", holderReady)
+				holder.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: root}
+				err = holder.Start()
+				for limit := time.Now().Add(10 * time.Second); err == nil && !pgroupFileExists(holderReady)() && time.Now().Before(limit); {
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+		}
+		holderErr = err
+		notices <- syscall.SIGINT
+	}
+	pgroupWhenReady(time.Now().Add(10*time.Second), pgroupFileExists(rootRecord), holdAndInterrupt)
+	run := pgroupNewRunner(pgroupOptions{
+		Deadline: 10 * time.Second,
+		Grace:    grace,
+		Args:     []string{"/bin/sh", "-c", `echo $$ >"$1.tmp" && mv "$1.tmp" "$1"; exec sleep 30`, "sh", rootRecord},
+	}, notices)
+	group := &pgroupAfterKillJoinerGroup{run: run, holder: &holder}
+	run.group = group
+	receipt, status := run.execute()
+	if holderErr != nil || holder == nil {
+		t.Fatalf("start holder: %v", holderErr)
+	}
+	// stopProcesses kills and reaps the holder and the joiner when the test ends.
+	//
+	// Example: a joiner that survived the run is killed here.
+	stopProcesses := func() {
+		_ = holder.Process.Kill()
+		_ = holder.Wait()
+		if group.joiner != nil && group.joiner.Process != nil {
+			_ = group.joiner.Process.Kill()
+			_ = group.joiner.Wait()
+		}
+	}
+	t.Cleanup(stopProcesses)
+	if group.joiner == nil || group.joinErr != nil {
+		t.Fatalf("joiner not started: kills=%d err=%v events=%+v", group.kills, group.joinErr, receipt.Events)
+	}
+	var ws syscall.WaitStatus
+	reaped, err := syscall.Wait4(group.joiner.Process.Pid, &ws, syscall.WNOHANG, nil)
+	if err != nil {
+		t.Fatalf("wait for joiner: %v", err)
+	}
+	alive := reaped == 0
+	if group.kills != 1 {
+		t.Fatalf("the final pass of a late KILL timer sent %d SIGKILLs, want exactly 1: events=%+v", group.kills, receipt.Events)
+	}
+	if group.afterExtended != 0 {
+		t.Fatalf("%d signals were sent during the settlement wait: events=%+v", group.afterExtended, receipt.Events)
+	}
+	if receipt.HostChildrenSettled {
+		t.Fatalf("settled with a live member that joined after the last KILL: alive=%t receipt=%+v", alive, receipt)
+	}
+	if !alive {
+		t.Fatalf("the joiner died during the run although no signal was counted: status=%v", ws)
+	}
+	want := fmt.Sprintf("host children unsettled: process group %d retirement incomplete: root=true", receipt.CommandPID)
+	if status != pgroupFailure || receipt.Cause != "signal: interrupt" || len(receipt.Errors) != 1 || receipt.Errors[0] != want || len(receipt.Survivors) != 0 {
+		t.Fatalf("status=%d receipt=%+v", status, receipt)
+	}
+	extendedAt := -1.0
+	for _, event := range receipt.Events {
+		if event.Action == "settlement extended" {
+			extendedAt = event.ElapsedSeconds
+		}
+	}
+	if extendedAt < 0 || receipt.ElapsedSeconds-extendedAt < 2 {
+		t.Fatalf("settlement gave up before the 2 s cap: extended at %.3f s, finished at %.3f s", extendedAt, receipt.ElapsedSeconds)
+	}
+	t.Logf("holder reaped by the seam: %v; extended at %.3f s, finished at %.3f s", group.holderErr, extendedAt, receipt.ElapsedSeconds)
 }

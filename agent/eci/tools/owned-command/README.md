@@ -112,17 +112,24 @@ On Darwin the wrapper builds the same module and runs the `darwin-pgroup` backen
 (`Setpgid`, so the group ID equals the command PID). Retirement begins at the first of
 command exit, the `-deadline` measured from launch, or SIGINT, SIGTERM or SIGHUP to
 owned-command. Retirement sends SIGTERM and then SIGCONT to `kill(-pgid, ...)`, sends
-SIGKILL one `-grace` later, and makes its final check at twice `-grace`. The group is
-settled only when the command has been reaped and `kill(-pgid, 0)` reports ESRCH.
+SIGKILL one `-grace` later, and makes its final check at twice `-grace`. If the group is
+not settled at the final check, SIGKILL is sent once more and settlement continues until
+the group is settled or a fixed settlement cap of 2 s has passed. The cap is a constant:
+it does not depend on `-deadline` or `-grace`. A run therefore ends at most twice
+`-grace` plus 2 s after retirement begins, plus scheduling and native-call latency. The
+group is settled only when the command has been reaped and `kill(-pgid, 0)` reports
+ESRCH. The Linux cgroup backend has no such extension: it makes its final settlement
+attempt at retirement plus twice `-grace` and returns 125 if the command subtree is then
+still populated or not yet drained.
 
 Every receipt's `Guarantee` field states the guarantee verbatim:
 
 > deadline and cleanup only: on deadline, interrupt (SIGINT, SIGTERM or SIGHUP to owned-command) or command exit, SIGTERM and SIGCONT, then SIGKILL after -grace, go to the command's own process group (pgid = command PID); no birth identity, so -cancel-pid returns 125 and signals nothing; no PID-reuse guard; no subreaper, so descendants that leave the group (setsid or setpgid) are not cleaned up and can outlive HostChildrenSettled=true, which means only that the command was reaped and its process group is empty
 
 `Guarantee` states the subreaper gap (setsid and setpgid escapes), the missing birth
-identity and PID-reuse guard, and that `-cancel-pid` returns 125. The cgroup, terminal
-(background process group), Survivors and Events, and XNU and launchd limits are
-documented only in the bullets below:
+identity and PID-reuse guard, and that `-cancel-pid` returns 125. The cgroup, SIGKILL of
+owned-command itself, terminal (background process group), Survivors and Events, and
+XNU and launchd limits are documented only in this section:
 - No subreaper and no cgroup. A descendant that calls `setsid` or `setpgid` leaves
   the group. It is neither signaled nor waited for, and it survives retirement. A
   receipt with `HostChildrenSettled` true then describes only the group.
@@ -132,13 +139,18 @@ documented only in the bullets below:
   malformed cancellation request is refused without a receipt.
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
 - The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
-  `Survivors` holds the root only when it is still unreaped at the final check, and it is
-  empty otherwise. `Events` is present and records the steps: started, command reaped,
-  group TERM, group CONT, group KILL, and group already empty.
+  `Survivors` holds the root only when it is still unreaped at the end of settlement, and
+  it is empty otherwise. `Events` is present and records the steps: started, command
+  reaped, group TERM, group CONT, group KILL, settlement extended, and group already empty.
 - The command runs in a background process group, so this backend is for non-interactive
   command families only.
-- XNU's killpg and ESRCH behaviour, and launchd's reaping of orphaned group members, are
-  unverified until the macOS run.
+- On Linux (the `pgroupcheck` test build) a zombie stays a group member until it is
+  reaped. In the XNU source, killpg skips zombies and `kill(2)` then reports EPERM, not
+  ESRCH, for a group that holds only zombies; this backend records that EPERM as an error
+  and returns 125. In the XNU source the kernel itself reaps a member whose parent has
+  already exited, at that member's exit, so it leaves no zombie. That reading of the XNU
+  source, XNU's other killpg and ESRCH behaviour, and the reaping of orphaned group
+  members are unverified until the macOS run.
 - Host settlement proves nothing about phone, camera, media or remote cleanup, as on Linux.
 
 ## Foreign PID cancellation
