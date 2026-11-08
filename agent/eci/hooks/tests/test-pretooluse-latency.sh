@@ -28,11 +28,14 @@ session_id="t00-session"
 session_dir="$proof_root/$session_id"
 status_file="$TMP_ROOT/home/.agent/context/sessions/$session_id/latest-status-report.md"
 worker_transcript="$(mktemp "$ROOT/sessions/latency-worker.XXXXXX.jsonl")"
+# Coordinator samples carry a main omp transcript (a session header with no
+# parentSession), so the hook classifies them as coordinator, not worker.
+main_transcript="$TMP_ROOT/home/.omp/agent/sessions/-latency-/latency-main.jsonl"
 helper_hardlink="$ROOT/hooks/lib/.eci-latency-helper-$BASHPID"
 altered_mode="$TMP_ROOT/eci-command-gate-mode"
 export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"
 export XDG_STATE_HOME="$TMP_ROOT/xdg-state"
-mkdir -p "$session_dir" "$(dirname -- "$status_file")" "$XDG_CONFIG_HOME/eci"
+mkdir -p "$session_dir" "$(dirname -- "$status_file")" "$XDG_CONFIG_HOME/eci" "$(dirname -- "$main_transcript")"
 chmod 700 "$XDG_CONFIG_HOME" "$XDG_CONFIG_HOME/eci"
 trap 'rm -f -- "$worker_transcript" "$helper_hardlink"; rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 # HOME is a real fixture directory whose .omp/agent/eci is the private runtime copy, so
@@ -62,6 +65,15 @@ printf '%s\n' \
   '{"timestamp":"2026-08-21T00:00:00.000Z","type":"session_meta","payload":{"id":"t00-session","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Latency","agent_role":"default"}}}}}' \
   >"$worker_transcript"
 chmod 0600 "$worker_transcript"
+printf '%s\n' \
+  '{"type":"session","version":3,"id":"t00-session","cwd":"/work"}' \
+  '{"type":"message","message":{"role":"user","content":"hello"}}' \
+  >"$main_transcript"
+chmod 0600 "$main_transcript"
+
+role_transcript() {
+  if [ "$1" = worker ]; then printf '%s' "$worker_transcript"; else printf '%s' "$main_transcript"; fi
+}
 
 jq -e '
   [.hooks.PreToolUse[]?.hooks[]?.command]
@@ -71,50 +83,30 @@ jq -e '
 
 bash_input() {
   local role="$1" command="$2"
-  if [ "$role" = worker ]; then
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg command "$command" \
-      --arg transcript "$worker_transcript" \
-      '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}'
-  else
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg command "$command" \
-      '{session_id:$session,cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}'
-  fi
+  jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg command "$command" \
+    --arg transcript "$(role_transcript "$role")" \
+    '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}'
 }
 
 bash_input_inactive() {
   local role="$1" command="$2"
-  if [ "$role" = worker ]; then
-    jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$worker_transcript" \
-      '{session_id:"latency-inactive",cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}'
-  else
-    jq -cn --arg cwd "$ROOT" --arg command "$command" \
-      '{session_id:"latency-inactive",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}'
-  fi
+  jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$(role_transcript "$role")" \
+    '{session_id:"latency-inactive",cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}'
 }
 
 edit_input() {
   local role="$1" tool="$2" target="$3"
-  if [ "$role" = worker ]; then
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg tool "$tool" \
-      --arg path "$target" --arg transcript "$worker_transcript" \
-      '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:$tool,tool_input:{file_path:$path,old_string:"old",new_string:"new"}}'
-  else
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg tool "$tool" --arg path "$target" \
-      '{session_id:$session,cwd:$cwd,tool_name:$tool,tool_input:{file_path:$path,old_string:"old",new_string:"new"}}'
-  fi
+  jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg tool "$tool" \
+    --arg path "$target" --arg transcript "$(role_transcript "$role")" \
+    '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:$tool,tool_input:{file_path:$path,old_string:"old",new_string:"new"}}'
 }
 
 patch_input() {
   local role="$1" target="$2" patch
   patch="$(printf '%s\n' '*** Begin Patch' "*** Update File: $target" '@@' '-old' '+new' '*** End Patch')"
-  if [ "$role" = worker ]; then
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg patch "$patch" \
-      --arg transcript "$worker_transcript" \
-      '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"apply_patch",tool_input:{patch:$patch}}'
-  else
-    jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg patch "$patch" \
-      '{session_id:$session,cwd:$cwd,tool_name:"apply_patch",tool_input:{patch:$patch}}'
-  fi
+  jq -cn --arg cwd "$ROOT" --arg session "$session_id" --arg patch "$patch" \
+    --arg transcript "$(role_transcript "$role")" \
+    '{session_id:$session,cwd:$cwd,transcript_path:$transcript,tool_name:"apply_patch",tool_input:{patch:$patch}}'
 }
 
 run_sample() {
@@ -149,6 +141,10 @@ run_sample() {
     cat "$output" "$error_output" >&2
     fail "callback failed: matcher=$matcher role=$role scenario=$scenario phase=$phase status=$status"
   }
+  # Wall-clock budget, sensitive to host load. At load 30, measured wall time was
+  # 0.69-0.96 s per sample (cold CPU 0.59-0.63 s user+sys), so wall-clock slack
+  # against 1000 ms is only 0.04-0.31 s. Expect flakes when the 1-min load is above
+  # the CPU count; re-run at idle before treating a timing failure as a regression.
   [ "$elapsed" -lt 1000 ] || fail "callback exceeded 1 second: matcher=$matcher role=$role scenario=$scenario phase=$phase elapsed_ms=$elapsed"
   [ "$outcome" = "$effective_expected" ] || {
     cat "$output" "$error_output" >&2
@@ -186,11 +182,12 @@ exercise_callback() {
       for role in coordinator worker; do
         run_fixture "$callback" "$matcher" "$role" direct allow "$(bash_input "$role" 'novel-finite-tool --flag value')"
         run_fixture "$callback" "$matcher" "$role" eight-segment allow "$(bash_input "$role" 'printf 1; printf 2; printf 3; printf 4; printf 5; printf 6; printf 7; printf 8')"
-        run_fixture "$callback" "$matcher" "$role" protected-middle deny "$(bash_input "$role" 'printf before && env && printf after')"
+        # Bare env is ordinary for both roles (classifier_test.go); the planner never denies it.
+        run_fixture "$callback" "$matcher" "$role" protected-middle allow "$(bash_input "$role" 'printf before && env && printf after')"
         run_fixture "$callback" "$matcher" "$role" helper-hardlink allow "$(bash_input "$role" "cat $helper_hardlink")"
         run_fixture "$callback" "$matcher" "$role" inactive allow "$(bash_input_inactive "$role" 'novel-inactive-tool --flag value')"
         run_fixture "$callback" "$matcher" "$role" environment-query allow "$(bash_input "$role" 'printenv PATH')"
-        run_fixture "$callback" "$matcher" "$role" environment-deny deny "$(bash_input "$role" 'env')"
+        run_fixture "$callback" "$matcher" "$role" environment-deny allow "$(bash_input "$role" 'env')"
         if [ "$role" = worker ]; then
           run_fixture "$callback" "$matcher" "$role" gate-mode-set deny "$(bash_input "$role" "$ROOT/bin/eci-command-gate-mode set enforcing")"
         else
