@@ -6,7 +6,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 TMP_PARENT="${ECI_TMPDIR:-${HOME:?HOME must be set}/tmp}"
 mkdir -p -- "$TMP_PARENT"
 TEST_ROOT="$(mktemp -d "$TMP_PARENT/eci-maintain-planner-local-first.XXXXXX")"
-trap 'rm -rf -- "$TEST_ROOT"' EXIT HUP INT TERM
+TEST_ROOT="$(cd -P -- "$TEST_ROOT" && pwd -P)"
+trap 'chmod -R -- u+w "$TEST_ROOT" 2>/dev/null || true; rm -rf -- "$TEST_ROOT"' EXIT HUP INT TERM
 
 TEST_HOME="$TEST_ROOT/home"
 ECI_HOME="$TEST_HOME/.omp/agent/eci"
@@ -19,12 +20,12 @@ OUTPUT="$TEST_ROOT/maintain-planner-output"
 mkdir -p -- "$TEST_HOME/tmp" "$ECI_HOME"
 cp -a -- "$ROOT/bin" "$ROOT/hooks" "$ROOT/tools" "$ECI_HOME/"
 cp -- "$ROOT/hooks.json" "$ECI_HOME/hooks.json"
-chmod -R go-w -- "$TEST_HOME"
+chmod -R -- go-w "$TEST_HOME"
 
 # A stale pair the native gate refuses: not an executable, receipts that name no digest.
 for name in eci-command-plan eci-safe-import eci-hook-helper; do
   printf 'stale %s\n' "$name" >"$BIN/$name"
-  chmod 600 -- "$BIN/$name"
+  chmod -- 600 "$BIN/$name"
   printf '%064d  %s\n' 0 "$name" >"$BIN/$name.sha256"
 done
 printf '%s\n' 'stale module planner' >"$MODULE_PLANNER"
