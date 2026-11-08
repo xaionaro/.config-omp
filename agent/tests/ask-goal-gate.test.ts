@@ -296,7 +296,7 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
   });
 
-  test("blocked ask result tells the model to follow a skill it already read, read one it has not, state the blocker and needed input, and end its turn", () => {
+  test("blocked ask result tells the model to follow a skill it already read, read one it has not, and leave a stuck goal active while listing the needed input", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
     const reason = blockReasonOf(fire("tool_call", askCall, main()));
@@ -305,11 +305,9 @@ describe("ask goal gate", () => {
         "If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it.",
       ),
     );
-    assert.ok(
-      reason.includes(
-        "If you cannot progress, do not call `ask`; state the exact blocker and needed input in your final message, then end your turn.",
-      ),
-    );
+    assert.ok(reason.includes("Leave the goal active"));
+    assert.ok(reason.includes("needed input"));
+    assert.ok(!reason.includes("blocker"));
   });
 
   test("blocked ask result says ask is disabled and asks for the needed input", () => {
