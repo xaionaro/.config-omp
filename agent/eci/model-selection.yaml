@@ -1,6 +1,6 @@
 default:
-  model: anthropic/claude-haiku-5-5
-  reasoning_effort: max
+  model: anthropic/claude-opus-5-5
+  reasoning_effort: low
 higher:
   model: anthropic/claude-opus-5-5
   reasoning_effort: medium
