@@ -25,10 +25,33 @@ tui:
 statusLine:
   preset: custom
   separator: powerline
-  leftSegments: [pi, vim, hostname, model, mode, path, git, pr, session, subagents]
-  rightSegments: [session_name, usage, token_in, token_out, cache_read, cache_write, token_rate, cache, cost, context_pct, context_total, time_spent, time]
+  leftSegments:
+    - pi
+    - vim
+    - model
+    - mode
+    - path
+    - git
+    - pr
+    - subagents
+  rightSegments:
+    - session_name
+    - usage
+    - token_rate
+    - cost
+    - context_pct
+    - context_total
   segmentOptions:
-    model: { showThinkingLevel: true }
-    path: { abbreviate: true, maxLength: 60 }
-    git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true }
-    time: { format: "24h", showSeconds: true }
+    model:
+      showThinkingLevel: true
+    path:
+      abbreviate: true
+      maxLength: 6
+    git:
+      showBranch: true
+      showStaged: true
+      showUnstaged: true
+      showUntracked: true
+providers:
+  anthropic:
+    slowMode: auto
