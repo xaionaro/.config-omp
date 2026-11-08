@@ -211,12 +211,13 @@ for policy_path in \
   policy_output="$(run_dispatch "policy-$(basename -- "$policy_path")" "$policy_input")"
   assert_empty_output "policy-$(basename -- "$policy_path")" "$policy_output"
 done
+# A go.mod local replace is denied even on a normal coordinator edit (38fd264).
 go_mod_input="$TMP_ROOT/go-mod.json"
 jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "$repo/go.mod" \
   '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"replace example.local/module => ../module"}}' \
   >"$go_mod_input"
 go_mod_output="$(run_dispatch go-mod "$go_mod_input")"
-assert_empty_output go-mod "$go_mod_output"
+assert_marker_deny go-mod "$go_mod_output" ECI_GOMOD_LOCAL_REPLACE_DENIED
 
 normal_patch_input="$TMP_ROOT/normal-patch.json"
 normal_patch="$(printf '*** Begin Patch\n*** Update File: %s\n@@\n-old\n+new\n*** End Patch\n' "$repo/normal.c")"
@@ -226,13 +227,14 @@ jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg patch "$normal_pat
 normal_patch_output="$(run_dispatch normal-patch "$normal_patch_input")"
 assert_empty_output normal-patch "$normal_patch_output"
 
+# The go.mod hunk denies the whole multi-file patch (38fd264).
 policy_patch_input="$TMP_ROOT/policy-patch.json"
 policy_patch="$(printf '*** Begin Patch\n*** Update File: %s\n@@\n-old\n+new\n*** Update File: %s\n@@\n-old\n+new\n*** Update File: %s\n@@\n-old\n+replace example.local/module => ../module\n*** Update File: %s\n@@\n-old\n+new\n*** End Patch\n' "$repo/docs/plans/ordinary.md" "$repo/vendor/lib/ordinary.c" "$repo/go.mod" "$repo/submodule/ordinary.c")"
 jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg patch "$policy_patch" \
   '{tool_name:"apply_patch",session_id:$session_id,cwd:$cwd,tool_input:{patch:$patch}}' \
   >"$policy_patch_input"
 policy_patch_output="$(run_dispatch policy-patch "$policy_patch_input")"
-assert_empty_output policy-patch "$policy_patch_output"
+assert_marker_deny policy-patch "$policy_patch_output" ECI_GOMOD_LOCAL_REPLACE_DENIED
 
 # Child-health failures are advisory for an ordinary repository target: malformed
 # JSON and unavailable ownership information must not become a user-facing denial.
@@ -384,16 +386,15 @@ malformed_output="$(run_dispatch malformed-marker "$normal_input")"
 assert_empty_output malformed-marker "$malformed_output"
 mv -- "$TMP_ROOT/marker.before" "$malformed_marker"
 
-# Callback transport metadata is not a target.  With a valid active marker,
-# an otherwise ordinary repository edit must still pass through when the
-# callback omitted a typed session id; the concrete marker/ledger/cross-session
-# target checks above remain the boundaries.
+# Callback transport metadata must be typed while a marker is active: an
+# untyped session id fails closed with ECI_HOOK_IDENTITY_MALFORMED, matching
+# source 575bb81.
 malformed_identity_input="$TMP_ROOT/malformed-identity.json"
 jq -cn --arg cwd "$repo" --arg path "$repo/normal.c" \
   '{tool_name:"Write",session_id:17,cwd:$cwd,tool_input:{file_path:$path,content:"ordinary update"}}' \
   >"$malformed_identity_input"
 malformed_identity_output="$(run_active_gate_as_coordinator malformed-identity "$malformed_identity_input")"
-assert_empty_output malformed-identity "$malformed_identity_output"
+assert_marker_deny malformed-identity "$malformed_identity_output" ECI_HOOK_IDENTITY_MALFORMED
 
 # A valid direct marker owns ordinary Edit/Write routing.  Bad sibling marker
 # records and callback metadata are advisory: they must not turn a normal
