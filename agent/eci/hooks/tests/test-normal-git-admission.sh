@@ -232,6 +232,8 @@ run_hook() {
   local compound_handoff_token=normal-git-test-handoff
   local fd9_mode="${10:-none}" fd9_token="${11:-$compound_handoff_token}"
   local subagent=false
+  local transcript="${CALLBACK_TRANSCRIPT-}"
+  [ -n "${CALLBACK_TRANSCRIPT+x}" ] || [ "$role" != coordinator ] || transcript="$MAIN_TRANSCRIPT"
   if [ "$role" = worker ]; then
     subagent=true
   fi
@@ -247,7 +249,7 @@ run_hook() {
     --arg compound_physical "$compound_physical" \
     --arg handoff_token "$compound_handoff_token" \
     --arg command "$command" \
-    --arg transcript "${CALLBACK_TRANSCRIPT:-}" \
+    --arg transcript "$transcript" \
     --arg command_path "$CALLBACK_PATH" \
     --argjson timeout_replays "$timeout_replays" \
     --argjson compound_validation "$compound_replay" \
@@ -2687,9 +2689,9 @@ run_worker_git_cli_matrix() {
   for command in 'git status --short' 'git diff -- file.txt' 'git log --oneline -1' 'git show HEAD:file.txt'; do assert_allowed "$command" worker; done
   assert_allowed "git diff --output=$TMP_ROOT/inspection.out" worker
   assert_allowed "git -C $FOREIGN_REPO status --short" worker
-  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_allowed 'git add -- file.txt' coordinator
-  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_denied_code 'git add -A' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
-  CALLBACK_TRANSCRIPT="$MAIN_TRANSCRIPT" assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
+  assert_allowed 'git add -- file.txt' coordinator
+  assert_denied_code 'git add -A' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
+  assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
   for command in 'git rebase topic' 'git merge topic' 'git checkout -- file.txt' 'git rm -- file.txt' 'git mv file.txt next.txt' 'git diff && env git add -- file.txt'; do
     assert_denied_code "$command" ECI_WORKER_GIT_OWNERSHIP_DENIED worker
   done
