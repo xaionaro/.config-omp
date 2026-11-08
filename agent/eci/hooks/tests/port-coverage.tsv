@@ -198,7 +198,7 @@ hooks/tests/test-eci-command-plan.sh	-	mapped	agent/eci/hooks/tests/test-eci-com
 hooks/tests/test-eci-command-syntax-gating.sh	-	mapped	agent/eci/hooks/tests/test-eci-command-syntax-gating.sh	-	-
 hooks/tests/test-eci-control-alias-target.sh	-	mapped	agent/eci/hooks/tests/test-eci-control-alias-target.sh	-	-
 hooks/tests/test-eci-coordinator-edit-gate.sh	-	mapped	agent/eci/hooks/tests/test-eci-coordinator-edit-gate.sh	-	-
-hooks/tests/test-eci-coordinator-edit-hatch.sh	-	mapped	agent/eci/hooks/tests/test-eci-coordinator-edit-hatch.sh	-	-
+hooks/tests/test-eci-coordinator-edit-hatch.sh	-	reason-coded	-	obsolete	retired: 575bb81 bin/eci-active:59-62 defers coordinator-edit-on (source f50ca64); omp tools/eci-active/main.go:57-58; agent/eci/hooks/tests/TEST-DISPOSITION.md:32
 hooks/tests/test-eci-diagnostic-specificity.sh	-	mapped	agent/eci/hooks/tests/test-eci-diagnostic-specificity.sh	-	-
 hooks/tests/test-eci-dynamic-pipeline-visibility.sh	-	mapped	agent/eci/hooks/tests/test-eci-dynamic-pipeline-visibility.sh	-	-
 hooks/tests/test-eci-edit-control-paths.sh	-	mapped	agent/eci/hooks/tests/test-eci-edit-control-paths.sh	-	-
