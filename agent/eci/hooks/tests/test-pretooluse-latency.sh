@@ -132,7 +132,11 @@ run_sample() {
   if jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$output" >/dev/null 2>&1; then
     outcome=deny
   fi
-  if [ "$command_gate_mode" = permissive ] && [ "$matcher" = '^Bash$' ] && [ "$expected" = deny ]; then
+  # Permissive mode relaxes Bash command-gate denials, but not gate-mode identity
+  # or a worker gate-mode set: permissive must not rewrite the gate that grants it
+  # (gate-escape-hatches.md row 32 has no permissive carve-out).
+  if [ "$command_gate_mode" = permissive ] && [ "$matcher" = '^Bash$' ] && [ "$expected" = deny ] &&
+    [ "$scenario" != gate-mode-identity ] && [ "$scenario" != gate-mode-set ]; then
     effective_expected=allow
   fi
   printf 'callback=PreToolUse mode=%s matcher=%q role=%s scenario=%s route=%s phase=%s outcome=%s elapsed_ms=%d status=%d\n' \
@@ -198,13 +202,15 @@ exercise_callback() {
       ;;
     '^apply_patch$')
       run_fixture "$callback" "$matcher" coordinator proof-write allow "$(patch_input coordinator "$status_file")"
-      run_fixture "$callback" "$matcher" coordinator source-write deny "$(patch_input coordinator "$ROOT/hooks/validate-bash.sh")"
+      run_fixture "$callback" "$matcher" coordinator source-write allow "$(patch_input coordinator "$ROOT/hooks/validate-bash.sh")"
+      run_fixture "$callback" "$matcher" coordinator control-write deny "$(patch_input coordinator "$session_dir/eci_active")"
       run_fixture "$callback" "$matcher" worker source-write allow "$(patch_input worker "$ROOT/hooks/validate-bash.sh")"
       run_fixture "$callback" "$matcher" worker control-write deny "$(patch_input worker "$session_dir/eci_active")"
       ;;
     '^(Edit|Write|MultiEdit|NotebookEdit)$')
       run_fixture "$callback" "$matcher" coordinator proof-write allow "$(edit_input coordinator Edit "$status_file")"
-      run_fixture "$callback" "$matcher" coordinator source-write deny "$(edit_input coordinator Edit "$ROOT/hooks/validate-bash.sh")"
+      run_fixture "$callback" "$matcher" coordinator source-write allow "$(edit_input coordinator Edit "$ROOT/hooks/validate-bash.sh")"
+      run_fixture "$callback" "$matcher" coordinator control-write deny "$(edit_input coordinator Edit "$session_dir/eci_active")"
       run_fixture "$callback" "$matcher" worker source-write allow "$(edit_input worker Edit "$ROOT/hooks/validate-bash.sh")"
       run_fixture "$callback" "$matcher" worker control-write deny "$(edit_input worker Edit "$session_dir/eci_active")"
       ;;
