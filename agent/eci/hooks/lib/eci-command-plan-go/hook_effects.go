@@ -73,7 +73,20 @@ func inspectHookEffects(
 			argv[index] = token{value: value, offset: index}
 		}
 		child := hookCommandChild(record, argv)
-		if len(child) == 0 || !hookArgumentKnown(record, child[0].offset) {
+		if len(child) == 0 {
+			continue
+		}
+		if !hookArgumentKnown(record, child[0].offset) {
+			// An unresolved executable such as "$HOME/…" or an unquoted ~ keeps the
+			// provider-control identity checks; its other effects remain advisory.
+			if diagnostic := inspectHookLifecycle(request, record, child); diagnostic != nil {
+				return diagnostic
+			}
+			if hookPresumedControlTarget(child[0].value) != "" {
+				if diagnostic := inspectHookScript(request, record, child); diagnostic != nil {
+					return diagnostic
+				}
+			}
 			continue
 		}
 		if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
@@ -972,10 +985,18 @@ func inspectHookLifecycle(
 	if len(argv) < 2 || !hookArgumentKnown(record, argv[1].offset) || isLifecycleReadOnlyInvocation(argv) {
 		return nil
 	}
-	resolved := hookResolvedExecutable(record, argv[0].value)
 	canonical := resolvePathIdentity(filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci", "bin", "eci-active"))
+	resolved := ""
+	if hookArgumentKnown(record, argv[0].offset) {
+		resolved = hookResolvedExecutable(record, argv[0].value)
+	}
 	if resolved == "" {
-		return nil
+		// An unresolved "$HOME/…", ~, PATH or CWD spelling cannot prove that it
+		// avoids the canonical route, so it keeps the canonical identity checks.
+		if !lifecycleExecutableCandidate(argv[0].value) {
+			return nil
+		}
+		resolved = canonical
 	}
 	if resolved != canonical {
 		if !strings.HasPrefix(filepath.Base(argv[0].value), "eci-active") {
@@ -1067,15 +1088,22 @@ func inspectHookScript(
 			index++
 		}
 	}
-	if index >= len(argv) || !hookArgumentKnown(record, argv[index].offset) {
+	if index >= len(argv) {
 		return nil
 	}
-	if index == 0 && !strings.ContainsRune(argv[index].value, '/') {
+	known := hookArgumentKnown(record, argv[index].offset)
+	if known && index == 0 && !strings.ContainsRune(argv[index].value, '/') {
 		return nil
 	}
-	target := hookResolvedExecutable(record, argv[index].value)
-	if index > 0 && record.CWDKnown && !filepath.IsAbs(argv[index].value) {
-		target = resolvePathIdentity(filepath.Join(record.CWD, argv[index].value))
+	target := ""
+	if known {
+		target = hookResolvedExecutable(record, argv[index].value)
+		if index > 0 && record.CWDKnown && !filepath.IsAbs(argv[index].value) {
+			target = resolvePathIdentity(filepath.Join(record.CWD, argv[index].value))
+		}
+	}
+	if target == "" {
+		target = hookPresumedControlTarget(argv[index].value)
 	}
 	info, err := os.Stat(target)
 	if err != nil || !info.Mode().IsRegular() {
@@ -1105,14 +1133,10 @@ func inspectHookScript(
 			continue
 		}
 		code := CodeControlOwnerRequired
-		protected := false
-		switch filepath.ToSlash(relative) {
-		case "hooks/install-pre-commit-go-mod.sh":
+		if filepath.ToSlash(relative) == "hooks/install-pre-commit-go-mod.sh" {
 			code = hookCodeWorkerHookInstallerDenied
-			protected = true
-		case "hooks/eci-review-gate.sh", "hooks/stop-gate.sh", "hooks/eci-active-gate.sh", "hooks/ate-orchestrator-gate.sh", "bin/eci-active", "bin/eci-review-gate", "bin/eci-stage":
-			protected = true
 		}
+		protected := slices.Contains(hookProviderControlScripts, filepath.ToSlash(relative))
 		if protected && request.Role == RoleWorker {
 			diagnostic := diagnosticForToken(code, "Worker execution selects Supervisor-owned provider control: "+target,
 				record.Segment, argv[index].offset, argv[index], "route this exact provider control invocation through the Supervisor in the same session", "worker-control-script")
@@ -1152,6 +1176,31 @@ func inspectHookScript(
 		record.Segment, argv[index].offset, argv[index], "repository-allow-on writes an inert record and no gate honors it unless a legacy marker is active; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
 	diagnostic.Path = target
 	return diagnostic
+}
+
+// hookProviderControlScripts names the provider-root executables whose
+// invocation is Supervisor-owned.
+//
+// Example: hooks/stop-gate.sh under the provider root is a control script.
+var hookProviderControlScripts = []string{"hooks/install-pre-commit-go-mod.sh", "hooks/eci-review-gate.sh", "hooks/stop-gate.sh", "hooks/eci-active-gate.sh", "hooks/ate-orchestrator-gate.sh", "bin/eci-active", "bin/eci-review-gate", "bin/eci-stage"}
+
+// hookPresumedControlTarget presumes the canonical provider control target for
+// a script or executable word that cannot be resolved, so an unresolved spelling
+// keeps the identity checks of its absolute form. Other words stay unresolved.
+//
+// Example: "$HOME/.omp/agent/eci/hooks/stop-gate.sh" presumes the provider-root
+// hooks/stop-gate.sh, while "$HOME/tmp/check.sh" presumes nothing.
+func hookPresumedControlTarget(value string) string {
+	providerRoot := resolvePathIdentity(filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci"))
+	if lifecycleExecutableCandidate(value) {
+		return filepath.Join(providerRoot, "bin", "eci-active")
+	}
+	for _, relative := range hookProviderControlScripts {
+		if value == relative || strings.HasSuffix(value, "/"+relative) {
+			return filepath.Join(providerRoot, relative)
+		}
+	}
+	return ""
 }
 
 // hookScratchScriptAllowed admits a resolved script below the canonical HOME/tmp directory.
