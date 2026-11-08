@@ -41,6 +41,17 @@ export GOCACHE="${GOCACHE:-$account_home/.cache/go-build}"
 
 base="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set; it is the private (0700) work area}/eci-hooktest"
 mkdir -p -m 700 "$base"
+# The native gate loader rejects a bin directory with an untrusted ancestor;
+# refuse such a work area up front instead of failing deep inside a test.
+chain_dir="$(cd -P -- "$base" && pwd -P)"
+while :; do
+  if [ -z "$(find "$chain_dir" -maxdepth 0 \( -user "$(id -u)" -o -user 0 \) ! -perm -020 ! -perm -002 2>/dev/null)" ]; then
+    printf 'run-isolated: XDG_RUNTIME_DIR chain is not private: %s is group/other-writable or owned by another user\n' "$chain_dir" >&2
+    exit 1
+  fi
+  [ "$chain_dir" = / ] && break
+  chain_dir="$(dirname -- "$chain_dir")"
+done
 work="$(realpath -e -- "$(mktemp -d "$base/eci-hooktest.XXXXXX")")"
 cleanup() { rm -rf -- "$work"; }
 trap cleanup EXIT
