@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/hooks/lib/eci-file-lock.sh"
 TMP_ROOT="$(realpath -e -- "$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-session-refresh.XXXXXX")")"
-trap 'chmod -R u+w -- "$TMP_ROOT" 2>/dev/null; rm -rf -- "$TMP_ROOT"' EXIT
+trap 'chmod -R -- u+w "$TMP_ROOT" 2>/dev/null; rm -rf -- "$TMP_ROOT"' EXIT
 
 # The hook derives its baseline repository from the input cwd. Baseline cases pass
 # ECI_SOURCE_REPO as hook_cwd: ROOT is a run-isolated copy outside any repository.
@@ -412,6 +412,37 @@ test_source_checkout_provisions_native_tools_into_bin() {
   [ "$("${sha[@]}" "$fixture/bin/eci-safe-import" | cut -d ' ' -f 1)" = "$importer_saved" ]
   [ "$(native_identity eci-safe-import eci-safe-import.sha256)" = "$importer_identity" ]
   [ "$(native_identity "${others[@]}")" = "$others_identity" ]
+  [ ! -e "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json" ]
+
+  # manifest-write runs the eci-safe-import beside the eci-active binary (manifest.go:39), and the
+  # wrapper verifies only $HOME/.omp/agent/eci/bin/eci-safe-import. So the canonical wrapper and a
+  # symlink to it publish, and a wrapper copy elsewhere refuses before any importer runs.
+  manifest_write_via() {
+    (
+      cd "$fixture"
+      export ECI_PROOF_ROOT="$(realpath "$TMP_ROOT/import-proof")" ECI_SESSION_ID=import-on-demand
+      "$1" manifest-write "$TMP_ROOT/import-manifest.json" >/dev/null 2>"$TMP_ROOT/manifest.err"
+    )
+  }
+  rm -- "$fixture/bin/eci-safe-import"
+  manifest_write_via "$fixture/bin/eci-active"
+  cmp "$TMP_ROOT/import-manifest.json" "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  rm -- "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  mkdir -p "$TMP_ROOT/wrapper-link"
+  ln -s -- "$fixture/bin/eci-active" "$TMP_ROOT/wrapper-link/eci-active"
+  manifest_write_via "$TMP_ROOT/wrapper-link/eci-active"
+  cmp "$TMP_ROOT/import-manifest.json" "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  rm -- "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json"
+  # The copy's own bin/ holds an importer the loader never verifies; it records any run.
+  mkdir -p "$TMP_ROOT/wrapper-copy/bin"
+  cp -p -- "$fixture/bin/eci-active" "$TMP_ROOT/wrapper-copy/bin/eci-active"
+  printf '#!/bin/sh\n: >"%s"\n' "$TMP_ROOT/unverified-importer-ran" >"$TMP_ROOT/wrapper-copy/bin/eci-safe-import"
+  chmod 0755 "$TMP_ROOT/wrapper-copy/bin/eci-safe-import"
+  rc=0
+  manifest_write_via "$TMP_ROOT/wrapper-copy/bin/eci-active" || rc=$?
+  [ "$rc" -ne 0 ]
+  grep -Fq 'eci-active: manifest-write runs only from' "$TMP_ROOT/manifest.err"
+  [ ! -e "$TMP_ROOT/unverified-importer-ran" ]
   [ ! -e "$TMP_ROOT/import-proof/import-on-demand/eci-required-critics.json" ]
 }
 

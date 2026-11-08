@@ -27,6 +27,12 @@ case $wrapper in
   *) bin_dir=. ;;
 esac
 bin_dir=$(cd -P -- "$bin_dir" && pwd -P)
+# manifest-write runs the eci-safe-import beside the eci-active binary (manifest.go:39), while the loader verifies
+# only the canonical $eci_home/bin copy. A wrapper outside that directory would run an unverified importer.
+if [ "${1-}" = manifest-write ] && [ "$bin_dir" != "$(cd -P -- "$eci_home/bin" 2>/dev/null && pwd -P)" ]; then
+  printf 'eci-active: manifest-write runs only from %s/bin; this wrapper resolves to %s, whose eci-safe-import is not verified\n' "$eci_home" "$bin_dir" >&2
+  exit 1
+fi
 source "$eci_home/hooks/lib/eci-file-lock.sh"
 source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 exec 9>"$bin_dir/.eci-active-build.lock"
