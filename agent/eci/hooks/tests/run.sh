@@ -536,22 +536,24 @@ test_runtime_hook_probe_historical_evidence_is_sanitized() {
   ' "$FIXTURES/runtime-hook-probe-evidence.jsonl" >/dev/null
 }
 
-test_session_snapshot_saves_baseline_and_clears_legacy_skip() {
-  local proof_root out
+test_session_snapshot_saves_baseline() {
+  local proof_root out repo input
   proof_root="$(fresh_proof_root session)"
-  mkdir -p "$proof_root/t00-session"
-  touch "$proof_root/t00-session/skip_stop"
-  ECI_SESSION_ID=t00-session ECI_PROOF_ROOT="$proof_root" "$ROOT/bin/skip-stop" on >/dev/null 2>&1 || return 1
-  env -u ECI_SESSION_ID ECI_PROOF_ROOT="$proof_root" "$ROOT/bin/skip-stop" on >/dev/null 2>&1 || return 1
   out="$TMP_ROOT/session-snapshot.out"
+  # skip_stop marker setup and assertions removed: bin/skip-stop is not ported and the
+  # stop gate is retired (TEST-DISPOSITION.md:294, bin/skip-stop row, citing f50ca64).
+  # ROOT is a run-isolated copy outside any repository, so the baseline needs a repository cwd.
+  repo="$TMP_ROOT/session-snapshot-repo"
+  rm -rf -- "$repo"
+  git init -q "$repo" &&
+    git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base || return 1
+  input="$TMP_ROOT/session-snapshot-start.json"
+  jq --arg cwd "$repo" '.cwd = $cwd' "$FIXTURES/session-start.json" >"$input" || return 1
 
-  run_hook "$out" "$ROOT/hooks/session-snapshot.sh" "$FIXTURES/session-start.json" \
+  run_hook "$out" "$ROOT/hooks/session-snapshot.sh" "$input" \
     ECI_PROOF_ROOT="$proof_root" || return 1
 
-  [ -s "$proof_root/t00-session/baseline_head" ] &&
-    [ ! -e "$proof_root/t00-session/skip_stop" ] &&
-    [ -e "$proof_root/skip-stop/sessions/t00-session/skip_stop" ] &&
-    [ "$(find "$proof_root/skip-stop/cwd" -mindepth 2 -maxdepth 2 -name skip_stop 2>/dev/null | wc -l)" -eq 1 ] &&
+  [ "$(cat "$proof_root/t00-session/baseline_head")" = "$(git -C "$repo" rev-parse HEAD)" ] &&
     json_field_contains "$out" '.hookSpecificOutput.additionalContext // empty' "AGENTS.md"
 }
 
@@ -565,24 +567,6 @@ test_session_snapshot_skips_ephemeral_threads() {
 
   expect_no_output "$out" &&
     [ ! -e "$proof_root/t00-side/baseline_head" ]
-}
-
-test_session_snapshot_preserves_fresh_markers_in_old_state_dirs() {
-  local proof_root out skip_cwd
-  proof_root="$(fresh_proof_root session-old-markers)"
-  ECI_SESSION_ID=t00-session ECI_PROOF_ROOT="$proof_root" "$ROOT/bin/skip-stop" on >/dev/null 2>&1 || return 1
-  env -u ECI_SESSION_ID ECI_PROOF_ROOT="$proof_root" "$ROOT/bin/skip-stop" on >/dev/null 2>&1 || return 1
-
-  skip_cwd=$(find "$proof_root/skip-stop/cwd" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1)
-  [ -n "$skip_cwd" ] || return 1
-  touch -t 202001010000 "$proof_root/skip-stop/sessions/t00-session" "$skip_cwd" "$proof_root/t00-session"
-
-  out="$TMP_ROOT/session-snapshot-old-markers.out"
-  run_hook "$out" "$ROOT/hooks/session-snapshot.sh" "$FIXTURES/session-start.json" \
-    ECI_PROOF_ROOT="$proof_root" || return 1
-
-  [ -e "$proof_root/skip-stop/sessions/t00-session/skip_stop" ] &&
-    [ -e "$skip_cwd/skip_stop" ]
 }
 
 test_side_session_start_is_silent_and_binds_stop_bypass() {
@@ -2881,12 +2865,10 @@ run_case "prompt state leaves caveman story silent" \
   test_prompt_state_leaves_caveman_story_silent
 run_case "runtime hook probe historical evidence is sanitized" \
   test_runtime_hook_probe_historical_evidence_is_sanitized
-run_case "session snapshot saves baseline and clears legacy skip_stop" \
-  test_session_snapshot_saves_baseline_and_clears_legacy_skip
+run_case "session snapshot saves baseline" \
+  test_session_snapshot_saves_baseline
 run_case "session snapshot skips ephemeral threads" \
   test_session_snapshot_skips_ephemeral_threads
-run_case "session snapshot preserves fresh markers in old state dirs" \
-  test_session_snapshot_preserves_fresh_markers_in_old_state_dirs
 run_case "session snapshot refresh and active-marker cleanup safety" \
   "$ROOT/hooks/tests/test-session-snapshot-refresh.sh"
 run_case "portable runtime file-lock selection and lifecycle" \

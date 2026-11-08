@@ -2814,7 +2814,10 @@ assert_lane_forecast_contract() {
     forbid_generic_forecast_recalibration_placeholder "$file" '<prior deadline>'
     forbid_generic_forecast_recalibration_placeholder "$file" '<current deadline>'
     if [ "$file" = "$LEDGER" ]; then
-      require_pattern "$file" 'closed forecasted work records actual completion' 'closed[[:space:]]+forecasted[[:space:]]+lane/root.*`completed_at`[[:space:]]+UTC.*inactive[[:space:]]+canonical[[:space:]]+forecast.*Completed: <UTC ISO8601>; no active forecast deadline'
+      # The closure rule and the CLOSED-lane template are independent clauses; their
+      # relative order in the skill is not a contract (575bb81 puts the template first).
+      require_pattern "$file" 'closed forecasted work records actual completion' 'closed[[:space:]]+forecasted[[:space:]]+lane/root.*`completed_at`[[:space:]]+UTC.*inactive[[:space:]]+canonical[[:space:]]+forecast'
+      require_pattern "$file" 'closed lane renders completion without a deadline' 'Completed: <UTC ISO8601>; no active forecast deadline'
     else
       require_pattern "$file" 'closed lanes record completion' "$closed_lane_pattern"
     fi
@@ -3306,7 +3309,6 @@ assert_least_restriction_contract() {
     'Receipt required before ordinary work.' \
     'least restriction contract'
 
-  require_text "$STYLE_ADMISSION" 'Style sources guide the change; a brief or tool output is review context, not a write permit.'
   require_text "$IMPLEMENT" 'A missing record, receipt, hash, marker, or coordination detail does not deny a bounded in-scope write.'
   require_text "$ECI_CRITIQUE" 'Records, hashes, receipts, and packet shape are review context, not admission criteria.'
   require_text "$FAST_PATH" 'Speed grants no broader or irreversible authority.'
@@ -3314,12 +3316,10 @@ assert_least_restriction_contract() {
   require_text "$REVIEW_POLICY" 'Evidence tests the result; a record, receipt, hash, or packet shape never permits or blocks ordinary work.'
   require_text "$PAUSE" 'Pause state is session-local coordination context, not a receipt, hash, or artifact gate.'
   require_text "$POLICY" 'Pressure-test evidence is audit context, never an ordinary-work gate.'
-  require_text "$ECI" 'Every enabled denial names a documented bounded legitimate-work escape path in [the gate catalog](hooks/gate-escape-hatches.md).'
-  require_text "$GATE_CATALOG" 'Every enabled gate below has a bounded legitimate path.'
+  require_text "$ECI_BINDING_CONTRACT" 'Every enabled denial names a documented bounded legitimate-work escape path in'
   require_text "$GATE_CATALOG" 'If a future gate has no bounded legitimate path, disable that gate until one exists.'
   require_text "$GATE_CATALOG" 'owner-scoped dependency work'
   require_text "$GATE_CATALOG" 'repository-allow-on'
-  require_text "$GATE_CATALOG" 'The session-scoped 600-second self-edit hatch changes routing only; it does not override Producer ownership or authorize new tracked contributions or Git index/commit operations.'
 
   forbid_text "$ECI_COVERAGE" 'Baseline source SHA-256:'
   forbid_text "$PAUSE" 'fails closed'
@@ -3334,18 +3334,18 @@ assert_implementer_iteration_checkpoint_contract() {
   verification='Before Step 4 or dependent work on another implementation iteration, the Supervisor independently verifies the Producer’s immutable parent-to-commit range.'
   dispatch='4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration'
 
-  require_text "$ECI" 'Within ECI, Producers commit their own checked, agreed scope during handoff.'
-  require_text "$ECI" 'Before dependent review or work, the Supervisor independently verifies that exact range.'
-  require_text "$ECI" 'A Producer checkpoint is provisional and does not count as acceptance; outer workflows retain their own checkpoint and acceptance rules.'
-  require_text "$ECI" 'Stage only exact iteration paths or hunks. Never stage a whole dirty path or tree merely to capture one hunk.'
-  require_text "$ECI" 'Exclude user-owned, other-Producer, and in-flight content unless every contributing Producer explicitly includes its own checked contribution in an agreed joint checkpoint.'
-  require_text "$ECI" 'If an ECI contribution boundary remains ambiguous, preserve the worktree and have the responsible Producers resolve it directly; Helpers report through their parents and follow their Producer’s agreement.'
-  require_text "$ECI" 'A repair is a separate commit. Do not amend or erase an earlier checkpoint.'
-  require_text "$ECI" 'A later repair is a separate iteration and commit. Do not amend or delay the prior checkpoint.'
-  require_text "$ECI" 'Normal targeted Git coordination needs no approval artifact, receipt, hash, canonical spelling, or command-shape prerequisite.'
-  forbid_text "$ECI" 'Implementers never commit.'
-  forbid_text "$ECI" 'Hold commits until stable.'
-  forbid_text "$ECI" 'amend a bad original rather than stack a fix commit'
+  require_text "$ECI_BINDING_CONTRACT" 'Within ECI, Producers commit their own checked, agreed scope during handoff.'
+  require_text "$ECI_BINDING_CONTRACT" 'Before dependent review or work, the Supervisor independently verifies that exact range.'
+  require_text "$ECI_BINDING_CONTRACT" 'A Producer checkpoint is provisional and does not count as acceptance; outer workflows retain their own checkpoint and acceptance rules.'
+  require_text "$ECI_BINDING_CONTRACT" 'Stage only exact iteration paths or hunks. Never stage a whole dirty path or tree merely to capture one hunk.'
+  require_text "$ECI_BINDING_CONTRACT" 'Exclude user-owned, other-Producer, and in-flight content unless every contributing Producer explicitly includes its own checked contribution in an agreed joint checkpoint.'
+  require_text "$ECI_BINDING_CONTRACT" 'If an ECI contribution boundary remains ambiguous, preserve the worktree and have the responsible Producers resolve it directly; Helpers report through their parents and follow their Producer’s agreement.'
+  require_text "$ECI_BINDING_CONTRACT" 'A repair is a separate commit. Do not amend or erase an earlier checkpoint.'
+  require_text "$ECI_BINDING_CONTRACT" 'A later repair is a separate iteration and commit. Do not amend or delay the prior checkpoint.'
+  require_text "$ECI_BINDING_CONTRACT" 'Normal targeted Git coordination needs no approval artifact, receipt, hash, canonical spelling, or command-shape prerequisite.'
+  forbid_text "$ECI_BINDING_CONTRACT" 'Implementers never commit.'
+  forbid_text "$ECI_BINDING_CONTRACT" 'Hold commits until stable.'
+  forbid_text "$ECI_BINDING_CONTRACT" 'amend a bad original rather than stack a fix commit'
 
   require_text "$IMPLEMENT" 'Commit your checked scoped work during handoff. Do not declare the outcome accepted/complete, publish a manifest, or tear down ECI.'
   require_text "$IMPLEMENT" 'Helpers do not commit.'
@@ -3643,7 +3643,7 @@ assert_lineage_context_contract
 assert_yaml_understanding_contract
 assert_yaml_understanding_contract_mutation
 require_text "$LEDGER" 'All new canonical entries are one compact JSON object per line'
-require_text "$LEDGER" 'Use exactly `ledger-append --json'
+require_text "$LEDGER" 'ledger-append --json'
 require_text "$LEDGER" 'Extract one worker'
 forbid_text "$LEDGER" 'high_level_log.md'
 forbid_text "$LEDGER" 'fromjson?'

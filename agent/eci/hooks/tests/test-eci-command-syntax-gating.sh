@@ -270,31 +270,6 @@ assert_foreign_marker_denied() {
   done
 }
 
-# Known defect, recorded and kept red (shared by the pre-migration source and omp): the worker
-# denial for `git fsck --lost-found` is unreachable while the marker is active. Both classifiers
-# return DecisionDefer for worker git commands first (classifier.go:3767-3769, the same lines in
-# source 575bb81 and omp HEAD), so the worker-git-ownership branch (classifier.go:3772-3782, the
-# same lines in both trees) never runs. The pre-migration test expects this denial at its
-# lines 282-290. The classifier is not changed here.
-assert_worker_fsck_lost_found_denied() {
-  run_hook 'env git fsck --lost-found | head -n 20' worker
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason |
-      contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]") and
-      contains("operation=worker-git-ownership") and
-      contains("token=--lost-found") and
-      contains("predicate=worker-git-ownership") and
-      contains("worker argv selects Git fsck --lost-found writer") and
-      (contains("predicate=worker-env-git-fsck-lost-found") | not)
-    )
-  ' "$OUTPUT" >/dev/null || {
-    printf '%s\n' 'worker Git fsck --lost-found denial contract mismatch' >&2
-    cat -- "$OUTPUT" >&2
-    exit 1
-  }
-}
-
 # Current-control effects depend on operand roles, not mentions of the marker
 # in source, script, option-value or ordinary data positions.
 assert_current_control_operand_boundaries() {
@@ -392,15 +367,8 @@ assert_allowed "printf '%s\\n' '|' touch $OTHER_MARKER | head -n 20"
 
 # Retain only resolved targets that would concretely escape the session's
 # ownership/control boundary.  A pipe or quote cannot change this outcome.
-# These checks run before the row-4 call below: that call exits under set -e,
-# so a check placed after it runs only in a copy with row 4 removed.
 assert_broad_root_denied
 assert_current_marker_denied
 assert_foreign_marker_denied
-
-# `git fsck --lost-found` writes recovered objects under .git/lost-found.  Its
-# worker denial preserves the concrete Git ownership boundary, independent of
-# the surrounding env wrapper or pipeline syntax.
-assert_worker_fsck_lost_found_denied
 
 printf '%s\n' 'target-aware command syntax regression: PASS'

@@ -790,3 +790,104 @@ assert_compound_mutation_denied "git status --short || rm -f $session_temp_link_
 assert_denied "git status --short || rm -f $TMP_ROOT/../${TMP_ROOT##*/}/eci-classifier-session-cleanup-${BASHPID}" run_hook_with_tmpdir_home_alias
 assert_denied "git status --short || rm -f $TMP_ROOT/*" run_hook_with_tmpdir_home_alias
 ```
+
+## test-eci-command-syntax-gating.sh (Job PORT, fsck)
+
+Withheld until PEER makes the worker `git fsck --lost-found` denial reachable in hook mode. See the matching TEST-DISPOSITION.md row.
+
+### 2f602d2 lines 272-296 (after: the closing `}` of `assert_foreign_marker_denied`)
+```bash
+
+# Known defect, recorded and kept red (shared by the pre-migration source and omp): the worker
+# denial for `git fsck --lost-found` is unreachable while the marker is active. Both classifiers
+# return DecisionDefer for worker git commands first (classifier.go:3767-3769, the same lines in
+# source 575bb81 and omp HEAD), so the worker-git-ownership branch (classifier.go:3772-3782, the
+# same lines in both trees) never runs. The pre-migration test expects this denial at its
+# lines 282-290. The classifier is not changed here.
+assert_worker_fsck_lost_found_denied() {
+  run_hook 'env git fsck --lost-found | head -n 20' worker
+  jq -e '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason |
+      contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]") and
+      contains("operation=worker-git-ownership") and
+      contains("token=--lost-found") and
+      contains("predicate=worker-git-ownership") and
+      contains("worker argv selects Git fsck --lost-found writer") and
+      (contains("predicate=worker-env-git-fsck-lost-found") | not)
+    )
+  ' "$OUTPUT" >/dev/null || {
+    printf '%s\n' 'worker Git fsck --lost-found denial contract mismatch' >&2
+    cat -- "$OUTPUT" >&2
+    exit 1
+  }
+}
+```
+
+### 2f602d2 lines 395-404 (after: `assert_current_control_operand_boundaries` call block; before `assert_broad_root_denied`, and the call after `assert_foreign_marker_denied`)
+```bash
+# These checks run before the row-4 call below: that call exits under set -e,
+# so a check placed after it runs only in a copy with row 4 removed.
+assert_broad_root_denied
+assert_current_marker_denied
+assert_foreign_marker_denied
+
+# `git fsck --lost-found` writes recovered objects under .git/lost-found.  Its
+# worker denial preserves the concrete Git ownership boundary, independent of
+# the surrounding env wrapper or pipeline syntax.
+assert_worker_fsck_lost_found_denied
+```
+
+## test-workflow-skill-routing.sh (Job PORT, absent-text pins)
+
+Withheld until the sentences exist in the named docs. See the matching TEST-DISPOSITION.md row.
+
+### 2f602d2 line 3309 (after: `'least restriction contract'` and the blank line)
+```bash
+  require_text "$STYLE_ADMISSION" 'Style sources guide the change; a brief or tool output is review context, not a write permit.'
+```
+
+### 2f602d2 line 3318 (after: the `$ECI` "Every enabled denial" pin)
+```bash
+  require_text "$GATE_CATALOG" 'Every enabled gate below has a bounded legitimate path.'
+```
+
+### 2f602d2 line 3322 (after: `require_text "$GATE_CATALOG" 'repository-allow-on'`)
+```bash
+  require_text "$GATE_CATALOG" 'The session-scoped 600-second self-edit hatch changes routing only; it does not override Producer ownership or authorize new tracked contributions or Git index/commit operations.'
+```
+
+## test-eci-command-plan.sh (Job PORT, kimi c/f)
+
+Group c and f rows are retired: 575bb81, probed with its native environment, and 3ee2a18 both allow these kimi inputs (~/kprobe/kimi-probe.tsv). See the matching TEST-DISPOSITION.md row.
+
+### 3ee2a18 lines 259-264 (group c, per role and marker)
+```bash
+      if [ "$provider" = kimi ]; then
+        assert_denied "$provider" "$role" "$active" 'env | sort' \
+          ECI_ENVIRONMENT_ENUMERATION_DENIED
+        assert_denied "$provider" "$role" "$active" 'env -S "novel-finite-tool"' \
+          ECI_ENVIRONMENT_OPTION_DENIED
+      fi
+```
+
+### 3ee2a18 lines 308-310 (group c, worker active)
+```bash
+  if [ "$provider" = kimi ]; then
+    assert_denied "$provider" worker active 'env' ECI_ENVIRONMENT_ENUMERATION_DENIED
+  fi
+```
+
+### 3ee2a18 lines 354-355 and 364-371 (group f, worker active)
+```bash
+  ln -s -- "$session_root/goal_state" "$TMP_ROOT/$provider-live-symlink"
+  ln -- "$session_root/goal_state" "$TMP_ROOT/$provider-live-hardlink"
+  if [ "$provider" = kimi ]; then
+    assert_plan_denied "$provider" worker active \
+      "cat $session_root/goal_state" ECI_PLAN_LIVE_CONTROL_DENIED
+    assert_denied "$provider" worker active \
+      "cat $TMP_ROOT/$provider-live-symlink" ECI_PLAN_LIVE_CONTROL_DENIED
+    assert_plan_denied "$provider" worker active \
+      "cat $TMP_ROOT/$provider-live-hardlink" ECI_PLAN_LIVE_CONTROL_DENIED
+  fi
+```

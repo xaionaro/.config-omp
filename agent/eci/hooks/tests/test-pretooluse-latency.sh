@@ -16,13 +16,12 @@ rsync -a --exclude='sessions/' --exclude='*.sqlite*' --exclude='auth*.json' \
   "$SOURCE_ROOT/hooks.json" "$ROOT/"
 # Hooks read the omp guidance as $HOME/.omp/agent/AGENTS.md (the parent of the ECI root).
 cp -- "$SOURCE_ROOT/../AGENTS.md" "$ROOT/../AGENTS.md"
-# Publish the native planner into the fixture runtime so validate-bash never
-# rebuilds it on the timed path; the 1000 ms budget measures hook work only.
-mkdir -p -- "$TMP_ROOT/home/tmp/eci-runtime/eci"
-(
-  cd "$ROOT/hooks/lib/eci-command-plan-go"
-  go build -o "$TMP_ROOT/home/tmp/eci-runtime/eci/eci-command-plan" .
-)
+# Publish the native planner and its receipt into the fixture runtime bin/ (the path
+# lib/eci-native-binary.sh verifies) so the probe needs no untracked build output;
+# the 1000 ms budget measures hook work only. The gate-mode-set rows also need
+# bin/eci-command-gate-mode: in hook mode the planner stats that canonical target and
+# denies gate-mode-identity when it is absent (classifier.go inspectHookGateModeTarget).
+HOME="$TMP_ROOT/home" bash "$ROOT/hooks/build-native-binaries.sh" eci-command-plan eci-command-gate-mode
 proof_root="$TMP_ROOT/proof"
 session_id="t00-session"
 session_dir="$proof_root/$session_id"

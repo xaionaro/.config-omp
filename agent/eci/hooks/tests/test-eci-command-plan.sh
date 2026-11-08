@@ -17,12 +17,13 @@ TMP_ROOT="$(mktemp -d "$tmp_parent/.eci-command-plan.XXXXXX")"
 HELPER_HARDLINK="$ECI_ROOT/hooks/lib/.eci-command-plan-test-helper-$BASHPID"
 ECI_WORKER_SESSION_ID="11111111-1111-4111-8111-111111111111"
 ECI_WORKER_TRANSCRIPT=""
+ECI_MAIN_TRANSCRIPT_DIR="${HOME:?}/.omp/agent/sessions/-eci-command-plan-$BASHPID-"
 cleanup_command_plan_test() {
   rm -f -- "$HELPER_HARDLINK"
   if [ -n "$ECI_WORKER_TRANSCRIPT" ]; then
     rm -f -- "$ECI_WORKER_TRANSCRIPT"
   fi
-  rm -rf -- "$TMP_ROOT"
+  rm -rf -- "$TMP_ROOT" "$ECI_MAIN_TRANSCRIPT_DIR"
 }
 trap cleanup_command_plan_test EXIT
 export XDG_CONFIG_HOME="$TMP_ROOT/xdg-config"
@@ -55,6 +56,8 @@ run_hook() {
       if [ "$role" = worker ]; then
         session_id="$ECI_WORKER_SESSION_ID"
         if [ -z "$ECI_WORKER_TRANSCRIPT" ]; then
+          # agent/eci/sessions is untracked runtime state; a fresh checkout lacks it.
+          mkdir -p -- "$ECI_ROOT/sessions"
           ECI_WORKER_TRANSCRIPT="$(mktemp "$ECI_ROOT/sessions/eci-command-plan-test-worker-$BASHPID.XXXXXX.jsonl")"
           printf '%s\n' \
             '{"timestamp":"2026-08-21T00:00:00.000Z","type":"session_meta","payload":{"id":"11111111-1111-4111-8111-111111111111","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-session","depth":1,"agent_nickname":"Test","agent_role":"default"}}}}}' \
@@ -79,6 +82,17 @@ run_hook() {
       ;;
     *) return 2 ;;
   esac
+  if [ "$role" = coordinator ]; then
+    # The planner takes the callback role from its transcript: coordinator calls
+    # (both providers run the omp planner) carry a main omp transcript (session
+    # header, no parentSession); without one the hook fails closed to the worker role.
+    transcript="$ECI_MAIN_TRANSCRIPT_DIR/$session_id.jsonl"
+    if [ ! -e "$transcript" ]; then
+      mkdir -p -- "$ECI_MAIN_TRANSCRIPT_DIR"
+      jq -cn --arg id "$session_id" '{type:"session",version:3,id:$id,cwd:"/work"}' >"$transcript"
+      chmod 0600 -- "$transcript"
+    fi
+  fi
   hook="$root/hooks/validate-bash.sh"
   proof_root="$TMP_ROOT/$provider-$role-$active-proof"
   cwd="$ECI_ROOT"
@@ -160,6 +174,24 @@ assert_plan_denied() {
   }
 }
 
+# Both providers' hooks run the omp planner, whose provider root is
+# $HOME/.omp/agent/eci. A coordinator running the Kimi peer's eci-active selects a
+# script outside that root and the approved roots, so both trees deny it with
+# ECI_COORDINATOR_SCRIPT_TARGET_DENIED predicate=script-target (hook_effects.go
+# :1158-1183 HEAD, :1106-1131 575bb81; probes of both 575bb81 rows, provider codex
+# and kimi, measured the same denial). The omp eci-active target is the lifecycle route.
+assert_lifecycle_route() {
+  local provider="$1" target_provider="$2" command="$3"
+  if [ "$target_provider" = kimi ]; then
+    assert_plan_denied "$provider" coordinator active "$command" \
+      ECI_COORDINATOR_SCRIPT_TARGET_DENIED
+    jq -e '.hookSpecificOutput.permissionDecisionReason | contains("predicate=script-target")' \
+      "$TMP_ROOT/output.json" >/dev/null
+  else
+    assert_allowed "$provider" coordinator active "$command"
+  fi
+}
+
 run_lifecycle_identity_matrix() {
   local provider target_provider target identity_name wrong_name session_id fixed
   for provider in eci kimi; do
@@ -182,19 +214,13 @@ run_lifecycle_identity_matrix() {
       esac
       fixed="env $identity_name=$session_id $target status"
 
-      assert_allowed "$provider" coordinator active "$target status"
+      assert_lifecycle_route "$provider" "$target_provider" "$target status"
       # Retired (group a): the NAME=value prefix denial ECI_PLAN_SYNTAX_DENIED for the
       # lifecycle command. The pre-migration planner allows a NAME=value prefix in hook
       # mode; lifecycle deferral is non-hook only (575bb81 classifier.go:935).
-      assert_allowed "$provider" coordinator active "$fixed"
-      assert_allowed "$provider" coordinator active \
+      assert_lifecycle_route "$provider" "$target_provider" "$fixed"
+      assert_lifecycle_route "$provider" "$target_provider" \
         "env -- $identity_name=$session_id $target status"
-
-      assert_allowed "$provider" coordinator active "$fixed"
-
-      assert_allowed "$provider" coordinator active "$fixed"
-
-      assert_allowed "$provider" coordinator active "$fixed"
 
       # Retired (group b): lifecycle argument denials (ECI_LIFECYCLE_ARGUMENTS_DENIED),
       # identity-route denials (ECI_LIFECYCLE_IDENTITY_DENIED), and the status output
@@ -251,17 +277,10 @@ for provider in eci kimi; do
         'printf one && printf two || printf three; printf four | sha256sum'
       assert_allowed "$provider" "$role" "$active" \
         'printf 1; printf 2; printf 3; printf 4; printf 5; printf 6; printf 7; printf 8'
-      # Retired for the eci provider (group c): `env | sort` and `env -S` denials. The
-      # pre-migration planner (575bb81) and HEAD both allow these inputs in hook mode.
-      # Their codes are emitted only by environment-command (eci-hook-helper-go/
-      # environment_command.go:396-476), which only a unit test and the unwired shell
-      # recognizer hooks/lib/eci-environment-command.sh call. Peer-provider rows unchanged.
-      if [ "$provider" = kimi ]; then
-        assert_denied "$provider" "$role" "$active" 'env | sort' \
-          ECI_ENVIRONMENT_ENUMERATION_DENIED
-        assert_denied "$provider" "$role" "$active" 'env -S "novel-finite-tool"' \
-          ECI_ENVIRONMENT_OPTION_DENIED
-      fi
+      # Retired, both providers (group c): `env | sort` and `env -S` denials. Both
+      # planners (575bb81 and 3ee2a18) allow them for kimi hook input in every role and
+      # marker state (~/kprobe/kimi-probe.tsv). Only environment-command
+      # (eci-hook-helper-go/environment_command.go) emits their codes, and no hook calls it.
       assert_allowed "$provider" "$role" "$active" 'printf escaped\;operator'
       # Retired (group a): the worker-active newline denial ECI_COMMAND_SYNTAX_DENIED.
       # Pre-migration source 575bb81 declares that code in contract.go only and emits
@@ -286,28 +305,29 @@ for provider in eci kimi; do
   # Worker plan_status=0 must take the plain finite fast path, while the
   # ownership-shaped control, environment, Git, and wrapper forms remain on
   # their protected routes for both provider validators.
-  worker_control_target="$ECI_ROOT/bin/eci-active"
   provider_root="$ECI_ROOT"
-  [ "$provider" = kimi ] && worker_control_target="$KIMI_ROOT/bin/eci-active" && provider_root="$KIMI_ROOT"
+  [ "$provider" = kimi ] && provider_root="$KIMI_ROOT"
   assert_allowed "$provider" worker active 'novel-worker-fast-path --flag value'
   provider_helper_alias="$TMP_ROOT/$provider-worker-absolute-helper-hardlink"
   ln -- "$provider_root/hooks/lib/eci-environment-command.sh" "$provider_helper_alias"
   assert_allowed "$provider" worker active "cat $provider_helper_alias"
-  # Retired for the eci provider (group b): worker `status` is a read-only lifecycle
-  # verb, so the worker control-owner check does not apply to it (classifier.go:3810
-  # HEAD, 3816 575bb81, !isLifecycleReadOnlyInvocation; isLifecycleReadOnlyVerb lists
-  # status: HEAD 643, 575bb81 645). Both trees allow it in hook mode. The peer-provider
-  # row is unchanged.
+  # Group b: worker `status` of the provider's eci-active. The eci row is retired:
+  # status is a read-only lifecycle verb (classifier.go !isLifecycleReadOnlyInvocation).
+  # The kimi worker callback runs with KIMI_CODE_HOME=$TMP_ROOT/kimi-worker-home
+  # (run_hook), so the row targets the eci-active of that home. A target under
+  # $KIMI_ROOT lies outside every root the worker callback names and gets
+  # ECI_WORKER_SCRIPT_TARGET_DENIED instead. 575bb81 and 3ee2a18 both give this denial.
   if [ "$provider" = kimi ]; then
+    kimi_worker_control="$TMP_ROOT/kimi-worker-home/bin/eci-active"
+    mkdir -p -- "${kimi_worker_control%/*}"
+    cp -- "$KIMI_ROOT/bin/eci-active" "$kimi_worker_control"
     assert_denied "$provider" worker active \
-      "$worker_control_target status" ECI_CONTROL_OWNER_REQUIRED
+      "$kimi_worker_control status" ECI_CONTROL_OWNER_REQUIRED
+    jq -e '.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-control-script")' \
+      "$TMP_ROOT/output.json" >/dev/null
   fi
-  # Retired for the eci provider (group c): the worker `env` denial. The pre-migration
-  # planner (575bb81) and HEAD both allow bare env in hook mode. The peer-provider row
-  # is unchanged.
-  if [ "$provider" = kimi ]; then
-    assert_denied "$provider" worker active 'env' ECI_ENVIRONMENT_ENUMERATION_DENIED
-  fi
+  # Retired, both providers (group c): the worker `env` denial. Both planners allow
+  # bare env for kimi hook input (~/kprobe/kimi-probe.tsv).
   # Retired (group d): the eci worker `git commit -m worker-fast-path` allowance,
   # which the pre-migration planner denies with ECI_WORKER_GIT_OWNERSHIP_DENIED.
   # Retired (group a): the `bash -c` dynamic-launch denial, which the pre-migration
@@ -332,14 +352,12 @@ for provider in eci kimi; do
     "ps -eo pid,ppid,etimes,stat,args | rg validate-bash"
   # Retired (group d): the worker `git archive HEAD` gate denial, and the git branch
   # and git remote set-url ECI_WORKER_GIT_OWNERSHIP_DENIED denials. The pre-migration
-  # planner allows all three in hook mode. Rebase and worktree stay: the source emits
-  # ECI_WORKER_GIT_OWNERSHIP_DENIED for them.
-  for git_mutation in \
-    'git rebase topic' \
-    'git worktree add /tmp/eci-worker-tree HEAD'; do
-    assert_denied "$provider" worker active "$git_mutation" \
-      ECI_WORKER_GIT_OWNERSHIP_DENIED
-  done
+  # planner allows all three in hook mode. Rebase stays: the source emits
+  # ECI_WORKER_GIT_OWNERSHIP_DENIED for it. Worktree add is allowed under the accepted
+  # WORKERGIT ruling D (disable-the-denial; TEST-DISPOSITION "Worker worktree add").
+  assert_denied "$provider" worker active 'git rebase topic' \
+    ECI_WORKER_GIT_OWNERSHIP_DENIED
+  assert_allowed "$provider" worker active 'git worktree add /tmp/eci-worker-tree HEAD'
   assert_denied "$provider" worker active 'git reset --hard HEAD' \
     ECI_BROAD_DESTRUCTIVE_DENIED
 
@@ -351,24 +369,13 @@ for provider in eci kimi; do
   fi
   session_root="$proof_root/$session_id"
   printf '%s\n' pending >"$session_root/goal_state"
-  ln -s -- "$session_root/goal_state" "$TMP_ROOT/$provider-live-symlink"
-  ln -- "$session_root/goal_state" "$TMP_ROOT/$provider-live-hardlink"
   rm -f -- "$HELPER_HARDLINK"
   ln -- "$ECI_ROOT/hooks/lib/eci-environment-command.sh" "$HELPER_HARDLINK"
-  # Retired for the eci provider (group f): worker reads of control files (goal_state,
-  # its symlink and its hardlink) are not denied in hook mode. Pre-migration source
-  # 575bb81 and HEAD both treat live-control reads as advisory: classifier.go
-  # inspectLiveControl (575bb81 lines 6947-6951; HEAD 6921-6925) checks only write
-  # operands (isSourceWriterOperand: 575bb81 line 6988; HEAD line 6962). Write denials
-  # are not rows in this file. The peer-provider rows are unchanged.
-  if [ "$provider" = kimi ]; then
-    assert_plan_denied "$provider" worker active \
-      "cat $session_root/goal_state" ECI_PLAN_LIVE_CONTROL_DENIED
-    assert_denied "$provider" worker active \
-      "cat $TMP_ROOT/$provider-live-symlink" ECI_PLAN_LIVE_CONTROL_DENIED
-    assert_plan_denied "$provider" worker active \
-      "cat $TMP_ROOT/$provider-live-hardlink" ECI_PLAN_LIVE_CONTROL_DENIED
-  fi
+  # Retired, both providers (group f): worker `cat` of goal_state and of its symlink
+  # and hardlink. Built from 575bb81 and 3ee2a18 and fed kimi hook input, both
+  # planners allow all three reads in every role and marker state
+  # (~/kprobe/kimi-probe.tsv). Live-control inspection covers write operands only.
+  # Quotes: TD-WITHHELD-QUOTES.md "test-eci-command-plan.sh (Job PORT, kimi c/f)".
   assert_allowed "$provider" worker active \
     "cat $HELPER_HARDLINK"
 
