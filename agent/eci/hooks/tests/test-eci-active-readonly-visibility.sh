@@ -18,7 +18,7 @@ ln -s -- "$ROOT" "$empty_home/.omp/agent/eci"
 cp -- "$ROOT/bin/eci-active" "$copy_eci"
 ln -s -- "$copy_eci" "$path_root/eci-active"
 ln -s -- "$copy_eci" "$alias_eci"
-chmod 755 -- "$copy_eci"
+chmod -- 755 "$copy_eci"
 proof_root="$(realpath -e -- "$proof_root")"
 
 failures=0
