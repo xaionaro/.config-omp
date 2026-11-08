@@ -1,6 +1,6 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 1095; no fixed word budget (harness-tuning).
+#   Result: 1143; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
@@ -109,6 +109,7 @@ advisors:
       | `references/coordinator.md` `## Engage and route` | Brief or ledger lacks the `exact user source → faithful requested outcome → bounded scope` chain, or omits user requirements. |
       | context-ledger `## Update Points` | Material change without a same-turn log entry and status-report refresh; project or task fact change without a same-turn ledger edit. |
       | context-ledger `## Storage` | ECI or ATE ledger, forecasts, or log edited or written outside `$HOME/.agent/context/sessions/$SESSION_ID/`, such as a cache directory. |
+      | writing-status-reports `## Format Rules`, context-ledger `## Storage`, `## Latest Status Report`, `## Update Points` | After first creation, `latest-status-report.yaml` is rewritten from scratch, such as by a full-content `write`, instead of edited only at stale or changed fields; or it is written when no field is stale or changed. |
       | `eci-binding-contract.md` `## Decisions` | Supervisor asks the user to choose a design or approach instead of running Explore and Step 2 critique on it; intent or authorization questions are exempt. |
       | `eci-binding-contract.md` `### Work estimates` | Work package started or assigned without an estimated elapsed duration in its plan, assignment, or update. |
       | `eci-binding-contract.md` `### ECI Supervisor repository-edit routing` | Agent starts substantive work, including writing a brief, before loading every installed skill its task matches. |
