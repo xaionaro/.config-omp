@@ -1,6 +1,7 @@
 modelRoles:
   eci-max: anthropic/claude-opus-5-5
   default: anthropic/claude-opus-5-5:low
+  smol: anthropic/claude-haiku-5-5:low
 symbolPreset: nerd
 composer:
   shape: band
@@ -62,3 +63,6 @@ lsp:
   formatOnWrite: true
 retry:
   waitForUsageReset: true
+secrets:
+  enabled: true
+autoResume: true
