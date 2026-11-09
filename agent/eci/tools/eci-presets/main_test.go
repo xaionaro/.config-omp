@@ -138,7 +138,10 @@ func TestTaskRoleTemplatesPreserveDefaults(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, field := range []string{"\ntools:", "\nspawns:", "\noutput:", "\nstructured:"} {
+		if strings.Count(string(data), "\nspawns: \"*\"\n") != 1 {
+			t.Errorf("%s must allow task-compatible spawning", role)
+		}
+		for _, field := range []string{"\ntools:", "\noutput:", "\nstructured:"} {
 			if strings.Contains(string(data), field) {
 				t.Errorf("%s overrides %s", role, field)
 			}

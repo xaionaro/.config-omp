@@ -1,6 +1,7 @@
 ---
 name: eci-preset-orchestrator-openai-higher
 description: ECI Job Orchestrator coordinating an assigned outcome.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:medium", "anthropic/claude-opus-5-5:medium"]
 ---
 

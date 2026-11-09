@@ -1,6 +1,7 @@
 ---
 name: {{.Name}}
 description: Fresh independent ECI end-to-end verification worker.
+spawns: "*"
 model: ["{{.Primary}}", "{{.Fallback}}"]
 ---
 

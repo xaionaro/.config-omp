@@ -1,6 +1,7 @@
 ---
 name: {{.Name}}
 description: ECI Job Orchestrator coordinating an assigned outcome.
+spawns: "*"
 model: ["{{.Primary}}", "{{.Fallback}}"]
 ---
 

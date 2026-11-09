@@ -1,6 +1,7 @@
 ---
 name: eci-preset-implementer-openai-default
 description: ECI implementation Producer for a bounded assigned outcome.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-terra:medium", "anthropic/claude-opus-5-5:low"]
 ---
 

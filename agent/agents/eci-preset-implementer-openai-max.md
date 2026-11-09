@@ -1,6 +1,7 @@
 ---
 name: eci-preset-implementer-openai-max
 description: ECI implementation Producer for a bounded assigned outcome.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:xhigh", "anthropic/claude-opus-5-5:xhigh"]
 ---
 

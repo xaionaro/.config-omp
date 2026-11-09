@@ -1,6 +1,7 @@
 ---
 name: eci-preset-explorer-openai-higher
 description: ECI Step 1 explorer for a bounded assignment.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:medium", "anthropic/claude-opus-5-5:medium"]
 ---
 

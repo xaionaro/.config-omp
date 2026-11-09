@@ -1,6 +1,7 @@
 ---
 name: eci-preset-explorer-anthropic-max
 description: ECI Step 1 explorer for a bounded assignment.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:xhigh", "openai-codex/gpt-6.1-sol:xhigh"]
 ---
 

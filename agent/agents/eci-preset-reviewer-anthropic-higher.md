@@ -1,6 +1,7 @@
 ---
 name: eci-preset-reviewer-anthropic-higher
 description: Fresh independent ECI reviewer for the assigned review role.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:medium", "openai-codex/gpt-6.1-sol:medium"]
 ---
 

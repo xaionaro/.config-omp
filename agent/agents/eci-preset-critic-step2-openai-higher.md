@@ -1,6 +1,7 @@
 ---
 name: eci-preset-critic-step2-openai-higher
 description: Fresh independent ECI Step 2 design critic.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:medium", "anthropic/claude-opus-5-5:medium"]
 ---
 

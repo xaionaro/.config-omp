@@ -1,6 +1,7 @@
 ---
 name: eci-preset-implementer-anthropic-max
 description: ECI implementation Producer for a bounded assigned outcome.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:xhigh", "openai-codex/gpt-6.1-sol:xhigh"]
 ---
 

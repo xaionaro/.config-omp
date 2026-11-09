@@ -1,6 +1,7 @@
 ---
 name: eci-preset-independent-e2e-anthropic-default
 description: Fresh independent ECI end-to-end verification worker.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:low", "openai-codex/gpt-6.1-terra:medium"]
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: eci-preset-fast-owner-openai-default
 description: Reusable ECI Fast Owner Producer for an assigned outcome.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-terra:medium", "anthropic/claude-opus-5-5:low"]
 ---
 

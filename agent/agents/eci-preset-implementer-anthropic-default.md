@@ -1,6 +1,7 @@
 ---
 name: eci-preset-implementer-anthropic-default
 description: ECI implementation Producer for a bounded assigned outcome.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:low", "openai-codex/gpt-6.1-terra:medium"]
 ---
 

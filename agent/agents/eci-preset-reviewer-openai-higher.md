@@ -1,6 +1,7 @@
 ---
 name: eci-preset-reviewer-openai-higher
 description: Fresh independent ECI reviewer for the assigned review role.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:medium", "anthropic/claude-opus-5-5:medium"]
 ---
 

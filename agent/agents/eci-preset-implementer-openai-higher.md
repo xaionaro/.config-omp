@@ -1,6 +1,7 @@
 ---
 name: eci-preset-implementer-openai-higher
 description: ECI implementation Producer for a bounded assigned outcome.
+spawns: "*"
 model: ["openai-codex/gpt-6.1-sol:medium", "anthropic/claude-opus-5-5:medium"]
 ---
 

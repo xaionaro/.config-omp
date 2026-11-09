@@ -1,6 +1,7 @@
 ---
 name: eci-preset-fast-owner-anthropic-max
 description: Reusable ECI Fast Owner Producer for an assigned outcome.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:xhigh", "openai-codex/gpt-6.1-sol:xhigh"]
 ---
 

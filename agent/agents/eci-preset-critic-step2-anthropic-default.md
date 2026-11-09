@@ -1,6 +1,7 @@
 ---
 name: eci-preset-critic-step2-anthropic-default
 description: Fresh independent ECI Step 2 design critic.
+spawns: "*"
 model: ["anthropic/claude-opus-5-5:low", "openai-codex/gpt-6.1-terra:medium"]
 ---
 
