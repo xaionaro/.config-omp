@@ -34,7 +34,7 @@ function globalEntries(settings: ProviderSettings): readonly unknown[] {
 }
 
 /** Change only the unscoped global membership, then confirm what the settings store saved. */
-export async function saveGlobalProvider<S extends ProviderSettings>(settings: S, setting: DisabledProviders<S>, id: string, disabled: boolean): Promise<boolean> {
+async function saveGlobalProvider<S extends ProviderSettings>(settings: S, setting: DisabledProviders<S>, id: string, disabled: boolean): Promise<boolean> {
   await settings.reloadFromDisk({ includeParents: true });
   setting.setMember(settings, id, { member: disabled });
   await settings.flush();
@@ -42,7 +42,7 @@ export async function saveGlobalProvider<S extends ProviderSettings>(settings: S
   return globalEntries(settings).includes(id) === disabled;
 }
 
-export async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, settings: S, setting: DisabledProviders<S>): Promise<void> {
+async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, settings: S, setting: DisabledProviders<S>): Promise<void> {
   if (!ctx.hasUI) {
     ctx.ui.notify("Provider controls require an interactive UI.", "error");
     return;
@@ -51,7 +51,7 @@ export async function showProviders<S extends ProviderSettings>(ctx: ProviderCon
     ctx.ui.notify("Provider controls require the main session; child settings writes are not persistent.", "error");
     return;
   }
-  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides may change the effective state. This controls providers, not accounts; future model/child selection may be affected. The current model is not switched and in-flight work is not stopped.`, "info");
+  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides may change the effective state. This controls providers, not accounts or credentials; future model/child selection may be affected. The current model is not switched and in-flight work is not stopped.`, "info");
 
   try {
     while (true) {
@@ -76,31 +76,19 @@ export async function showProviders<S extends ProviderSettings>(ctx: ProviderCon
       for (const id of candidates) {
         if (typeof id === "string" && (implicit.has(id) || ctx.modelRegistry.getDiscoveryProviderId(id) === id)) ids.add(id);
       }
-      const scoped = entries.some(entry => typeof entry !== "string");
       const choices = [...ids].sort().map(id => ({
         label: `[${entries.includes(id) ? " " : "x"}] ${id}`,
-        description: `global ${entries.includes(id) ? "disabled" : "enabled"}; effective ${effective.has(id) ? "disabled" : "enabled"} (${provenance})`,
+        description: `global ${entries.includes(id) ? "disabled" : "enabled"}; effective ${effective.has(id) ? "disabled" : "enabled"} (${provenance}); select to ${entries.includes(id) ? "enable" : "disable"} globally`,
       }));
       choices.push({ label: "Exit", description: "Close (or press Escape)" });
       const selected = await ctx.ui.select(
-        `Providers: global profile ${settings.getAgentDir()} — saved immediately; Esc exits`, choices,
+        `Providers: select to toggle globally; saves immediately; Esc exits`, choices,
       );
       if (!selected || selected === "Exit") return;
       const index = choices.findIndex(choice => choice.label === selected);
       if (index < 0 || index >= choices.length - 1) return;
       const id = selected.slice(4);
-      const globalDisabled = entries.includes(id);
-      const action = await ctx.ui.select(
-        `${id}: global ${globalDisabled ? "disabled" : "enabled"}; effective ${effective.has(id) ? "disabled" : "enabled"} (${provenance})`,
-        [
-          { label: globalDisabled ? "Enable globally" : "Disable globally", description: "Persist for this profile; affects future model and child selection" },
-          { label: "Back", description: "Return without changing anything" },
-          { label: "Details", description: `Global config.yml/config.yaml; project, overlay, runtime and matching paths can override or add restrictions. ${scoped ? "Scoped entries are preserved. " : ""}No account control; current model is not switched and in-flight work is not stopped.` },
-        ],
-      );
-      if (!action || action === "Back" || action === "Details") continue;
-      const disabled = action === "Disable globally";
-      if (action !== "Enable globally" && !disabled) continue;
+      const disabled = !entries.includes(id);
       if (await saveGlobalProvider(settings, setting, id, disabled)) {
         ctx.ui.notify(`${id}: global ${disabled ? "disabled" : "enabled"} saved. Effective state may differ; current model and in-flight work are unchanged.`, "info");
       } else {
