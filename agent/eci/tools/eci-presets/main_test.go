@@ -264,3 +264,17 @@ func TestPublishPreservesExistingMode(t *testing.T) {
 		require.Equal(t, after, data)
 	}
 }
+
+// TestStagedFileStartsRestricted checks permissions before content is written.
+//
+// Example: a private target never has a world-readable temporary replacement.
+func TestStagedFileStartsRestricted(t *testing.T) {
+	for _, mode := range []os.FileMode{0600, 0640} {
+		file, err := createStagedFile(t.TempDir(), mode)
+		require.NoError(t, err)
+		info, err := file.Stat()
+		require.NoError(t, err)
+		require.Zero(t, info.Mode().Perm() &^ mode)
+		require.NoError(t, file.Close())
+	}
+}

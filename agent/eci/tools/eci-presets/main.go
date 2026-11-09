@@ -293,6 +293,21 @@ func unchangedMode(
 	return info.Mode().Perm(), nil
 }
 
+// createStagedFile creates an exclusive temporary file beside a preset.
+//
+// Example: an existing private preset is staged with its original access mode.
+func createStagedFile(
+	dir string,
+	mode os.FileMode,
+) (*os.File, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, err
+	}
+	tempPath := filepath.Join(dir, fmt.Sprintf(".eci-preset-%x", nonce))
+	return os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+}
+
 // publishFile stages a complete file before replacing an unchanged target.
 //
 // Example: a newly created target is linked without replacing another file.
@@ -309,12 +324,7 @@ func publishFile(
 			return err
 		}
 	}
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return err
-	}
-	tempPath := filepath.Join(filepath.Dir(path), fmt.Sprintf(".eci-preset-%x", nonce))
-	temp, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	temp, err := createStagedFile(filepath.Dir(path), mode)
 	if err != nil {
 		return err
 	}
