@@ -68,6 +68,23 @@ Match the task against the [trigger table](../../eci-binding-contract.md#eci-sup
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
 - The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The dispatcher derives it from the Routing lines.
 
+For task-backed ECI work, select the role below before Model selection. Presets supply defaults, not lifecycle authority; preserve each brief's assignment, exclusions, skill routing, owner, and review role.
+
+| Assigned role | Preset role |
+| --- | --- |
+| General Step 1 explorer | `explorer` |
+| Step 2 design critic | `critic-step2` |
+| Implementer Producer | `implementer` |
+| Fast Owner Producer | `fast-owner` |
+| General Critic A/B/C | `reviewer` |
+| Independent E2E | `independent-e2e` |
+| Job Orchestrator | `orchestrator` |
+| Task-backed Helper | `helper` |
+
+The Helper brief supplies its authority, reporting route, matched skills and applicable role module. Select its profile from its own activity, not its parent's. A Helper cannot replace an independent reviewer or its duties.
+
+This table does not replace genuine specialist selection. Continue using literal `scout` for exploratory research when required; preserve specialist tool, spawn, and reporting contracts. Never substitute an unrestricted task-backed preset for a specialist.
+
 ## Model selection
 
 At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the profile by assigned activity. Mixed assignments use the highest applicable profile.
@@ -87,7 +104,13 @@ The Supervisor's own camp is the provider of the model the Supervisor runs on at
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E; explorers, including Step 1 exploration. |
 
-Choose the spawn path from the `task` tool description:
+For a task-backed role above, spawn `eci-preset-<role>-<camp>-<profile>` without `model` or `effort`. Its generated ordered model list supplies the selected profile and authorized cross-provider fallback. If the named preset is unavailable or disabled, report the failure rather than substitute another agent. Current-session system and tool policy remains authoritative; existing per-call-pinned workers do not acquire fallback.
+
+Compare the preset's ordered selectors with the selected camp/profile and opposite camp/same profile in the YAML. On a concrete mismatch, do not dispatch the stale preset. When safe, regenerate by the operator route below, review the changes, and retry the intended spawn; otherwise report the exact conflict to the Supervisor and preserve user edits. Do not use a per-spawn build gate. A selector match does not establish the effective retry chain or serving model.
+
+Configured exact-model or provider retry keys can precede the list. If no listed candidate can authenticate, the runtime may use the parent model. Cross-provider fallback can put an independent reviewer in the Supervisor's camp; it does not change reviewer independence. Report actual serving model and fallback when observable; do not infer them from the list. Operator `task.agentModelOverrides` retains precedence.
+
+Task-backed presets do not establish named-list fallback for genuine specialists. For genuine specialists, retain the existing spawn path from the `task` tool description:
 
 | Path | Condition | Spawn call |
 | --- | --- | --- |
@@ -107,6 +130,17 @@ The `<profile model>` and `<profile level>` are the `model` and `reasoning_effor
 - Keep independent reviewer assignments self-contained and blind to producer findings.
 - Profile selection does not change role authority or reviewer independence.
 - Treat the profile file as a routing reference; do not assume auto-loading or effective-model telemetry.
+
+### Preset deployment
+
+After changing `agent/eci/model-selection.yaml`, preset templates, or generator source, regenerate and review the owned files from the repository root. Commit generated changes together with their source changes:
+
+```sh
+(cd agent/eci/tools/eci-presets && go run . -config ../../model-selection.yaml -templates templates -out ../../../agents)
+(cd agent/eci/tools/eci-presets && go run . -config ../../model-selection.yaml -templates templates -out ../../../agents --check)
+```
+
+The generator preflights owned files, stages output beside each target, and rechecks existing files before replacement or obsolete-file removal. New targets use no-clobber creation. A matching legacy output is upgraded only when byte-identical to the current generated legacy body. These checks are not race-free, and publication of the set is not atomic; on an I/O failure inspect and reconcile partial updates before rerunning. Never delete unverified files to force regeneration.
 
 ## Module routing
 
