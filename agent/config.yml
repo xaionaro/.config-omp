@@ -16,7 +16,7 @@ modelPresets:
   openai:
     modelRoles:
       default: openai-codex/gpt-6.1-terra:medium
-      smol: anthropic/claude-haiku-5-5:low
+      smol: openai-codex/gpt-6-luna:low
       slow: openai-codex/gpt-6.1-sol:xhigh
       advisor: anthropic/claude-opus-5-5:low
     defaultThinkingLevel: medium
@@ -95,6 +95,8 @@ retry:
   fallbackChains:
     default: [openai-codex/gpt-6.1-terra:medium]
     slow: [openai-codex/gpt-6.1-sol:xhigh]
+    smol: [openai-codex/gpt-6-luna:low]
+    openai-codex/gpt-6-luna: [anthropic/claude-haiku-5-5:low]
     openai-codex/gpt-6.1-terra: [anthropic/claude-opus-5-5:low]
     openai-codex/gpt-6.1-sol: [anthropic/claude-opus-5-5]
 secrets:
