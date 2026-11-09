@@ -92,11 +92,11 @@ Choose the spawn path from the `task` tool description:
 | Path | Condition | Spawn call |
 | --- | --- | --- |
 | Default | `task.perCallModel` is not `on`, or the `task` description lists no approved models. | Omit `model`. Record `profile <name> not applied: per-call model off or no approved models` in the Job update. |
-| Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model. |
+| Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model id (`provider/model-id`); the listed `:level` does not restrict the profile level. |
 
 The `<profile model>` and `<profile level>` are the `model` and `reasoning_effort` fields under the chosen camp and profile.
 
-- A refusal is any `model` error: an unlisted selector, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
+- A refusal is any `model` error the harness returns: an ungranted model, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
 - Do not pass `effort`; the `:level` suffix carries the profile level.
 - A refused spawn fails; the harness never substitutes another model.
 - A refused `default` profile spawn on the Enabled path stops. Record the refusal text and report it to the Supervisor. Never respawn the same brief on another model or without a model. The Default path passes no `model` and is not refused.
