@@ -1,5 +1,5 @@
-# Profile models per camp. The Supervisor's own camp is the camp of the
-# model it runs on. See explore-critique-implement SKILL.md, Model selection.
+# Profile models per camp. Camp choice is defined in explore-critique-implement
+# SKILL.md, Model selection.
 anthropic:
   default:
     model: anthropic/claude-opus-5-5

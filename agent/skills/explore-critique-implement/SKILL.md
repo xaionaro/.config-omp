@@ -79,7 +79,7 @@ Choose the camp, `anthropic` or `openai`, by role:
 | Critic, reviewer, design-winner selector, independent E2E | Opposite of the Supervisor's own camp |
 | Every other role | The Supervisor's own camp |
 
-The Supervisor's own camp is its current model's provider: `anthropic` for `anthropic/*`, otherwise `openai`.
+The Supervisor's own camp is the provider of the model the Supervisor runs on at spawn time, including after a mid-run fallback: `anthropic` for `anthropic/*`, otherwise `openai`. Any spawning agent, including an Orchestrator or Producer, uses the Supervisor's camp. If the Supervisor's current model is unknown, use its configured model.
 
 | Profile | Activities |
 | --- | --- |
