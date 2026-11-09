@@ -72,17 +72,17 @@ For task-backed ECI work, select the role below before Model selection. Presets 
 
 | Assigned role | Preset role |
 | --- | --- |
-| General Step 1 explorer | `explorer` |
+| General Step 1 or BRP primary explorer | `explorer` |
 | Step 2 design critic | `critic-step2` |
 | Implementer Producer | `implementer` |
 | Fast Owner Producer | `fast-owner` |
 | General Critic A/B/C | `reviewer` |
 | Independent E2E | `independent-e2e` |
 | Job Orchestrator | `orchestrator` |
-| Job-owner-dispatched non-Producer brainstormer, feasibility validator, loop-breaker, or RCA investigator/critic | `worker` |
+| Job-owner-dispatched non-Producer brainstormer, feasibility validator, loop-breaker, or RCA investigator outside Step 1 / RCA critic | `worker` |
 | Task-backed Helper | `helper` |
 
-A `worker` brief supplies a self-contained assignment and role contract, matched skills, exclusions, authority, and reporting to the current published Job owner; a child Job owner reports through its parent owner where applicable. No ECI role module is required; never load Supervisor-only coordinator modules for a Worker. Preserve literal specialists where required. A Producer assigned RCA retains its Producer role; Helpers retain the `helper` role and report through their spawning Worker.
+A `worker` brief supplies a self-contained assignment and role contract, matched skills, exclusions, authority, and reporting to the current published Job owner; a child Job owner reports through its parent owner where applicable. A `worker` authors, stages, and commits no tracked repository change; it keeps probes and notes in disposable scratch space and reports them. No ECI role module is required; never load Supervisor-only coordinator modules for a Worker. Preserve literal specialists where required. A Producer assigned RCA retains its Producer role; Helpers retain the `helper` role and report through their spawning Worker.
 
 The Helper brief supplies its authority, reporting route, matched skills and applicable role module. Select its profile from its own activity, not its parent's. A Helper cannot replace an independent reviewer or its duties.
 
