@@ -72,6 +72,15 @@ Match the task against the [trigger table](../../eci-binding-contract.md#eci-sup
 
 At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the profile by assigned activity. Mixed assignments use the highest applicable profile.
 
+Choose the camp, `anthropic` or `openai`, by role:
+
+| Role | Camp |
+| --- | --- |
+| Critic, reviewer, design-winner selector, independent E2E | Opposite of the Supervisor's own camp |
+| Every other role | The Supervisor's own camp |
+
+The Supervisor's own camp is its current model's provider: `anthropic` for `anthropic/*`, otherwise `openai`.
+
 | Profile | Activities |
 | --- | --- |
 | `max` | Solution design, meaning the design-winner selection, not exploration; unresolved RCA work; design review, including Step 2; long-term health review, including Critic C. |
@@ -85,7 +94,7 @@ Choose the spawn path from the `task` tool description:
 | Default | `task.perCallModel` is not `on`, or the `task` description lists no approved models. | Omit `model`. Record `profile <name> not applied: per-call model off or no approved models` in the Job update. |
 | Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model. |
 
-The `<profile level>` is the profile's `reasoning_effort` field.
+The `<profile model>` and `<profile level>` are the `model` and `reasoning_effort` fields under the chosen camp and profile.
 
 - A refusal is any `model` error: an unlisted selector, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
 - Do not pass `effort`; the `:level` suffix carries the profile level.

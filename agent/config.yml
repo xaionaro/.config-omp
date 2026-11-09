@@ -3,6 +3,26 @@ modelRoles:
   default: anthropic/claude-opus-5-5:low
   smol: anthropic/claude-haiku-5-5:low
   slow: anthropic/claude-opus-5-5:xhigh
+  advisor: openai-codex/gpt-6.1-terra:medium
+# Two interchangeable sets; switch with /modelpreset switch <name>.
+# Each preset gives the advisor the other provider's model.
+modelPresets:
+  claude:
+    modelRoles:
+      eci-max: anthropic/claude-opus-5-5
+      default: anthropic/claude-opus-5-5:low
+      smol: anthropic/claude-haiku-5-5:low
+      slow: anthropic/claude-opus-5-5:xhigh
+      advisor: openai-codex/gpt-6.1-terra:medium
+    defaultThinkingLevel: low
+  openai:
+    modelRoles:
+      eci-max: openai-codex/gpt-6.1-sol:medium
+      default: openai-codex/gpt-6.1-terra:medium
+      smol: anthropic/claude-haiku-5-5:low
+      slow: openai-codex/gpt-6.1-sol:xhigh
+      advisor: anthropic/claude-opus-5-5:low
+    defaultThinkingLevel: medium
 symbolPreset: nerd
 composer:
   shape: band
@@ -15,6 +35,14 @@ setupVersion: 3
 extendedContext: false
 task:
   perCallModel: "on"
+  # ECI camp models (eci/model-selection.yaml) usable as per-call task models.
+  perCallModelAllow:
+    - anthropic/claude-opus-5-5:low
+    - anthropic/claude-opus-5-5:medium
+    - anthropic/claude-opus-5-5:xhigh
+    - openai-codex/gpt-6.1-terra:medium
+    - openai-codex/gpt-6.1-sol:medium
+    - openai-codex/gpt-6.1-sol:xhigh
   softRequestBudget: 0
   agentSoftRequestBudget: {}
 defaultThinkingLevel: low
@@ -64,6 +92,15 @@ lsp:
   formatOnWrite: true
 retry:
   waitForUsageReset: true
+  # Automatic switch on provider failure or usage limit, both directions.
+  # Role keys: Claude tiers -> GPT 6.1. Model keys (win over role keys):
+  # GPT 6.1 -> Opus; bare sol entry keeps the failing effort (medium/xhigh).
+  fallbackChains:
+    default: [openai-codex/gpt-6.1-terra:medium]
+    eci-max: [openai-codex/gpt-6.1-sol:medium]
+    slow: [openai-codex/gpt-6.1-sol:xhigh]
+    openai-codex/gpt-6.1-terra: [anthropic/claude-opus-5-5:low]
+    openai-codex/gpt-6.1-sol: [anthropic/claude-opus-5-5]
 secrets:
   enabled: true
 autoResume: true

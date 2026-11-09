@@ -1,10 +1,22 @@
-default:
-  model: anthropic/claude-opus-5-5
-  reasoning_effort: low
-higher:
-  model: anthropic/claude-opus-5-5
-  reasoning_effort: medium
-max:
-  model: anthropic/claude-opus-5-5
-  reasoning_effort: xhigh
-
+# Profile models per camp. The Supervisor's own camp is the camp of the
+# model it runs on. See explore-critique-implement SKILL.md, Model selection.
+anthropic:
+  default:
+    model: anthropic/claude-opus-5-5
+    reasoning_effort: low
+  higher:
+    model: anthropic/claude-opus-5-5
+    reasoning_effort: medium
+  max:
+    model: anthropic/claude-opus-5-5
+    reasoning_effort: xhigh
+openai:
+  default:
+    model: openai-codex/gpt-6.1-terra
+    reasoning_effort: medium
+  higher:
+    model: openai-codex/gpt-6.1-sol
+    reasoning_effort: medium
+  max:
+    model: openai-codex/gpt-6.1-sol
+    reasoning_effort: xhigh

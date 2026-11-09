@@ -24,7 +24,7 @@
 advisors:
   - name: RulesAdvisor
     enabled: true
-    model: anthropic/claude-opus-5-5:low
+    # model omitted: uses modelRoles.advisor, which each model preset sets to the other provider.
     tools: [read, grep, glob]
     reviewMode: turn
     reviewInterval: 5
