@@ -110,6 +110,7 @@ func generate(
 		{Name: "reviewer", Minimum: higherLevel},
 		{Name: "independent-e2e", Minimum: higherLevel},
 		{Name: "orchestrator", Minimum: defaultLevel},
+		{Name: "helper", Minimum: defaultLevel},
 	}
 	if len(profiles) != len(camps) {
 		return nil, errors.New("model selection must contain exactly two camps")

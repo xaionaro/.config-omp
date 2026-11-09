@@ -57,7 +57,7 @@ func TestGenerateMatrix(t *testing.T) {
 	data := "openai:\n  default: {model: openai/a, reasoning_effort: low}\n  higher: {model: openai/b, reasoning_effort: medium}\n  max: {model: openai/c, reasoning_effort: high}\nanthropic:\n  default: {model: anthropic/a, reasoning_effort: low}\n  higher: {model: anthropic/b, reasoning_effort: medium}\n  max: {model: anthropic/c, reasoning_effort: high}\n"
 	require.NoError(t, os.WriteFile(config, []byte(data), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "task-base.tmpl"), []byte("base directives"), 0600))
-	for _, role := range []string{"explorer", "critic-step2", "implementer", "fast-owner", "reviewer", "independent-e2e", "orchestrator"} {
+	for _, role := range []string{"explorer", "critic-step2", "implementer", "fast-owner", "reviewer", "independent-e2e", "orchestrator", "helper"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, role+".tmpl"), []byte("{{.Name}} {{.Primary}} {{.Fallback}}"), 0600))
 	}
 	files, err := generate(config, dir)
@@ -70,12 +70,13 @@ func TestGenerateMatrix(t *testing.T) {
 		"reviewer":        {"higher", "max"},
 		"independent-e2e": {"higher", "max"},
 		"orchestrator":    {"default", "higher", "max"},
+		"helper":          {"default", "higher", "max"},
 	}
 	selectors := map[string]map[string]string{
 		"openai":    {"default": "openai/a:low", "higher": "openai/b:medium", "max": "openai/c:high"},
 		"anthropic": {"default": "anthropic/a:low", "higher": "anthropic/b:medium", "max": "anthropic/c:high"},
 	}
-	require.Len(t, files, 34)
+	require.Len(t, files, 40)
 	for role, levels := range allowed {
 		for _, camp := range []string{"openai", "anthropic"} {
 			other := "anthropic"
