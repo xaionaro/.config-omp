@@ -30,7 +30,7 @@ const (
 //
 // Example: an openai default profile has a model and medium effort.
 type profile struct {
-	Model string `yaml:"model"`
+	Model  string `yaml:"model"`
 	Effort string `yaml:"reasoning_effort"`
 }
 
@@ -38,8 +38,8 @@ type profile struct {
 //
 // Example: Name identifies a reviewer with its camp and activity profile.
 type templateData struct {
-	Name string
-	Primary string
+	Name     string
+	Primary  string
 	Fallback string
 }
 
@@ -48,40 +48,60 @@ type templateData struct {
 // Example: two camps and three profiles produce six variants per role.
 func generate(configPath string, templateDir string) (map[string][]byte, error) {
 	data, err := os.ReadFile(configPath)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	var profiles map[string]map[string]profile
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&profiles); err != nil { return nil, err }
+	if err := decoder.Decode(&profiles); err != nil {
+		return nil, err
+	}
 	camps := []string{"anthropic", "openai"}
 	levels := []string{"default", "higher", "max"}
 	roles := []string{"explorer", "critic-step2", "implementer", "fast-owner", "reviewer", "independent-e2e", "orchestrator"}
-	if len(profiles) != len(camps) { return nil, errors.New("model selection must contain exactly two camps") }
+	if len(profiles) != len(camps) {
+		return nil, errors.New("model selection must contain exactly two camps")
+	}
 	for _, camp := range camps {
-		if len(profiles[camp]) != len(levels) { return nil, fmt.Errorf("camp %s must contain exactly three profiles", camp) }
+		if len(profiles[camp]) != len(levels) {
+			return nil, fmt.Errorf("camp %s must contain exactly three profiles", camp)
+		}
 		for _, level := range levels {
 			p, ok := profiles[camp][level]
-			if !ok || p.Model == "" || p.Effort == "" || strings.ContainsAny(p.Model+p.Effort, "\r\n\" ") { return nil, fmt.Errorf("invalid %s/%s selector", camp, level) }
+			if !ok || p.Model == "" || p.Effort == "" || strings.ContainsAny(p.Model+p.Effort, "\r\n\" ") {
+				return nil, fmt.Errorf("invalid %s/%s selector", camp, level)
+			}
 		}
 	}
 	base, err := os.ReadFile(filepath.Join(templateDir, "task-base.tmpl"))
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	result := make(map[string][]byte, len(roles)*len(camps)*len(levels))
 	for _, role := range roles {
 		body, err := os.ReadFile(filepath.Join(templateDir, role+".tmpl"))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		tmpl, err := template.New(role).Option("missingkey=error").Parse(string(body))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		for _, camp := range camps {
 			other := "openai"
-			if camp == "openai" { other = "anthropic" }
+			if camp == "openai" {
+				other = "anthropic"
+			}
 			for _, level := range levels {
 				primary, fallback := profiles[camp][level], profiles[other][level]
-				name := outputPrefix+role+"-"+camp+"-"+level
-				args := templateData{Name: name, Primary: primary.Model+":"+primary.Effort, Fallback: fallback.Model+":"+fallback.Effort}
+				name := outputPrefix + role + "-" + camp + "-" + level
+				args := templateData{Name: name, Primary: primary.Model + ":" + primary.Effort, Fallback: fallback.Model + ":" + fallback.Effort}
 				var rendered bytes.Buffer
-				if err := tmpl.Execute(&rendered, args); err != nil { return nil, err }
-				result[name+".md"] = []byte(strings.TrimRight(rendered.String(), "\n")+"\n\n"+strings.TrimRight(string(base), "\n")+"\n\n"+generatedMarker+"\n")
+				if err := tmpl.Execute(&rendered, args); err != nil {
+					return nil, err
+				}
+				result[name+".md"] = []byte(strings.TrimRight(rendered.String(), "\n") + "\n\n" + strings.TrimRight(string(base), "\n") + "\n\n" + generatedMarker + "\n")
 			}
 		}
 	}
@@ -94,27 +114,41 @@ func generate(configPath string, templateDir string) (map[string][]byte, error) 
 func reconcile(dir string, want map[string][]byte, check bool) error {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) && !check {
-		if err := os.MkdirAll(dir, 0755); err != nil { return err }
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
 		entries = nil
-	} else if err != nil { return err }
+	} else if err != nil {
+		return err
+	}
 	var issues []string
 	var obsolete []string
 	for _, entry := range entries {
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasPrefix(name, outputPrefix) || !strings.HasSuffix(name, ".md") { continue }
+		if entry.IsDir() || !strings.HasPrefix(name, outputPrefix) || !strings.HasSuffix(name, ".md") {
+			continue
+		}
 		_, needed := want[name]
 		if entry.Type()&os.ModeSymlink != 0 {
-			if needed { return fmt.Errorf("refusing symlink %s", name) }
+			if needed {
+				return fmt.Errorf("refusing symlink %s", name)
+			}
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if !bytes.Contains(data, []byte(generatedMarker)) {
-			if needed { return fmt.Errorf("refusing to modify unowned file %s", name) }
+			if needed {
+				return fmt.Errorf("refusing to modify unowned file %s", name)
+			}
 			continue
 		}
 		if expected, ok := want[name]; ok {
-			if !bytes.Equal(data, expected) { issues = append(issues, "stale: "+name) }
+			if !bytes.Equal(data, expected) {
+				issues = append(issues, "stale: "+name)
+			}
 		} else {
 			issues = append(issues, "obsolete: "+name)
 			obsolete = append(obsolete, name)
@@ -122,16 +156,31 @@ func reconcile(dir string, want map[string][]byte, check bool) error {
 	}
 	if !check {
 		for _, name := range obsolete {
-			if err := os.Remove(filepath.Join(dir, name)); err != nil { return err }
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				return err
+			}
 		}
 	}
 	for name, data := range want {
 		path := filepath.Join(dir, name)
 		old, err := os.ReadFile(path)
-		if errors.Is(err, os.ErrNotExist) { issues = append(issues, "missing: "+name) } else if err != nil { return err } else if bytes.Equal(old, data) { continue }
-		if !check { if err := os.WriteFile(path, data, 0644); err != nil { return err } }
+		if errors.Is(err, os.ErrNotExist) {
+			issues = append(issues, "missing: "+name)
+		} else if err != nil {
+			return err
+		} else if bytes.Equal(old, data) {
+			continue
+		}
+		if !check {
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				return err
+			}
+		}
 	}
-	if check && len(issues) != 0 { sort.Strings(issues); return errors.New(strings.Join(issues, "\n")) }
+	if check && len(issues) != 0 {
+		sort.Strings(issues)
+		return errors.New(strings.Join(issues, "\n"))
+	}
 	return nil
 }
 
@@ -144,8 +193,16 @@ func main() {
 	out := flag.String("out", "", "user agent directory")
 	check := flag.Bool("check", false, "report differences without writing")
 	flag.Parse()
-	if *config == "" || *templates == "" || *out == "" || flag.NArg() != 0 { fmt.Fprintln(os.Stderr, "-config, -templates and -out are required"); os.Exit(2) }
+	if *config == "" || *templates == "" || *out == "" || flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "-config, -templates and -out are required")
+		os.Exit(2)
+	}
 	want, err := generate(*config, *templates)
-	if err == nil { err = reconcile(*out, want, *check) }
-	if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+	if err == nil {
+		err = reconcile(*out, want, *check)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
