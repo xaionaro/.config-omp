@@ -37,12 +37,6 @@ setupVersion: 3
 extendedContext: false
 task:
   perCallModel: "on"
-  # Narrows granted per-call models. Compared literally to provider/id;
-  # a :level suffix never matches, the effort comes from the spawn selector.
-  perCallModelAllow:
-    - anthropic/claude-opus-5-5
-    - openai-codex/gpt-6.1-terra
-    - openai-codex/gpt-6.1-sol
   softRequestBudget: 0
   agentSoftRequestBudget: {}
 defaultThinkingLevel: low
