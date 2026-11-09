@@ -68,6 +68,20 @@ Match the task against the [trigger table](../../eci-binding-contract.md#eci-sup
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
 - The `Skills:` line lists exactly the `match:` skills, or `none, <reason>` when there are none. The dispatcher derives it from the Routing lines.
 
+For task-backed ECI work, select the role below before applying Model selection. Preserve each brief's scope, exclusions, required skill routing, reporting owner, and specific review role; presets supply defaults, not lifecycle authority.
+
+| Assigned role | Preset role |
+| --- | --- |
+| General Step 1 explorer | `explorer` |
+| Step 2 design critic | `critic-step2` |
+| Implementer Producer | `implementer` |
+| Reusable Fast Owner Producer | `fast-owner` |
+| General Critic A/B/C | `reviewer` |
+| Independent E2E | `independent-e2e` |
+| Job Orchestrator | `orchestrator` |
+
+This table does not replace genuine specialist selection. Continue using the literal `scout` for exploratory research when required, and preserve existing specialist tool, spawn, and reporting contracts. Specialist fallback is not established by these task-backed presets. Never silently substitute an unrestricted task-backed preset for a specialist. Keep independent critics fresh and blind; retain each open Job's reusable owner.
+
 ## Model selection
 
 At each new spawn, read `~/.omp/agent/eci/model-selection.yaml` and choose the profile by assigned activity. Mixed assignments use the highest applicable profile.
@@ -87,20 +101,23 @@ The Supervisor's own camp is the provider of the model the Supervisor runs on at
 | `higher` | Other independent reviews, including Critics A/B, settled RCA review, and independent Step 4 E2E. |
 | `default` | Implementation; routine work; producer E2E; explorers, including Step 1 exploration. |
 
-Choose the spawn path from the `task` tool description:
+For task-backed ECI roles, select the matching preset from Spawn skill routing. Spawn `eci-preset-<role>-<camp>-<profile>` with no `model` or `effort` field; its ordered model list carries the selected profile and authorized cross-provider fallback. The lists are generated from `~/.omp/agent/eci/model-selection.yaml`; changing that file does not update existing generated definitions. Regenerate through the deployment workflow before using changed profiles. If the named preset is unavailable, refresh agent discovery or use a fresh process; report continued unavailability to the Supervisor rather than substituting a different agent.
+
+This route does not replace the required literal `scout` or other genuine specialists. Preserve their existing identities, permissions, and reporting contracts; task-backed presets do not establish named-list fallback for those specialists.
+
+For genuine specialists, retain the existing spawn path from the `task` tool description:
 
 | Path | Condition | Spawn call |
 | --- | --- | --- |
 | Default | `task.perCallModel` is not `on`, or the `task` description lists no approved models. | Omit `model`. Record `profile <name> not applied: per-call model off or no approved models` in the Job update. |
-| Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`, for example `anthropic/claude-opus-5-5:high`. Use only a listed model id (`provider/model-id`); the listed `:level` does not restrict the profile level. |
+| Enabled | `task.perCallModel` is `on` and the `task` description lists approved per-call models. | Pass `model: <profile model>:<profile level>`. Use only a listed model id (`provider/model-id`); the listed `:level` does not restrict the profile level. |
 
-The `<profile model>` and `<profile level>` are the `model` and `reasoning_effort` fields under the chosen camp and profile.
+The profile model and level are the `model` and `reasoning_effort` fields under the chosen camp and profile. Do not pass `effort`. A per-call pinned specialist cannot automatically fall back. A refusal is any `model` error returned by the harness, including an ungranted model, unsupported effort under `task.maxEffort`, or conflict with `task.agentModelOverrides`. A refused spawn fails; never retry the same brief with another model or without a model. Record and report default-profile refusals to the Supervisor. For higher or max refusals, send the refusal and profile to the Supervisor; it either chooses a listed model for a new spawn decision or stops the activity.
 
-- A refusal is any `model` error the harness returns: an ungranted model, a level with no supported effort at or below `task.maxEffort`, or a conflict with `task.agentModelOverrides`.
-- Do not pass `effort`; the `:level` suffix carries the profile level.
-- A refused spawn fails; the harness never substitutes another model.
-- A refused `default` profile spawn on the Enabled path stops. Record the refusal text and report it to the Supervisor. Never respawn the same brief on another model or without a model. The Default path passes no `model` and is not refused.
-- After a refused `higher` or `max` spawn, send the refusal and profile to the Supervisor and do not respawn. The Supervisor either chooses a listed model for a new spawn decision or stops the activity. That choice is a new spawn decision, not a retry.
+This routing applies to future dispatches after deployment. Current-session system and tool policy remains authoritative; already pinned per-call workers do not acquire fallback.
+
+Configured exact-model or provider retry keys can precede the named list. When the primary lacks credentials, the runtime first tries later authenticated list entries; if none can authenticate, it may take over with the parent model rather than use the named list. An authorized cross-provider fallback can put an independent reviewer in the Supervisor's camp. Report the actual serving model and any fallback when observable; do not infer them from the requested list. `task.agentModelOverrides` and explicit runtime operator settings retain precedence. Fallback does not change role authority or permit a producer to review itself.
+
 - Keep existing launch settings and reusable owners.
 - The Supervisor keeps an open Job's owner under [open-Job owner reuse](references/coordinator.md#open-job-owner-reuse).
 - Give an activity with a different profile its own spawn.
