@@ -1,5 +1,4 @@
 modelRoles:
-  eci-max: anthropic/claude-opus-5-5
   default: anthropic/claude-opus-5-5:low
   smol: anthropic/claude-haiku-5-5:low
   slow: anthropic/claude-opus-5-5:xhigh
@@ -9,7 +8,6 @@ modelRoles:
 modelPresets:
   claude:
     modelRoles:
-      eci-max: anthropic/claude-opus-5-5
       default: anthropic/claude-opus-5-5:low
       smol: anthropic/claude-haiku-5-5:low
       slow: anthropic/claude-opus-5-5:xhigh
@@ -17,7 +15,6 @@ modelPresets:
     defaultThinkingLevel: low
   openai:
     modelRoles:
-      eci-max: openai-codex/gpt-6.1-sol:medium
       default: openai-codex/gpt-6.1-terra:medium
       smol: anthropic/claude-haiku-5-5:low
       slow: openai-codex/gpt-6.1-sol:xhigh
@@ -97,7 +94,6 @@ retry:
   # GPT 6.1 -> Opus; bare sol entry keeps the failing effort (medium/xhigh).
   fallbackChains:
     default: [openai-codex/gpt-6.1-terra:medium]
-    eci-max: [openai-codex/gpt-6.1-sol:medium]
     slow: [openai-codex/gpt-6.1-sol:xhigh]
     openai-codex/gpt-6.1-terra: [anthropic/claude-opus-5-5:low]
     openai-codex/gpt-6.1-sol: [anthropic/claude-opus-5-5]
