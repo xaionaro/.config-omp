@@ -3,8 +3,11 @@ modelRoles:
   smol: anthropic/claude-haiku-5-5:low
   slow: anthropic/claude-opus-5-5:xhigh
   advisor: openai-codex/gpt-6.1-terra:medium
+  # Grants the opposite provider's ECI critic model for per-call task spawns
+  # (task.perCallModel only accepts models some role names).
+  cross-review: openai-codex/gpt-6.1-sol:medium
 # Two interchangeable sets; switch with /modelpreset switch <name>.
-# Each preset gives the advisor the other provider's model.
+# Each preset gives the advisor and cross-review the other provider's model.
 modelPresets:
   claude:
     modelRoles:
@@ -12,6 +15,7 @@ modelPresets:
       smol: anthropic/claude-haiku-5-5:low
       slow: anthropic/claude-opus-5-5:xhigh
       advisor: openai-codex/gpt-6.1-terra:medium
+      cross-review: openai-codex/gpt-6.1-sol:medium
     defaultThinkingLevel: low
   openai:
     modelRoles:
@@ -19,6 +23,7 @@ modelPresets:
       smol: openai-codex/gpt-6-luna:low
       slow: openai-codex/gpt-6.1-sol:xhigh
       advisor: anthropic/claude-opus-5-5:low
+      cross-review: anthropic/claude-opus-5-5:medium
     defaultThinkingLevel: medium
 symbolPreset: nerd
 composer:
@@ -32,14 +37,12 @@ setupVersion: 3
 extendedContext: false
 task:
   perCallModel: "on"
-  # ECI camp models (eci/model-selection.yaml) usable as per-call task models.
+  # Narrows granted per-call models. Compared literally to provider/id;
+  # a :level suffix never matches, the effort comes from the spawn selector.
   perCallModelAllow:
-    - anthropic/claude-opus-5-5:low
-    - anthropic/claude-opus-5-5:medium
-    - anthropic/claude-opus-5-5:xhigh
-    - openai-codex/gpt-6.1-terra:medium
-    - openai-codex/gpt-6.1-sol:medium
-    - openai-codex/gpt-6.1-sol:xhigh
+    - anthropic/claude-opus-5-5
+    - openai-codex/gpt-6.1-terra
+    - openai-codex/gpt-6.1-sol
   softRequestBudget: 0
   agentSoftRequestBudget: {}
 defaultThinkingLevel: low
