@@ -110,7 +110,13 @@ Compare the preset's ordered selectors with the selected camp/profile and opposi
 
 Configured exact-model or provider retry keys can precede the list. If no listed candidate can authenticate, the runtime may use the parent model. Cross-provider fallback can put an independent reviewer in the Supervisor's camp; it does not change reviewer independence. Report actual serving model and fallback when observable; do not infer them from the list. Operator `task.agentModelOverrides` retains precedence.
 
-Task-backed presets do not establish named-list fallback for genuine specialists. For genuine specialists, retain the existing spawn path from the `task` tool description:
+For literal `scout`, `reviewer`, and `security-reviewer` spawns, preserve the agent's tool, spawn, output, and reporting contracts. Omit per-call `model` and `effort` so its configured agent model or inherited parent model, operator overrides, and retry fallback policy apply. Do not substitute a task-backed preset for a specialist. A current-session system or tool instruction requiring a per-call model takes precedence; such a pinned spawn does not gain automatic fallback.
+
+This path does not dynamically apply the Supervisor's camp or the activity profile: the initial specialist model and effort may differ from the profile, and an independent review may run in the Supervisor's camp. Maintain reviewer independence and blind, self-contained review assignments regardless of provider. Record the assigned profile and this routing limitation in the Job update. Report the actual serving model and fallback when observable; do not infer them from a configured chain.
+
+Effective operator `task.agentModelOverrides`, exact-model and provider retry keys, credentials, enabled providers, and parent-auth fallback may change or prevent the intended chain. A retry is not guaranteed for every error. If the configured route cannot serve the activity, report the exact failure to the Supervisor rather than alter operator settings or silently claim fallback succeeded.
+
+Task-backed presets do not establish named-list fallback for other genuine specialists. For those specialists, retain the existing spawn path from the `task` tool description:
 
 | Path | Condition | Spawn call |
 | --- | --- | --- |
