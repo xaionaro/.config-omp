@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -185,4 +186,81 @@ func TestReconcileUpdatesUnmodifiedOutput(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	require.NoError(t, err)
 	require.Equal(t, after[name], data)
+}
+
+// TestPublishFilePreservesChangedTargets checks revalidation at the publication boundary.
+//
+// Example: a user edit made after preflight remains intact.
+func TestPublishFilePreservesChangedTargets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eci-preset-a.md")
+	before := stamp([]byte("before\n"))
+	after := stamp([]byte("after\n"))
+	edit := []byte("user edit\n")
+	require.NoError(t, os.WriteFile(path, edit, 0600))
+	require.Error(t, publishFile(path, before, after))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, edit, data)
+	require.Error(t, publishFile(path, nil, after))
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, edit, data)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+}
+
+// TestRemoveUnchangedPreservesEditedOutput checks obsolete-file revalidation.
+//
+// Example: a user-edited obsolete file is not removed.
+func TestRemoveUnchangedPreservesEditedOutput(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eci-preset-old.md")
+	before := stamp([]byte("before\n"))
+	edit := []byte("user edit\n")
+	require.NoError(t, os.WriteFile(path, edit, 0600))
+	require.Error(t, removeUnchanged(path, before))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, edit, data)
+}
+
+// TestPublishHonorsUmask checks that new files retain the process creation policy.
+//
+// Example: umask 077 prevents group and world access to a new preset.
+func TestPublishHonorsUmask(t *testing.T) {
+	if path := os.Getenv("ECI_TEST_UMASK_TARGET"); path != "" {
+		require.NoError(t, publishFile(path, nil, []byte("test\n")))
+		return
+	}
+	path := filepath.Join(t.TempDir(), "eci-preset-a.md")
+	cmd := exec.Command("sh", "-c", "umask 077; exec \"$@\"", "sh", os.Args[0], "-test.run=^TestPublishHonorsUmask$")
+	cmd.Env = append(os.Environ(), "ECI_TEST_UMASK_TARGET="+path)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+}
+
+// TestPublishPreservesExistingMode checks replacement does not broaden permissions.
+//
+// Example: a private preset remains private after regeneration.
+func TestPublishPreservesExistingMode(t *testing.T) {
+	for _, mode := range []os.FileMode{0600, 0640} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "eci-preset-a.md")
+		before := []byte("before\n")
+		after := []byte("after\n")
+		require.NoError(t, os.WriteFile(path, before, 0600))
+		require.NoError(t, os.Chmod(path, mode))
+		require.NoError(t, publishFile(path, before, after))
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		require.Equal(t, mode, info.Mode().Perm())
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Equal(t, after, data)
+	}
 }

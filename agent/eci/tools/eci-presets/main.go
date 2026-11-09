@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"flag"
@@ -256,16 +257,116 @@ func reconcile(
 		if bytes.Equal(existing[name], want[name]) {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, name), want[name], 0644); err != nil {
+		if err := publishFile(filepath.Join(dir, name), existing[name], want[name]); err != nil {
 			return fmt.Errorf("write %s: %w", name, err)
 		}
 	}
 	for _, name := range obsolete {
-		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+		if err := removeUnchanged(filepath.Join(dir, name), existing[name]); err != nil {
 			return fmt.Errorf("remove %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+// unchangedMode checks that a regular target still has its preflight content.
+//
+// Example: an intervening user edit is reported instead of overwritten.
+func unchangedMode(
+	path string,
+	expected []byte,
+) (os.FileMode, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	if !info.Mode().IsRegular() {
+		return 0, fmt.Errorf("target is not a regular file: %s", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	if !bytes.Equal(data, expected) {
+		return 0, fmt.Errorf("target changed since preflight: %s", path)
+	}
+	return info.Mode().Perm(), nil
+}
+
+// publishFile stages a complete file before replacing an unchanged target.
+//
+// Example: a newly created target is linked without replacing another file.
+func publishFile(
+	path string,
+	expected []byte,
+	content []byte,
+) (_err error) {
+	mode := os.FileMode(0644)
+	if expected != nil {
+		var err error
+		mode, err = unchangedMode(path, expected)
+		if err != nil {
+			return err
+		}
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return err
+	}
+	tempPath := filepath.Join(filepath.Dir(path), fmt.Sprintf(".eci-preset-%x", nonce))
+	temp, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_err = errors.Join(_err, temp.Close())
+		}
+		if err := os.Remove(temp.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			_err = errors.Join(_err, err)
+		}
+	}()
+	if _, err := temp.Write(content); err != nil {
+		return err
+	}
+	if expected != nil {
+		if err := temp.Chmod(mode); err != nil {
+			return err
+		}
+	}
+	if err := temp.Sync(); err != nil {
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		closed = true
+		return err
+	}
+	closed = true
+	if expected == nil {
+		return os.Link(temp.Name(), path)
+	}
+	currentMode, err := unchangedMode(path, expected)
+	if err != nil {
+		return err
+	}
+	if currentMode != mode {
+		return fmt.Errorf("target mode changed since preflight: %s", path)
+	}
+	return os.Rename(temp.Name(), path)
+}
+
+// removeUnchanged removes an obsolete file only after rechecking its content.
+//
+// Example: a modified obsolete file is left for its owner.
+func removeUnchanged(
+	path string,
+	expected []byte,
+) error {
+	if _, err := unchangedMode(path, expected); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 // main reads explicit paths and either generates or checks the user agent directory.
