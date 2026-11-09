@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { cfgDisabledProviders } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import { findScopedSettings, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { PROVIDER_DESCRIPTORS } from "@oh-my-pi/pi-catalog/provider-models";
+import { getAllProvidersInfo } from "@oh-my-pi/pi-coding-agent/capability";
 
 interface ProviderSettings {
   getAgentDir(): string;
@@ -56,7 +57,7 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
     ctx.ui.notify("Provider controls require the main session; child settings writes are not persistent.", "error");
     return;
   }
-  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides can change effective state. No account or credential control. Disabling the active provider does not switch its model or stop in-flight work; later requests may fail or fall back. Future child model selection may also change. Some extension providers without models may not be listed.`, "info");
+  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides can change effective state. IDs marked [source] also control discovery of configuration, rules, MCP or other resources. No account or credential control. Disabling the active provider does not switch its model or stop in-flight work; later requests may fail or fall back. Future child model selection may also change. Some extension providers without models may not be listed.`, "info");
 
   // The registry hides disabled uncached managers. Catalog descriptors name
   // model providers without admitting discovery-source IDs.
@@ -70,6 +71,7 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       const entries = globalEntries(settings);
       const effective = new Set(setting.get(settings));
       const provenance = setting.provenance(settings);
+      const sourceIds = new Set(getAllProvidersInfo().map(provider => provider.id));
       for (const model of ctx.modelRegistry.getAll("all")) ids.add(model.provider);
       for (const id of ctx.modelRegistry.getDiscoverableProviders()) ids.add(id);
       for (const failure of ctx.modelRegistry.getRuntimeDiscoveryFailures()) ids.add(failure.provider);
@@ -86,13 +88,13 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       }
       const sortedIds = [...ids].sort();
       const choices = sortedIds.map(id => ({
-        label: `[${entries.includes(id) ? " " : "x"}] ${id}${ctx.model?.provider === id ? " [active]" : ""} — global ${entries.includes(id) ? "off" : "on"}; effective ${effective.has(id) ? "off" : "on"} (${provenance})`,
+        label: `[${entries.includes(id) ? " " : "x"}] ${id}${sourceIds.has(id) ? " [source]" : ""}${ctx.model?.provider === id ? " [active]" : ""} — global ${entries.includes(id) ? "off" : "on"}; effective ${effective.has(id) ? "off" : "on"} (${provenance})`,
         description: `Select to ${entries.includes(id) ? "enable" : "disable"} globally${ctx.model?.provider === id ? "; active model's next requests may fail or fall back" : ""}`,
       }));
       choices.push({ label: "Exit", description: "Close (or press Escape)" });
       const selectedIndex = selectedId === undefined ? 0 : sortedIds.indexOf(selectedId);
       const selected = await ctx.ui.select(
-        `Providers: active model stays selected; later requests may fail or fall back. Select to toggle; Esc exits`, choices,
+        "Providers — global; select to toggle; Esc exits\n[source] also affects config, rules, MCP and other discovery.\nThe active model remains selected; later requests may fail or fall back.", choices,
         { initialIndex: selectedIndex < 0 ? sortedIds.length : selectedIndex },
       );
       if (!selected || selected === "Exit") return;
