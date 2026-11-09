@@ -45,6 +45,34 @@ type profile struct {
 	Effort string `yaml:"reasoning_effort"`
 }
 
+// profileLevel orders activity profiles from routine to most demanding.
+//
+// Example: a mixed assignment uses its highest applicable profile.
+type profileLevel int
+
+const (
+	// defaultLevel is the profile for routine work.
+	//
+	// Example: implementation uses the default profile.
+	defaultLevel profileLevel = iota
+	// higherLevel is the profile for independent review.
+	//
+	// Example: Critic A uses the higher profile.
+	higherLevel
+	// maxLevel is the profile for design or long-term review.
+	//
+	// Example: Step 2 uses the max profile.
+	maxLevel
+)
+
+// roleProfile identifies an ECI role and its minimum applicable profile.
+//
+// Example: a design critic starts at max.
+type roleProfile struct {
+	Name    string
+	Minimum profileLevel
+}
+
 // templateData supplies the role-specific fields for one generated agent.
 //
 // Example: Name identifies a reviewer with its camp and activity profile.
@@ -56,7 +84,7 @@ type templateData struct {
 
 // generate renders every role and profile from the supplied authoritative files.
 //
-// Example: two camps and three profiles produce six variants per role.
+// Example: a Step 2 critic has only max variants for both camps.
 func generate(
 	configPath string,
 	templateDir string,
@@ -73,7 +101,16 @@ func generate(
 	}
 	camps := []string{"anthropic", "openai"}
 	levels := []string{"default", "higher", "max"}
-	roles := []string{"explorer", "critic-step2", "implementer", "fast-owner", "reviewer", "independent-e2e", "orchestrator"}
+	// Floors follow the activity table in the ECI skill; mixed work can only raise them.
+	roles := []roleProfile{
+		{Name: "explorer", Minimum: defaultLevel},
+		{Name: "critic-step2", Minimum: maxLevel},
+		{Name: "implementer", Minimum: defaultLevel},
+		{Name: "fast-owner", Minimum: defaultLevel},
+		{Name: "reviewer", Minimum: higherLevel},
+		{Name: "independent-e2e", Minimum: higherLevel},
+		{Name: "orchestrator", Minimum: defaultLevel},
+	}
 	if len(profiles) != len(camps) {
 		return nil, errors.New("model selection must contain exactly two camps")
 	}
@@ -95,11 +132,11 @@ func generate(
 	baseText := strings.TrimRight(string(base), "\n")
 	result := make(map[string][]byte, len(roles)*len(camps)*len(levels))
 	for _, role := range roles {
-		body, err := os.ReadFile(filepath.Join(templateDir, role+".tmpl"))
+		body, err := os.ReadFile(filepath.Join(templateDir, role.Name+".tmpl"))
 		if err != nil {
 			return nil, err
 		}
-		tmpl, err := template.New(role).Option("missingkey=error").Parse(string(body))
+		tmpl, err := template.New(role.Name).Option("missingkey=error").Parse(string(body))
 		if err != nil {
 			return nil, err
 		}
@@ -108,9 +145,12 @@ func generate(
 			if camp == "openai" {
 				other = "anthropic"
 			}
-			for _, level := range levels {
+			for index, level := range levels {
+				if profileLevel(index) < role.Minimum {
+					continue
+				}
 				primary, fallback := profiles[camp][level], profiles[other][level]
-				name := outputPrefix + role + "-" + camp + "-" + level
+				name := outputPrefix + role.Name + "-" + camp + "-" + level
 				args := templateData{Name: name, Primary: primary.Model + ":" + primary.Effort, Fallback: fallback.Model + ":" + fallback.Effort}
 				var rendered bytes.Buffer
 				if err := tmpl.Execute(&rendered, args); err != nil {

@@ -62,11 +62,43 @@ func TestGenerateMatrix(t *testing.T) {
 	}
 	files, err := generate(config, dir)
 	require.NoError(t, err)
-	require.Len(t, files, 42)
-	value := string(files["eci-preset-reviewer-openai-higher.md"])
-	require.Contains(t, value, "openai/b:medium anthropic/b:medium")
-	require.NotContains(t, value, "openai/a:low")
-	require.Contains(t, value, "base directives")
+	allowed := map[string][]string{
+		"explorer":        {"default", "higher", "max"},
+		"critic-step2":    {"max"},
+		"implementer":     {"default", "higher", "max"},
+		"fast-owner":      {"default", "higher", "max"},
+		"reviewer":        {"higher", "max"},
+		"independent-e2e": {"higher", "max"},
+		"orchestrator":    {"default", "higher", "max"},
+	}
+	selectors := map[string]map[string]string{
+		"openai":    {"default": "openai/a:low", "higher": "openai/b:medium", "max": "openai/c:high"},
+		"anthropic": {"default": "anthropic/a:low", "higher": "anthropic/b:medium", "max": "anthropic/c:high"},
+	}
+	require.Len(t, files, 34)
+	for role, levels := range allowed {
+		for _, camp := range []string{"openai", "anthropic"} {
+			other := "anthropic"
+			if camp == "anthropic" {
+				other = "openai"
+			}
+			for _, level := range levels {
+				name := "eci-preset-" + role + "-" + camp + "-" + level + ".md"
+				value, ok := files[name]
+				require.True(t, ok, name)
+				require.Contains(t, string(value), selectors[camp][level]+" "+selectors[other][level])
+				require.Contains(t, string(value), "base directives")
+			}
+		}
+	}
+	for _, camp := range []string{"openai", "anthropic"} {
+		for _, suffix := range []string{"critic-step2-" + camp + "-default", "critic-step2-" + camp + "-higher", "reviewer-" + camp + "-default", "independent-e2e-" + camp + "-default"} {
+			_, exists := files["eci-preset-"+suffix+".md"]
+			require.False(t, exists, suffix)
+		}
+		require.Contains(t, files, "eci-preset-implementer-"+camp+"-max.md")
+		require.Contains(t, files, "eci-preset-fast-owner-"+camp+"-higher.md")
+	}
 }
 
 // TestReconcileRejectsSymlinks ensures managed-looking links cannot modify another file.
