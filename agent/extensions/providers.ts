@@ -1,11 +1,14 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { cfgDisabledProviders } from "@oh-my-pi/pi-coding-agent/config/model-settings";
+import { findScopedSettings, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { PROVIDER_DESCRIPTORS } from "@oh-my-pi/pi-catalog/provider-models";
 
 interface ProviderSettings {
   getAgentDir(): string;
   getGlobalSettings(): { disabledProviders?: unknown };
   reloadFromDisk(options?: { includeParents?: boolean }): Promise<void>;
   flush(): Promise<void>;
+  getCwd(): string;
 }
 
 interface DisabledProviders<S extends ProviderSettings> {
@@ -17,13 +20,15 @@ interface DisabledProviders<S extends ProviderSettings> {
 interface ProviderContext {
   hasUI: boolean;
   agent: { kind: string };
+  model: { provider: string } | undefined;
   modelRegistry: {
     getAll(mode: "all"): readonly { provider: string }[];
     getDiscoverableProviders(): string[];
     getDiscoveryProviderId(id: string): string | undefined;
+    getRuntimeDiscoveryFailures(): readonly { provider: string }[];
   };
   ui: {
-    select(title: string, options: { label: string; description?: string }[]): Promise<string | undefined>;
+    select(title: string, options: { label: string; description?: string }[], options2?: { initialIndex?: number }): Promise<string | undefined>;
     notify(message: string, type?: "info" | "warning" | "error"): void;
   };
 }
@@ -38,8 +43,8 @@ async function saveGlobalProvider<S extends ProviderSettings>(settings: S, setti
   await settings.reloadFromDisk({ includeParents: true });
   setting.setMember(settings, id, { member: disabled });
   await settings.flush();
-  await settings.reloadFromDisk({ includeParents: true });
-  return globalEntries(settings).includes(id) === disabled;
+  const saved = await Settings.loadReadOnly({ cwd: settings.getCwd(), agentDir: settings.getAgentDir() });
+  return globalEntries(saved).includes(id) === disabled;
 }
 
 async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, settings: S, setting: DisabledProviders<S>): Promise<void> {
@@ -51,8 +56,9 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
     ctx.ui.notify("Provider controls require the main session; child settings writes are not persistent.", "error");
     return;
   }
-  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides may change the effective state. This controls providers, not accounts or credentials; future model/child selection may be affected. The current model is not switched and in-flight work is not stopped.`, "info");
+  ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides can change effective state. No account or credential control. Disabling the active provider does not switch its model or stop in-flight work; later requests may fail or fall back. Future child model selection may also change. Some extension providers without models may not be listed.`, "info");
 
+  let selectedId: string | undefined;
   try {
     while (true) {
       await settings.reloadFromDisk({ includeParents: true });
@@ -61,10 +67,12 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       const provenance = setting.provenance(settings);
       const ids = new Set(ctx.modelRegistry.getAll("all").map(model => model.provider));
       for (const id of ctx.modelRegistry.getDiscoverableProviders()) ids.add(id);
-      // The v18.18.2 registry omits disabled implicit providers even from discovery
-      // lookup. Recover only these native model providers, not arbitrary config IDs.
-      const implicit = new Set(["ollama", "llama.cpp", "lm-studio"]);
-      if (process.platform === "darwin" && process.arch === "arm64") implicit.add("apple");
+      for (const failure of ctx.modelRegistry.getRuntimeDiscoveryFailures()) ids.add(failure.provider);
+      // Disabled uncached managers are hidden by the registry. Catalog descriptors
+      // identify model providers without admitting discovery-source IDs.
+      const known = new Set<string>(PROVIDER_DESCRIPTORS.map(descriptor => descriptor.providerId));
+      known.add("llama.cpp");
+      if (process.platform === "darwin" && process.arch === "arm64") known.add("apple");
       const candidates: unknown[] = [...entries, ...effective];
       for (const entry of entries) {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
@@ -74,23 +82,26 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
         }
       }
       for (const id of candidates) {
-        if (typeof id === "string" && (implicit.has(id) || ctx.modelRegistry.getDiscoveryProviderId(id) === id)) ids.add(id);
+        if (typeof id === "string" && (known.has(id) || ctx.modelRegistry.getDiscoveryProviderId(id) === id)) ids.add(id);
       }
-      const choices = [...ids].sort().map(id => ({
-        label: `[${entries.includes(id) ? " " : "x"}] ${id}`,
-        description: `global ${entries.includes(id) ? "disabled" : "enabled"}; effective ${effective.has(id) ? "disabled" : "enabled"} (${provenance}); select to ${entries.includes(id) ? "enable" : "disable"} globally`,
+      const sortedIds = [...ids].sort();
+      const choices = sortedIds.map(id => ({
+        label: `[${entries.includes(id) ? " " : "x"}] ${id} — global ${entries.includes(id) ? "off" : "on"}; effective ${effective.has(id) ? "off" : "on"} (${provenance})`,
+        description: `Select to ${entries.includes(id) ? "enable" : "disable"} globally${ctx.model?.provider === id ? "; active model's next requests may fail or fall back" : ""}`,
       }));
       choices.push({ label: "Exit", description: "Close (or press Escape)" });
       const selected = await ctx.ui.select(
         `Providers: select to toggle globally; saves immediately; Esc exits`, choices,
+        { initialIndex: selectedId === undefined ? 0 : Math.max(0, sortedIds.indexOf(selectedId)) },
       );
       if (!selected || selected === "Exit") return;
       const index = choices.findIndex(choice => choice.label === selected);
       if (index < 0 || index >= choices.length - 1) return;
-      const id = selected.slice(4);
+      const id = sortedIds[index];
+      selectedId = id;
       const disabled = !entries.includes(id);
       if (await saveGlobalProvider(settings, setting, id, disabled)) {
-        ctx.ui.notify(`${id}: global ${disabled ? "disabled" : "enabled"} saved. Effective state may differ; current model and in-flight work are unchanged.`, "info");
+        ctx.ui.notify(`${id}: global ${disabled ? "disabled" : "enabled"} saved. Effective state may differ.${disabled && ctx.model?.provider === id ? " The current model remains selected; later requests may fail or fall back." : ""}`, "info");
       } else {
         ctx.ui.notify(`${id}: global change was not saved (the setting changed concurrently). Reload and try again.`, "error");
       }
@@ -103,7 +114,12 @@ export default function providers(pi: ExtensionAPI): void {
   pi.registerCommand("provider-controls", {
     description: "Enable or disable model providers globally (not accounts)",
     handler: async (_args, ctx) => {
-      await showProviders(ctx, pi.pi.settings, cfgDisabledProviders);
+      const settings = findScopedSettings(ctx.cwd);
+      if (!settings || settings.overlayParent() || !settings.getStorage()) {
+        ctx.ui.notify("Provider controls require a persistent, non-overlay session settings scope.", "error");
+        return;
+      }
+      await showProviders(ctx, settings, cfgDisabledProviders);
     },
   });
 }
