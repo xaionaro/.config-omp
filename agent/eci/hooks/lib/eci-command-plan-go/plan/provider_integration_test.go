@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"bytes"
@@ -71,7 +71,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	t.Parallel()
 
 	planner := testPlannerBinary
-	sourceRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	sourceRoot, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}

@@ -1,11 +1,10 @@
-package main
+package plan
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 )
 
 const (
@@ -19,16 +18,6 @@ const (
 	// StatusInternal is the process status for malformed input or I/O failure.
 	StatusInternal = 64
 )
-
-// main selects the callback envelope or the existing planner request protocol.
-//
-// Example: --hook consumes one PreToolUse callback; no arguments use the planner.
-func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--hook" {
-		os.Exit(RunHook(os.Stdin, os.Stdout))
-	}
-	os.Exit(Run(os.Stdin, os.Stdout))
-}
 
 // Run classifies one bounded JSON request and writes one JSON response.
 func Run(input io.Reader, output io.Writer) int {

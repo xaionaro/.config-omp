@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"crypto/sha256"

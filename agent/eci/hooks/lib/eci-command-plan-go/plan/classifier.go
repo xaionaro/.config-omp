@@ -1,4 +1,4 @@
-package main
+package plan
 
 // TODO: Retire ECI marker-dependent classification while preserving concrete target checks.
 

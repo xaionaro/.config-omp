@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"bytes"
@@ -226,7 +226,7 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 	gate := filepath.Join(home, ".omp", "agent", "eci", "bin", "eci-command-gate-mode")
 	require.NoError(t, os.MkdirAll(filepath.Dir(gate), 0700))
 	build := exec.Command("go", "build", "-o", gate, ".")
-	build.Dir = filepath.Join("..", "eci-command-gate-mode-go")
+	build.Dir = filepath.Join("..", "..", "eci-command-gate-mode-go")
 	{
 		output, err := build.CombinedOutput()
 		require.NoErrorf(t, err, "build optional finalizer: %v: %s", err, output)

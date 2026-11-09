@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"bytes"
@@ -203,7 +203,7 @@ func accountHome() (string, error) {
 //
 // Example: HOME becomes <root>/home and TMPDIR becomes <root>/tmp.
 func provisionTestHome(root string) error {
-	hooks, err := filepath.Abs(filepath.Join("..", ".."))
+	hooks, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		return fmt.Errorf("resolve source hooks: %w", err)
 	}
