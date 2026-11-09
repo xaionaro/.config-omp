@@ -79,7 +79,10 @@ For task-backed ECI work, select the role below before Model selection. Presets 
 | General Critic A/B/C | `reviewer` |
 | Independent E2E | `independent-e2e` |
 | Job Orchestrator | `orchestrator` |
+| Job-owner-dispatched non-Producer brainstormer, feasibility validator, loop-breaker, or RCA investigator/critic | `worker` |
 | Task-backed Helper | `helper` |
+
+A `worker` brief supplies a self-contained assignment and role contract, matched skills, exclusions, authority, and reporting to the current published Job owner; a child Job owner reports through its parent owner where applicable. No ECI role module is required; never load Supervisor-only coordinator modules for a Worker. Preserve literal specialists where required. A Producer assigned RCA retains its Producer role; Helpers retain the `helper` role and report through their spawning Worker.
 
 The Helper brief supplies its authority, reporting route, matched skills and applicable role module. Select its profile from its own activity, not its parent's. A Helper cannot replace an independent reviewer or its duties.
 
@@ -93,10 +96,12 @@ Choose the camp, `anthropic` or `openai`, by role:
 
 | Role | Camp |
 | --- | --- |
-| Critic, reviewer, design-winner selector, independent E2E | Opposite of the Supervisor's own camp |
+| Critic, reviewer, design-winner selector, independent E2E, independent feasibility validator, independent loop-breaker, RCA critic | Opposite of the Supervisor's own camp |
 | Every other role | The Supervisor's own camp |
 
 The Supervisor's own camp is the provider of the model the Supervisor runs on at spawn time, including after a mid-run fallback: `anthropic` for `anthropic/*`, otherwise `openai`. Any spawning agent, including an Orchestrator or Producer, uses the Supervisor's camp. If the Supervisor's current model is unknown, use its configured model.
+
+Brainstormers and exploratory RCA investigators use the Supervisor's own camp. An independent feasibility validator or loop-breaker is a critic for camp selection but is not automatically a design-winner selector. Select `higher` or `max` according to its actual assigned activity, using the highest applicable profile for mixed assignments.
 
 | Profile | Activities |
 | --- | --- |
@@ -158,6 +163,7 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 | --- | --- | --- |
 | Supervisor | [coordinator](references/coordinator.md), [coordinator runtime](../references/workflow-runtime/coordinator-runtime.md), [review policy](../references/workflow-runtime/review-policy.md) | [pause-all-work](../references/workflow-runtime/pause-all-work.md), [stop recovery](../references/workflow-runtime/stop-recovery.md), and [policy pressure tests](../references/workflow-runtime/policy-pressure-tests.md) only by their predicates |
 | `explorer` | [explore](references/explore.md) | [debugging-discipline](../debugging-discipline/SKILL.md) only for assigned debugging, test-failure, unexpected-behavior, performance, or build-failure investigation; [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for assigned governed source discovery |
+| `worker` | None; the self-contained assignment packet carries the role contract | [debugging-discipline](../debugging-discipline/SKILL.md) only for an assigned RCA investigator or critic. Independent validators, loop-breakers, and RCA critics retain their actual review/BRP responsibilities; brainstormers remain fresh, blind and idea-only. Existing lifecycle, role authority and reporting rules remain authoritative. |
 | `critic-step2` | [critique](references/critique.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for independent admission |
 | Producer (`implementer`) | [implement](references/implement.md) | [debugging-discipline](../debugging-discipline/SKILL.md) only for assigned code/debug work; [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for a governed scope |
 | Orchestrator | [task-orchestrator](references/task-orchestrator.md) | Candidate, handoff, or relay by bounded assignment; Job dispatch only after its designated publisher publishes ownership under that contract; shared [review policy](../references/workflow-runtime/review-policy.md) only for outcome-level review/evidence |
