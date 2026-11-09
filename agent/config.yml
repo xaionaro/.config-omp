@@ -95,7 +95,7 @@ retry:
   fallbackChains:
     default: [openai-codex/gpt-6.1-terra:medium]
     slow: [openai-codex/gpt-6.1-sol:xhigh]
-    smol: [openai-codex/gpt-6-luna:low]
+    anthropic/claude-haiku-5-5: [openai-codex/gpt-6-luna:low]
     openai-codex/gpt-6-luna: [anthropic/claude-haiku-5-5:low]
     openai-codex/gpt-6.1-terra: [anthropic/claude-opus-5-5:low]
     openai-codex/gpt-6.1-sol: [anthropic/claude-opus-5-5]
