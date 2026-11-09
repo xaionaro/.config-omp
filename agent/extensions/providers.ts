@@ -23,7 +23,7 @@ interface ProviderContext {
   agent: { kind: string };
   model: { provider: string } | undefined;
   modelRegistry: {
-    authStorage: { keys: { source(id: string): { concrete: boolean } | undefined; keyless(id: string): boolean } };
+    authStorage: { keys: { source(id: string): unknown; keyless(id: string): boolean } };
     getAvailable(mode: "all"): readonly { provider: string }[];
     getAll(mode: "all"): readonly { provider: string }[];
     getDiscoverableProviders(): string[];
@@ -64,6 +64,7 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
 
   let selectedId: string | undefined;
   let showOtherProviders = false;
+  let focusVisibilityAction = false;
   try {
     while (true) {
       await settings.reloadFromDisk({ includeParents: true });
@@ -82,15 +83,17 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       const automaticKeyless: Record<string, true> = { local: true, web: true, ollama: true, "llama.cpp": true, "lm-studio": true, apple: true };
       for (const id of Object.keys(automaticKeyless)) modelIds.add(id);
       for (const id of availableIds) modelIds.add(id);
-      const configured = (id: string): boolean => keys.source(id)?.concrete === true || keys.keyless(id);
+      const configured = (id: string): boolean => keys.source(id) !== undefined || keys.keyless(id);
       // Automatic keyless backends are not evidence of a configured endpoint.
       const eligible = (id: string): boolean => {
         if (configured(id)) return true;
-        if (keys.source(id) !== undefined) return false;
         const discovery = registry.getProviderDiscoveryState(id);
         if (automaticKeyless[id]) {
           return (discoverable.has(id) && discovery?.optional === false) ||
-            (availableIds.has(id) && (discovery?.status === "ok" || discovery?.status === "cached"));
+            (availableIds.has(id) && (
+              (id !== "local" && id !== "web" && !discoverable.has(id)) ||
+              discovery?.status === "ok" || discovery?.status === "cached"
+            ));
         }
         return !discovery?.optional || (discovery.status !== "idle" && discovery.status !== "unavailable");
       };
@@ -135,20 +138,22 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       const visibilityAction = showOtherProviders ? "Hide other providers" : "Show other providers";
       choices.push({ label: visibilityAction, description: showOtherProviders ? "Show the compact provider list" : "Include other known providers, even if not configured" });
       choices.push({ label: "Exit", description: "Close (or press Escape)" });
-      const selectedIndex = selectedId === undefined ? 0 : sortedIds.indexOf(selectedId);
+      const selectedIndex = focusVisibilityAction ? sortedIds.length : selectedId === undefined ? 0 : sortedIds.indexOf(selectedId);
       const selected = await ctx.ui.select(
-        `Providers — global; ${showOtherProviders ? "all known" : "configured, usable or disabled"}; select to toggle; Esc exits\n[source] also affects config, rules, MCP and other discovery.\nThe active model remains selected; later requests may fail or fall back.`, choices,
+        `Providers — global; ${showOtherProviders ? "all known" : "configured or disabled"}; select to toggle; Esc exits\n[source] also affects config, rules, MCP and other discovery.\nThe active model remains selected; later requests may fail or fall back.`, choices,
         { initialIndex: selectedIndex < 0 ? sortedIds.length : selectedIndex },
       );
       if (!selected || selected === "Exit") return;
       if (selected === visibilityAction) {
         showOtherProviders = !showOtherProviders;
+        focusVisibilityAction = true;
         continue;
       }
       const index = choices.findIndex(choice => choice.label === selected);
       if (index < 0 || index >= sortedIds.length) return;
       const id = sortedIds[index];
       selectedId = id;
+      focusVisibilityAction = false;
       const disabled = !entries.includes(id);
       if (await saveGlobalProvider(settings, setting, id, disabled)) {
         ctx.ui.notify(`${id}: global ${disabled ? "disabled" : "enabled"} saved. Effective state may differ.${disabled && ctx.model?.provider === id ? " The current model remains selected; later requests may fail or fall back." : ""}`, "info");
