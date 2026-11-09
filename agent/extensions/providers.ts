@@ -58,6 +58,11 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
   }
   ctx.ui.notify(`Global profile settings (${settings.getAgentDir()}/config.yml or config.yaml) save immediately. Path-scoped entries, project, --config overlays and runtime overrides can change effective state. No account or credential control. Disabling the active provider does not switch its model or stop in-flight work; later requests may fail or fall back. Future child model selection may also change. Some extension providers without models may not be listed.`, "info");
 
+  // The registry hides disabled uncached managers. Catalog descriptors name
+  // model providers without admitting discovery-source IDs.
+  const ids = new Set<string>(PROVIDER_DESCRIPTORS.map(descriptor => descriptor.providerId));
+  ids.add("llama.cpp");
+  if (process.platform === "darwin" && process.arch === "arm64") ids.add("apple");
   let selectedId: string | undefined;
   try {
     while (true) {
@@ -65,14 +70,9 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
       const entries = globalEntries(settings);
       const effective = new Set(setting.get(settings));
       const provenance = setting.provenance(settings);
-      const ids = new Set(ctx.modelRegistry.getAll("all").map(model => model.provider));
+      for (const model of ctx.modelRegistry.getAll("all")) ids.add(model.provider);
       for (const id of ctx.modelRegistry.getDiscoverableProviders()) ids.add(id);
       for (const failure of ctx.modelRegistry.getRuntimeDiscoveryFailures()) ids.add(failure.provider);
-      // Disabled uncached managers are hidden by the registry. Catalog descriptors
-      // identify model providers without admitting discovery-source IDs.
-      const known = new Set<string>(PROVIDER_DESCRIPTORS.map(descriptor => descriptor.providerId));
-      known.add("llama.cpp");
-      if (process.platform === "darwin" && process.arch === "arm64") known.add("apple");
       const candidates: unknown[] = [...entries, ...effective];
       for (const entry of entries) {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
@@ -82,17 +82,18 @@ async function showProviders<S extends ProviderSettings>(ctx: ProviderContext, s
         }
       }
       for (const id of candidates) {
-        if (typeof id === "string" && (known.has(id) || ctx.modelRegistry.getDiscoveryProviderId(id) === id)) ids.add(id);
+        if (typeof id === "string" && ctx.modelRegistry.getDiscoveryProviderId(id) === id) ids.add(id);
       }
       const sortedIds = [...ids].sort();
       const choices = sortedIds.map(id => ({
-        label: `[${entries.includes(id) ? " " : "x"}] ${id} — global ${entries.includes(id) ? "off" : "on"}; effective ${effective.has(id) ? "off" : "on"} (${provenance})`,
+        label: `[${entries.includes(id) ? " " : "x"}] ${id}${ctx.model?.provider === id ? " [active]" : ""} — global ${entries.includes(id) ? "off" : "on"}; effective ${effective.has(id) ? "off" : "on"} (${provenance})`,
         description: `Select to ${entries.includes(id) ? "enable" : "disable"} globally${ctx.model?.provider === id ? "; active model's next requests may fail or fall back" : ""}`,
       }));
       choices.push({ label: "Exit", description: "Close (or press Escape)" });
+      const selectedIndex = selectedId === undefined ? 0 : sortedIds.indexOf(selectedId);
       const selected = await ctx.ui.select(
-        `Providers: select to toggle globally; saves immediately; Esc exits`, choices,
-        { initialIndex: selectedId === undefined ? 0 : Math.max(0, sortedIds.indexOf(selectedId)) },
+        `Providers: active model stays selected; later requests may fail or fall back. Select to toggle; Esc exits`, choices,
+        { initialIndex: selectedIndex < 0 ? sortedIds.length : selectedIndex },
       );
       if (!selected || selected === "Exit") return;
       const index = choices.findIndex(choice => choice.label === selected);
