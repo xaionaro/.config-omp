@@ -310,6 +310,39 @@ cross_session_output="$(run_dispatch cross-session "$cross_session_input")"
 assert_cross_session_deny cross-session "$cross_session_output" "$other_session"
 
 context_root="$fixture_home/.agent/context/sessions"
+# The host accepts tilde paths; ownership follows their expanded target.
+tilde_input="$TMP_ROOT/tilde-cross-session.json"
+jq -cn --arg session_id "$session_id" --arg cwd "$repo" \
+  '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:"~/.agent/context/sessions/other-session/ordinary.txt",content:"wrong session"}}' \
+  >"$tilde_input"
+tilde_output="$(run_dispatch tilde-cross-session "$tilde_input")"
+assert_cross_session_deny tilde-cross-session "$tilde_output" "$other_session"
+tilde_own_input="$TMP_ROOT/tilde-own-session.json"
+jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "~/.agent/context/sessions/$session_id/ordinary.txt" \
+  '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"same session"}}' \
+  >"$tilde_own_input"
+tilde_own_output="$(run_dispatch tilde-own-session "$tilde_own_input")"
+assert_empty_output tilde-own-session "$tilde_own_output"
+for path in '~/ordinary.txt' 'folder~/ordinary.txt'; do
+  ordinary_input="$TMP_ROOT/tilde-ordinary.json"
+  jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "$path" \
+    '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"ordinary"}}' >"$ordinary_input"
+  ordinary_output="$(run_dispatch tilde-ordinary "$ordinary_input")"
+  assert_empty_output tilde-ordinary "$ordinary_output"
+done
+# The fast roots cache and standalone resolvers must agree about host paths.
+HOME="$fixture_home" ECI_PROOF_ROOT="$proof_root" bash -c '
+  set -euo pipefail
+  . "$1"
+  cwd="$2"
+  expected="$(eci_realpath_canonical "$HOME/ordinary.txt")"
+  [ "$(eci_hook_path_absolute "$cwd" "~/ordinary.txt")" = "$HOME/ordinary.txt" ]
+  [ "$(eci_resolve_hook_path "$cwd" "~/ordinary.txt")" = "$expected" ]
+  [ "$(eci_lexical_hook_path "$cwd" "~/ordinary.txt")" = "$(eci_realpath_lexical "$HOME/ordinary.txt")" ]
+  [ "$(eci_hook_path_absolute "$cwd" "folder~/ordinary.txt")" = "$cwd/folder~/ordinary.txt" ]
+  eci_hook_roots_load "$cwd" "~/ordinary.txt"
+  [ "$eci_hook_roots_target_ready" = 1 ] && [ "$eci_hook_roots_target_resolved" = "$expected" ]
+' _ "$fixture_hooks/lib/eci-proof-state.sh" "$repo"
 cross_session_document="$context_root/$other_session/project-understanding.yaml"
 cross_session_document_input="$TMP_ROOT/cross-session-document.json"
 jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "$cross_session_document" \

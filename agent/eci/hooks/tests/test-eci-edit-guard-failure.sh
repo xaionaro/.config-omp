@@ -52,6 +52,7 @@ run_case repair-hook "$hooks/eci-active-gate.sh" 1 0 allow
 run_case proof "$tmp/proof/other/ordinary.txt" 1 0 deny
 run_case default-proof "$HOME/tmp/agent/proof/other/ordinary.txt" 1 0 deny
 run_case context "$HOME/.agent/context/sessions/other/ordinary.txt" 1 0 deny
+run_case tilde-context '~/.agent/context/sessions/other/ordinary.txt' 1 0 deny
 run_case approval "$tmp/repo/.git-commit-approved-once" 1 0 deny
 run_case active-guard "$tmp/proof/other/ordinary.txt" 0 1 deny-active
 run_case precedence "$tmp/proof/other/ordinary.txt" 2 1 precedence

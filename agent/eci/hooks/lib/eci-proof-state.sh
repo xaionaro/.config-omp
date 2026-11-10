@@ -171,7 +171,7 @@ eci_hook_path_absolute() {
   local cwd="$1" path="$2"
   case "$path" in
     "~") path="$HOME" ;;
-    "~/"*) path="$HOME/${path#~/}" ;;
+    "~/"*) path="$HOME/${path#"~/"}" ;;
   esac
   case "$path" in
     /*) ;;
@@ -196,7 +196,7 @@ eci_hook_roots_load() {
     target="$2"
     case "$target" in
       "~") target="$HOME" ;;
-      "~/"*) target="$HOME/${target#~/}" ;;
+      "~/"*) target="$HOME/${target#"~/"}" ;;
     esac
     case "$target" in
       /*) ;;
@@ -623,7 +623,7 @@ eci_resolve_hook_path() {
   [ -n "$cwd" ] || cwd="$PWD"
   case "$path" in
     "~") path="$HOME" ;;
-    "~/"*) path="$HOME/${path#~/}" ;;
+    "~/"*) path="$HOME/${path#"~/"}" ;;
   esac
   case "$path" in
     /*) ;;
@@ -641,7 +641,7 @@ eci_lexical_hook_path() {
   [ -n "$cwd" ] || cwd="$PWD"
   case "$path" in
     "~") path="$HOME" ;;
-    "~/"*) path="$HOME/${path#~/}" ;;
+    "~/"*) path="$HOME/${path#"~/"}" ;;
   esac
   # A relative target names a path under the payload cwd, not the hook process
   # cwd; eci_realpath_lexical would otherwise resolve it against the process directory.

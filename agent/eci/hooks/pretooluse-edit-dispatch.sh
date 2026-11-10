@@ -200,7 +200,7 @@ dispatch_protected_target() {
     [ -n "$path" ] || continue
     case "$path" in
       "~") path="$HOME" ;;
-      "~/"*) path="$HOME/${path#~/}" ;;
+      "~/"*) path="$HOME/${path#"~/"}" ;;
     esac
     case "$path" in /*) ;; *) path="${cwd:-$PWD}/$path" ;; esac
     lexical="$(eci_realpath_lexical "$path" 2>/dev/null || true)"
