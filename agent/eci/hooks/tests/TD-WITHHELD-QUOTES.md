@@ -461,6 +461,8 @@ assert_instruction_read_denied() {
 
 ### classifier P3: wrapper/indirect control writes
 
+Historical active-marker callback expectations; do not restore these as Bash callback denials.
+
 #### Row :3105 rows :3117,:3118,:3119,:3122: now lines 3095,3096,3097,3100 (inside the matrix at line 3083; only these 4 rows are withheld)
 ```bash
 run_matrix_parallel worker assert_subagent_control_denied worker-control-mutation \
@@ -471,6 +473,8 @@ run_matrix_parallel worker assert_subagent_control_denied worker-control-mutatio
 ```
 
 ### classifier P3: symlink control writes
+
+Historical active-marker callback expectations; do not restore these as Bash callback denials.
 
 #### Row :3139 (2 rows): now lines 3117-3119
 ```bash
