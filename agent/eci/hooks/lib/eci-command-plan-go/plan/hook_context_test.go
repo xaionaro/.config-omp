@@ -69,9 +69,9 @@ func subagentDirectory(t *testing.T, project string) string {
 	return dir
 }
 
-// TestHookContextParentPrefix inherits a declared parent marker before a large history tail.
+// TestHookContextParentPrefix classifies a child despite a large history tail.
 //
-// Example: a child whose line-two header names parentSession inherits the parent's active marker.
+// Example: a child header selects Worker without inheriting its parent's marker.
 func TestHookContextParentPrefix(t *testing.T) {
 	root, cwd := contextFixture(t)
 	sessions := sessionsFixture(t)
@@ -109,9 +109,9 @@ func TestHookContextOversizedFirstRecordTail(t *testing.T) {
 	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession == "parent" || got.Marker == MarkerActive, "context=%+v", got)
 }
 
-// TestHookContextUnresolvableParentIsWorker grants no inherited marker when the declared parent is not a regular sessions-root transcript.
+// TestHookContextUnresolvableParentIsWorker needs no parent transcript lookup.
 //
-// Example: a parentSession that is missing, outside the root, or a symlink fails closed to worker.
+// Example: a child remains a Worker when its declared parent is absent or external.
 func TestHookContextUnresolvableParentIsWorker(t *testing.T) {
 	root, cwd := contextFixture(t)
 	sessions := sessionsFixture(t)
@@ -124,7 +124,7 @@ func TestHookContextUnresolvableParentIsWorker(t *testing.T) {
 		transcript := filepath.Join(subagentDirectory(t, sessions), "child-"+name+".jsonl")
 		writeSubagentTranscript(t, transcript, "child", declared, "")
 		got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
-		require.Error(t, err, name)
+		require.NoError(t, err, name)
 		require.Equal(t, RoleWorker, got.Role, name)
 		require.Falsef(t, got.Marker == MarkerActive || got.ActiveSession == "parent", "%s: context=%+v", name, got)
 	}
@@ -454,9 +454,9 @@ func TestHookContextRelativeTranscriptIsWorker(t *testing.T) {
 	require.Equal(t, RoleWorker, got.Role)
 }
 
-// TestHookContextMarkerAliasAndInvalid checks supported aliases and invalid records.
+// TestHookContextMarkerAliasAndInvalid ignores both valid and invalid legacy records.
 //
-// Example: owner resolves session_owner, while a broken marker grants no authority.
+// Example: neither session_owner nor a broken marker activates callback scope.
 func TestHookContextMarkerAliasAndInvalid(t *testing.T) {
 	root, cwd := contextFixture(t)
 	contextMarker(t, root, "session_owner", cwd)
@@ -504,9 +504,9 @@ func TestHookContextExplicitWorkerAndActivity(t *testing.T) {
 	require.Falsef(t, !strings.Contains(string(data), "kind: shell\n"), "activity=%q", data)
 }
 
-// TestHookContextDependencyAndRootAlias resolves canonical owner and dependency roots.
+// TestHookContextDependencyAndRootAlias ignores legacy dependency records.
 //
-// Example: a proof-root symlink preserves a declared dependency allowance.
+// Example: a proof-root symlink and dependency record grant no callback roots.
 func TestHookContextDependencyAndRootAlias(t *testing.T) {
 	root, cwd := contextFixture(t)
 	contextMarker(t, root, "owner", cwd)
@@ -551,9 +551,9 @@ func TestHookContextTouchedBaseline(t *testing.T) {
 	}
 }
 
-// TestHookContextDirectOwnerBeyondPeerCap prioritizes direct authority over peers.
+// TestHookContextDirectOwnerBeyondPeerCap ignores markers regardless of count.
 //
-// Example: a sorted-late current marker stays active after more than 64 peers.
+// Example: a sorted-late callback session remains inactive among many markers.
 func TestHookContextDirectOwnerBeyondPeerCap(t *testing.T) {
 	root, cwd := contextFixture(t)
 	for index := 0; index < 65; index++ {

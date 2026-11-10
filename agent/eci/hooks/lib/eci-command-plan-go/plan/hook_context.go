@@ -50,18 +50,15 @@ func hookRequest(input HookInput) (Request, error) {
 	}
 	request.CommandPath, request.CommandPathSet = os.LookupEnv("PATH")
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
-	role, _, transcriptErr := hookTranscriptRole(input.TranscriptPath)
+	role, transcriptErr := hookTranscriptRole(input.TranscriptPath)
 	request.Role = role
-	var advisoryErrors []error
-	if errors.Is(transcriptErr, errHookTranscriptUnknown) {
+	if transcriptErr != nil {
 		hookAdvisory("classify callback transcript", transcriptErr)
-	} else if transcriptErr != nil {
-		advisoryErrors = append(advisoryErrors, fmt.Errorf("resolve transcript parent: %w", transcriptErr))
 	}
 	if os.Getenv("ECI_HOOK_IS_SUBAGENT") == "1" || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "true" {
 		request.Role = RoleWorker
 	}
-	return request, errors.Join(advisoryErrors...)
+	return request, nil
 }
 
 // hookSessionID limits state paths to immediate session directory names.
@@ -81,7 +78,7 @@ func hookSessionID(value string) bool {
 
 // hookCanonicalPath resolves existing ancestors and tolerates absent targets.
 //
-// Example: an undeployed declared dependency keeps its absolute cleaned path.
+// Example: a missing proof directory keeps its cleaned absolute path.
 func hookCanonicalPath(path string) (string, error) {
 	canonical, err := filepath.EvalSymlinks(path)
 	if err == nil {
@@ -118,30 +115,12 @@ func hookProofRoot() (string, error) {
 // errHookTranscriptUnknown marks a callback transcript that fails closed to the worker role.
 var errHookTranscriptUnknown = errors.New("callback transcript is unknown")
 
-// hookTranscriptStatus classifies the callback transcript as main, subagent, or
-// unknown; see hookTranscriptClassify.
+// hookTranscriptStatus classifies a verified callback transcript.
 //
 // Example: a depth-two transcript with a null parentSession is unknown, not main.
 func hookTranscriptStatus(path string) (string, error) {
-	status, _, err := hookTranscriptClassify(path)
+	status, _, err := hookTranscriptVerified(path)
 	return status, err
-}
-
-// hookTranscriptClassify classifies the callback transcript as main, subagent, or
-// unknown, and returns the parentSession its header declares. A subagent is a
-// transcript at depth three or more whose header declares a string parentSession.
-// A main transcript is at depth two with a session header and no parentSession key
-// of any value or session_init marker. Only the bounded prefix is classified
-// (hookTranscriptPrefix): a depth-two transcript whose only such signal lies past
-// it is main. The path must hold no symlink below the sessions root and must
-// resolve to its own location there. Every other outcome is unknown, which fails
-// closed to the worker role and carries its reason in the error.
-//
-// Example: a depth-two transcript with a null parentSession is unknown, not main.
-func hookTranscriptClassify(path string) (string, string, error) {
-	status, header, err := hookTranscriptVerified(path)
-	declared, _ := header["parentSession"].(string)
-	return status, declared, err
 }
 
 // hookTranscriptVerified checks the transcript location and classifies its prefix,
@@ -454,64 +433,16 @@ func hookNoSymlinkIntoRoot(path, base, resolved string) error {
 	return nil
 }
 
-// hookTranscriptRole maps the callback transcript to a planner role and the parent
-// session a subagent inherits. Only a verified main transcript (depth two, a session
-// header, no parentSession key, no session_init marker) is the coordinator. Every other outcome is
-// unknown and fails closed to the worker role; the reason is returned wrapping
-// errHookTranscriptUnknown.
+// hookTranscriptRole maps a verified callback transcript to its planner role.
+// Unknown transcripts remain Workers and carry the classification error.
 //
 // Example: an empty transcript path is unknown, so the callback runs as a worker.
-func hookTranscriptRole(path string) (Role, string, error) {
-	status, declared, err := hookTranscriptClassify(path)
-	switch status {
-	case "main":
-		return RoleCoordinator, "", nil
-	case "subagent":
-		parent, err := hookParentSessionID(declared)
-		return RoleWorker, parent, err
-	default:
-		return RoleWorker, "", err
+func hookTranscriptRole(path string) (Role, error) {
+	status, err := hookTranscriptStatus(path)
+	if status == "main" {
+		return RoleCoordinator, nil
 	}
-}
-
-// hookParentSessionID resolves a declared parent transcript to the session id
-// in its header. The parent must be a regular non-symlink .jsonl file whose
-// physical path stays under the sessions root.
-//
-// Example: a symlinked parent transcript is rejected even when its target is
-// under the sessions root.
-func hookParentSessionID(declared string) (string, error) {
-	if !filepath.IsAbs(declared) || !strings.HasSuffix(declared, ".jsonl") {
-		return "", errors.New("parent transcript is not an absolute .jsonl path")
-	}
-	info, err := os.Lstat(declared)
-	if err != nil {
-		return "", fmt.Errorf("parent transcript: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("parent transcript is not a regular non-symlink file")
-	}
-	_, root, err := hookTranscriptRoots()
-	if err != nil {
-		return "", err
-	}
-	physical, err := filepath.EvalSymlinks(declared)
-	if err != nil {
-		return "", fmt.Errorf("parent transcript: %w", err)
-	}
-	relative, err := filepath.Rel(root, physical)
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("parent transcript is outside the sessions root")
-	}
-	_, header, err := hookTranscriptPrefix(physical)
-	if err != nil {
-		return "", fmt.Errorf("parent transcript: %w", err)
-	}
-	id, ok := header["id"].(string)
-	if !ok || !hookSessionID(id) {
-		return "", errors.New("parent transcript header has no valid session id")
-	}
-	return id, nil
+	return RoleWorker, err
 }
 
 // recordHookActivity preserves coordinator activity and callback-session writes.

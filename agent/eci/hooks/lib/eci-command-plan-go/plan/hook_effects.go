@@ -13,10 +13,6 @@ const (
 	//
 	// Example: git checkout -- hooks/validate-bash.sh selects this gate.
 	hookCodeCoordinatorEditRouting DiagnosticCode = "ECI_COORDINATOR_EDIT_ROUTING_REQUIRED"
-	// hookCodeCrossSessionActiveMarkerDenied identifies foreign live-session writes.
-	//
-	// Example: tee targeting another owner's eci_active selects this gate.
-	hookCodeCrossSessionActiveMarkerDenied DiagnosticCode = "ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED"
 	// hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
 	//
 	// Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
@@ -26,7 +22,7 @@ const (
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
 //
-// Example: a native git diff followed by git add still routes the second child.
+// Example: a cleanup command selecting a live hook returns a diagnostic.
 func inspectHookEffects(
 	request Request,
 	result Result,
@@ -408,10 +404,9 @@ func hookArgumentKnown(
 		!slices.Contains(record.UnknownCardinalityArguments, index)
 }
 
-// hookGitFamily identifies the native Worker operations routed to the typed CLI.
-// Membership depends on the default verb family, never its selected options.
+// hookGitFamily identifies native Git verbs that may mutate repository state.
 //
-// Example: git add is routed while git worktree add stays native.
+// Example: git add may mutate state while git worktree has separate handling.
 func hookGitFamily(
 	argv []token,
 	verbIndex int,
@@ -896,7 +891,7 @@ func hookSessionsRootTarget(name string, final bool, lexical, resolved string) b
 // hookTildePrefix returns the text between a leading "~" and the first "/", and whether
 // bash expands that tilde-prefix. Only an unquoted tilde-prefix expands; any quoting inside
 // it makes the word literal. Quoting after the first unquoted "/" does not stop expansion.
-// A word without raw offsets is treated as unquoted, so the check fails closed.
+// A word without raw offsets is treated as unquoted for expansion analysis.
 //
 // Example: ~/".omp/x" expands with an empty prefix, while ~"/.omp/x" stays literal.
 func hookTildePrefix(argument token) (string, bool) {
@@ -918,11 +913,8 @@ func hookTildePrefix(argument token) (string, bool) {
 	return prefix, leadingUnquoted && argument.sourceOffsets[slash] == argument.offset+slash
 }
 
-// hookTildeHome returns the HOME that an unquoted leading "~" denotes: an empty tilde-prefix,
-// as in "~" or "~/...". Quoting after the first unquoted "/" does not stop the expansion, so
-// ~/".omp" expands here and is then denied as a mixed quote form. "~user", "~+", and "~-"
-// report false here; the sessions check denies them when they mention the sessions root.
-// A non-absolute HOME yields no expansion, matching hookSessionsRoots.
+// hookTildeHome returns HOME for an unquoted leading "~" or "~/...".
+// Other tilde prefixes and non-absolute HOME do not yield an expansion.
 //
 // Example: unquoted ~/.omp/agent/sessions/x.jsonl expands under HOME, while "~/x" and ~"/x" do not.
 func hookTildeHome(argument token) (string, bool) {
@@ -937,9 +929,8 @@ func hookTildeHome(argument token) (string, bool) {
 	return filepath.Clean(home), true
 }
 
-// hookSessionsMention reports whether operand text names the omp agent location by its literal
-// ".omp" spelling, including glob or brace forms that keep that spelling. Forms that avoid a
-// literal ".omp" are not mentioned; the lexical gate is defense in depth only.
+// hookSessionsMention reports whether operand text contains the literal ".omp" spelling.
+// It helps identify ambiguous session-root spellings that remain advisory.
 //
 // Example: ~/.omp/agent/sess[s]ions/x mentions it; ~/tmp/session-notes.txt does not.
 func hookSessionsMention(text string) bool {

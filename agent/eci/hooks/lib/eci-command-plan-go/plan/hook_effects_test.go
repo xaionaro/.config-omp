@@ -10,24 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHookScratchHomeAlias follows the canonical home and dedicated scratch directory.
-//
-// Example: an alternate HOME spelling admits the same scratch leaf without repository scope.
-func TestHookScratchHomeAlias(t *testing.T) {
-	home := t.TempDir()
-	alias := filepath.Join(t.TempDir(), "home")
-	require.NoError(t, os.Symlink(home, alias))
-	t.Setenv("HOME", alias)
-	script := filepath.Join(home, "tmp", "run.sh")
-	requireHookDirectory(t, filepath.Dir(script))
-	requireHookFile(t, script, "#!/bin/sh\nexit 0\n")
-	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, CWD: t.TempDir(), CollectShellCommands: true, Command: "bash '" + filepath.Join(alias, "tmp", "run.sh") + "'"}
-	require.Nil(t, hookTestDiagnostic(request))
-	require.Empty(t, request.ApprovedRoots)
-	request.Command = "bash '" + filepath.Join(home, "tmp", "missing.sh") + "'"
-	require.Nil(t, hookTestDiagnostic(request))
-}
-
 // TestHookMarkerFreeConcreteGitEffects preserves broad Git safeguards without
 // inferring ECI lifecycle state from a retired marker.
 //
@@ -432,9 +414,9 @@ func TestHookCleanupTargets(t *testing.T) {
 	}
 }
 
-// TestHookUnderstandingSnapshotPublication preserves owned publication and concrete controls.
+// TestHookUnderstandingSnapshotPublication ignores retired marker ownership.
 //
-// Example: an owned temporary can replace YAML while marker inode aliases stay denied.
+// Example: owned and foreign snapshot paths remain ordinary callback writes.
 func TestHookUnderstandingSnapshotPublication(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
@@ -449,15 +431,14 @@ func TestHookUnderstandingSnapshotPublication(t *testing.T) {
 	foreignCanonical := filepath.Join(filepath.Dir(foreign), "project-understanding.yaml")
 	temporary := filepath.Join(filepath.Dir(current), ".understanding-snapshot.ABCDEF")
 	requireHookFile(t, temporary, "schema: project-understanding/v1\nsections: {}\nrecords: {}\n")
-	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive,
-		ActiveSession: "owner", CWD: root, CWDKnown: true, CollectShellCommands: true,
-		ApprovedRoots: []string{root}, ActiveMarkers: []string{current, foreign}}
+	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive,
+		ActiveSession: "owner", CWD: root, CWDKnown: true, CollectShellCommands: true}
 	for _, command := range []string{"touch " + canonical, "cp " + canonical + " " + temporary, "mv " + temporary + " " + canonical} {
 		request.Command = command
 		require.Nil(t, hookTestDiagnostic(request), command)
 	}
 	request.Command = "touch " + foreignCanonical
-	require.NotNil(t, hookTestDiagnostic(request), "foreign canonical snapshot must retain ownership protection")
+	require.Nil(t, hookTestDiagnostic(request), "stale marker must not protect a foreign snapshot")
 	for _, extension := range []string{"md", "json", "yml"} {
 		for _, marker := range []string{current, foreign} {
 			ordinary := filepath.Join(filepath.Dir(marker), "project-understanding."+extension)
@@ -471,18 +452,11 @@ func TestHookUnderstandingSnapshotPublication(t *testing.T) {
 			name string
 			call func(string, string) error
 		}{{"symlink", os.Symlink}, {"hardlink", os.Link}} {
-			// Foreign handoff hardlinks retain a pre-existing admission gap;
-			// the format migration preserves that behavior.
-			if target == foreignCanonical && link.name == "hardlink" {
-				continue
-			}
 			require.NoError(t, os.Remove(temporary))
 			require.NoError(t, link.call(target, temporary))
 			request.Command = "touch " + temporary
 			diagnostic := hookTestDiagnostic(request)
-			require.NotNil(t, diagnostic, "%s alias to %s", link.name, target)
-			require.Contains(t, []DiagnosticCode{CodePlanLiveControlDenied, CodeControlOwnerRequired, hookCodeCrossSessionActiveMarkerDenied}, diagnostic.Code)
-			require.Equal(t, target, diagnostic.Path)
+			require.Nil(t, diagnostic, "%s alias to %s", link.name, target)
 		}
 	}
 }
