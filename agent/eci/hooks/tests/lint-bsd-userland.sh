@@ -67,7 +67,8 @@ grep-P	${w}gre[p]([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alpha:]]*P"
 # Long options the linted files use, NAME<TAB>REASON. Any other --option FAILs.
 lint_long_allow="help	bin/eci-active matches its own --help argument; it is not a coreutils option
 deny-fd	eci_runtime_verexec passes it to bin/eci-verexec, the ECI native verifier; it is not a coreutils option
-check	eci_runtime_verify passes it to bin/eci-verexec (verify without running); it is not a coreutils option"
+check	eci_runtime_verify passes it to bin/eci-verexec (verify without running); it is not a coreutils option
+preserve-conflict	build-native-binaries.sh handles its own repair option; it is not a coreutils option"
 long_re='(^|[[:space:]|(])-[-]([A-Za-z][A-Za-z0-9-]*)'
 
 # Allow-list for lib/eci-native-binary.sh: FUNCTION<TAB>FORMS<TAB>GUARD. GUARD is either

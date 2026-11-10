@@ -435,8 +435,84 @@ expect_err conflict 'retained planner conflict for eci-command-plan'
 [ ! -e "$bin/eci-command-plan.sha256" ] || fail "provisioning created a receipt over the foreign binary"
 pass "recorded foreign pair blocks provisioning and an already-waiting builder"
 
+# Explicit repair retains both leaves and all conflict markers without touching old backups.
+printf 'receipt before repair\n' >"$bin/eci-command-plan.sha256"
+chmod 0640 "$bin/eci-command-plan" "$bin/eci-command-plan.sha256"
+cp -p "$bin/eci-command-plan" "$base/expected-planner"
+cp -p "$bin/eci-command-plan.sha256" "$base/expected-receipt"
+printf 'original backup\n' >"$bin/.planner-importer.txn.foreign/original"
+mkdir "$bin/.planner-importer.txn.second"
+printf 'first marker\n' >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+printf 'second marker\n' >"$bin/.planner-importer.txn.second/eci-command-plan.conflict"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/preserve.out" 2>"$base/out/preserve.err" || fail "conflict repair failed"
+retained=$(find "$bin" -name eci-command-plan -path '*/.planner-importer.txn.*/*' -print)
+[ -n "$retained" ] || fail "repair did not retain planner"
+retained_dir=${retained%/*}
+cmp -s "$retained" "$base/expected-planner" || fail "retained planner changed"
+cmp -s "$retained_dir/eci-command-plan.sha256" "$base/expected-receipt" || fail "retained receipt changed"
+[ -n "$(find "$retained" -prune -perm 640 -print)" ] && [ -n "$(find "$retained_dir/eci-command-plan.sha256" -prune -perm 640 -print)" ] || fail "retained modes changed"
+[ "$(cat "$bin/.planner-importer.txn.foreign/original")" = 'original backup' ] || fail "old transaction changed"
+[ ! -e "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict" ] && [ ! -e "$bin/.planner-importer.txn.second/eci-command-plan.conflict" ] || fail "markers remain"
+[ "$(cat "$retained_dir/marker.1")" = 'first marker' ] && [ "$(cat "$retained_dir/marker.2")" = 'second marker' ] || fail "markers not retained"
+grep -Fq "$retained_dir" "$base/out/preserve.err" || fail "retained location not reported"
+pass "conflict repair preserves pair, modes, original backups and multiple markers"
+
+# A partial retention leaves the marker and both retained and remaining leaves recoverable.
+printf 'partial binary' >"$bin/eci-command-plan"
+printf 'partial receipt' >"$bin/eci-command-plan.sha256"
+: >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+cat >"$base/fakebin/mv" <<'EOF'
+#!/bin/sh
+case "$*" in *eci-command-plan.sha256*".planner-importer.txn."*) exit 1 ;; esac
+exec /bin/mv "$@"
+EOF
+chmod 0755 "$base/fakebin/mv"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/partial-retain.out" 2>"$base/out/partial-retain.err"; then
+  fail "interrupted retention succeeded"
+fi
+[ -f "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict" ] || fail "interrupted retention retired marker"
+[ "$(cat "$bin/eci-command-plan.sha256")" = 'partial receipt' ] || fail "interrupted retention lost receipt"
+grep -Fq 'partial binary' "$bin"/.planner-importer.txn.*/eci-command-plan || fail "interrupted retention lost binary"
+rm "$base/fakebin/mv"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/retry-retain.out" 2>"$base/out/retry-retain.err" || fail "partial retention retry failed"
+grep -Fq 'partial receipt' "$bin"/.planner-importer.txn.*/eci-command-plan.sha256 || fail "retry lost receipt"
+
+# A failure retiring a later marker keeps it active for a subsequent repair.
+printf 'marker retry binary' >"$bin/eci-command-plan"
+printf 'marker retry receipt' >"$bin/eci-command-plan.sha256"
+: >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+: >"$bin/.planner-importer.txn.second/eci-command-plan.conflict"
+cat >"$base/fakebin/mv" <<'EOF'
+#!/bin/sh
+case "$*" in *".planner-importer.txn.second/eci-command-plan.conflict"*) exit 1 ;; esac
+exec /bin/mv "$@"
+EOF
+chmod 0755 "$base/fakebin/mv"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/partial-marker.out" 2>"$base/out/partial-marker.err"; then
+  fail "interrupted marker retirement succeeded"
+fi
+[ -f "$bin/.planner-importer.txn.second/eci-command-plan.conflict" ] || fail "remaining marker was retired"
+grep -Fq 'marker retry binary' "$bin"/.planner-importer.txn.*/eci-command-plan || fail "marker interruption lost binary"
+grep -Fq 'marker retry receipt' "$bin"/.planner-importer.txn.*/eci-command-plan.sha256 || fail "marker interruption lost receipt"
+rm "$base/fakebin/mv"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/retry-marker.out" 2>"$base/out/retry-marker.err" || fail "marker retirement retry failed"
+pass "partial marker retirement retains leaves and retries remaining marker"
+pass "interrupted retention retries with an absent binary"
+
+# An unresolved leaf prevents moving either leaf or retiring its marker.
+rm "$bin/eci-command-plan"
+ln -s "$base/fixture" "$bin/eci-command-plan"
+printf 'keep receipt' >"$bin/eci-command-plan.sha256"
+: >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/conflict-link.out" 2>"$base/out/conflict-link.err"; then
+  fail "conflict repair accepted symlink"
+fi
+[ -L "$bin/eci-command-plan" ] && [ "$(cat "$bin/eci-command-plan.sha256")" = 'keep receipt' ] && [ -f "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict" ] || fail "refusal changed conflict state"
+rm "$bin/eci-command-plan" "$bin/eci-command-plan.sha256"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan >"$base/out/absent-retain.out" 2>"$base/out/absent-retain.err" || fail "absent pair repair failed"
+pass "conflict repair refuses symlink and accepts absent leaves"
+
 # A retained crash transaction without an observed conflict remains recoverable.
-rm "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
 run_provision retained-crash
 [ "$(rc_of retained-crash)" = 0 ] || fail "nonconflicting retained transaction prevented crash recovery"
 [ -f "$bin/eci-command-plan.sha256" ] || fail "crash recovery did not recreate receipt"

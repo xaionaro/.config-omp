@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
-# Usage: build-native-binaries.sh [NAME...]. With no NAME it builds every binary this host lists below. Each NAME must
-# be one of those, at most once; then only the named binaries are built and installed.
+# Usage: build-native-binaries.sh [--preserve-conflict] [NAME...]. With no NAME it builds every binary this host lists below.
+# Each NAME must be one of those, at most once. The repair option retains conflicted leaves and records before publication.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # eci-command-plan, eci-safe-import and eci-hook-helper are gate binaries; lib/eci-native-binary.sh runs them only after verifying their receipts. eci-safe-import has no launcher caller in this tree.
 # eci-worker-git is built with a receipt but not launcher-wired: the typed Worker Git route is unavailable during active ECI, so Workers use native Git, and the receipt is not verified at runtime.
@@ -21,6 +21,27 @@ die() {
   exit 1
 }
 source "$hook_dir/lib/eci-native-provision.sh"
+preserve_conflict=false
+if [ "${1-}" = --preserve-conflict ]; then
+  preserve_conflict=true
+  shift
+fi
+
+# Called under the publication lock only after both leaves have been validated.
+retain_conflicted_pair() {
+  local name="$1" binary="$2" receipt="$3" retained record count
+  retained="$(mktemp -d -- "$bin_dir/.planner-importer.txn.XXXXXX")" || return 1
+  echo "build-native-binaries: retaining conflict for $name in $retained" >&2
+  if [ -e "$binary" ]; then mv -- "$binary" "$retained/$name" || return 1; fi
+  if [ -e "$receipt" ]; then mv -- "$receipt" "$retained/$name.sha256" || return 1; fi
+  count=0
+  for record in "$bin_dir/.planner-importer.txn."*/"$name.conflict"; do
+    if [ -e "$record" ] || [ -L "$record" ]; then
+      count=$((count + 1))
+      mv -- "$record" "$retained/marker.$count" || return 1
+    fi
+  done
+}
 
 # Select a PATH executable; a shell function or a relative PATH entry cannot build.
 go=$(command -v go) || die 'go not found on PATH; install Go 1.24 or newer and retry'
@@ -111,11 +132,18 @@ for name in "${names[@]}"; do
   receipt="$binary.sha256"
   # Recheck under the shared lock: a planner may have recorded a conflict while we built.
   if eci_native_conflict_record "$name"; then
-    eci_native_stuck_advisory "$name"
-    status=1
-    continue
-  fi
-  if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
+    if [ "$preserve_conflict" != true ]; then
+      eci_native_stuck_advisory "$name"
+      status=1
+      continue
+    fi
+    if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
+      echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
+      status=1
+      continue
+    fi
+    retain_conflicted_pair "$name" "$binary" "$receipt" || die "could not retain conflict for $name; retry repair"
+  elif eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
     echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
     status=1
     continue

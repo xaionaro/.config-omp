@@ -23,6 +23,7 @@ test("registers bounded repair with fixed gate binaries and probes the gate", as
 		expect(repair.name).toBe("eci_bash_gate_repair");
 		expect(repair.description).toContain("shared");
 		expect(repair.description).toContain("source");
+		expect(repair.description).toContain("preserv");
 		const ctx = { cwd: home, sessionManager: { getSessionId: () => "test", getSessionFile: () => undefined } };
 		const healthy = await repair.execute("healthy", {}, undefined, undefined, ctx);
 		expect(healthy.content[0].text).toContain("nothing was rebuilt");
@@ -31,7 +32,7 @@ test("registers bounded repair with fixed gate binaries and probes the gate", as
 		writeFileSync(join(hooks, "validate-bash.sh"), '[ -f "$HOME/built" ] || exit 2\n');
 		writeFileSync(join(hooks, "build-native-binaries.sh"), 'printf "%s\\n" "$@" > "$HOME/arguments"\ntouch "$HOME/built"\n');
 		const result = await repair.execute("id", {}, undefined, undefined, ctx);
-		expect(readFileSync(join(home, "arguments"), "utf8").trim().split("\n")).toEqual(process.platform === "linux" ? ["eci-verexec", "eci-command-plan"] : ["eci-command-plan"]);
+		expect(readFileSync(join(home, "arguments"), "utf8").trim().split("\n")).toEqual(process.platform === "linux" ? ["--preserve-conflict", "eci-verexec", "eci-command-plan"] : ["--preserve-conflict", "eci-command-plan"]);
 		expect(result.content[0].text).toContain("fixed true probe");
 		expect(result.content[0].text).toContain("source status: unknown");
 		expect(result.isError).not.toBe(true);
