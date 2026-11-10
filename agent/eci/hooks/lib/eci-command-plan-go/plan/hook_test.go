@@ -172,6 +172,35 @@ func TestRunHookEnvelope(t *testing.T) {
 	}
 }
 
+// TestRunHookMarkerFreeBroadRoot protects a concrete root deletion without
+// relying on lifecycle markers.
+//
+// Example: rm -rf / is denied while a bounded removal remains available.
+func TestRunHookMarkerFreeBroadRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	for _, current := range []struct {
+		command string
+		denied  bool
+	}{
+		{command: "rm -rf /", denied: true},
+		{command: "rm -rf owned"},
+	} {
+		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: home}
+		input.ToolInput.Command = current.command
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		if current.denied {
+			require.Contains(t, output.String(), string(CodeBroadDestructiveDenied))
+		} else {
+			require.Empty(t, output.String())
+		}
+	}
+}
+
 // TestHookGitDefaultsPreserveAllCommandEffects retains native verbs and siblings.
 //
 // Example: a native diff cannot hide a later concrete root removal.

@@ -8,10 +8,9 @@ metadata are advisory unless they resolve to one of those effects.
 
 Retained gates below describe available paths and deferred legacy routes.
 A path with no concrete effect is transparent and therefore is not a gate.
-Concrete broad Git, protected hook-target Git, and live-hook cleanup checks also
-run without a legacy marker. In permissive gate mode their denials remain
-subject to inactive-mode finalization.
-
+Concrete broad-root deletion, broad Git, protected hook-target Git, and
+live-hook cleanup checks also run without a legacy marker. In permissive gate
+mode their denials remain subject to inactive-mode finalization.
 
 Active ECI Workers use the typed CLI for default index-updating verbs (unavailable:
 `eci-worker-git` is built but not launcher-wired; see the Worker Git row):

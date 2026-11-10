@@ -7146,7 +7146,7 @@ func suppressInactiveDiagnostic(request Request, diagnostic *Diagnostic) bool {
 	if request.Marker != MarkerInactive {
 		return false
 	}
-	if diagnostic.Operation == "worker-control" {
+	if diagnostic.Operation == "worker-control" || diagnostic.Predicate == "broad-destructive-root" {
 		return false
 	}
 	code := string(diagnostic.Code)
