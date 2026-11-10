@@ -535,6 +535,16 @@ pass "retained transaction without a conflict record permits ordinary crash reco
 printf 'damaged planner' >>"$bin/eci-command-plan"
 cp -p "$bin/eci-command-plan" "$base/damaged-planner"
 cp -p "$bin/eci-command-plan.sha256" "$base/damaged-receipt"
+cat >"$base/fakebin/chmod" <<'EOF'
+#!/bin/sh
+case "$*" in *".eci-gate-repair."*"/eci-command-plan"*) exec /bin/chmod 0644 "$3" ;; esac
+exec /bin/chmod "$@"
+EOF
+chmod 0755 "$base/fakebin/chmod"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-planner-stage.out" 2>"$base/out/gate-planner-stage.err"; then fail "unexecutable staged planner accepted"; fi
+grep -Fq 'choose an executable TMPDIR' "$base/out/gate-planner-stage.err" || fail "staged planner failure did not name TMPDIR"
+[ "$(digest_of "$bin/eci-command-plan")" = "$(digest_of "$base/damaged-planner")" ] || fail "staged planner failure changed installed binary"
+rm "$base/fakebin/chmod"
 : >"$build_log"
 "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-damaged.out" 2>"$base/out/gate-damaged.err" || fail "damaged planner repair failed"
 [ "$(built_names)" = eci-command-plan ] || fail "gate repair rebuilt unrelated binaries"
@@ -551,7 +561,11 @@ done
 chmod 0664 "$bin/eci-command-plan.sha256"
 before_receipt=$(digest_of "$bin/eci-command-plan.sha256")
 : >"$build_log"
-if PATH=/usr/bin:/bin "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-writable-receipt.out" 2>"$base/out/gate-writable-receipt.err"; then fail "group-writable receipt accepted"; fi
+mkdir "$base/no-go-bin"
+ln -s "$(command -v dirname)" "$base/no-go-bin/dirname"
+ln -s "$(command -v find)" "$base/no-go-bin/find"
+if PATH="$base/no-go-bin" "$BASH" -c 'command -v go >/dev/null'; then fail "no-go fixture unexpectedly finds Go"; fi
+if PATH="$base/no-go-bin" "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-writable-receipt.out" 2>"$base/out/gate-writable-receipt.err"; then fail "group-writable receipt accepted"; fi
 grep -Fq 'unsafe or unsupported gate failure' "$base/out/gate-writable-receipt.err" || fail "unsafe failure masked by Go prerequisite"
 [ "$(builds)" = 0 ] && [ "$(digest_of "$bin/eci-command-plan.sha256")" = "$before_receipt" ] && [ -n "$(find "$bin/eci-command-plan.sha256" -prune -perm 664 -print)" ] || fail "unsafe receipt changed"
 chmod 0644 "$bin/eci-command-plan.sha256"

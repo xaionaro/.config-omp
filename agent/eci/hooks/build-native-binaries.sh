@@ -187,8 +187,8 @@ for name in "${names[@]}"; do
     || { if [ "$gate_repair" = true ]; then die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\" --gate-repair"; else die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""; fi; }
   chmod -- 0755 "$stage/$name"
   if ! eci_runtime_binary_is_native "$stage/$name"; then
-    if [ "$gate_repair" = true ] && [ "$name" = eci-verexec ]; then
-      die "staged verifier is not executable or native for $host_os/$host_arch; choose an executable TMPDIR and retry --gate-repair"
+    if [ "$gate_repair" = true ]; then
+      die "staged $name is not executable or native for $host_os/$host_arch; choose an executable TMPDIR and retry --gate-repair"
     fi
     die "$name: built $host_os/$host_arch binary is not native for this host"
   fi
