@@ -82,11 +82,13 @@ function evalWrites(code: string): string[] {
 
 function pathsFor(tool: string, input: Record<string, unknown>): string[] {
  if (tool === "write") return typeof input.path === "string" ? [input.path] : [];
- if (tool === "edit") {
+ if (tool === "edit" || tool === "apply_patch") {
   const paths = typeof input.path === "string" ? [input.path] : [];
-  if (typeof input.input === "string") {
-   paths.push(...Array.from(input.input.matchAll(PATCH_HEADER), m => m[1]));
-   paths.push(...Array.from(input.input.matchAll(/^(?:MV |\*\*\* (?:Add File|Update File|Delete File|Move to): )(.+)$/gm), m => m[1].replace(/^(['"])(.*)\1$/, "$2")));
+  if (Array.isArray(input.paths)) paths.push(...input.paths.filter((path): path is string => typeof path === "string"));
+  const patch = typeof input.input === "string" ? input.input : typeof input._input === "string" ? input._input : "";
+  if (patch) {
+   paths.push(...Array.from(patch.matchAll(PATCH_HEADER), m => m[1]));
+   paths.push(...Array.from(patch.matchAll(/^(?:MV |\*\*\* (?:Add File|Update File|Delete File|Move to): )(.+)$/gm), m => m[1].replace(/^(['"])(.*)\1$/, "$2")));
   }
   if (Array.isArray(input.edits)) for (const edit of input.edits) {
    if (edit && typeof edit === "object" && "rename" in edit && typeof edit.rename === "string") paths.push(edit.rename);

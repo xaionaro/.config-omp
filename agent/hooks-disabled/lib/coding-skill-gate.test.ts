@@ -66,6 +66,8 @@ test("recognizes patch, shell, eval and pending structural edits", () => {
   ["bash", {command: "printf hi > a.go"}],
   ["eval", {code: "write('a.go', 'x')"}],
  ] as const) assert.match(call(tool, input)!.reason, /coding-common/);
+ assert.match(call("edit", {paths: ["first.txt", "second.go"]})!.reason, /coding-common/);
+ assert.match(call("apply_patch", {input: "*** Begin Patch\n*** Add File: file.py\n+pass\n*** End Patch"})!.reason, /coding-common/);
  assert.equal(call("ast_edit", {paths: ["a.go"], ops: []}), undefined);
  result("ast_edit", {paths: ["src/"], ops: []}, {files: ["src/a.go"]});
  assert.match(call("write", {path: "xd://resolve"})!.reason, /coding-common/);
