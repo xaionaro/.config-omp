@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the native ECI tools on first use. bin/eci-active calls eci_native_provision before exec. Sourced, never executed.
+# Builds native ECI tools on first use. Sourced by eci-active and the hook bridges, never executed directly.
 # The set is the loader-verified gate binaries (eci-command-plan, eci-hook-helper, eci-safe-import), eci-worker-git,
 # whose receipt the contract keeps informational, and on Linux eci-verexec, the native verifier the gate binaries run
 # through. Each lives in $HOME/.omp/agent/eci/bin with a <name>.sha256 receipt.
@@ -8,7 +8,7 @@
 # Recorded foreign-pair conflicts and symlinked, non-regular, or foreign-owned leaves are not built over.
 # A present gate binary that the loader (lib/eci-native-binary.sh, eci_runtime_verify) denies stops the run before anything is built,
 # except in the Linux verifier bootstrap described at eci_native_provision_locked; a stuck eci-worker-git or eci-verexec is reported and skipped.
-# hooks/build-native-binaries.sh is the only builder. Hooks never build: they verify every use with the loader.
+# hooks/build-native-binaries.sh is the only builder; hook bridges request provisioning before use.
 # The warm path checks file type, receipt presence and host format only; full loader verification runs on the cold
 # path, under bin/.native-provision.lock. Every message goes to stderr.
 # Bash 3.2 with BSD userland: fixed descriptor 7 (bin/eci-active holds 9, the Darwin loader opens 8), no empty-array
@@ -186,4 +186,12 @@ eci_native_provision() (
   eci_native_provision_locked || rc=$?
   eci_file_lock_release_fd 7 || [ "$rc" -ne 0 ] || rc=1
   return "$rc"
+)
+
+# Provision only the helper and, on Linux, the verifier needed to run it.
+eci_native_prepare_hook() (
+  eci_native_gate_set=eci-hook-helper
+  eci_native_receipt_only=
+  [ "$eci_runtime_platform" != Linux ] || eci_native_receipt_only=eci-verexec
+  eci_native_provision
 )

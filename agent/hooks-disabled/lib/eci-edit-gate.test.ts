@@ -32,6 +32,10 @@ async function withStubLauncher(script: string, body: (handler: Handler, dir: st
 	mkdirSync(join(dir, ".omp/agent/eci/bin"), { recursive: true });
 	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-hook-helper"), "stub");
 	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-hook-helper.sha256"), "stub");
+	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-verexec"), "stub");
+	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-verexec.sha256"), "stub");
+	mkdirSync(join(hooks, "lib"), { recursive: true });
+	writeFileSync(join(hooks, "lib", "eci-native-provision.sh"), "eci_native_prepare_hook() { :; }\n");
 	const capture = join(dir, "request.json");
 	writeFileSync(join(hooks, "eci-edit-gate.sh"), `cat > '${capture}'\n${script}\n`);
 	try {
@@ -272,16 +276,13 @@ describe.skipIf(!chain)("real launcher, helper and dispatcher", () => {
 		}
 	}, 60_000);
 
-	test("blocks with the rebuild route when the helper is missing or predates edit-gate", async () => {
+	test("provisions a missing helper and reports a stale one without upgrading it", async () => {
 		const helper = join(bin, "eci-hook-helper");
 		const receipt = `${helper}.sha256`;
 		renameSync(helper, `${helper}.saved`);
 		renameSync(receipt, `${receipt}.saved`);
 		try {
-			const missing = await loadGate()(write("ordinary.txt"), context(repo)) as { block: boolean; reason: string };
-			expect(missing.block).toBe(true);
-			expect(missing.reason).toContain("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-hook-helper is unavailable or unverified");
-			expect(missing.reason).toContain("build-native-binaries.sh");
+			expect(await loadGate()(write("ordinary.txt"), context(repo))).toBeUndefined();
 
 			// 112c614 is the last helper source without the edit-gate mode.
 			const stale = mkdtempSync(join(HOME, "stale-"));
@@ -291,10 +292,10 @@ describe.skipIf(!chain)("real launcher, helper and dispatcher", () => {
 			chmodSync(helper, 0o755);
 			const digest = run(["sha256sum", helper]).split(" ")[0];
 			writeFileSync(receipt, `${digest}  eci-hook-helper\n`);
-			const outdated = await loadGate()(write("ordinary.txt"), context(repo)) as { block: boolean; reason: string };
-			expect(outdated.block).toBe(true);
-			expect(outdated.reason).toContain("the verified eci-hook-helper does not support edit-gate");
-			expect(outdated.reason).toContain("build-native-binaries.sh\" eci-hook-helper");
+			const verdict = await loadGate()(write("ordinary.txt"), context(repo)) as { block: boolean; reason: string };
+			expect(verdict.block).toBe(true);
+			expect(verdict.reason).toContain('build-native-binaries.sh" eci-hook-helper');
+			expect(run(["sha256sum", helper]).split(" ")[0]).toBe(digest);
 		} finally {
 			renameSync(`${helper}.saved`, helper);
 			renameSync(`${receipt}.saved`, receipt);

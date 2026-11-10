@@ -6,7 +6,7 @@ import { unwrapHashlineHeaderPath } from "@oh-my-pi/pi-coding-agent/tools/hashli
 import { expandPath } from "@oh-my-pi/pi-coding-agent/tools/path-utils";
 import { type EditInspection, editInspect } from "@oh-my-pi/pi-natives";
 import { advisoryContext, basePayload, type EciIdentity, identityFor, preToolVerdict, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
-import { ensureHookBinary, hookAgentRoot } from "../../eci/native-hook-binary.ts";
+import { ensureHookBinary, waitForProvision } from "../../eci/native-hook-binary.ts";
 
 const SCRIPT = "eci-edit-gate.sh";
 // With the runner's KILL_GRACE_SEC + DRAIN_SEC group cleanup this ends within 27 seconds,
@@ -78,13 +78,13 @@ function timeoutReason(request: Record<string, unknown>, id: EciIdentity): strin
 
 export default function eciEditGate(pi: ExtensionAPI): void {
 	// Start a cold build at hook initialization, before the per-call gate budget.
-	ensureHookBinary(hookAgentRoot()).catch(() => {});
+	ensureHookBinary().catch(() => {});
 	pi.on("tool_call", async (event, ctx) => {
 		try {
 			if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
-			// A failed startup build may be retried after its cause is repaired.
-			await ensureHookBinary(hookAgentRoot());
 			const deadline = performance.now() + EDIT_GATE_DEADLINE_SEC * 1000;
+			// A timed-out caller leaves the shared build running for a later retry.
+			await waitForProvision(ensureHookBinary(), Math.max(0, deadline - performance.now()));
 			const input = event.input as Record<string, unknown>;
 			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
 			let targets: GateTarget[];

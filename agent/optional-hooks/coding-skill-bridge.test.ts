@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type gateFactory from "./coding-skill-gate.ts";
@@ -15,6 +15,8 @@ beforeAll(async () => {
 	root = join(home, ".omp", "agent");
 	process.env.HOME = home;
 	mkdirSync(join(root, "eci", "bin"), {recursive: true});
+	mkdirSync(join(root, "eci", "hooks", "lib"), { recursive: true });
+	writeFileSync(join(root, "eci", "hooks", "lib", "eci-native-provision.sh"), "eci_native_prepare_hook() { :; }\n");
 	const engine = join(root, "eci", "bin", "eci-hook-helper");
 	writeFileSync(engine, `#!/usr/bin/env node
 const fs = require('fs');
@@ -36,6 +38,8 @@ if (mode === 'describe') {
 }
 `);
 	writeFileSync(`${engine}.sha256`, "stub");
+	writeFileSync(join(root, "eci", "bin", "eci-verexec"), "stub");
+	writeFileSync(join(root, "eci", "bin", "eci-verexec.sha256"), "stub");
 	chmodSync(engine, 0o755);
 	mock.module("@oh-my-pi/pi-natives", () => ({ editInspect: (mode: string) => ({paths: [mode === "sloppy" ? "notes.txt" : "a.go"], fileOps: []}) }));
 	mock.module("@oh-my-pi/pi-coding-agent/utils/edit-mode", () => ({ resolveEditMode: () => editMode }));
@@ -109,9 +113,9 @@ test("uses the active edit mode when inspecting targets", async () => {
 	editMode = "sloppy";
 	try {
 		await handlers.session_start({}, ctx);
-		await handlers.tool_call({toolName: "edit", input: {input: "*** Edit File: notes.txt\n*** Find\n[a.go#ABCD]\n*** Replace\n[b.go#1234]"}}, ctx);
-		const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
-		expect(requests.filter(request => request.mode === "check").at(-1).call.editTargets).toEqual(["notes.txt"]);
+		const before = readFileSync(join(root, "requests.jsonl"), "utf8");
+		expect(await handlers.tool_call({toolName: "edit", input: {input: "*** Edit File: notes.txt\n*** Find\n[a.go#ABCD]\n*** Replace\n[b.go#1234]"}}, ctx)).toBeUndefined();
+		expect(readFileSync(join(root, "requests.jsonl"), "utf8")).toBe(before);
 	} finally {
 		editMode = "hashline";
 	}
@@ -163,5 +167,31 @@ test("reports an actionable error when the provisioned engine disappears", async
 		editMode = "hashline";
 	} finally {
 		renameSync(`${engine}.held`, engine);
+	}
+});
+
+test("checks a hashline write target with a non-hex tag", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "tag", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	expect(await handlers.tool_call({toolName: "write", input: {path: "[a.go#ABZ9]"}}, ctx)).toMatchObject({block: true});
+});
+
+test("retries a failed startup description after the helper returns", async () => {
+	const engine = join(root, "eci", "bin", "eci-hook-helper");
+	renameSync(engine, `${engine}.held`);
+	try {
+		const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+		gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+		const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "retry", getBranch: () => []}};
+		await handlers.session_start({}, ctx);
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toMatchObject({block: true});
+		renameSync(`${engine}.held`, engine);
+		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-common"}, isError: false}, ctx);
+		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-go"}, isError: false}, ctx);
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+	} finally {
+		if (existsSync(`${engine}.held`)) renameSync(`${engine}.held`, engine);
 	}
 });

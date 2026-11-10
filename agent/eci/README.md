@@ -38,10 +38,11 @@ bash 3.2.
   tools (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`, `eci-worker-git`, and
   `eci-verexec` on Linux). `bin/eci-active` provisions missing native tools
   (`hooks/lib/eci-native-provision.sh`). The optional coding-skill and disabled
-  edit-hook bridges also invoke that provisioner when the shared `eci-hook-helper`
-  is absent; provisioning does not enable either hook. A source change does not
-  refresh an existing binary: rebuild it with `hooks/build-native-binaries.sh
-  eci-hook-helper`.
+  edit-hook bridges provision a missing shared helper and, on Linux, verifier.
+  The edit launcher verifies the helper receipt; the coding-skill bridge invokes
+  the helper directly. Provisioning does not enable either hook. A source change
+  does not refresh an existing binary: rebuild it with
+  `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`.
 - No GNU coreutils are needed: the hook libraries take their `sha256sum`, `realpath`
   and `stat` forms from `hooks/lib/eci-portable.sh`, and the adapters need no `timeout`.
 

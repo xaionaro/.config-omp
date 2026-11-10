@@ -19,6 +19,9 @@ Native-only mode (no Python predecessor): `edit-gate <bash> <dispatcher>` runs
 `hooks/pretooluse-edit-dispatch.sh` once per target of the omp edit adapter's
 request, through the `hooks/eci-edit-gate.sh` launcher.
 
+The `coding-skill <describe|reduce|check>` mode implements the optional coding-skill
+bridge policy; that bridge invokes the shared helper directly.
+
 Known divergences from the Python implementation:
 - NaN/Infinity JSON literals are rejected (Python accepted them).
 - A lone surrogate in `transcript_path` exits 2 (Python exited 1).

@@ -4,16 +4,21 @@ import { resolveEditMode } from "@oh-my-pi/pi-coding-agent/utils/edit-mode";
 import { editInspect } from "@oh-my-pi/pi-natives";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { ensureHookBinary, hookAgentRoot } from "../eci/native-hook-binary.ts";
+import { ensureHookBinary, hookAgentRoot, waitForProvision } from "../eci/native-hook-binary.ts";
 
 type Description = { callTools: string[]; resultTools: string[] };
 type HostEvent = { toolName: string; input: Record<string, unknown>; details?: unknown; isError?: boolean };
 type AgentState = { state: unknown; initialized: boolean; tail: Promise<void> };
 type Verdict = { block: true; reason: string } | undefined;
 
+// Recognize potential coding targets before waiting for a missing engine.
+function mayNeedCodingSkills(path: string): boolean {
+	return /\.(?:go|py)(?:#[a-z0-9]{4}\]\s*)?(?::(?:raw|conflicts))?$/i.test(path);
+}
+
 // Each invocation carries one complete JSON request; the engine owns its state format.
-async function invoke(root: string, command: string, request?: unknown): Promise<unknown> {
-	const binary = await ensureHookBinary(root);
+async function invoke(command: string, request?: unknown): Promise<unknown> {
+	const binary = await waitForProvision(ensureHookBinary(), 10_000);
 	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 	const child = spawn(binary, ["coding-skill", command], { stdio: ["pipe", "pipe", "pipe"], signal: AbortSignal.timeout(10_000) });
 	let stdout = "", stderr = "";
@@ -24,7 +29,7 @@ async function invoke(root: string, command: string, request?: unknown): Promise
 	child.on("error", reject);
 	child.stdin.on("error", reject);
 	child.on("close", code => {
-		if (code !== 0) return reject(new Error(stderr.trim() || `engine exited ${code}`));
+		if (code !== 0) return reject(new Error(code === 2 ? `helper may not support coding-skill; rebuild with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper and retry${stderr.trim() ? `: ${stderr.trim()}` : ""}` : stderr.trim() || `engine exited ${code}`));
 		try { resolve(JSON.parse(stdout)); } catch (error) { reject(error); }
 	});
 	child.stdin.end(request === undefined ? "" : JSON.stringify(request));
@@ -63,9 +68,15 @@ function skillReadHistory(ctx: ExtensionContext): unknown[] {
 export default function codingSkillGate(pi: ExtensionAPI): void {
 	const root = hookAgentRoot();
 	const binary = join(root, "eci", "bin", "eci-hook-helper");
-	const describe = invoke(root, "describe").then(description);
-	// Report startup failures even if no callback arrives.
-	describe.catch(error => console.error(`Coding skill gate unavailable: ${String(error)}`));
+	let cachedDescription: Promise<Description> | undefined;
+	function describe(): Promise<Description> {
+		if (!cachedDescription) {
+			const pending = invoke("describe").then(description);
+			cachedDescription = pending;
+			pending.catch(() => { if (cachedDescription === pending) cachedDescription = undefined; });
+		}
+		return cachedDescription;
+	}
 	const agents = new Map<string, AgentState>();
 	let ownAgent: string | undefined;
 	let generation = 0;
@@ -90,7 +101,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 
 	async function reduce(slot: AgentState, ctx: ExtensionContext, results: HostEvent[]): Promise<void> {
 		const branch = !slot.initialized && ctx.agent?.id === ownAgent ? skillReadHistory(ctx) : undefined;
-		const response = await invoke(root, "reduce", { state: slot.state, branch, results });
+		const response = await invoke("reduce", { state: slot.state, branch, results });
 		if (response === null || typeof response !== "object" || !("state" in response) || response.state === null || typeof response.state !== "object") throw new Error("invalid engine state");
 		slot.state = response.state;
 		slot.initialized = true;
@@ -100,7 +111,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 		if (event.toolName !== "read" || typeof event.input.path !== "string" || !event.input.path.startsWith("skill://coding-")) return;
 		const current = generation;
 		try {
-			if (!(await describe).resultTools.includes(event.toolName)) return;
+			if (!(await describe()).resultTools.includes(event.toolName)) return;
 			if (current !== generation) return;
 			await enqueue(ctx, slot => current === generation ? reduce(slot, ctx, [{ toolName: event.toolName, input: event.input, details: event.details, isError: event.isError }]) : Promise.resolve());
 		} catch (error) {
@@ -120,13 +131,14 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				paths = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
 				if (paths.length) editTargets = paths;
 			}
-			if (!(await describe).callTools.includes(event.toolName)) return undefined;
+			if (!paths.some(mayNeedCodingSkills)) return undefined;
+			if (!(await describe()).callTools.includes(event.toolName)) return undefined;
 			if (current !== generation) throw new Error("session changed; retry the call");
 			return await enqueue(ctx, async slot => {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (!slot.initialized) await reduce(slot, ctx, []);
 				if (current !== generation) throw new Error("session changed; retry the call");
-				const response = await invoke(root, "check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
+				const response = await invoke("check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
 				if (!response.block) return undefined;
@@ -134,7 +146,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				return { block: true, reason: response.reason };
 			});
 		} catch (error) {
-			if (!paths.some(path => /\.(?:go|py)(?:#[a-f0-9]{4}\])?(?::(?:raw|conflicts))?$/i.test(path))) return undefined;
+			if (!paths.some(mayNeedCodingSkills)) return undefined;
 			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
 			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Ensure Go and the native provisioner are available to build ${binary}, then retry, or remove the optional hook and restart.` };
 		}

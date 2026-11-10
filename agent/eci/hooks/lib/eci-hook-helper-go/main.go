@@ -1,5 +1,5 @@
-// Command eci-hook-helper provides the bounded hook-input readers, the
-// opt-in security reminder, and the omp edit gate used by the ECI hook scripts.
+// Command eci-hook-helper provides bounded hook-input readers, the opt-in
+// security reminder, the omp edit gate, and coding-skill evidence evaluation.
 //
 // Modes (argv must match exactly; anything else exits 2):
 //

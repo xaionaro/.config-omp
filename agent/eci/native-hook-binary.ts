@@ -15,21 +15,29 @@ export function hookAgentRoot(): string {
 	return join(home && isAbsolute(home) ? home : userInfo().homedir, ".omp", "agent");
 }
 
-export async function ensureHookBinary(root: string): Promise<string> {
+export async function ensureHookBinary(): Promise<string> {
+	const root = hookAgentRoot();
 	const binary = join(root, "eci", "bin", "eci-hook-helper");
-	if (existsSync(binary) && existsSync(`${binary}.sha256`)) return binary;
+	const verifier = join(root, "eci", "bin", "eci-verexec");
+	if (existsSync(binary) && existsSync(`${binary}.sha256`) &&
+		(process.platform !== "linux" || (existsSync(verifier) && existsSync(`${verifier}.sha256`)))) return binary;
 	let build = builds.get(root);
 	if (!build) {
 		build = (async () => {
 			const env = { ...process.env };
-			if (!env.GOCACHE) {
-				const { stdout } = await exec("go", ["env", "GOCACHE"], { env: { ...env, HOME: userInfo().homedir } });
-				const cache = stdout.trim();
-				if (!cache.startsWith("/")) throw new Error("go env GOCACHE did not return an absolute path");
-				env.GOCACHE = cache;
+			const missing = ["GOCACHE", "GOMODCACHE"].filter(name => !env[name]);
+			if (missing.length) {
+				const { stdout } = await exec("go", ["env", "-json", ...missing], {
+					cwd: "/", env: { ...env, HOME: userInfo().homedir, GOTOOLCHAIN: "local", GOFLAGS: " " },
+				});
+				const caches = JSON.parse(stdout) as Record<string, string>;
+				for (const name of missing) {
+					if (!isAbsolute(caches[name] ?? "")) throw new Error(`go env ${name} did not return an absolute path`);
+					env[name] = caches[name];
+				}
 			}
 			const provisioner = join(root, "eci", "hooks", "lib", "eci-native-provision.sh");
-			await exec("bash", ["-c", 'source "$1" && eci_native_gate_set=eci-hook-helper && eci_native_receipt_only= && { [ "$eci_runtime_platform" != Linux ] || eci_native_receipt_only=eci-verexec; } && eci_native_provision', "bash", provisioner], { env });
+			await exec("bash", ["-c", 'source "$1" && eci_native_prepare_hook', "bash", provisioner], { env });
 		})();
 		builds.set(root, build);
 		build.finally(() => builds.delete(root)).catch(() => {});
@@ -37,4 +45,15 @@ export async function ensureHookBinary(root: string): Promise<string> {
 	await build;
 	if (!existsSync(binary) || !existsSync(`${binary}.sha256`)) throw new Error(`native provisioner did not create ${binary} and its receipt`);
 	return binary;
+}
+
+// A timed-out hook call releases the host while its shared build continues.
+export async function waitForProvision<T>(work: Promise<T>, milliseconds: number): Promise<T> {
+	const { promise, reject } = Promise.withResolvers<never>();
+	const timer = setTimeout(() => reject(new Error("native helper build is still running; retry shortly")), milliseconds);
+	try {
+		return await Promise.race([work, promise]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
