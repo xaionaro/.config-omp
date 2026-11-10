@@ -186,6 +186,8 @@ func TestRunHookMarkerFreeBroadRoot(t *testing.T) {
 	}{
 		{command: "rm -rf /", denied: true},
 		{command: "rm -rf owned"},
+		{command: "printf ready; rm -rf /", denied: true},
+		{command: "printf ready; rm -rf owned"},
 	} {
 		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: home}
 		input.ToolInput.Command = current.command
