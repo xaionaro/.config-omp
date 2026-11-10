@@ -6,7 +6,6 @@ import { registerBashGateRepair } from "../lib/eci-bash-repair.ts";
 const SCRIPT = "validate-bash.sh";
 
 export default function eciBashGate(pi: ExtensionAPI): void {
-	registerBashGateRepair(pi);
 	pi.on("tool_call", async (event, ctx) => {
 		try {
 			if (event.toolName !== "bash") return undefined;
@@ -25,4 +24,9 @@ export default function eciBashGate(pi: ExtensionAPI): void {
 			return bashGateUnavailable("adapter");
 		}
 	});
+	try {
+		registerBashGateRepair(pi);
+	} catch {
+		console.error("ECI Bash gate repair tool registration failed; Bash gate remains active.");
+	}
 }
