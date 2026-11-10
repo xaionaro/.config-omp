@@ -824,20 +824,6 @@ func hookStateDirectory(
 	return nil
 }
 
-// hookTouchedRepository captures the first repository baseline for shell writes.
-//
-// Example: first mutation captures HEAD and status once; later writes retain that baseline.
-func hookTouchedRepository(
-	ctx context.Context,
-	request Request,
-) error {
-	repository, err := hookRepositoryRoot(ctx, request.CWD)
-	if err != nil || repository == "" {
-		return err
-	}
-	return hookRecordRepository(ctx, request, repository)
-}
-
 // hookRepositoryRoot identifies a concrete repository within the callback budget.
 //
 // Example: a discovery timeout remains advisory and never masquerades as a non-repository.

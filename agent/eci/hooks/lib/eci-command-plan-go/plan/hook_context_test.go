@@ -18,6 +18,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// hookTouchedRepository captures the first repository baseline for shell writes.
+//
+// Example: first mutation captures HEAD and status once; later writes retain that baseline.
+func hookTouchedRepository(
+	ctx context.Context,
+	request Request,
+) error {
+	repository, err := hookRepositoryRoot(ctx, request.CWD)
+	if err != nil || repository == "" {
+		return err
+	}
+	return hookRecordRepository(ctx, request, repository)
+}
+
 // contextFixture isolates proof storage and command working directories.
 //
 // Example: marker discovery reads a temporary proof root without real session state.
