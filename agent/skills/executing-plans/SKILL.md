@@ -34,7 +34,7 @@ For each task:
 After all tasks complete and verified:
 - Announce: "I'm using the finishing-a-development-branch skill to complete this work."
 - **REQUIRED SUB-SKILL:** Use `finishing-a-development-branch`
-- Follow that skill to verify tests, present options, execute choice
+- Follow that skill to verify tests and finish using the authorized integration or preservation action
 
 ## When to Stop and Ask for Help
 
