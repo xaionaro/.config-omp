@@ -712,7 +712,7 @@ func hookGitOutput(
 	directory string,
 	arguments ...string,
 ) ([]byte, error) {
-	args := append([]string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", directory}, arguments...)
+	args := append([]string{"--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", directory}, arguments...)
 	command := exec.Command("/usr/bin/git", args...)
 	for _, entry := range os.Environ() {
 		if strings.HasPrefix(entry, "GIT_") {

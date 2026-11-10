@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -549,6 +550,34 @@ func TestHookContextTouchedBaseline(t *testing.T) {
 		_, err := os.Stat(filepath.Join(root, "activity"))
 		require.Falsef(t, !os.IsNotExist(err), "worker mutation created activity: %v", err)
 	}
+}
+
+// TestHookTouchedRepositoryPreservesIndex checks that bookkeeping is read-only.
+//
+// Example: refreshing stale tracked-file metadata does not rewrite the index.
+func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
+	_, cwd := contextFixture(t)
+	file := filepath.Join(cwd, "tracked")
+	require.NoError(t, os.WriteFile(file, []byte("data"), 0600))
+	for _, args := range [][]string{{"init"}, {"add", "tracked"}} {
+		output, err := exec.Command("git", append([]string{"-C", cwd}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "%s", output)
+	}
+	old := time.Unix(1000000000, 0)
+	require.NoError(t, os.Chtimes(file, old, old))
+	index := filepath.Join(cwd, ".git", "index")
+	require.NoError(t, os.Chtimes(index, old, old))
+	before, err := os.ReadFile(index)
+	require.NoError(t, err)
+	info, err := os.Stat(index)
+	require.NoError(t, err)
+	require.NoError(t, hookTouchedRepository(Request{CWD: cwd, ActiveSession: "test"}))
+	after, err := os.ReadFile(index)
+	require.NoError(t, err)
+	afterInfo, err := os.Stat(index)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.Equal(t, info.ModTime(), afterInfo.ModTime())
 }
 
 // TestHookContextIgnoresManyMarkers ignores markers regardless of count.
