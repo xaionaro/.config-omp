@@ -68,7 +68,8 @@ func RunHook(
 			return 0
 		}
 		if _, err := fmt.Fprintln(output, string(encoded)); err != nil {
-			return hookAdvisory("write callback denial", err)
+			hookAdvisory("write callback denial", err)
+			return 2
 		}
 		return 0
 	}
@@ -120,7 +121,8 @@ func hookMalformedIdentityDenied(output io.Writer) (int, bool) {
 		return hookAdvisory("encode identity denial", err), true
 	}
 	if _, err := fmt.Fprintln(output, string(encoded)); err != nil {
-		return hookAdvisory("write identity denial", err), true
+		hookAdvisory("write identity denial", err)
+		return 2, true
 	}
 	return 0, true
 }

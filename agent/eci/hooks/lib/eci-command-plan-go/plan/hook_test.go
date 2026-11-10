@@ -161,6 +161,15 @@ func TestRunHookEnvelope(t *testing.T) {
 				require.Falsef(t, envelope.HookSpecificOutput.HookEventName != "PreToolUse" || envelope.HookSpecificOutput.PermissionDecision != "deny" || envelope.HookSpecificOutput.PermissionDecisionReason == "", "invalid hook denial: %s", &output)
 			})
 	}
+	closed, err := os.CreateTemp(t.TempDir(), "closed-output")
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+	for _, input := range []string{
+		`{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"rm -rf /"}}`,
+		`{`,
+	} {
+		require.Equal(t, 2, RunHook(strings.NewReader(input), closed), "an undeliverable denial must block")
+	}
 }
 
 // TestHookGitDefaultsPreserveAllCommandEffects retains native verbs and siblings.
