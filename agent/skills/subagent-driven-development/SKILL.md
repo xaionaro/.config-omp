@@ -240,7 +240,7 @@ Done!
 ## Red Flags
 
 **Never:**
-- Introduce changes intended for commit outside the SSOT checkout and branch selected under the [Git policy](../../eci-binding-contract.md#git)
+- Commit project changes outside the SSOT checkout and branch selected under the [Git policy](../../eci-binding-contract.md#git)
 - Skip reviews (spec compliance OR code quality)
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
