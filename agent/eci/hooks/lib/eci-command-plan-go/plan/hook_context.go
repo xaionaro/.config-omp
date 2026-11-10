@@ -2,6 +2,7 @@ package plan
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,16 @@ const (
 	//
 	// Example: a session header inside the first 64 KiB and 16 lines classifies the transcript.
 	maxHookTranscriptPrefixBytes = 64 << 10
+
+	// hookActivityBudget bounds all repository queries in one callback together.
+	//
+	// Example: several repositories cannot each consume a fresh five-second budget.
+	hookActivityBudget = 5 * time.Second
+
+	// hookGitWaitDelay bounds output pipes retained by a filter after Git is killed.
+	//
+	// Example: the callback returns while the runner cleans up its owned process group.
+	hookGitWaitDelay = time.Second
 )
 
 // OmpAgentKind represents the host's documented identity independently of transcript state.
@@ -595,6 +606,8 @@ func recordHookActivity(
 	request Request,
 	result Result,
 ) error {
+	ctx, cancel := context.WithTimeout(context.Background(), hookActivityBudget)
+	defer cancel()
 	if request.HookSessionID != "" {
 		request.ActiveSession = request.HookSessionID
 	}
@@ -635,7 +648,7 @@ func recordHookActivity(
 		}
 	}
 	if result.ShellAnalysis.OutputWrites {
-		if err := hookTouchedRepository(request); err != nil {
+		if err := hookTouchedRepository(ctx, request); err != nil {
 			return err
 		}
 	}
@@ -684,7 +697,7 @@ func recordHookActivity(
 				}
 			}
 		}
-		if err := hookTouchedRepository(touched); err != nil {
+		if err := hookTouchedRepository(ctx, touched); err != nil {
 			return err
 		}
 	}
@@ -799,11 +812,14 @@ func hookStateDirectory(
 // hookTouchedRepository captures the first repository baseline for shell writes.
 //
 // Example: first mutation captures HEAD and status once; later writes retain that baseline.
-func hookTouchedRepository(request Request) error {
+func hookTouchedRepository(
+	ctx context.Context,
+	request Request,
+) error {
 	if !filepath.IsAbs(request.CWD) {
 		return nil
 	}
-	output, err := hookGitOutput(request.CWD, "rev-parse", "--show-toplevel")
+	output, err := hookGitOutput(ctx, request.CWD, "rev-parse", "--show-toplevel")
 	var exitError *exec.ExitError
 	if errors.As(err, &exitError) {
 		return nil
@@ -838,32 +854,55 @@ func hookTouchedRepository(request Request) error {
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	head, err := hookGitOutput(repository, "rev-parse", "--verify", "HEAD")
-	if err != nil && !errors.As(err, &exitError) {
+	head, err := hookGitOutput(ctx, repository, "rev-parse", "--verify", "HEAD")
+	headValue := strings.TrimSpace(string(head))
+	statusValue := "unavailable"
+	var scanErr error
+	switch {
+	case ctx.Err() != nil:
+		headValue = "unavailable"
+		scanErr = ctx.Err()
+	case err != nil && !errors.As(err, &exitError):
 		return err
+	default:
+		status, err := hookGitOutput(ctx, repository, "status", "--porcelain=v1", "--untracked-files=normal")
+		switch {
+		case ctx.Err() != nil:
+			scanErr = ctx.Err()
+		case err != nil:
+			return err
+		default:
+			statusSum := sha256.Sum256([]byte(strings.TrimRight(string(status), "\n")))
+			statusValue = hex.EncodeToString(statusSum[:])
+		}
 	}
-	status, err := hookGitOutput(repository, "status", "--porcelain=v1", "--untracked-files=normal")
-	if err != nil {
-		return err
-	}
-	statusSum := sha256.Sum256([]byte(strings.TrimRight(string(status), "\n")))
-	return os.WriteFile(path, []byte("repo: "+repository+"\nhead: "+strings.TrimSpace(string(head))+"\nstatus_sha: "+hex.EncodeToString(statusSum[:])+"\nrepo_wide: true\ncreated_utc: "+time.Now().UTC().Format(time.RFC3339)+"\n"), 0600)
+	// Persist an explicit incomplete baseline so later writes do not rescan or
+	// misrepresent post-mutation state as the session's starting point.
+	writeErr := os.WriteFile(path, []byte("repo: "+repository+"\nhead: "+headValue+"\nstatus_sha: "+statusValue+"\nrepo_wide: true\ncreated_utc: "+time.Now().UTC().Format(time.RFC3339)+"\n"), 0600)
+	return errors.Join(scanErr, writeErr)
 }
 
 // hookGitOutput queries the concrete repository without inherited Git selectors.
 //
 // Example: GIT_DIR from the callback cannot redirect its touched baseline.
 func hookGitOutput(
+	ctx context.Context,
 	directory string,
 	arguments ...string,
 ) ([]byte, error) {
 	args := append([]string{"--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", directory}, arguments...)
-	command := exec.Command("/usr/bin/git", args...)
+	command := exec.CommandContext(ctx, "/usr/bin/git", args...)
+	// Keep Git and its filters in the callback's owned process group.
+	command.WaitDelay = hookGitWaitDelay
 	for _, entry := range os.Environ() {
 		if strings.HasPrefix(entry, "GIT_") {
 			continue
 		}
 		command.Env = append(command.Env, entry)
 	}
-	return command.Output()
+	output, err := command.Output()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return output, err
 }

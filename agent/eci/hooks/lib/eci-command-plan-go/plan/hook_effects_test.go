@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -392,7 +393,7 @@ func TestHookGitRemovalRemainsNative(t *testing.T) {
 	hook := filepath.Join(repo, "agent", "eci", "hooks", "validate-bash.sh")
 	requireHookDirectory(t, filepath.Dir(hook))
 	requireHookFile(t, hook, "hook")
-	output, err := hookGitOutput(repo, "init")
+	output, err := hookGitOutput(context.Background(), repo, "init")
 	require.NoErrorf(t, err, "%s", output)
 	for _, tc := range []struct {
 		command string

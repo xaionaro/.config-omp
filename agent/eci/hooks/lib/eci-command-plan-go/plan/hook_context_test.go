@@ -1,11 +1,14 @@
 package plan
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -808,7 +811,7 @@ func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
 	file := filepath.Join(cwd, "tracked")
 	require.NoError(t, os.WriteFile(file, []byte("data"), 0600))
 	for _, args := range [][]string{{"init"}, {"add", "tracked"}} {
-		output, err := hookGitOutput(cwd, args...)
+		output, err := hookGitOutput(context.Background(), cwd, args...)
 		require.NoErrorf(t, err, "%s", output)
 	}
 	old := time.Unix(1000000000, 0)
@@ -819,7 +822,7 @@ func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
 	require.NoError(t, err)
 	info, err := os.Stat(index)
 	require.NoError(t, err)
-	require.NoError(t, hookTouchedRepository(Request{CWD: cwd, ActiveSession: "test"}))
+	require.NoError(t, hookTouchedRepository(context.Background(), Request{CWD: cwd, ActiveSession: "test"}))
 	after, err := os.ReadFile(index)
 	require.NoError(t, err)
 	afterInfo, err := os.Stat(index)
@@ -828,6 +831,78 @@ func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
 	_, err = os.Stat(foreignIndex)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Equal(t, info.ModTime(), afterInfo.ModTime())
+}
+
+// slowHookRepository creates a real clean filter whose child holds Git's output pipe.
+//
+// Example: status cannot finish until the filter exits, even after Git is killed.
+func slowHookRepository(
+	t *testing.T,
+	repository string,
+	delay string,
+) {
+	t.Helper()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "test@example.invalid"}, {"config", "user.name", "Test"}} {
+		output, err := exec.Command("/usr/bin/git", append([]string{"-C", repository}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "%s", output)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(repository, ".gitattributes"), []byte("tracked filter=slow\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "tracked"), []byte("initial\n"), 0600))
+	for _, args := range [][]string{{"add", "."}, {"commit", "-qm", "baseline"}, {"config", "filter.slow.clean", "echo $$ > filter.pid; exec sleep " + delay}} {
+		output, err := exec.Command("/usr/bin/git", append([]string{"-C", repository}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "%s", output)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "tracked"), []byte("changed\n"), 0600))
+	old := time.Unix(1000000000, 0)
+	require.NoError(t, os.Chtimes(filepath.Join(repository, "tracked"), old, old))
+	// Kill the exact filter child even when the assertion exits before Git finishes.
+	t.Cleanup(func() {
+		data, err := os.ReadFile(filepath.Join(repository, "filter.pid"))
+		if os.IsNotExist(err) {
+			return
+		}
+		require.NoError(t, err)
+		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		require.NoError(t, err)
+		process, err := os.FindProcess(pid)
+		require.NoError(t, err)
+		err = process.Kill()
+		require.True(t, err == nil || errors.Is(err, os.ErrProcessDone), "%v", err)
+	})
+}
+
+// TestHookActivitySlowRepositoryIsBounded retains an honest one-time incomplete baseline.
+//
+// Example: a filter holding the output pipe cannot delay every later shell write.
+func TestHookActivitySlowRepositoryIsBounded(t *testing.T) {
+	root, repository := contextFixture(t)
+	slowHookRepository(t, repository, "8")
+	index := filepath.Join(repository, ".git", "index")
+	before, err := os.ReadFile(index)
+	require.NoError(t, err)
+	request := Request{CWD: repository, ActiveSession: "bounded", Role: RoleWorker}
+	result := Result{ShellAnalysis: &ShellAnalysis{OutputWrites: true}}
+	start := time.Now()
+	err = recordHookActivity(request, result)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(start), 7*time.Second)
+	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "bounded"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	path := filepath.Join(root, "touched-repos", "sessions", "bounded", entries[0].Name())
+	baseline, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(baseline), "status_sha: unavailable\n")
+	require.NotContains(t, string(baseline), "head: unavailable\n")
+	after, err := os.ReadFile(index)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	start = time.Now()
+	require.NoError(t, recordHookActivity(request, result))
+	require.Less(t, time.Since(start), time.Second)
+	repeated, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, baseline, repeated)
 }
 
 // TestHookContextIgnoresManyMarkers ignores markers regardless of count.
@@ -974,4 +1049,67 @@ func TestHookUnknownCWDDoesNotRecoverAfterAbsoluteCD(t *testing.T) {
 				}
 			})
 	}
+}
+
+// TestHookTouchedRepositoryExpiredContext records nothing without a known repository.
+//
+// Example: cancellation is an error, not an ordinary Git not-a-repository exit.
+func TestHookTouchedRepositoryExpiredContext(t *testing.T) {
+	root, repository := contextFixture(t)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer cancel()
+	require.ErrorIs(t, hookTouchedRepository(ctx, Request{CWD: repository, ActiveSession: "expired"}), context.DeadlineExceeded)
+	_, err := os.Stat(filepath.Join(root, "touched-repos"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// TestHookActivityMultipleRepositoriesShareBudget bounds the complete callback.
+//
+// Example: a second slow repository gets only the budget left by the first scan.
+func TestHookActivityMultipleRepositoriesShareBudget(t *testing.T) {
+	root, first := contextFixture(t)
+	second := t.TempDir()
+	slowHookRepository(t, first, "3")
+	slowHookRepository(t, second, "8")
+	request := Request{CWD: first, ActiveSession: "multiple", Role: RoleWorker}
+	result := Result{ShellAnalysis: &ShellAnalysis{Commands: []ShellCommandRecord{
+		{Argv: []string{"touch", "first"}, CWD: first, CWDKnown: true},
+		{Argv: []string{"touch", "second"}, CWD: second, CWDKnown: true},
+	}}}
+	start := time.Now()
+	require.ErrorIs(t, recordHookActivity(request, result), context.DeadlineExceeded)
+	require.Less(t, time.Since(start), 7*time.Second)
+	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "multiple"))
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	var incomplete int
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(root, "touched-repos", "sessions", "multiple", entry.Name()))
+		require.NoError(t, err)
+		if strings.Contains(string(data), "status_sha: unavailable\n") {
+			incomplete++
+		}
+	}
+	require.Equal(t, 1, incomplete)
+	start = time.Now()
+	require.NoError(t, recordHookActivity(request, result))
+	require.Less(t, time.Since(start), time.Second)
+}
+
+// TestHookTouchedRepositoryStatusFailureDoesNotInventBaseline propagates a real Git error.
+//
+// Example: a required clean filter failure cannot become a valid clean-status hash.
+func TestHookTouchedRepositoryStatusFailureDoesNotInventBaseline(t *testing.T) {
+	root, repository := contextFixture(t)
+	slowHookRepository(t, repository, "0")
+	for _, args := range [][]string{{"config", "filter.slow.clean", "false"}, {"config", "filter.slow.required", "true"}} {
+		output, err := hookGitOutput(context.Background(), repository, args...)
+		require.NoErrorf(t, err, "%s", output)
+	}
+	err := hookTouchedRepository(context.Background(), Request{CWD: repository, ActiveSession: "failed"})
+	var exitError *exec.ExitError
+	require.ErrorAs(t, err, &exitError)
+	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "failed"))
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }

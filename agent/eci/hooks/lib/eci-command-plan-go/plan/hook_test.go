@@ -2,6 +2,7 @@ package plan
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -305,7 +306,7 @@ func TestRunHookMarkerFreeLiveHookOperations(t *testing.T) {
 	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
 	require.NoError(t, os.MkdirAll(filepath.Dir(hook), 0700))
 	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\n"), 0700))
-	_, err := hookGitOutput(provider, "init", "-q")
+	_, err := hookGitOutput(context.Background(), provider, "init", "-q")
 	require.NoError(t, err)
 	for _, current := range []struct {
 		command string

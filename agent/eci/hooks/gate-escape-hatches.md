@@ -16,6 +16,13 @@ non-executable mode tool leaves the denial in force; a finalization failure bloc
 the call. Direct planner and other hook paths may retain separate legacy behavior
 documented below.
 
+Bash mutation bookkeeping shares a five-second budget across repository queries,
+plus a one-second bound on output pipes held by Git's children. After identifying
+a repository, a timeout records `status_sha: unavailable` (and `head: unavailable`
+if HEAD was not read), warns, and allows the command. Later writes preserve the
+first record instead of rescanning. Git uses no optional locks and remains in the
+runner-owned process group for descendant cleanup.
+
 | Gate family | Stops only this resolved effect | Legitimate path / escape hatch |
 | --- | --- | --- |
 | Command/planner and environment checks (`ECI_COMMAND_*`, `ECI_PLAN_*`, `ECI_ENVIRONMENT_*`) | A command whose parsed target or effect is concretely unsafe, unresolved at a safety boundary, or an invalid lifecycle identity | Use the ordinary command when its effect is harmless; use the named direct lifecycle, cleanup, or verification route for the affected control operation. Parser uncertainty alone remains transparent. |
