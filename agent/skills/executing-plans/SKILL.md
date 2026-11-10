@@ -60,7 +60,7 @@ After all tasks complete and verified:
 - Don't skip verifications
 - Reference skills when plan says to
 - Stop when blocked, don't guess
-- Never start implementation on main/master branch without explicit user consent
+- Follow the [Git policy](../../eci-binding-contract.md#git) for selecting and preserving the SSOT checkout and branch.
 
 ## Integration
 
