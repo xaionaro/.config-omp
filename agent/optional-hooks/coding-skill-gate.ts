@@ -1,15 +1,16 @@
 // Disabled until deliberately installed under hooks/. Successful reads are scoped
 // to the current agent and reconstructed from its active transcript branch.
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, opendirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const LANGUAGES: Record<string, string> = { go: "go", py: "python" };
 const PATCH_HEADER = /^\[(.+)#[a-zA-Z0-9]{4}\]\s*$/gm;
 
-function language(path: string): string | undefined {
+function languageForExistingSkills(path: string): string | undefined {
  path = path.replace(/^\[(.*)#[0-9a-fA-F]{4}\]$/, "$1");
+ if (/^(?:local|vault):\/\//.test(path)) path = path.replace(/:(?:raw|conflicts)$/, "");
  const extension = /\.([a-zA-Z0-9]+)$/.exec(path)?.[1]?.toLowerCase();
  if (!extension) return undefined;
  const name = LANGUAGES[extension];
@@ -19,8 +20,8 @@ function language(path: string): string | undefined {
 
 function readSkill(input: Record<string, unknown>, result: { isError?: boolean; details?: unknown }, cwd: string): string | undefined {
  if (result.isError || typeof input.path !== "string") return undefined;
- const details = result.details as { summary?: unknown; truncation?: unknown; displayContent?: { text?: string; startLine?: number; lineNumbers?: (number | null)[] } } | undefined;
- if (details?.summary || details?.truncation || details?.displayContent?.startLine !== 1) return undefined;
+ const details = result.details as { summary?: unknown; truncation?: unknown; meta?: { truncation?: unknown; limits?: unknown }; displayContent?: { text?: string; startLine?: number; lineNumbers?: (number | null)[] } } | undefined;
+ if (details?.summary || details?.truncation || details?.meta?.truncation || details?.meta?.limits || details?.displayContent?.startLine !== 1) return undefined;
  const display = details.displayContent;
  if (display.lineNumbers?.some((number, index) => number !== index + 1)) return undefined;
  const uri = /^skill:\/\/(coding-(?:common|go|python))(?:\/SKILL\.md)?$/.exec(input.path);
@@ -38,8 +39,41 @@ function readSkill(input: Record<string, unknown>, result: { isError?: boolean; 
  return undefined;
 }
 
+// Bound directory inspection; uncertainty alone is not evidence of a write.
+function gofmtTarget(operands: string[], cwd: string): string | undefined {
+ const directories: string[] = [];
+ for (const operand of operands) {
+  if (/[$`*?{}]/.test(operand)) continue;
+  const path = resolve(cwd, operand);
+  try {
+   if (statSync(path).isDirectory()) directories.push(path);
+   else if (path.endsWith(".go")) return path;
+  } catch (error) {
+   if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
+  }
+ }
+ let remaining = 4096;
+ while (directories.length && remaining > 0) {
+  const path = directories.pop()!;
+  try {
+   const dir = opendirSync(path);
+   try {
+    for (let entry = dir.readSync(); entry && remaining-- > 0; entry = dir.readSync()) {
+     if (entry.name.startsWith(".")) continue;
+     const child = join(path, entry.name);
+     if (entry.isDirectory()) directories.push(child);
+     else if (entry.isFile() && entry.name.endsWith(".go")) return child;
+    }
+   } finally { dir.closeSync(); }
+  } catch (error) {
+   if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
+  }
+ }
+ return undefined;
+}
+
 // Recognize literal shell words and redirections without interpreting expansions.
-function shellWrites(command: string): string[] {
+function shellWrites(command: string, cwd: string): string[] {
  // Heredoc bodies are data, not shell commands.
  let delimiter: string | undefined;
  command = command.split("\n").map(line => {
@@ -76,7 +110,22 @@ function shellWrites(command: string): string[] {
   if (name === "tee") paths.push(...argv.slice(1).filter(arg => !arg.startsWith("-")));
   if ((name === "cp" || name === "mv" || name === "install") && argv.length > 2) paths.push(argv[argv.length - 1]);
   if (name === "sed" && argv.some(arg => /^-[^-]*i/.test(arg) || /^--in-place(?:=|$)/.test(arg))) paths.push(argv[argv.length - 1]);
-  if (name === "gofmt" && argv.some(arg => /^-[^-]*w/.test(arg))) paths.push("gofmt.go");
+  if (name === "gofmt") {
+   let writes = false, options = true;
+   const operands: string[] = [];
+   for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i];
+    if (options && arg === "--") { options = false; continue; }
+    if (options && (arg === "-r" || arg === "--r")) { i++; continue; }
+    if (options && /^(?:-w|--w)(?:=true)?$/.test(arg)) { writes = true; continue; }
+    if (options && arg.startsWith("-")) continue;
+    operands.push(arg);
+   }
+   if (writes) {
+    const target = gofmtTarget(operands, cwd);
+    if (target) paths.push(target);
+   }
+  }
   argv = [];
  };
  for (let i = 0; i < tokens.length; i++) {
@@ -104,6 +153,12 @@ function evalWrites(code: string): string[] {
    else if (c === quote) quote = "";
    continue;
   }
+  if (c === "/" && code[i + 1] === "*") {
+   const end = code.indexOf("*/", i + 2);
+   if (end < 0) break;
+   i = end + 1;
+   continue;
+  }
   if (c === "#" || (c === "/" && code[i + 1] === "/")) { comment = true; continue; }
   if (c === "'" || c === '"' || c === "`") { quote = c; continue; }
   if (i > 0 && (/[\w$]/.test(code[i - 1]) || /\.\s*$/.test(code.slice(0, i)))) continue;
@@ -116,7 +171,7 @@ function evalWrites(code: string): string[] {
  return paths;
 }
 
-function pathsFor(tool: string, input: Record<string, unknown>): string[] {
+function pathsFor(tool: string, input: Record<string, unknown>, cwd: string): string[] {
  if (tool === "write") return typeof input.path === "string" ? [input.path] : [];
  if (tool === "edit" || tool === "apply_patch") {
   const paths = typeof input.path === "string" ? [input.path] : [];
@@ -132,7 +187,7 @@ function pathsFor(tool: string, input: Record<string, unknown>): string[] {
   }
   return paths;
  }
- if (tool === "bash" && typeof input.command === "string") return shellWrites(input.command);
+ if (tool === "bash" && typeof input.command === "string") return shellWrites(input.command, typeof input.cwd === "string" ? resolve(cwd, input.cwd) : cwd);
  if (tool === "eval" && typeof input.code === "string") return evalWrites(input.code);
  return [];
 }
@@ -141,31 +196,31 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  const reads = new Map<string, Set<string>>();
  const pending = new Map<string, Set<string>>();
  let ownAgent: string | undefined;
- function key(ctx: ExtensionContext): string {
+ function agentKey(ctx: ExtensionContext): string {
   return JSON.stringify([ctx.sessionManager.getSessionId(), ctx.agent?.id]);
  }
- function seenFor(ctx: ExtensionContext): Set<string> {
-  const id = key(ctx);
+ function hydrateReads(ctx: ExtensionContext): Set<string> {
+  const id = agentKey(ctx);
   const existing = reads.get(id);
   if (existing) return existing;
   const seen = new Set<string>();
-  if (ownAgent !== undefined && ctx.agent?.id === ownAgent) {
-   const calls = new Map<string, Record<string, unknown>>();
-   for (const entry of ctx.sessionManager.getBranch()) {
-    if (entry.type !== "message") continue;
-    const message = entry.message;
-    if (message.role === "assistant") {
-     for (const part of message.content) {
-      if (part.type === "toolCall" && part.name === "read") calls.set(part.id, part.arguments);
-     }
-    } else if (message.role === "toolResult" && message.toolName === "read") {
-     const input = calls.get(message.toolCallId);
-     const skill = input && readSkill(input, message, ctx.cwd);
-     if (skill) seen.add(skill);
-    }
-   }
-  }
   reads.set(id, seen);
+  if (ownAgent === undefined || ctx.agent?.id !== ownAgent) return seen;
+  const calls = new Map<string, Record<string, unknown>>();
+  for (const entry of ctx.sessionManager.getBranch()) {
+   if (entry.type !== "message") continue;
+   const message = entry.message;
+   if (message.role === "assistant") {
+    for (const part of message.content) {
+     if (part.type === "toolCall" && part.name === "read") calls.set(part.id, part.arguments);
+    }
+    continue;
+   }
+   if (message.role !== "toolResult" || message.toolName !== "read") continue;
+   const input = calls.get(message.toolCallId);
+   const skill = input && readSkill(input, message, ctx.cwd);
+   if (skill) seen.add(skill);
+  }
   return seen;
  }
  pi.on("session_start", (_event, ctx) => { reads.clear(); pending.clear(); ownAgent = ctx.agent?.id; });
@@ -174,10 +229,10 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  pi.on("session_branch", reset);
  pi.on("session_switch", reset);
  pi.on("tool_result", (event, ctx) => {
-  const id = key(ctx);
+  const id = agentKey(ctx);
   if (event.toolName === "read") {
    const skill = readSkill(event.input as Record<string, unknown>, event, ctx.cwd);
-   if (skill) seenFor(ctx).add(skill);
+   if (skill) hydrateReads(ctx).add(skill);
   }
   if (event.toolName === "ast_edit" && !event.isError && event.details && typeof event.details === "object" && "files" in event.details && Array.isArray(event.details.files)) {
    const files = pending.get(id) ?? new Set<string>();
@@ -187,11 +242,11 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  });
  pi.on("tool_call", (event, ctx) => {
   const input = event.input as Record<string, unknown>;
-  const paths = event.toolName === "write" && input.path === "xd://resolve" ? [...pending.get(key(ctx)) ?? []] : pathsFor(event.toolName, input);
+  const paths = event.toolName === "write" && input.path === "xd://resolve" ? [...pending.get(agentKey(ctx)) ?? []] : pathsFor(event.toolName, input, ctx.cwd);
   for (const path of paths) {
-   const lang = language(path);
+   const lang = languageForExistingSkills(path);
    if (!lang) continue;
-   const seen = seenFor(ctx);
+   const seen = hydrateReads(ctx);
    const missing = ["coding-common", `coding-${lang}`].filter(skill => !seen.has(skill));
    if (missing.length) {
     const retry = input.path === "xd://resolve" ? "First write xd://reject, then read the skills and rerun the preview." : "Then retry.";

@@ -1,16 +1,33 @@
-import { test } from "bun:test";
+import { afterAll, beforeAll, test } from "bun:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import gate from "./coding-skill-gate.ts";
+
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+let agentDir: string;
+beforeAll(() => {
+ agentDir = mkdtempSync(join(tmpdir(), "coding-skill-gate-"));
+ process.env.PI_CODING_AGENT_DIR = agentDir;
+ for (const name of ["coding-common", "coding-go", "coding-python"]) {
+  const directory = join(agentDir, "skills", name);
+  mkdirSync(directory, {recursive: true});
+  writeFileSync(join(directory, "SKILL.md"), `# ${name}\nTest skill.\n`);
+ }
+});
+afterAll(() => {
+ if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+ else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+ rmSync(agentDir, {recursive: true, force: true});
+});
 
 type Event = { toolName: string; input: Record<string, unknown>; isError?: boolean; details?: unknown; content?: { type: string; text: string }[] };
 type Context = { cwd: string; agent: { id: string; kind: string }; sessionManager: { getSessionId(): string; getBranch(): unknown[] } };
 type Verdict = { block: boolean; reason: string } | undefined;
 function details(name: string) {
- return {displayContent: {text: readFileSync(join(homedir(), ".omp", "agent", "skills", name, "SKILL.md"), "utf8").replace(/\r\n/g, "\n").replace(/\n$/, ""), startLine: 1}};
+ return {displayContent: {text: readFileSync(join(agentDir, "skills", name, "SKILL.md"), "utf8").replace(/\r\n/g, "\n").replace(/\n$/, ""), startLine: 1}};
 }
 function setup() {
  const handlers: Record<string, (event: Event, ctx: Context) => Verdict> = {};
@@ -132,7 +149,10 @@ test("does not count a successful result with no proof of complete output", () =
 test("handles wrapped writes and gofmt writes without blocking read-only gofmt", () => {
  const {call} = setup();
  assert.match(call("write", {path: "[src/a.go#ABCD]"})!.reason, /coding-go/);
- assert.match(call("bash", {command: "gofmt -w ."})!.reason, /coding-go/);
+ const directory = join(agentDir, "go-project");
+ mkdirSync(directory);
+ writeFileSync(join(directory, "main.go"), "package main\n");
+ assert.match(call("bash", {command: `gofmt -w '${directory}'`})!.reason, /coding-go/);
  assert.equal(call("bash", {command: "gofmt -d a.go"}), undefined);
 });
 
@@ -148,7 +168,7 @@ test("recognizes direct literal eval filesystem writes without blocking reads", 
 
 test("uses canonical local reads and isolates an advisor from populated branch history", () => {
  const {call, read, ctx, setBranch, handlers} = setup();
- const root = join(homedir(), ".omp", "agent", "skills");
+ const root = join(agentDir, "skills");
  read(join(root, "coding-common", "SKILL.md"));
  read(join(root, "coding-go", "SKILL.md"));
  assert.equal(call("write", {path: "a.go"}), undefined);
@@ -178,4 +198,65 @@ test("does not mistake spaced member calls for the eval prelude", () => {
 test("recognizes sloppy patch edit headers", () => {
  const {call} = setup();
  assert.match(call("edit", {input: "*** Begin Patch\n*** Edit File: src/a.go all\n@@\n-x\n+y\n*** End Patch"})!.reason, /coding-go/);
+});
+
+test("does not require a missing language skill", () => {
+ const file = join(agentDir, "skills", "coding-python", "SKILL.md");
+ renameSync(file, `${file}.disabled`);
+ try {
+  assert.equal(setup().call("write", {path: "a.py"}), undefined);
+ } finally {
+  renameSync(`${file}.disabled`, file);
+ }
+});
+
+test("does not block gofmt writing standard output", () => {
+ const {call} = setup();
+ assert.equal(call("bash", {command: "gofmt -w"}), undefined);
+});
+
+test("checks file-backed URLs and archive entry names", () => {
+ const {call} = setup();
+ for (const path of ["local://source.go", "vault://source.py", "source.zip:dir/source.go"]) {
+  assert.match(call("write", {path})!.reason, /coding-/);
+ }
+ assert.equal(call("write", {path: "local://notes.md"}), undefined);
+});
+
+test("rejects truncation reported in host metadata", () => {
+ const {call, result} = setup();
+ result("read", {path: "skill://coding-common"}, {...details("coding-common"), meta: {truncation: {truncated: true}}});
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
+});
+
+test("does not treat the gofmt rewrite rule as an output file", () => {
+ const {call} = setup();
+ assert.equal(call("bash", {command: "gofmt -w -r 'a -> b'"}), undefined);
+});
+
+test("checks file-backed URL targets with peeled raw selectors", () => {
+ const {call} = setup();
+ assert.match(call("write", {path: "local://a.go:raw"})!.reason, /coding-go/);
+});
+
+test("ignores writes mentioned in eval block comments", () => {
+ const {call} = setup();
+ assert.equal(call("eval", {code: "/* write('a.go', 'x') */ print('ok')"}), undefined);
+});
+
+test("pending reads in a batch never satisfy its write preflight", () => {
+ const {call, read} = setup();
+ assert.equal(call("read", {path: "skill://coding-common"}), undefined);
+ assert.equal(call("read", {path: "skill://coding-go"}), undefined);
+ assert.match(call("write", {path: "batch.go"})!.reason, /earlier tool batch/);
+ read("skill://coding-common");
+ read("skill://coding-go");
+ assert.equal(call("write", {path: "batch.go"}), undefined);
+});
+
+test("does not gate gofmt on directories without Go files", () => {
+ const {call} = setup();
+ const directory = join(agentDir, "empty-project");
+ mkdirSync(directory);
+ assert.equal(call("bash", {command: `gofmt -w '${directory}'`}), undefined);
 });
