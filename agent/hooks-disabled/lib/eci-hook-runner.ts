@@ -32,10 +32,14 @@ export interface HookRun {
 	stderr: string;
 }
 
-export const eciHooksDir = (): string => {
+/** The same home selection is used for hook execution and fixed repair targets. */
+export const eciHome = (): string => {
 	const home = process.env.HOME;
-	const base = home && isAbsolute(home) ? home : userInfo().homedir;
-	return join(base, ".omp", "agent", "eci", "hooks");
+	return home && isAbsolute(home) ? home : userInfo().homedir;
+};
+
+export const eciHooksDir = (): string => {
+	return join(eciHome(), ".omp", "agent", "eci", "hooks");
 };
 
 const TIMEOUT_EXIT = 124;
@@ -375,7 +379,7 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 
 /** Blocks an unchecked Bash call without exposing callback data. */
 export function bashGateUnavailable(detail: string): PreToolVerdict {
-	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. If eci_bash_gate_repair is available (top-level or xd://eci_bash_gate_repair), call it, then retry; if unavailable here or the gate stays unavailable, continue non-Bash work and report it to the parent.` };
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. If eci_bash_gate_repair is available (top-level or xd://eci_bash_gate_repair), call it, then retry. For a retained planner conflict, send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair; normal approvals still apply. Otherwise continue non-Bash work and report it to the parent.` };
 }
 
 export type BashGateDecision =
