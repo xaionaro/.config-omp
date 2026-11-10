@@ -128,9 +128,11 @@ export function basePayload(id: EciIdentity, hookEventName: string): Record<stri
 }
 
 /** Seconds between the deadline's SIGTERM and the SIGKILL that follows it. */
-const KILL_GRACE_SEC = 5;
-/** Seconds after the SIGKILL before output still held open by an escaped process is abandoned. */
-const DRAIN_SEC = 2;
+export const KILL_GRACE_SEC = 5;
+/** Seconds after SIGKILL before abandoning output held by an escaped process. */
+export const DRAIN_SEC = 2;
+/** Bash gate deadline leaves room for cleanup within omp's default 30-second budget. */
+export const BASH_GATE_DEADLINE_SEC = 20;
 
 /**
  * The bash that runs ECI hooks: ECI_BASH when set (it must be an absolute path to an
@@ -211,7 +213,10 @@ export async function runEciHook(
 	child.on("exit", (code, signal) => {
 		exitCode = code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : -1);
 	});
-	child.on("close", () => finish(result()));
+	child.on("close", () => {
+		if (timedOut && child.pid !== undefined && signalGroup(child.pid, 0)) return;
+		finish(result());
+	});
 	child.stdin?.on("error", () => {});
 	child.stdin?.end(JSON.stringify(stdin));
 	const pid = child.pid;
@@ -245,7 +250,7 @@ export type PreToolVerdict = { block: true; reason: string } | undefined;
 export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	const fail = (why: string): PreToolVerdict => ({
 		block: true,
-		reason: `ECI hook ${label} ${why}; blocking (fail-closed).${label === "validate-bash" ? run.code === TIMEOUT_EXIT || run.code === KILL_EXIT ? " Inspect host process and disk availability and $HOME/.omp/agent/eci/hooks/validate-bash.sh; persistent failures need repair outside the blocked Bash tool before retry." : " Inspect $HOME/.omp/agent/eci/hooks/validate-bash.sh and its runtime dependencies; persistent failures need repair outside the blocked Bash tool before retry." : ""}`,
+		reason: `ECI hook ${label} ${why}; blocking (fail-closed).`,
 	});
 	if (run.code === -1) return fail(`could not run (${run.stderr.trim()})`);
 	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return fail("timed out");
@@ -266,6 +271,34 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 		return { block: true, reason };
 	}
 	return fail("returned unsupported permissionDecision");
+}
+
+/** Blocks an unchecked Bash call without exposing callback data. */
+export function bashGateUnavailable(kind: string, code: number): PreToolVerdict {
+	return { block: true, reason: `ECI Bash gate unavailable (${kind}, exit ${code}); the call is blocked. Repair the gate outside the blocked Bash tool, then retry; if it remains unavailable, continue non-Bash work and report it.` };
+}
+
+/** Accepts only a complete Bash gate decision; failures never expose hook output. */
+export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
+	if (run.code === -1) return bashGateUnavailable("spawn", run.code);
+	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return bashGateUnavailable("deadline", run.code);
+	if (!run.ok || run.code !== 0) return bashGateUnavailable("exit", run.code);
+	const out = run.stdout.trim();
+	if (out === "") return undefined;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(out);
+	} catch {
+		return bashGateUnavailable("invalid-json", run.code);
+	}
+	const hso = isRecord(parsed) && isRecord(parsed.hookSpecificOutput) ? parsed.hookSpecificOutput : undefined;
+	if (hso?.hookEventName !== "PreToolUse") return bashGateUnavailable("invalid-output", run.code);
+	if (hso.permissionDecision === "allow") return undefined;
+	if (hso.permissionDecision !== "deny") return bashGateUnavailable("invalid-decision", run.code);
+	if (typeof hso.permissionDecisionReason !== "string" || hso.permissionDecisionReason.trim() === "") {
+		return bashGateUnavailable("invalid-denial", run.code);
+	}
+	return { block: true, reason: hso.permissionDecisionReason };
 }
 
 /** Advisory translation (SessionStart / UserPromptSubmit). Never throws; failures yield undefined. */

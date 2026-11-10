@@ -1,10 +1,10 @@
 // Runs with: BUN_BE_BUN=1 omp test agent/hooks-disabled/lib/eci-hook-runner.test.ts
 // (omp is a Bun build; no separate bun is needed). Not a hook factory: lib/ is not discovered.
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
+import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
 import eciBashGate from "../pre/eci-bash-gate";
 
 const id = { sessionId: "s", cwd: "/", isSubagent: false };
@@ -68,24 +68,24 @@ test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empt
 	expect(preToolVerdict(quiet, "validate-bash")).toBeUndefined();
 });
 
-test("Bash hook transport failures explain how to diagnose and retry without changing other hooks", () => {
+test("Bash failures block with fixed diagnostics without exposing hook data", () => {
+	const denial = (reason: unknown) => JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 	for (const run of [
-		{ ok: false, code: 124, stdout: "", stderr: "" },
-		{ ok: true, code: 0, stdout: "not json", stderr: "" },
+		{ ok: false, code: -1, stdout: "", stderr: "secret" },
+		{ ok: false, code: 124, stdout: "", stderr: "secret" },
+		{ ok: false, code: 2, stdout: "", stderr: "secret" },
+		{ ok: true, code: 0, stdout: "secret", stderr: "" },
 		{ ok: true, code: 0, stdout: "{}", stderr: "" },
+		...([undefined, 42, "", "  "].map(reason => ({ ok: true, code: 0, stdout: denial(reason), stderr: "" }))),
 	]) {
-		const verdict = preToolVerdict(run, "validate-bash");
+		const verdict = bashPreToolVerdict(run);
 		expect(verdict?.block).toBe(true);
-		expect(verdict?.reason).toContain("validate-bash");
-		expect(verdict?.reason).toContain("Inspect");
-		expect(verdict?.reason).toContain("retry");
-		expect(preToolVerdict(run, "pretooluse-edit-dispatch")?.reason).not.toContain("validate-bash");
+		expect(verdict?.reason).toContain("outside the blocked Bash tool");
+		expect(verdict?.reason).not.toContain("secret");
 	}
-	const timeout = preToolVerdict({ ok: false, code: 124, stdout: "", stderr: "" }, "validate-bash");
-	expect(timeout?.reason).toContain("process");
-	expect(timeout?.reason).toContain("disk");
-	const malformed = preToolVerdict({ ok: true, code: 0, stdout: "broken", stderr: "" }, "validate-bash");
-	expect(malformed?.reason).toContain("outside the blocked Bash tool");
+	expect(bashPreToolVerdict({ ok: true, code: 0, stdout: denial("bounded route"), stderr: "" })?.reason).toBe("bounded route");
+	expect(bashPreToolVerdict({ ok: true, code: 0, stdout: "", stderr: "" })).toBeUndefined();
+	expect(BASH_GATE_DEADLINE_SEC + KILL_GRACE_SEC + DRAIN_SEC).toBeLessThan(30);
 });
 
 test("Bash factory exceptions block with external repair guidance without exposing the exception", async () => {
@@ -97,6 +97,56 @@ test("Bash factory exceptions block with external repair guidance without exposi
 	expect(verdict).toMatchObject({ block: true });
 	expect(JSON.stringify(verdict)).toContain("outside the blocked Bash tool");
 	expect(JSON.stringify(verdict)).not.toContain("sensitive-value");
+});
+
+test("Bash callback uses the session manager identity without inventing a transcript", async () => {
+	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; } } as never);
+	const savedHome = process.env.HOME;
+	const hooks = join(dir, ".omp", "agent", "eci", "hooks");
+	mkdirSync(hooks, { recursive: true });
+	writeFileSync(join(hooks, "validate-bash.sh"), `cat > '${join(dir, "callback.json")}'\n`);
+	try {
+		process.env.HOME = dir;
+		const verdict = await handler!({ toolName: "bash", input: { command: "true" } }, {
+			cwd: dir,
+			sessionManager: { getSessionId: () => "native-session", getSessionFile: () => undefined },
+		});
+		expect(verdict).toBeUndefined();
+		const payload = await Bun.file(join(dir, "callback.json")).json();
+		expect(payload.session_id).toBe("native-session");
+		expect(payload.transcript_path).toBeUndefined();
+	} finally {
+		if (savedHome === undefined) delete process.env.HOME;
+		else process.env.HOME = savedHome;
+	}
+});
+
+test("Bash wrapper blocks when its verifier or planner is unavailable without a marker", async () => {
+	const source = join(import.meta.dir, "../../eci/hooks");
+	const hooks = join(dir, "hooks");
+	mkdirSync(join(hooks, "lib"), { recursive: true });
+	writeFileSync(join(hooks, "validate-bash.sh"), readFileSync(join(source, "validate-bash.sh")));
+	writeFileSync(join(hooks, "lib", "eci-bash-guard.sh"), readFileSync(join(source, "lib", "eci-bash-guard.sh")));
+	const savedHome = process.env.HOME;
+	try {
+		process.env.HOME = dir;
+		for (const withVerifier of [false, true]) {
+			if (withVerifier) writeFileSync(join(hooks, "lib", "eci-native-binary.sh"), readFileSync(join(source, "lib", "eci-native-binary.sh")));
+			const run = await runEciHook(join(hooks, "validate-bash.sh"), { tool_name: "Bash", tool_input: { command: "true" } }, id, 5);
+			expect(run.code).toBe(2);
+			expect(run.stdout).toBe("");
+			expect(run.stderr).toContain("ECI_HOOK_NATIVE_GATE_UNAVAILABLE");
+		}
+		writeFileSync(join(hooks, "lib", "eci-native-binary.sh"), "eci_runtime_verexec() { printf 'partial output'; return 2; }\n");
+		const failedPlanner = await runEciHook(join(hooks, "validate-bash.sh"), {}, id, 5);
+		expect(failedPlanner.code).toBe(2);
+		expect(failedPlanner.stdout).toBe("");
+		expect(failedPlanner.stderr.trim().split("\n")).toHaveLength(1);
+	} finally {
+		if (savedHome === undefined) delete process.env.HOME;
+		else process.env.HOME = savedHome;
+	}
 });
 
 test("a deadline stops the hook with SIGTERM and reports 124", async () => {

@@ -22,11 +22,11 @@ func RunHook(
 	decoder := json.NewDecoder(input)
 	var envelope HookInput
 	if err := decoder.Decode(&envelope); err != nil {
-		return hookAdvisory("decode callback", err)
+		return hookUnavailable("decode callback")
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return hookAdvisory("decode trailing callback", err)
+		return hookUnavailable("decode trailing callback")
 	}
 	if envelope.ToolName != "" && envelope.ToolName != "Bash" {
 		return 0
@@ -53,7 +53,7 @@ func RunHook(
 		}{HookSpecificOutput: result.HookSpecificOutput}
 		encoded, err := json.Marshal(denial)
 		if err != nil {
-			return hookAdvisory("encode callback denial", err)
+			return hookUnavailable("encode callback denial")
 		}
 		encoded, err = finalizeHookDenial(request, encoded)
 		if err != nil {
@@ -116,6 +116,16 @@ func finalizeHookDenial(
 		return denial, err
 	}
 	return finalized, nil
+}
+
+// hookUnavailable reports a callback that could not reach a decision.
+//
+// Example: malformed input blocks the tool call instead of silently allowing it.
+func hookUnavailable(operation string) int {
+	if _, err := fmt.Fprintf(os.Stderr, "command hook: %s failed; could not decide; the tool call is blocked\n", operation); err != nil {
+		return 2
+	}
+	return 2
 }
 
 // hookAdvisory records an external callback failure without inventing an effect.

@@ -136,7 +136,6 @@ func TestRunHookEnvelope(t *testing.T) {
 	}{
 		{"ordinary allow", `{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"cat ordinary"}}`, false},
 		{"concrete root removal", `{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"rm -rf /"}}`, true},
-		{"malformed identity denied under active scope", `{`, true},
 		{"other tool", `{"tool_name":"Read","tool_input":{"command":"rm -rf /"}}`, false},
 	}
 	for _, test := range tests {
@@ -160,6 +159,11 @@ func TestRunHookEnvelope(t *testing.T) {
 				require.NoError(t, json.Unmarshal(output.Bytes(), &envelope))
 				require.Falsef(t, envelope.HookSpecificOutput.HookEventName != "PreToolUse" || envelope.HookSpecificOutput.PermissionDecision != "deny" || envelope.HookSpecificOutput.PermissionDecisionReason == "", "invalid hook denial: %s", &output)
 			})
+	}
+	for _, input := range []string{`{`, `{"tool_name":"Bash"} trailing`, `{"tool_name":"Bash"} {}`} {
+		var output bytes.Buffer
+		require.Equal(t, 2, RunHook(strings.NewReader(input), &output), "malformed callback must block")
+		require.Empty(t, output.String())
 	}
 	closed, err := os.CreateTemp(t.TempDir(), "closed-output")
 	require.NoError(t, err)
