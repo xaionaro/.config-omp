@@ -42,7 +42,6 @@ input=$(cat)
 # call (eci_edit_dispatch_fields_load); they equal the per-field reads, which
 # run instead when it did not, or could not, take its fast path.
 parsed_input=false
-parsed_edit_text_usable=no
 if eci_edit_dispatch_fields_load "$input"; then
   parsed_input=true
   tool_name="${eci_edit_dispatch_fields[0]}"
@@ -50,15 +49,12 @@ if eci_edit_dispatch_fields_load "$input"; then
   cwd="${eci_edit_dispatch_fields[2]}"
   parsed_file_path="${eci_edit_dispatch_fields[3]}"
   parsed_transcript="${eci_edit_dispatch_fields[5]}"
-  parsed_edit_text="${eci_edit_dispatch_fields[6]}"
-  parsed_edit_text_usable="${eci_edit_dispatch_fields[7]}"
   # As $(jq -r ...) would, drop trailing newlines.
   eci_strip_trailing_newlines tool_name
   eci_strip_trailing_newlines session_id
   eci_strip_trailing_newlines cwd
   eci_strip_trailing_newlines parsed_file_path
   eci_strip_trailing_newlines parsed_transcript
-  eci_strip_trailing_newlines parsed_edit_text
   eci_hook_subagent_status_seed "$input" "${eci_edit_dispatch_fields[4]}" "$parsed_transcript"
 else
   tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
@@ -176,22 +172,6 @@ if [ "$hook_subagent_status" != main ] &&
      eci_path_is_git_approval_file "$lexical_file_path" ||
      eci_path_is_git_approval_file "$resolved_file_path"; }; then
   deny "$(eci_diagnostic_reason "ECI_CONTROL_OWNER_REQUIRED" "PreToolUse" "edit-validation" "$file_path" "Only the main thread may modify coordinator-owned ECI or authorization state." "route coordinator-owned ECI or authorization changes through the main/orchestrator")"
-fi
-
-# Local relative replace directives in go.mod bypass the go.work rule; deny at edit time.
-if [ "$parsed_edit_text_usable" = yes ]; then
-  edit_text="$parsed_edit_text"
-else
-  edit_text="$(printf '%s' "$input" | jq -r '.tool_input | [.content, .new_string, .edits[]?.new_string] | map(select(. != null)) | .[]' 2>/dev/null)" || {
-    edit_text=""
-    if eci_marker_active_or_unknown; then
-      deny "[ECI_EDIT_PAYLOAD_UNREADABLE] edit payload could not be read while an active marker exists; the edit cannot be checked, so it is denied"
-    fi
-  }
-fi
-if [[ "$file_path" == go.mod || "$file_path" == */go.mod ]] &&
-   printf '%s\n' "$edit_text" | grep -Eq '=>[[:space:]]*(\.\./|\./)'; then
-  deny "$(eci_diagnostic_reason "ECI_GOMOD_LOCAL_REPLACE_DENIED" "PreToolUse" "edit-validation" "$file_path" "Do not add local relative replace directives to go.mod. Use a workspace, module proxy, or explicit user-approved local override." "use a workspace, module proxy, or explicit user-approved local override")"
 fi
 
 # Session-scoped targets fail closed.  An owner that resolves must match an

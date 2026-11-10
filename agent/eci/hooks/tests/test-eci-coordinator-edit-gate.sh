@@ -212,13 +212,13 @@ for policy_path in \
   policy_output="$(run_dispatch "policy-$(basename -- "$policy_path")" "$policy_input")"
   assert_empty_output "policy-$(basename -- "$policy_path")" "$policy_output"
 done
-# A go.mod local replace is denied even on a normal coordinator edit (38fd264).
+# A local replacement may be deliberately authorized; this gate has no override channel.
 go_mod_input="$TMP_ROOT/go-mod.json"
 jq -cn --arg session_id "$session_id" --arg cwd "$repo" --arg path "$repo/go.mod" \
   '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"replace example.local/module => ../module"}}' \
   >"$go_mod_input"
 go_mod_output="$(run_dispatch go-mod "$go_mod_input")"
-assert_marker_deny go-mod "$go_mod_output" ECI_GOMOD_LOCAL_REPLACE_DENIED
+assert_empty_output go-mod "$go_mod_output"
 
 normal_patch_input="$TMP_ROOT/normal-patch.json"
 normal_patch="$(printf '*** Begin Patch\n*** Update File: %s\n@@\n-old\n+new\n*** End Patch\n' "$repo/normal.c")"

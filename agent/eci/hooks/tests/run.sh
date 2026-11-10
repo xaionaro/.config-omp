@@ -2118,28 +2118,25 @@ test_validate_bash_allows_write_into_submodule() {
   fi
 }
 
-test_validate_edit_write_blocks_direct_edit_local_gomod_replace() {
+test_validate_edit_write_allows_direct_edit_local_gomod_replace() {
   local out
   out="$TMP_ROOT/edit-write-gomod-edit.out"
   run_hook "$out" "$ROOT/hooks/validate-edit-write.sh" "$FIXTURES/validate-edit-write-gomod-local-edit.json" || return 1
-  is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "local relative replace"
+  expect_no_output "$out"
 }
 
-test_validate_edit_write_blocks_direct_write_local_gomod_replace() {
+test_validate_edit_write_allows_direct_write_local_gomod_replace() {
   local out
   out="$TMP_ROOT/edit-write-gomod-write.out"
   run_hook "$out" "$ROOT/hooks/validate-edit-write.sh" "$FIXTURES/validate-edit-write-gomod-local-write.json" || return 1
-  is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "local relative replace"
+  expect_no_output "$out"
 }
 
-test_validate_edit_write_blocks_direct_multiedit_local_gomod_replace() {
+test_validate_edit_write_allows_direct_multiedit_local_gomod_replace() {
   local out
   out="$TMP_ROOT/edit-write-gomod-multiedit.out"
   run_hook "$out" "$ROOT/hooks/validate-edit-write.sh" "$FIXTURES/validate-edit-write-gomod-local-multiedit.json" || return 1
-  is_pretool_deny "$out" &&
-    json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "local relative replace"
+  expect_no_output "$out"
 }
 
 test_validate_edit_write_allows_unrelated_non_plan_edit() {
@@ -3090,12 +3087,12 @@ run_case "validate direct/apply allows main-thread ledger paths" \
   test_validate_direct_and_apply_allow_main_ledger_paths
 run_case "validate-bash allows writes into a git submodule" \
   test_validate_bash_allows_write_into_submodule
-run_case "validate-edit-write blocks direct Edit go.mod local replace" \
-  test_validate_edit_write_blocks_direct_edit_local_gomod_replace
-run_case "validate-edit-write blocks direct Write go.mod local replace" \
-  test_validate_edit_write_blocks_direct_write_local_gomod_replace
-run_case "validate-edit-write blocks direct MultiEdit go.mod local replace" \
-  test_validate_edit_write_blocks_direct_multiedit_local_gomod_replace
+run_case "validate-edit-write allows direct Edit go.mod local replace" \
+  test_validate_edit_write_allows_direct_edit_local_gomod_replace
+run_case "validate-edit-write allows direct Write go.mod local replace" \
+  test_validate_edit_write_allows_direct_write_local_gomod_replace
+run_case "validate-edit-write allows direct MultiEdit go.mod local replace" \
+  test_validate_edit_write_allows_direct_multiedit_local_gomod_replace
 run_case "validate-edit-write allows unrelated non-plan Edit" \
   test_validate_edit_write_allows_unrelated_non_plan_edit
 run_case "validate-edit-write allows remote Write go.mod replace" \
