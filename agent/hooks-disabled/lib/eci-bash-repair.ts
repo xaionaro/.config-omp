@@ -32,7 +32,7 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 				return { content: [{ type: "text", text: "The fixed true probe was accepted; nothing was rebuilt. Retry the blocked Bash call once; if blocked again, continue non-Bash work and report it." }], details: {} };
 			}
 			if (firstDecision.kind === "deny") {
-				return { content: [{ type: "text", text: `The fixed true probe was denied: ${firstDecision.reason} Nothing was rebuilt; retry the blocked Bash call once, then continue non-Bash work and report if it remains blocked.` }], details: {} };
+				return { isError: true, content: [{ type: "text", text: `The gate returned a denial for the fixed true probe: ${firstDecision.reason} Nothing was rebuilt; continue non-Bash work and report the denial.` }], details: {} };
 			}
 			if (first.outcome.kind === "ran" && first.outcome.cleanup !== "graceful") {
 				return { isError: true, content: [{ type: "text", text: `Probe cleanup was ${first.outcome.cleanup}; nothing was rebuilt. Continue non-Bash work and report it.` }], details: {} };
@@ -58,9 +58,11 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 				return { isError: true, content: [{ type: "text", text: `Repair probe cancelled; gate readiness is unknown.\n${summary}` }], details: {} };
 			}
 			const decision = bashGateDecision(second);
-			if (decision.kind !== "allow") {
-				const reason = decision.kind === "deny" ? decision.reason : `${decision.detail}\n${second.stderr.slice(-8192)}`;
-				return { isError: true, content: [{ type: "text", text: `The fixed true probe did not succeed: ${reason}\nCalling eci_bash_gate_repair again will not change this result until the installation or source changes. Continue non-Bash work and report this result to the parent or user.\n${summary}` }], details: {} };
+			if (decision.kind === "deny") {
+				return { isError: true, content: [{ type: "text", text: `The gate returned a denial for the fixed true probe: ${decision.reason}\n${summary}` }], details: {} };
+			}
+			if (decision.kind === "unavailable") {
+				return { isError: true, content: [{ type: "text", text: `The fixed true probe did not succeed: ${decision.detail}\n${second.stderr.slice(-8192)}\nThe failure may be transient; continue non-Bash work and report this result to the parent or user.\n${summary}` }], details: {} };
 			}
 			return { content: [{ type: "text", text: `Bash gate accepted the fixed true probe.\n${summary}` }], details: {} };
 		},

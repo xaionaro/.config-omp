@@ -49,6 +49,7 @@ test("registers bounded repair with fixed gate binaries and probes the gate", as
 		expect(unavailable.isError).toBe(true);
 		expect(unavailable.content[0].text).not.toContain("permissions");
 		expect(unavailable.content[0].text).not.toContain("call it, then retry");
+		expect(unavailable.content[0].text).not.toContain("will not change");
 		writeFileSync(join(hooks, "build-native-binaries.sh"), "exit 1\n");
 		writeFileSync(join(hooks, "validate-bash.sh"), 'echo probe >> "$HOME/probed"\nexit 2\n');
 		const failed = await repair.execute("id", {}, undefined, undefined, ctx);
@@ -91,9 +92,14 @@ test("registers bounded repair with fixed gate binaries and probes the gate", as
 		writeFileSync(join(hooks, "build-native-binaries.sh"), "exit 0\n");
 		writeFileSync(join(hooks, "validate-bash.sh"), `printf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"specific denial"}}'\n`);
 		const denied = await repair.execute("id", {}, undefined, undefined, ctx);
-		expect(denied.isError).not.toBe(true);
+		expect(denied.isError).toBe(true);
 		expect(denied.content[0].text).toContain("specific denial");
 		expect(denied.content[0].text).toContain("Nothing was rebuilt");
+		writeFileSync(join(hooks, "build-native-binaries.sh"), 'touch "$HOME/deny-after-build"\n');
+		writeFileSync(join(hooks, "validate-bash.sh"), `[ -f "$HOME/deny-after-build" ] || exit 2\nprintf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"specific denial"}}'\n`);
+		const deniedAfterBuild = await repair.execute("id", {}, undefined, undefined, ctx);
+		expect(deniedAfterBuild.isError).toBe(denied.isError);
+		expect(deniedAfterBuild.content[0].text).toContain("specific denial");
 		writeFileSync(join(hooks, "validate-bash.sh"), 'echo started > "$HOME/probe-started"\nsleep 30\n');
 		const probeController = new AbortController();
 		const watcher = watch(home, (_event, name) => {
