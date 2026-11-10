@@ -201,6 +201,44 @@ func TestRunHookMarkerFreeBroadRoot(t *testing.T) {
 	}
 }
 
+// TestRunHookMarkerFreeMultipleRepositories keeps bounded native Git requests
+// available without treating a retired marker as repository authorization.
+//
+// Example: a dependency add is allowed while a whole-tree reset is denied.
+func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
+	home := t.TempDir()
+	primary := filepath.Join(home, "primary")
+	dependency := filepath.Join(home, "dependency")
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	for _, repository := range []string{primary, dependency} {
+		require.NoError(t, os.MkdirAll(repository, 0700))
+		require.NoError(t, exec.Command("git", "init", "-q", repository).Run())
+	}
+	for _, current := range []struct {
+		command string
+		denied  bool
+	}{
+		{command: "git -C '" + primary + "' add -- file"},
+		{command: "git -C '" + dependency + "' add -- file"},
+		{command: "git -C '" + dependency + "' commit -m checkpoint"},
+		{command: "git -C '" + dependency + "' reset --hard", denied: true},
+	} {
+		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: primary}
+		input.ToolInput.Command = current.command
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		if current.denied {
+			require.Contains(t, output.String(), string(CodeBroadDestructiveDenied), current.command)
+		} else {
+			require.Empty(t, output.String(), current.command)
+		}
+	}
+}
+
 // TestHookGitDefaultsPreserveAllCommandEffects retains native verbs and siblings.
 //
 // Example: a native diff cannot hide a later concrete root removal.
