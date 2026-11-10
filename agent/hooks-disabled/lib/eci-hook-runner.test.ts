@@ -157,13 +157,22 @@ test("a deadline stops the hook with SIGTERM and reports 124", async () => {
 	expect(preToolVerdict(run, "t")).toEqual({ block: true, reason: "ECI hook t timed out; blocking (fail-closed)." });
 });
 
-test("the deadline also stops children the hook started", async () => {
+test("the deadline retires the hook's child within the cleanup bound", async () => {
+	const pidFile = join(dir, "child.pid");
 	const started = Date.now();
-	const run = await runEciHook(script("child.sh", "sleep 30\necho done\n"), {}, id, 1);
+	const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1);
 	expect(run.code).toBe(124);
 	expect(run.stdout).toBe("");
-	expect(Date.now() - started).toBeLessThan(2500);
-});
+	expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
+	expect(() => process.kill(Number(readFileSync(pidFile, "utf8").trim()), 0)).toThrow();
+}, 15000);
+
+test("a redirected TERM-resistant child cannot outlive the cleanup", async () => {
+	const pidFile = join(dir, "stubborn-child.pid");
+	const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1);
+	expect(run.code).toBe(137);
+	expect(() => process.kill(Number(readFileSync(pidFile, "utf8").trim()), 0)).toThrow();
+}, 15000);
 
 test("a hook that ignores SIGTERM is killed after the grace period and reports 137", async () => {
 	const stubborn = script("stubborn.sh", "trap '' TERM\nwhile :; do sleep 1; done\n");

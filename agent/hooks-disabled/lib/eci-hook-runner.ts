@@ -190,6 +190,7 @@ export async function runEciHook(
 	const timers: Timer[] = [];
 	let timedOut = false;
 	let killed = false;
+	let closed = false;
 	let exitCode: number | undefined;
 	const child = spawn(resolved.bash, [script], {
 		cwd: existsSync(id.cwd) ? id.cwd : undefined,
@@ -214,6 +215,7 @@ export async function runEciHook(
 		exitCode = code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : -1);
 	});
 	child.on("close", () => {
+		closed = true;
 		if (timedOut && child.pid !== undefined && signalGroup(child.pid, 0)) return;
 		finish(result());
 	});
@@ -230,6 +232,10 @@ export async function runEciHook(
 						if (signalGroup(pid, 0)) {
 							killed = true;
 							signalGroup(pid, "SIGKILL");
+						}
+						if (closed && !killed) {
+							finish(result());
+							return;
 						}
 						timers.push(setTimeout(() => finish(result()), DRAIN_SEC * 1000));
 					}, KILL_GRACE_SEC * 1000),
