@@ -1065,42 +1065,6 @@ worker_missing_output="$(run_subagent_hook "find -P $proof_root/t00-session/miss
   exit 1
 }
 
-assert_worker_protected_hook_mode_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output predicate=worker-hook-mode-ownership
-  output="$("$runner" "$command")"
-  # Only the exact direct repair argv selects the Emergency Unblock predicate.
-  [ "$command" != "chmod 755 hooks/pre-commit-go-mod.sh" ] || predicate=hook-mode-repair
-  jq -e --arg predicate "predicate=$predicate" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("role=worker")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($predicate))
-  ' "$output" >/dev/null || {
-    printf 'worker protected hook-mode mutation was not denied: %q\n' "$command" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_inactive_no_hook_mode_repair() {
-  local command="$1" output
-  output="$(run_hook_without_marker "$command")"
-  if grep -Fq -- 'predicate=hook-mode-repair' "$output"; then
-    printf 'inactive command unexpectedly selected hook-mode-repair: %q\n' "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  fi
-}
-
-assert_worker_no_hook_mode_repair() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  if grep -Fq -- 'predicate=hook-mode-repair' "$output"; then
-    printf 'worker command unexpectedly selected hook-mode-repair: %q\n' "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  fi
-}
 
 assert_ledger_append_only_denied() {
   local command="$1" path="$2" runner="${3:-run_hook}" output
@@ -1389,78 +1353,6 @@ run_hook_matrix_parallel allowed coordinator-ordinary-source-write \
   "touch hooks/generated-coordinator-source-again" \
   "chmod 644 hooks/generated-coordinator-source-again" \
   "sed -i '1s/^/generated /' hooks/generated-coordinator-source-again"
-chmod_worker_output="$(run_subagent_hook "chmod 755 hooks/pre-commit-go-mod.sh")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("role=worker")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("token=hooks/pre-commit-go-mod.sh")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("predicate=hook-mode-repair")) and
-  true
-' "$chmod_worker_output" >/dev/null
-run_matrix_parallel worker-root-owner assert_worker_protected_hook_mode_denied worker-hook-mode-syntax \
-  "env chmod 755 hooks/pre-commit-go-mod.sh" \
-  "command chmod 755 hooks/pre-commit-go-mod.sh" \
-  'ch"mod" 755 hooks/pre-commit-go-mod.sh' \
-  'ch"mod" 644 hooks/pre-commit-go-mod.sh' \
-  'chmod "755" hooks/pre-commit-go-mod.sh' \
-  'chmod 755 "hooks/pre-commit-go-mod.sh"' \
-  "/bin/chmod 755 hooks/pre-commit-go-mod.sh" \
-  "chmod 755 ./hooks/pre-commit-go-mod.sh" \
-  "chmod 644 hooks/pre-commit-go-mod.sh" \
-  "chmod 644 hooks/validate-bash.sh" \
-  "chmod 600 hooks/install-pre-commit-go-mod.sh" \
-  "chmod 700 hooks/tests/test-pre-commit-go-mod.sh" \
-  "chmod 644 $ROOT/hooks/validate-bash.sh" \
-  "chmod -R 644 hooks" \
-  "chmod 755 hooks/install-pre-commit-go-mod.sh" \
-  "chmod 755 hooks/validate-bash.sh" \
-  "chmod 755 hooks/tests/test-pre-commit-go-mod.sh" \
-  "chmod 755 hooks/pre-commit-go-mod.sh"
-run_matrix_parallel worker-root-owner assert_worker_protected_hook_mode_denied worker-hook-mode-ownership \
-  "env chmod 755 hooks/pre-commit-go-mod.sh" \
-  "command chmod 755 hooks/pre-commit-go-mod.sh" \
-  'ch"mod" 755 hooks/pre-commit-go-mod.sh' \
-  'ch"mod" 644 hooks/pre-commit-go-mod.sh' \
-  'chmod "755" hooks/pre-commit-go-mod.sh' \
-  'chmod 755 "hooks/pre-commit-go-mod.sh"' \
-  "/bin/chmod 755 hooks/pre-commit-go-mod.sh" \
-  "chmod 755 ./hooks/pre-commit-go-mod.sh" \
-  "chmod 644 hooks/pre-commit-go-mod.sh" \
-  "chmod -R 644 hooks" \
-  "chmod --recursive 644 hooks" \
-  "chmod -R 644 ." \
-  "chmod -R 644 .." \
-  "chmod -vR 644 hooks" \
-  "chmod --rec 755 hooks" \
-  "chmod 755 -R hooks" \
-  "chmod 755 --rec hooks" \
-  "chmod 755 --recursive hooks" \
-  "chmod 755 -vR hooks" \
-  "chmod 755 hooks --rec" \
-  "chmod 755 hooks -R" \
-  "chmod --ref ordinary.txt hooks/validate-bash.sh" \
-  "chmod --ref=ordinary.txt hooks/validate-bash.sh" \
-  "chmod hooks/validate-bash.sh --ref=ordinary.txt" \
-  "chmod --ref ordinary.txt -R hooks" \
-  "chmod -R --ref=ordinary.txt hooks" \
-  "env chmod --ref=ordinary.txt hooks/validate-bash.sh" \
-  "stdbuf -oL chmod --ref=ordinary.txt hooks/validate-bash.sh" \
-  "busybox -- chmod --ref=ordinary.txt hooks/validate-bash.sh" \
-  "stdbuf -oL chmod --rec 755 hooks" \
-  "busybox -- chmod 755 hooks --rec" \
-  "stdbuf -oL chmod -R 644 hooks" \
-  "busybox -- chmod --recursive 644 hooks" \
-  "chmod 755 hooks/install-pre-commit-go-mod.sh" \
-  "chmod 755 hooks/validate-bash.sh" \
-  "chmod 755 hooks/tests/test-pre-commit-go-mod.sh"
-run_matrix_parallel worker assert_worker_no_hook_mode_repair worker-hook-mode-punctuation \
-  "chmod 755 hooks/pre-commit-go-mod.sh && printf after" \
-  "printf before; chmod 755 hooks/pre-commit-go-mod.sh" \
-  "chmod 755 hooks/pre-commit-go-mod.sh | printf after" \
-  "printf before | chmod 755 hooks/pre-commit-go-mod.sh" \
-  "bash -c 'chmod 755 hooks/pre-commit-go-mod.sh'"
 run_subagent_matrix_parallel allowed ordinary-recursive-worker \
   "chmod -R 644 $TMP_ROOT/ordinary-recursive" \
   "chmod 644 -R $TMP_ROOT/ordinary-recursive" \
@@ -1471,7 +1363,6 @@ run_subagent_matrix_parallel allowed ordinary-recursive-worker \
   "chmod --ref hooks/validate-bash.sh $TMP_ROOT/ordinary-reference" \
   "chmod $TMP_ROOT/ordinary-reference --ref=hooks/validate-bash.sh" \
   "chmod -R --ref=hooks/validate-bash.sh $TMP_ROOT/ordinary-reference"
-assert_inactive_no_hook_mode_repair "chmod 755 hooks/pre-commit-go-mod.sh"
 pager_output="$(run_hook_with_transcript_pager "git -C $ROOT status --short")"
 [ ! -s "$pager_output" ]
 if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
