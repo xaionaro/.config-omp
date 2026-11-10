@@ -204,6 +204,8 @@ func TestEditGateFailsClosedOnDispatcherFailure(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name,
 			// runs one failure case against its own stub dispatcher.
+			//
+			// Example: the "non-JSON" case expects the non-JSON fail-closed reason.
 			func(t *testing.T) {
 				fixture := newEditGateFixture(t, tc.body)
 				status, stdout, _ := fixture.run(t, editRequest("/repo/a", "/repo/a"))
@@ -230,6 +232,8 @@ func TestEditGateBoundsDrainAfterDispatcherExit(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name,
 			// times one held-pipe case against its own stub dispatcher.
+			//
+			// Example: the "allow" case returns no decision within the drain bound.
 			func(t *testing.T) {
 				fixture := newEditGateFixture(t, tc.body)
 				started := time.Now()
@@ -297,6 +301,8 @@ func TestEditGateRejectsMalformedRequests(t *testing.T) {
 	for name, request := range cases {
 		t.Run(name,
 			// sends one malformed request and expects a rejection.
+			//
+			// Example: the "unknown tool" case exits 2 with an edit-gate message.
 			func(t *testing.T) {
 				status, stdout, stderr := fixture.run(t, request)
 				assert.Equal(t, statusRejected, status)
