@@ -26,7 +26,6 @@ type cliEvent struct {
 // Example: the first reduce includes the current agent's active transcript branch.
 type cliInput struct {
 	State   State            `json:"state"`
-	CWD     string           `json:"cwd"`
 	Branch  []map[string]any `json:"branch"`
 	Results []cliEvent       `json:"results"`
 	Call    cliEvent         `json:"call"`
@@ -66,9 +65,9 @@ func run(
 	if err := json.NewDecoder(input).Decode(&in); err != nil {
 		return err
 	}
-	req := Request{State: in.State, CWD: in.CWD, Branch: in.Branch}
+	req := Request{State: in.State, Branch: in.Branch}
 	if args[0] == "check" {
-		req.Action, req.Tool, req.Input = "call", in.Call.ToolName, in.Call.Input
+		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
 		req.EditTargets = in.Call.EditTargets
 		response, err := decide(req)
 		if err != nil {
@@ -80,7 +79,7 @@ func run(
 		}{Block: response.Reason != "", Reason: response.Reason})
 	}
 	if len(in.Results) == 0 {
-		req.Action = "result"
+		req.Action = hydrateAction
 		response, err := decide(req)
 		if err != nil {
 			return err
@@ -88,7 +87,7 @@ func run(
 		req.State = response.State
 	}
 	for _, event := range in.Results {
-		req.Action, req.Tool, req.Input, req.Details, req.IsError = "result", event.ToolName, event.Input, event.Details, event.IsError
+		req.Action, req.Tool, req.Input, req.Details, req.IsError = resultAction, event.ToolName, event.Input, event.Details, event.IsError
 		response, err := decide(req)
 		if err != nil {
 			return err

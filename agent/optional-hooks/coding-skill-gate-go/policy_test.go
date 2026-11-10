@@ -1,8 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // completeRead models host read metadata for a complete two-line skill.
@@ -25,15 +26,13 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 		{"edit", map[string]any{"input": "*** Begin Patch\n[file.go#ABCD]\nCUT 1.=1\n*** End Patch"}},
 	} {
 		got, err := decide(Request{Action: "call", Tool: tc.tool, Input: tc.input, State: state})
-		if err != nil || !strings.Contains(got.Reason, "skill://coding-common") || !strings.Contains(got.Reason, "skill://coding-go") {
-			t.Fatalf("%s denied incorrectly: %+v %v", tc.tool, got, err)
-		}
+		require.NoError(t, err)
+		require.Contains(t, got.Reason, "skill://coding-common")
+		require.Contains(t, got.Reason, "skill://coding-go")
 	}
 	for _, name := range []string{"coding-common", "coding-go"} {
 		got, err := decide(Request{Action: "result", Tool: "read", Input: map[string]any{"path": "skill://" + name}, Details: completeRead(), State: state})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		state = got.State
 	}
 	for _, tc := range []struct {
@@ -44,14 +43,12 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 		{"edit", map[string]any{"input": "*** Begin Patch\n[file.go#ABCD]\nCUT 1.=1\n*** End Patch"}},
 	} {
 		got, err := decide(Request{Action: "call", Tool: tc.tool, Input: tc.input, State: state})
-		if err != nil || got.Reason != "" {
-			t.Fatalf("%s blocked after reads: %+v %v", tc.tool, got, err)
-		}
+		require.NoError(t, err)
+		require.Empty(t, got.Reason)
 	}
 	got, err := decide(Request{Action: "call", Tool: "write", Input: map[string]any{"path": "a.py"}, State: state})
-	if err != nil || !strings.Contains(got.Reason, "skill://coding-python") {
-		t.Fatalf("Python read not required: %+v %v", got, err)
-	}
+	require.NoError(t, err)
+	require.Contains(t, got.Reason, "skill://coding-python")
 }
 
 // TestSkillEvidenceRejectsPartialReads verifies host completeness metadata.
@@ -59,24 +56,16 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 // Example: a raw range is not a complete skill read.
 func TestSkillEvidenceRejectsPartialReads(t *testing.T) {
 	for _, path := range []string{"skill://coding-go:1-2", "skill://coding-go:raw:1-2", "/tmp/coding-go/SKILL.md"} {
-		if got := verifiedSkill(map[string]any{"path": path}, completeRead()); got != "" {
-			t.Fatalf("%s credited as %s", path, got)
-		}
+		require.Empty(t, verifiedSkill(map[string]any{"path": path}, completeRead()), path)
 	}
 	partial := completeRead()
 	partial["totalLines"] = float64(3)
-	if got := verifiedSkill(map[string]any{"path": "skill://coding-go"}, partial); got != "" {
-		t.Fatalf("partial credited: %s", got)
-	}
+	require.Empty(t, verifiedSkill(map[string]any{"path": "skill://coding-go"}, partial))
 	truncated := completeRead()
 	truncated["truncation"] = map[string]any{"truncated": true}
-	if got := verifiedSkill(map[string]any{"path": "skill://coding-go"}, truncated); got != "" {
-		t.Fatalf("truncation credited: %s", got)
-	}
+	require.Empty(t, verifiedSkill(map[string]any{"path": "skill://coding-go"}, truncated))
 	for _, path := range []string{"skill://coding-go", "skill://coding-go/SKILL.md"} {
-		if got := verifiedSkill(map[string]any{"path": path}, completeRead()); got != "coding-go" {
-			t.Fatalf("%s not credited: %s", path, got)
-		}
+		require.Equal(t, skillGo, verifiedSkill(map[string]any{"path": path}, completeRead()), path)
 	}
 }
 
@@ -85,9 +74,7 @@ func TestSkillEvidenceRejectsPartialReads(t *testing.T) {
 // Example: totalLines excludes the final newline but lineNumbers includes it.
 func TestRawSkillRead(t *testing.T) {
 	details := map[string]any{"raw": true, "totalLines": float64(2), "displayContent": map[string]any{"startLine": float64(1), "lineNumbers": []any{float64(1), float64(2), float64(3)}, "text": "first\nsecond\n"}}
-	if got := verifiedSkill(map[string]any{"path": "skill://coding-go:raw"}, details); got != "coding-go" {
-		t.Fatalf("complete raw read not credited: %s", got)
-	}
+	require.Equal(t, skillGo, verifiedSkill(map[string]any{"path": "skill://coding-go:raw"}, details))
 }
 
 // TestBranchHydrationRequiresSuccessfulPairs restores only the active transcript.
@@ -100,7 +87,7 @@ func TestBranchHydrationRequiresSuccessfulPairs(t *testing.T) {
 		{"type": "message", "message": map[string]any{"role": "toolResult", "toolName": "read", "toolCallId": "2", "details": completeRead(), "isError": true}},
 	}
 	got, err := decide(Request{Action: "call", Tool: "write", Input: map[string]any{"path": "a.go"}, Branch: branch})
-	if err != nil || strings.Contains(got.Reason, "coding-common") || !strings.Contains(got.Reason, "coding-go") {
-		t.Fatalf("incorrect hydration: %+v %v", got, err)
-	}
+	require.NoError(t, err)
+	require.NotContains(t, got.Reason, "coding-common")
+	require.Contains(t, got.Reason, "coding-go")
 }

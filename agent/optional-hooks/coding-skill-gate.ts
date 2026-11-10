@@ -38,6 +38,26 @@ function description(value: unknown): Description {
 	return { callTools: value.callTools, resultTools: value.resultTools };
 }
 
+// Retain only read call/result pairs needed by the Go policy during hydration.
+function skillReadHistory(ctx: ExtensionContext): unknown[] {
+	const ids = new Set<string>();
+	const history: unknown[] = [];
+	for (const entry of ctx.sessionManager.getBranch()) {
+		if (entry.type !== "message") continue;
+		const message = entry.message;
+		if (message.role === "assistant") {
+			const calls = message.content.filter(part => part.type === "toolCall" && part.name === "read" &&
+				typeof part.arguments.path === "string" && part.arguments.path.startsWith("skill://coding-"));
+			for (const call of calls) if (call.type === "toolCall") ids.add(call.id);
+			if (calls.length) history.push({type: "message", message: {role: "assistant", content: calls}});
+		} else if (message.role === "toolResult" && ids.has(message.toolCallId)) {
+			history.push({type: "message", message: {role: "toolResult", toolName: message.toolName,
+				toolCallId: message.toolCallId, details: message.details, isError: message.isError}});
+		}
+	}
+	return history;
+}
+
 export default function codingSkillGate(pi: ExtensionAPI): void {
 	const root = getAgentDir();
 	const binary = join(root, "optional-hooks", "coding-skill-gate");
@@ -67,14 +87,15 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 	}
 
 	async function reduce(slot: AgentState, ctx: ExtensionContext, results: HostEvent[]): Promise<void> {
-		const branch = !slot.initialized && ctx.agent?.id === ownAgent ? ctx.sessionManager.getBranch() : undefined;
-		const response = await invoke(binary, "reduce", { state: slot.state, cwd: ctx.cwd, branch, results });
+		const branch = !slot.initialized && ctx.agent?.id === ownAgent ? skillReadHistory(ctx) : undefined;
+		const response = await invoke(binary, "reduce", { state: slot.state, branch, results });
 		if (response === null || typeof response !== "object" || !("state" in response) || response.state === null || typeof response.state !== "object") throw new Error("invalid engine state");
 		slot.state = response.state;
 		slot.initialized = true;
 	}
 
 	pi.on("tool_result", async (event, ctx) => {
+		if (event.toolName !== "read" || typeof event.input.path !== "string" || !event.input.path.startsWith("skill://coding-")) return;
 		const current = generation;
 		try {
 			if (!(await describe).resultTools.includes(event.toolName)) return;
@@ -100,7 +121,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 					const targets = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
 					if (targets.length) editTargets = targets;
 				}
-				const response = await invoke(binary, "check", { state: slot.state, cwd: ctx.cwd, call: { toolName: event.toolName, input: event.input, editTargets } });
+				const response = await invoke(binary, "check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
 				if (!response.block) return undefined;
@@ -108,8 +129,9 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				return { block: true, reason: response.reason };
 			});
 		} catch (error) {
+			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
 			if (!["write", "edit"].includes(event.toolName)) return undefined;
-			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Restore the separately provisioned engine at ${binary}, or remove the optional hook and restart the session.` };
+			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Restore the separately provisioned engine at ${binary} and restart, or remove the optional hook and restart.` };
 		}
 	});
 }

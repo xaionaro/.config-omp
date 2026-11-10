@@ -67,6 +67,34 @@ test("does not hydrate an advisor from its parent's transcript", async () => {
 	expect(last.branch ?? []).toEqual([]);
 });
 
+test("sends only skill read history to the policy engine", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const branch = [
+		{type: "message", message: {role: "assistant", content: [{type: "toolCall", id: "skill", name: "read", arguments: {path: "skill://coding-common"}}, {type: "toolCall", id: "other", name: "read", arguments: {path: "large.txt"}}]}},
+		{type: "message", message: {role: "toolResult", toolCallId: "other", toolName: "read", content: [{type: "text", text: "unrelated large data"}]}},
+		{type: "message", message: {role: "toolResult", toolCallId: "skill", toolName: "read", details: {totalLines: 1}}},
+	];
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "history", getBranch: () => branch}};
+	await handlers.session_start({}, ctx);
+	await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx);
+	const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+	const history = requests.filter(request => request.mode === "reduce").at(-1).branch;
+	expect(JSON.stringify(history)).not.toContain("large.txt");
+	expect(JSON.stringify(history)).not.toContain("unrelated large data");
+	expect(JSON.stringify(history)).toContain("skill://coding-common");
+});
+
+test("does not send unrelated reads to the policy engine", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "unrelated", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const before = readFileSync(join(root, "requests.jsonl"), "utf8");
+	await handlers.tool_result({toolName: "read", input: {path: "large.txt"}, isError: false}, ctx);
+	expect(readFileSync(join(root, "requests.jsonl"), "utf8")).toBe(before);
+});
+
 test("does not credit pending same-batch reads and resets on navigation", async () => {
 	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
 	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);

@@ -13,13 +13,13 @@ var patchHeader = regexp.MustCompile(`^\[(.+)#[A-Za-z0-9]{4}\]\s*$`)
 // writeTargets extracts concrete mutation paths from host tool inputs.
 //
 // Example: an edit rename contributes its destination path.
-func writeTargets(req Request) ([]string, error) {
+func writeTargets(req Request) []string {
 	switch req.Tool {
 	case "write":
-		return []string{asString(req.Input["path"])}, nil
+		return []string{asString(req.Input["path"])}
 	case "edit":
 		if req.EditTargets != nil {
-			return req.EditTargets, nil
+			return req.EditTargets
 		}
 		paths := append([]string{asString(req.Input["path"])}, stringsFrom(req.Input["paths"])...)
 		patch := asString(req.Input["input"])
@@ -43,7 +43,7 @@ func writeTargets(req Request) ([]string, error) {
 				paths = append(paths, rename)
 			}
 		}
-		return paths, nil
+		return paths
 	}
-	return nil, nil
+	return nil
 }

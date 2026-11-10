@@ -6,27 +6,66 @@ import (
 	"strings"
 )
 
+// Skill identifies a coding skill by its host URI name.
+//
+// Example: skillGo corresponds to skill://coding-go.
+type Skill string
+
+// skillCommon identifies the language-independent coding skill.
+//
+// Example: Go and Python writes both require skillCommon.
+const skillCommon Skill = "coding-common"
+
+// skillGo identifies the Go coding skill.
+//
+// Example: editing a Go file requires skillGo.
+const skillGo Skill = "coding-go"
+
+// skillPython identifies the Python coding skill.
+//
+// Example: writing a Python file requires skillPython.
+const skillPython Skill = "coding-python"
+
 // State holds the current agent's completed skill reads.
 //
 // Example: a navigation event replaces the state with an empty value.
 type State struct {
-	Reads    map[string]bool `json:"reads"`
-	Hydrated bool            `json:"hydrated"`
+	Reads    map[Skill]bool `json:"reads"`
+	Hydrated bool           `json:"hydrated"`
 }
+
+// Action identifies which kind of host event the policy processes.
+//
+// Example: a completed read uses resultAction.
+type Action string
+
+// resultAction records the outcome of a completed tool call.
+//
+// Example: a successful read can add skill evidence.
+const resultAction Action = "result"
+
+// callAction checks a proposed tool call.
+//
+// Example: an edit is checked before it reaches the host.
+const callAction Action = "call"
+
+// hydrateAction restores evidence without processing a tool result.
+//
+// Example: the first proposed write loads the active branch.
+const hydrateAction Action = "hydrate"
 
 // Request contains one host event and the agent state supplied by the adapter.
 //
 // Example: a successful read result records skill evidence in State.
 type Request struct {
-	Action      string           `json:"action"`
-	Tool        string           `json:"tool"`
-	Input       map[string]any   `json:"input"`
-	Details     map[string]any   `json:"details"`
-	EditTargets []string         `json:"editTargets"`
-	IsError     bool             `json:"isError"`
-	CWD         string           `json:"cwd"`
-	Branch      []map[string]any `json:"branch"`
-	State       State            `json:"state"`
+	Action      Action
+	Tool        string
+	Input       map[string]any
+	Details     map[string]any
+	EditTargets []string
+	IsError     bool
+	Branch      []map[string]any
+	State       State
 }
 
 // Response returns the next opaque state and any actionable denial.
@@ -43,15 +82,14 @@ type Response struct {
 func decide(req Request) (Response, error) {
 	state := req.State
 	if state.Reads == nil {
-		state.Reads = map[string]bool{}
+		state.Reads = map[Skill]bool{}
 	}
 	if !state.Hydrated {
-		if err := hydrate(&state, req); err != nil {
-			return Response{}, err
-		}
+		hydrate(&state, req)
 		state.Hydrated = true
 	}
-	if req.Action == "result" {
+	switch req.Action {
+	case resultAction:
 		if req.Tool == "read" && !req.IsError {
 			skill := verifiedSkill(req.Input, req.Details)
 			if skill != "" {
@@ -59,23 +97,22 @@ func decide(req Request) (Response, error) {
 			}
 		}
 		return Response{State: state}, nil
-	}
-	if req.Action != "call" {
+	case hydrateAction:
+		return Response{State: state}, nil
+	case callAction:
+	default:
 		return Response{}, fmt.Errorf("unknown event action %q", req.Action)
 	}
-	paths, err := writeTargets(req)
-	if err != nil {
-		return Response{}, err
-	}
+	paths := writeTargets(req)
 	for _, path := range paths {
-		lang := languageForPath(path)
-		if lang == "" {
+		targetSkill := languageForPath(path)
+		if targetSkill == "" {
 			continue
 		}
 		var missing []string
-		for _, skill := range []string{"coding-common", "coding-" + lang} {
+		for _, skill := range []Skill{skillCommon, targetSkill} {
 			if !state.Reads[skill] {
-				missing = append(missing, "skill://"+skill)
+				missing = append(missing, "skill://"+string(skill))
 			}
 		}
 		if len(missing) > 0 {
@@ -91,7 +128,7 @@ func decide(req Request) (Response, error) {
 func hydrate(
 	state *State,
 	req Request,
-) error {
+) {
 	calls := map[string]map[string]any{}
 	for _, entry := range req.Branch {
 		if asString(entry["type"]) != "message" {
@@ -119,13 +156,15 @@ func hydrate(
 			}
 		}
 	}
-	return nil
 }
 
 // verifiedSkill recognizes a complete, successful unselected skill URI read.
 //
 // Example: an incomplete two-line result does not credit a longer skill.
-func verifiedSkill(input map[string]any, details map[string]any) string {
+func verifiedSkill(
+	input map[string]any,
+	details map[string]any,
+) Skill {
 	path := asString(input["path"])
 	raw := strings.HasSuffix(path, ":raw")
 	if raw {
@@ -150,8 +189,8 @@ func verifiedSkill(input map[string]any, details map[string]any) string {
 			return ""
 		}
 	}
-	for _, name := range []string{"coding-common", "coding-go", "coding-python"} {
-		if path == "skill://"+name || path == "skill://"+name+"/SKILL.md" {
+	for _, name := range []Skill{skillCommon, skillGo, skillPython} {
+		if path == "skill://"+string(name) || path == "skill://"+string(name)+"/SKILL.md" {
 			return name
 		}
 	}
@@ -161,7 +200,7 @@ func verifiedSkill(input map[string]any, details map[string]any) string {
 // languageForPath maps a file extension to a coding skill name.
 //
 // Example: a.go requires coding-go and coding-common.
-func languageForPath(path string) string {
+func languageForPath(path string) Skill {
 	if match := patchHeader.FindStringSubmatch(path); len(match) == 2 {
 		path = match[1]
 	}
@@ -170,9 +209,9 @@ func languageForPath(path string) string {
 	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".go":
-		return "go"
+		return skillGo
 	case ".py":
-		return "python"
+		return skillPython
 	default:
 		return ""
 	}
