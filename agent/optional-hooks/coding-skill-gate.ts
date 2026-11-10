@@ -1,5 +1,6 @@
 // Optional hook: install only after separately provisioning its Go policy engine.
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { resolveEditMode } from "@oh-my-pi/pi-coding-agent/utils/edit-mode";
 import { editInspect } from "@oh-my-pi/pi-natives";
 import { getAgentDir } from "@oh-my-pi/pi-utils";
 import { spawn } from "node:child_process";
@@ -117,7 +118,9 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				let editTargets: string[] | undefined;
 				if (event.toolName === "edit") {
-					const inspection = editInspect("hashline", JSON.stringify(event.input));
+					const mode = resolveEditMode({settings: pi.pi.settings, getActiveModelString: () =>
+						ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined});
+					const inspection = editInspect(mode, JSON.stringify(event.input));
 					const targets = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
 					if (targets.length) editTargets = targets;
 				}

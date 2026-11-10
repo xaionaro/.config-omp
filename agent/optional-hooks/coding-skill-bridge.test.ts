@@ -6,6 +6,7 @@ import type gateFactory from "./coding-skill-gate.ts";
 
 let root: string;
 let gate: typeof gateFactory;
+let editMode = "hashline";
 
 beforeAll(async () => {
 	root = mkdtempSync(join(tmpdir(), "coding-skill-bridge-"));
@@ -32,7 +33,8 @@ if (mode === 'describe') {
 `);
 	chmodSync(engine, 0o755);
 	mock.module("@oh-my-pi/pi-utils", () => ({ getAgentDir: () => root }));
-	mock.module("@oh-my-pi/pi-natives", () => ({ editInspect: () => ({paths: [], fileOps: []}) }));
+	mock.module("@oh-my-pi/pi-natives", () => ({ editInspect: (mode: string) => ({paths: [mode === "sloppy" ? "notes.txt" : "a.go"], fileOps: []}) }));
+	mock.module("@oh-my-pi/pi-coding-agent/utils/edit-mode", () => ({ resolveEditMode: () => editMode }));
 	// Load after replacing the host-bundled modules.
 	gate = (await import("./coding-skill-gate.ts")).default;
 });
@@ -93,6 +95,21 @@ test("does not send unrelated reads to the policy engine", async () => {
 	const before = readFileSync(join(root, "requests.jsonl"), "utf8");
 	await handlers.tool_result({toolName: "read", input: {path: "large.txt"}, isError: false}, ctx);
 	expect(readFileSync(join(root, "requests.jsonl"), "utf8")).toBe(before);
+});
+
+test("uses the active edit mode when inspecting targets", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "sloppy", getBranch: () => []}};
+	editMode = "sloppy";
+	try {
+		await handlers.session_start({}, ctx);
+		await handlers.tool_call({toolName: "edit", input: {input: "*** Edit File: notes.txt\n*** Find\n[a.go#ABCD]\n*** Replace\n[b.go#1234]"}}, ctx);
+		const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+		expect(requests.filter(request => request.mode === "check").at(-1).call.editTargets).toEqual(["notes.txt"]);
+	} finally {
+		editMode = "hashline";
+	}
 });
 
 test("does not credit pending same-batch reads and resets on navigation", async () => {
