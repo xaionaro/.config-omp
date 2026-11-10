@@ -306,7 +306,7 @@ run_hook() {
           ;;
         *) printf 'unknown callback PATH mode: %s\n' "$path_mode" >&2; exit 64 ;;
       esac
-    ) >"$output" 2>>"$stderr"
+    ) >"$output" 2>>"$stderr" || return $?
   printf '%s\n' "$output"
 }
 
@@ -401,7 +401,7 @@ run_compound_handoff_boundary_target() {
 
   local replay
   replay="$(jq -cn --arg cwd "$inner" '[{segment:1,parent_segment:2,prefix:["./timeout","5"],cwd:$cwd,command_path:"",command_path_set:false,command_path_exported:false,disposition:"observed"}]')"
-  output="$(run_hook "./timeout 5 rm eci_active" worker configured absent "$REPO" "$replay" true true "$inner")"
+  output="$(run_hook "./timeout 5 rm eci_active" worker configured absent "$REPO" "$replay" true true "$inner")" || return $?
   [ ! -s "$output" ] || {
     printf 'valid compound handoff was denied: %s\n' "$(cat -- "$output")" >&2
     return 1
@@ -412,7 +412,7 @@ run_compound_handoff_boundary_target() {
 
 assert_allowed() {
   local command="$1" role="${2:-coordinator}" path_mode="${3:-configured}" probe_required="${4:-absent}" callback_cwd="${5:-$REPO}" timeout_replays="${6:-[]}" compound_replay="${7:-false}" fd9_mode="${8:-none}" fd9_token="${9:-normal-git-test-handoff}" output
-  output="$(run_hook "$command" "$role" "$path_mode" "$probe_required" "$callback_cwd" "$timeout_replays" "$compound_replay" true "$callback_cwd" "$fd9_mode" "$fd9_token")"
+  output="$(run_hook "$command" "$role" "$path_mode" "$probe_required" "$callback_cwd" "$timeout_replays" "$compound_replay" true "$callback_cwd" "$fd9_mode" "$fd9_token")" || return $?
   if [ -s "$output" ]; then
     printf 'ordinary Git command was denied: %q\n' "$command" >&2
     cat -- "$output" >&2
@@ -423,7 +423,7 @@ assert_allowed() {
 assert_denied_code() {
   local command="$1" code="$2" role="${3:-coordinator}" detail="${4:-}" path_mode="${5:-configured}" probe_required="${6:-absent}" callback_cwd="${7:-$REPO}" timeout_replays="${8:-[]}" compound_replay="${9:-false}" compound_handoff="${10:-true}" output
   local compound_cwd="${11:-$callback_cwd}"
-  output="$(run_hook "$command" "$role" "$path_mode" "$probe_required" "$callback_cwd" "$timeout_replays" "$compound_replay" "$compound_handoff" "$compound_cwd")"
+  output="$(run_hook "$command" "$role" "$path_mode" "$probe_required" "$callback_cwd" "$timeout_replays" "$compound_replay" "$compound_handoff" "$compound_cwd")" || return $?
   jq -e --arg code "[$code]" --arg detail "$detail" '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains($code)) and

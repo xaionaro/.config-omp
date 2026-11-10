@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 runtime="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
@@ -30,7 +31,7 @@ fi
 # transcript under $HOME/.omp/agent/sessions; without one the hook classifies the
 # caller as a worker.
 scratch_home="$scratch/home"
-mkdir -p "$scratch_home/.omp/agent/eci" "$scratch_home/.omp/agent/sessions/-native-allow-"
+mkdir -p "$scratch_home/.omp/agent/eci" "$scratch_home/.omp/agent/sessions/-native-allow-" "$scratch/config/eci"
 cp -a "$runtime/hooks" "$scratch_home/.omp/agent/eci/"
 GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" HOME="$scratch_home" \
   bash "$scratch_home/.omp/agent/eci/hooks/build-native-binaries.sh" >/dev/null
@@ -38,12 +39,17 @@ transcript="$scratch_home/.omp/agent/sessions/-native-allow-/main.jsonl"
 jq -cn --arg cwd "$work" '{type:"session",version:3,id:"session",cwd:$cwd}' >"$transcript"
 printf '%s\n' '{"type":"message","message":{"role":"user","content":"native allowance"}}' >>"$transcript"
 printf 'scope: test\ncwd: %s\nsession_id: session\n' "$work" > "$scratch/proof/session/eci_active"
+printf 'enforcing\n' >"$scratch/config/eci/command-gate-mode"
 run_hook() {
-  jq -cn --arg cwd "$work" --arg command "bash $dependency/check.sh" --arg transcript "$transcript" \
+  jq -cn --arg cwd "$work" --arg command "${1:-bash $dependency/check.sh}" --arg transcript "$transcript" \
     '{session_id:"session",cwd:$cwd,transcript_path:$transcript,tool_name:"Bash",tool_input:{command:$command}}' |
-    HOME="$scratch_home" ECI_PROOF_ROOT="$scratch/proof" \
+    HOME="$scratch_home" ECI_PROOF_ROOT="$scratch/proof" XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" \
       bash "$scratch_home/.omp/agent/eci/hooks/validate-bash.sh"
 }
 printf '#!/bin/sh\nexit 0\n' > "$dependency/check.sh"
-if [ -n "$(run_hook)" ]; then echo 'Dependency script unexpectedly denied' >&2; exit 1; fi
+output="$(run_hook)" || { echo 'Dependency callback failed' >&2; exit 1; }
+[ -z "$output" ] || { echo 'Dependency script unexpectedly denied' >&2; exit 1; }
+negative="$(run_hook 'rm -rf /')" || { echo 'Negative callback failed' >&2; exit 1; }
+jq -e '.hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("ECI_BROAD_DESTRUCTIVE_DENIED"))' <<<"$negative" >/dev/null
 printf '%s\n' 'Native repository allowance: PASS'

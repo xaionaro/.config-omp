@@ -926,7 +926,7 @@ OMP_INIT_LINE='{"type":"session_init","customType":"session_init","data":{}}'
 
 # An omp subagent transcript sits at depth three under the omp sessions root and declares a
 # string parentSession, the header that classifies it as a subagent (hook_context.go
-# hookTranscriptVerified; eci-proof-state.sh eci_hook_omp_transcript_status). A depth-one transcript in the pre-migration source 575bb81 thread_spawn form is classified as main.
+# hookTranscriptStatus; eci-proof-state.sh eci_hook_omp_transcript_status). A depth-one transcript in the pre-migration source 575bb81 thread_spawn form is classified as main.
 write_omp_subagent_transcript() {
   local path="$1"
   mkdir -p "$(dirname "$path")" || return 1

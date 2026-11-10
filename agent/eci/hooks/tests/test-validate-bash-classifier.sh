@@ -223,7 +223,7 @@ run_hook() {
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$coordinator_transcript" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -233,7 +233,7 @@ run_hook_with_canonical_tmpdir() {
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$coordinator_transcript" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     TMPDIR="$classifier_tmp_parent" ECI_TMPDIR="$classifier_tmp_parent" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -244,7 +244,7 @@ run_hook_with_tmpdir_home_alias() {
     --arg transcript "$tmpdir_alias_home/.omp/agent/sessions/-classifier-coordinator-/main.jsonl" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     HOME="$tmpdir_alias_home" TMPDIR="$tmpdir_alias_home/tmp" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -396,7 +396,7 @@ run_hook_without_marker() {
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
     '{session_id:"t00-no-marker",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$TMP_ROOT/no-marker-proof" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -456,33 +456,11 @@ if [ "${VALIDATE_BASH_CLASSIFIER_COPIED_HOME_LIFECYCLE_ONLY:-false}" = true ]; t
   exit 0
 fi
 
-# Command-gate permissive mode is telemetry for inactive callbacks only. An
-# active ECI marker must preserve each targeted denial locally rather than
-# passing it to `eci-command-gate-mode finalize`, which would otherwise turn
-# the callback into an allow. An opaque shell shape that does not identify a
-# concrete harmful target is hook-transparent; exercise the targeted legacy
-# denial and that transparent fallback, as well as a missing structural test
-# target. A missing ordinary script path is likewise transparent: the shell is
-# responsible for reporting that normal execution failure, not this gate.
+# Permissive mode leaves ordinary commands transparent, regardless of a stale
+# marker. A missing ordinary script remains the shell's execution error.
 printf '%s\n' permissive >"$XDG_CONFIG_HOME/eci/command-gate-mode"
 active_permissive_gate_log="$XDG_STATE_HOME/eci/command-gate/would-deny.jsonl"
 [ ! -e "$active_permissive_gate_log" ]
-active_permissive_case=0
-assert_active_permissive_denied_without_finalize() {
-  local command="$1" code="$2" operation="$3" output
-  active_permissive_case=$((active_permissive_case + 1))
-  output="$TMP_ROOT/active-permissive-${active_permissive_case}.json"
-  run_hook "$command" "$output" >/dev/null
-  jq -e --arg code "$code" --arg operation "$operation" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains($code)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains(("operation=" + $operation)))
-  ' "$output" >/dev/null
-  [ ! -e "$active_permissive_gate_log" ] || {
-    printf 'active permissive denial unexpectedly invoked eci-command-gate-mode finalize: command=%q\n' "$command" >&2
-    return 1
-  }
-}
 
 # An active marker does not make a coordinator behavioral instruction into a
 # PreToolUse denial. It remains transparent and must not reach permissive-mode
@@ -552,7 +530,7 @@ run_hook_with_kimi_home() {
     --arg transcript "$companion_home/.omp/agent/sessions/-classifier-coordinator-/main.jsonl" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     HOME="$companion_home" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$companion_root" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -571,7 +549,7 @@ run_hook_without_kimi_home() {
     --arg transcript "$kimi_home/.omp/agent/sessions/-classifier-coordinator-/main.jsonl" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     env -u KIMI_CODE_HOME HOME="$kimi_home" ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -583,7 +561,7 @@ run_hook_with_transcript() {
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -595,7 +573,7 @@ run_hook_with_transcript_pager() {
   jq -cn --arg cwd "$ROOT" --arg command "$command" --arg transcript "$transcript" \
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" KIMI_CODE_HOME="$kimi_root" GIT_PAGER=cat PATH="$ROOT/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -623,7 +601,7 @@ run_subagent_hook() {
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" HOME="$hook_home" ECI_HOME="$subagent_eci_home" KIMI_CODE_HOME="$kimi_root" \
       PATH="$subagent_eci_home/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -645,7 +623,7 @@ run_subagent_matrix_parallel() {
     commands[index]="$command"
     results[index]="$result"
     (
-      run_subagent_hook "$command" type-first "$output" "$transcript" >/dev/null
+      run_subagent_hook "$command" type-first "$output" "$transcript" >/dev/null || exit $?
       case "$expectation" in
         allowed)
           [ ! -s "$output" ] || {
@@ -718,7 +696,7 @@ run_hook_matrix_parallel() {
     commands[index]="$command"
     results[index]="$result"
     (
-      run_hook "$command" "$output" >/dev/null
+      run_hook "$command" "$output" >/dev/null || exit $?
       case "$expectation" in
         allowed)
           [ ! -s "$output" ] || {
@@ -780,12 +758,12 @@ run_matrix_parallel() {
     results[index]="$result"
     (
       case "$role" in
-        coordinator) run_hook "$command" "$output" >/dev/null ;;
-        worker) run_subagent_hook "$command" type-first "$output" "$transcript" >/dev/null ;;
+        coordinator) run_hook "$command" "$output" >/dev/null || exit $? ;;
+        worker) run_subagent_hook "$command" type-first "$output" "$transcript" >/dev/null || exit $? ;;
         # A real Worker shares the coordinator HOME, so $ROOT is its own
         # protected provider root (protectedHookModeRoots is HOME-derived).
-        worker-root-owner) run_subagent_hook "$command" type-first "$output" "$transcript" "$HOME" >/dev/null ;;
-        peer) run_hook_with_kimi_home "$command" "$kimi_root" "$output" >/dev/null ;;
+        worker-root-owner) run_subagent_hook "$command" type-first "$output" "$transcript" "$HOME" >/dev/null || exit $? ;;
+        peer) run_hook_with_kimi_home "$command" "$kimi_root" "$output" >/dev/null || exit $? ;;
         *) printf 'unknown parallel matrix role: %s\n' "$role" >&2; exit 1 ;;
       esac
       MATRIX_OUTPUT="$output" "$validator" "$command" matrix_output_runner
@@ -814,7 +792,7 @@ run_subagent_hook_at_root() {
     '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,transcript_path:$transcript,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$alternate_root" HOME="$alternate_home" ECI_HOME="$subagent_eci_home" \
       ECI_HOOK_IS_SUBAGENT=true ECI_ROLE=worker PATH="$subagent_eci_home/bin:$PATH" \
-      bash "$classifier_hook_fixture" >"$output"
+      bash "$classifier_hook_fixture" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
@@ -876,7 +854,7 @@ assert_worker_initial_case() {
 
 assert_allowed() {
   local command="$1" runner="${2:-run_hook}" output
-  output="$("$runner" "$command")"
+  output="$("$runner" "$command")" || return $?
   [ ! -s "$output" ] || {
     cat "$output" >&2
     return 1
@@ -974,7 +952,7 @@ assert_git_whole_worktree_staging_denied() {
 
 assert_coordinator_protected_git_target_denied() {
   local command="$1" runner="${2:-run_hook}" output
-  output="$($runner "$command")"
+  output="$("$runner" "$command")" || return $?
   jq -e --arg ROOT "$ROOT" '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
@@ -1778,7 +1756,7 @@ run_matrix_parallel worker assert_allowed worker-git-staging-add \
   "git add README.md"
 run_subagent_matrix_parallel allowed worker-git-staging \
   "git restore --staged -- hooks/validate-bash.sh"
-run_matrix_parallel worker assert_coordinator_protected_git_target_denied worker-git-prep \
+run_matrix_parallel worker-root-owner assert_coordinator_protected_git_target_denied worker-git-prep \
   "git rm -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh"
 
@@ -1986,7 +1964,7 @@ run_isolated_worker_hook() {
       HOME="$isolated_worker_home" ECI_PROOF_ROOT="$isolated_worker_proof_root" \
         ECI_HOME="$isolated_worker_root" PATH="$isolated_worker_root/bin:$PATH" \
         bash "$classifier_hook_fixture" >"$output"
-  )
+  ) || return $?
   printf '%s\n' "$output"
 }
 
@@ -1995,7 +1973,7 @@ run_isolated_worker_hook() {
 assert_isolated_worker_structural_allowed() {
   local label="$1" command="$2" output
 
-  output="$(run_isolated_worker_hook "$command")"
+  output="$(run_isolated_worker_hook "$command")" || return $?
   [ ! -s "$output" ] || {
     printf 'isolated worker benign structural form was denied: %s command=%q output=%s\n' \
       "$label" "$command" "$output" >&2
@@ -2091,14 +2069,14 @@ run_isolated_coordinator_hook() {
         ECI_PROOF_ROOT="$isolated_coordinator_proof_root" ECI_HOME="$isolated_coordinator_root" \
         KIMI_CODE_HOME="$isolated_coordinator_peer" \
         PATH="$ROOT/bin:$PATH" bash "$classifier_hook_fixture" >"$output"
-  )
+  ) || return $?
   printf '%s\n' "$output"
 }
 
 assert_isolated_coordinator_structural_allowed() {
   local command="$1" output
 
-  output="$(run_isolated_coordinator_hook "$command")"
+  output="$(run_isolated_coordinator_hook "$command")" || return $?
   [ ! -s "$output" ] || {
     printf 'isolated coordinator structural test route was not admitted: %s\n' "$command" >&2
     cat -- "$output" >&2
@@ -2372,7 +2350,7 @@ assert_subagent_control_denied() {
 
 assert_diagnostic_denied() {
   local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
+  output="$("$runner" "$command")" || return $?
   jq -e '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_")) and
@@ -2579,7 +2557,7 @@ run_subagent_matrix_parallel allowed worker-instruction-reads \
 run_subagent_matrix_parallel allowed worker-native-git \
   "git commit --amend -m checkpoint" \
   "git reset --hard HEAD"
-run_matrix_parallel worker assert_diagnostic_denied worker-protected-git \
+run_matrix_parallel worker-root-owner assert_diagnostic_denied worker-protected-git \
   "git checkout -- hooks/validate-bash.sh"
 run_subagent_matrix_parallel allowed worker-native-worktree-add \
   "git worktree add /tmp/eci-worker-tree HEAD"

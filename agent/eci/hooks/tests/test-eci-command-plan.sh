@@ -122,7 +122,7 @@ run_hook() {
 assert_allowed() {
   local provider="$1" role="$2" active="$3" command="$4" output
   output="$TMP_ROOT/output.json"
-  run_hook "$provider" "$role" "$active" "$command" "$output"
+  run_hook "$provider" "$role" "$active" "$command" "$output" || return $?
   if [ -s "$output" ]; then
     printf 'expected allow: provider=%s role=%s active=%s command=%q\n' \
       "$provider" "$role" "$active" "$command" >&2
@@ -134,7 +134,7 @@ assert_allowed() {
 assert_denied() {
   local provider="$1" role="$2" active="$3" command="$4" code="$5" output
   output="$TMP_ROOT/output.json"
-  run_hook "$provider" "$role" "$active" "$command" "$output"
+  run_hook "$provider" "$role" "$active" "$command" "$output" || return $?
   jq -e --arg code "[$code]" '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains($code)) and

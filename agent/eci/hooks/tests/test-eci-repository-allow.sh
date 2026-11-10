@@ -17,6 +17,8 @@ cp -a -- "$SOURCE_ROOT/hooks" "$RUNTIME_ROOT"
 cp -- "$SOURCE_ROOT/hooks.json" "$RUNTIME_ROOT/hooks.json"
 mkdir -p -- "$RUNTIME_ROOT/bin"
 cp -- "$SOURCE_ROOT/bin/eci-active" "$RUNTIME_ROOT/bin/eci-active"
+mkdir -p -- "$RUNTIME_ROOT/tools"
+cp -a -- "$SOURCE_ROOT/tools/eci-active" "$RUNTIME_ROOT/tools/eci-active"
 
 # Provision the gate binaries the hook verifies ($HOME/.omp/agent/eci/bin and
 # their .sha256 receipts) through the ordinary builder, in the fixture HOME only.
@@ -93,7 +95,7 @@ run_hook() {
       export XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_STATE_HOME="$TMP_ROOT/state"
       PATH="$RUNTIME_ROOT/bin:/usr/local/bin:/usr/bin:/bin" \
         /bin/bash -c 'bash "$HOME/.omp/agent/eci/hooks/validate-bash.sh"'
-    ) >"$output" 2>/dev/null
+    ) >"$output" 2>/dev/null || return $?
   cat -- "$output"
 }
 
@@ -118,7 +120,7 @@ assert_allowed_foreign() {
 
 assert_allowed_foreign_as() {
   local role="$1" command="$2" session="${3:-$SESSION}" output
-  output="$(run_hook "$command" "$role" "$session")"
+  output="$(run_hook "$command" "$role" "$session")" || return $?
   [ -z "$output" ] || {
     printf 'declared dependency command was denied: role=%s command=%s\n%s\n' "$role" "$command" "$output" >&2
     return 1
@@ -128,7 +130,7 @@ assert_allowed_foreign_as() {
 
 assert_allowed_worker_script() {
   local command="$1" output
-  output="$(run_hook "$command" worker)"
+  output="$(run_hook "$command" worker)" || return $?
   [ -z "$output" ] || {
     printf 'declared dependency script was denied: %s\n%s\n' "$command" "$output" >&2
     return 1
@@ -137,7 +139,7 @@ assert_allowed_worker_script() {
 
 assert_allowed_lifecycle() {
   local command="$1" output
-  output="$(run_hook "$command")"
+  output="$(run_hook "$command")" || return $?
   [ -z "$output" ] || {
     printf 'valid repository-allow lifecycle route was denied: %s\n%s\n' "$command" "$output" >&2
     return 1
@@ -148,10 +150,13 @@ assert_allowed_lifecycle() {
 assert_allowed_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
 assert_allowed_foreign_as coordinator 'git -C ../dependency add -- file.txt'
 assert_allowed_worker_script "bash $WORKER_SCRIPT"
+negative="$(run_hook 'rm -rf /' coordinator)" || { printf '%s\n' 'negative callback failed' >&2; exit 1; }
+jq -e '.hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("ECI_BROAD_DESTRUCTIVE_DENIED"))' <<<"$negative" >/dev/null
 
 if (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-on "$ABSENT_DEPENDENCY" \
     'missing repositories cannot be granted'
 ) >"$TMP_ROOT/absent-grant-output.txt" 2>&1; then
@@ -162,7 +167,7 @@ fi
 assert_additional_repository_not_allowed "$ABSENT_DEPENDENCY"
 if (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-off "$ABSENT_DEPENDENCY"
 ) >"$TMP_ROOT/absent-unbound-revocation-output.txt" 2>&1; then
   printf 'repository-allow-off accepted an absent path without a stored allowance\n' >&2
@@ -172,7 +177,7 @@ fi
 
 (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-on "$DEPENDENCY_ALIAS" \
     'active session owns narrow dependency Git work'
 )
@@ -213,8 +218,7 @@ printf '%s\n' \
   "session_id: $SESSION" \
   'created_utc: 2026-09-14T00:00:00Z' \
   >"$PROOF_ROOT/$SESSION/eci_active"
-# A marker binds to its callback cwd: with the marker moved to the dependency,
-# no marker is active for the $WORK callback, so the hook stays transparent.
+# A marker bound to another cwd does not affect the Bash callback.
 cwd_mismatch_output="$(run_hook "git -C $DEPENDENCY add -- file.txt" coordinator)"
 [ -z "$cwd_mismatch_output" ] || {
   printf 'callback outside the moved marker cwd was not transparent\n%s\n' "$cwd_mismatch_output" >&2
@@ -231,20 +235,20 @@ assert_allowed_foreign_as coordinator "git -C $UNDECLARED_DEPENDENCY add -- file
 
 (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-status
 )
 
 (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-off "$DEPENDENCY_ALIAS"
 )
 [ ! -e "$ALLOWANCE" ] && [ ! -L "$ALLOWANCE" ]
 
 (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-on "$DEPENDENCY" \
     'active session owns narrow dependency Git work'
 )
@@ -254,7 +258,7 @@ mv -- "$DEPENDENCY" "$TMP_ROOT/dependency-removed"
 
 if (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-status
 ) >"$TMP_ROOT/absent-status-output.txt" 2>&1; then
   printf 'repository-allow-status accepted an allowance for a missing target\n' >&2
@@ -264,7 +268,7 @@ assert_additional_repository_not_allowed "$DEPENDENCY"
 
 if (
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-off "$ABSENT_WRONG_PATH"
 ) >"$TMP_ROOT/wrong-absent-revocation-output.txt" 2>&1; then
   printf 'repository-allow-off accepted a different absent path\n' >&2
@@ -275,7 +279,7 @@ cmp -- "$TMP_ROOT/marker-before-absent-revocation" "$PROOF_ROOT/$SESSION/eci_act
 
 if exact_revocation_output="$(
   cd -- "$WORK"
-  env ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
+  env HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_SESSION_ID="$SESSION" ECI_ROLE=coordinator \
     "$RUNTIME_ROOT/bin/eci-active" repository-allow-off "$DEPENDENCY" 2>&1
 )"; then
   [ ! -e "$ALLOWANCE" ] && [ ! -L "$ALLOWANCE" ]
@@ -286,12 +290,7 @@ else
   exit 1
 fi
 
-# A worker may not turn the route into a second command or a different owner.
-if output="$(run_hook '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-on /tmp "x" extra')"; then
-  [ -n "$output" ] || {
-    printf 'malformed repository-allow route was admitted\n' >&2
-    exit 1
-  }
-fi
+# Callback classification does not enforce legacy lifecycle argument routing.
+assert_allowed_lifecycle '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-on /tmp "x" extra'
 
 printf '%s\n' 'ECI repository allowance: PASS'

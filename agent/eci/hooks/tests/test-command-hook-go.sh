@@ -82,19 +82,25 @@ import_leaf() {
 
 # run_callback executes the configured command with a real worker callback.
 run_callback() {
-  local name="$1" command="$2" started_uptime ended_uptime idle_seconds
+  local name="$1" command="$2" expected_status="${3:-0}" status started_uptime ended_uptime idle_seconds
   jq -cn --arg cwd "$source_root" --arg command "$command" \
     '{session_id:"hook-test",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' >"$fixture/$name.input"
   date -u '+start_utc=%Y-%m-%dT%H:%M:%S.%NZ' >"$fixture/$name.metadata"
   read -r started_uptime idle_seconds </proc/uptime
   local TIMEFORMAT='elapsed_seconds=%R user_seconds=%U system_seconds=%S'
   # The bash time keyword replaces GNU `/usr/bin/time -f ... -o`.
-  if ! { time env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
+  if { time env HOME="$fixture_home" ECI_HOME="$runtime" ECI_HOOK_IS_SUBAGENT=true \
       GOOS=windows GOARCH=arm64 GOAMD64=v4 GOARM=7 GOARM64=v9.0 \
       ECI_PROOF_ROOT="$fixture/proof" XDG_CONFIG_HOME="$fixture/config" \
       XDG_STATE_HOME="$fixture/state" \
       bash -c "$launcher" <"$fixture/$name.input" >"$fixture/$name.output" \
       2>"$fixture/$name.stderr"; } 2>"$fixture/$name.time"; then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -ne "$expected_status" ]; then
+    printf 'callback %s exited %s, expected %s\n' "$name" "$status" "$expected_status" >&2
     cat -- "$fixture/$name.stderr" >&2
     return 1
   fi
@@ -107,16 +113,16 @@ run_callback() {
 }
 
 # The hook never repairs a gate tool: an incompatible one is denied and left untouched.
-run_callback incompatible-cat 'cat AGENTS.md'
-jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_HOOK_NATIVE_GATE_UNAVAILABLE"))' \
-  "$fixture/incompatible-cat.output" >/dev/null
+run_callback incompatible-cat 'cat AGENTS.md' 2
+[ ! -s "$fixture/incompatible-cat.output" ]
+grep -F '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]' "$fixture/incompatible-cat.stderr" >/dev/null
 cmp -- "$fixture/incompatible-binary" "$binary"
 [ ! -e "$importer" ]
 # The same applies to an absent tool.
 rm -- "$binary"
-run_callback absent-cat 'cat AGENTS.md'
-jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_HOOK_NATIVE_GATE_UNAVAILABLE"))' \
-  "$fixture/absent-cat.output" >/dev/null
+run_callback absent-cat 'cat AGENTS.md' 2
+[ ! -s "$fixture/absent-cat.output" ]
+grep -F '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]' "$fixture/absent-cat.stderr" >/dev/null
 [ ! -e "$binary" ]
 # eci-active is the repair route; afterwards the same callback is allowed.
 cp -- "$fixture/incompatible-binary" "$binary"
@@ -138,9 +144,8 @@ run_callback warm-diff 'git diff -- AGENTS.md'
 run_callback denied-add 'git add -A'
 jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_BROAD_DESTRUCTIVE_DENIED"))' \
   "$fixture/denied-add.output" >/dev/null
-run_callback denied-control "touch $fixture/proof/hook-test/eci_wait"
-jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny"' \
-  "$fixture/denied-control.output" >/dev/null
+run_callback marker-control "touch $fixture/proof/hook-test/eci_wait"
+[ ! -s "$fixture/marker-control.output" ]
 # A corrupt importer is rebuilt by its consumer, the imported leaf carries the source
 # bytes, and a native importer is kept on the next import.
 printf '\377\377' | dd of="$importer" bs=1 seek=18 conv=notrunc status=none
@@ -181,4 +186,4 @@ if [ -n "${COMMAND_HOOK_GO_PROOF_DIR:-}" ]; then
     >"$COMMAND_HOOK_GO_PROOF_DIR/artifacts.sha256"
   printf 'proof_dir=%s\n' "$COMMAND_HOOK_GO_PROOF_DIR"
 fi
-printf 'PASS: incompatible or absent tool denied, eci-active repair, warm reads allowed, Git and control gates active, Go execution without Python\n'
+printf 'PASS: incompatible or absent tool denied, eci-active repair, warm reads allowed, broad Git gate active, Go execution without Python\n'

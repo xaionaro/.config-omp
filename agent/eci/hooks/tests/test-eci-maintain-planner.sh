@@ -142,8 +142,23 @@ run_hook_with_home() {
     '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)' |
     HOME="$selected_home" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$selected_eci_home" KIMI_CODE_HOME="$KIMI_HOME" \
       ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
-      bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$output"
+      bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$output" || return $?
   printf '%s\n' "$output"
+}
+
+assert_hook_unavailable() {
+  local command="$1" transcript="$2" status
+  if jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$command" --arg transcript "$transcript" \
+    '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",transcript_path:$transcript,tool_input:{command:$command}}' |
+    HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$FIXTURE_HOME" KIMI_CODE_HOME="$KIMI_HOME" \
+      ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
+      bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$TMP_ROOT/unavailable.out" 2>"$TMP_ROOT/unavailable.err"; then
+    status=0
+  else
+    status=$?
+  fi
+  [ "$status" -eq 2 ] && [ ! -s "$TMP_ROOT/unavailable.out" ] &&
+    grep -F '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]' "$TMP_ROOT/unavailable.err" >/dev/null
 }
 
 exact_command='$HOME/.omp/agent/eci/bin/eci-active maintain-planner'
@@ -282,25 +297,15 @@ rmdir -- "$planner_transaction_dir"
 restore_full_runtime_receipt
 fixture_root_mode="$(eci_stat mode "$FIXTURE_HOME")"
 chmod o+w -- "$FIXTURE_HOME"
-world_writable_output="$(run_hook "$exact_command" "$MAIN_TRANSCRIPT")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
-' "$world_writable_output" >/dev/null || {
-  printf '%s\n' 'world-writable runtime root was not denied by the native gate:' >&2
-  cat -- "$world_writable_output" >&2
+assert_hook_unavailable "$exact_command" "$MAIN_TRANSCRIPT" || {
+  printf '%s\n' 'world-writable runtime root did not report native gate failure' >&2
   exit 1
 }
 chmod "$fixture_root_mode" -- "$FIXTURE_HOME"
 restore_full_runtime_receipt
 chmod g+w -- "$FIXTURE_HOME/bin" "$FIXTURE_HOME/hooks"
-group_writable_dirs_output="$(run_hook "$quoted_exact_command" "$MAIN_TRANSCRIPT")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
-' "$group_writable_dirs_output" >/dev/null || {
-  printf '%s\n' 'group-writable bin directory was not denied by the native gate:' >&2
-  cat -- "$group_writable_dirs_output" >&2
+assert_hook_unavailable "$quoted_exact_command" "$MAIN_TRANSCRIPT" || {
+  printf '%s\n' 'group-writable runtime directories did not report native gate failure' >&2
   exit 1
 }
 chmod g-w -- "$FIXTURE_HOME/bin" "$FIXTURE_HOME/hooks"
