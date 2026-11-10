@@ -388,9 +388,9 @@ func hookTestDiagnostic(request Request) *Diagnostic {
 	return inspectHookEffects(request, result)
 }
 
-// TestHookCleanupTargets protects existing live hooks while retaining leaf cleanup.
+// TestHookCleanupTargets leaves legitimate hook removal and ordinary cleanup native.
 //
-// Example: deleting a generated cache leaf is harmless; deleting its live hook is not.
+// Example: removing a live hook is not denied by a gate without a bounded hatch.
 func TestHookCleanupTargets(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -412,8 +412,41 @@ func TestHookCleanupTargets(t *testing.T) {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
-			require.Falsef(t, diagnostic == nil, "live-hook destruction allowed: %s", command)
+			require.Nilf(t, diagnostic, "hook removal denied: %s", command)
 		}
+	}
+}
+
+// TestHookGitRemovalRemainsNative preserves checkout protection independently.
+//
+// Example: git rm of a hook is allowed while checkout of it remains protected.
+func TestHookGitRemovalRemainsNative(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := filepath.Join(home, ".omp")
+	hook := filepath.Join(repo, "agent", "eci", "hooks", "validate-bash.sh")
+	requireHookDirectory(t, filepath.Dir(hook))
+	requireHookFile(t, hook, "hook")
+	output, err := hookGitOutput(repo, "init")
+	require.NoErrorf(t, err, "%s", output)
+	for _, tc := range []struct {
+		command string
+		denied  bool
+	}{
+		{"git rm agent/eci/hooks/validate-bash.sh", false},
+		{"git mv agent/eci/hooks/validate-bash.sh saved", false},
+		{"git checkout -- agent/eci/hooks/validate-bash.sh", true},
+		{"git add -A", true},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: repo, CWDKnown: true, Command: tc.command, CollectShellCommands: true}
+			diagnostic := inspectHookEffects(request, Classify(request))
+			if tc.denied {
+				require.NotNil(t, diagnostic)
+			} else {
+				require.Nil(t, diagnostic)
+			}
+		})
 	}
 }
 

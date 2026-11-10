@@ -557,10 +557,12 @@ func TestHookContextTouchedBaseline(t *testing.T) {
 // Example: refreshing stale tracked-file metadata does not rewrite the index.
 func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
 	_, cwd := contextFixture(t)
+	foreignIndex := filepath.Join(t.TempDir(), "foreign-index")
+	t.Setenv("GIT_INDEX_FILE", foreignIndex)
 	file := filepath.Join(cwd, "tracked")
 	require.NoError(t, os.WriteFile(file, []byte("data"), 0600))
 	for _, args := range [][]string{{"init"}, {"add", "tracked"}} {
-		output, err := exec.Command("git", append([]string{"-C", cwd}, args...)...).CombinedOutput()
+		output, err := hookGitOutput(cwd, args...)
 		require.NoErrorf(t, err, "%s", output)
 	}
 	old := time.Unix(1000000000, 0)
@@ -577,6 +579,8 @@ func TestHookTouchedRepositoryPreservesIndex(t *testing.T) {
 	afterInfo, err := os.Stat(index)
 	require.NoError(t, err)
 	require.Equal(t, before, after)
+	_, err = os.Stat(foreignIndex)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Equal(t, info.ModTime(), afterInfo.ModTime())
 }
 

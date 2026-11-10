@@ -22,7 +22,7 @@ const (
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
 //
-// Example: a cleanup command selecting a live hook returns a diagnostic.
+// Example: a whole-index Git add returns a diagnostic.
 func inspectHookEffects(
 	request Request,
 	result Result,
@@ -50,9 +50,6 @@ func inspectHookEffects(
 			continue
 		}
 		if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
-			return diagnostic
-		}
-		if diagnostic := inspectHookCleanup(record, child); diagnostic != nil {
 			return diagnostic
 		}
 		childRequest := request
@@ -752,8 +749,8 @@ func inspectHookGitBroad(
 	return diagnostic
 }
 
-// inspectHookGitProtectedTarget checks explicit physical writes to live hooks.
-// Index-only staging or removal leaves the physical hook entry intact.
+// inspectHookGitProtectedTarget checks checkout writes to live hooks.
+// Index-only operations leave the physical hook entry intact.
 //
 // Example: git checkout -- hooks/validate-bash.sh names a live hook.
 func inspectHookGitProtectedTarget(
@@ -763,11 +760,11 @@ func inspectHookGitProtectedTarget(
 	repository string,
 ) *Diagnostic {
 	verb := argv[verbIndex].value
-	if verb != "checkout" && verb != "rm" && verb != "mv" {
+	if verb != "checkout" {
 		return nil
 	}
 	physical := true
-	paths := verb == "rm" || verb == "mv"
+	paths := false
 	for _, argument := range argv[verbIndex+1:] {
 		if argument.value == "--cached" || argument.value == "--staged" || argument.value == "-S" {
 			physical = false
@@ -788,8 +785,8 @@ func inspectHookGitProtectedTarget(
 			continue
 		}
 		if target, protected := protectedHookModeTargetPath(repository, argument.value); protected {
-			diagnostic := diagnosticForToken(hookCodeCoordinatorEditRouting, "Git "+verb+" physically overwrites, removes or relocates protected live hook "+target,
-				record.Segment, argument.offset, argument, "the responsible Producer edits this tracked hook source in place and stages exact owned paths through native Git (the typed Worker Git route is built but not launcher-wired, so its operations are unavailable); use index-only unstage for index correction; do not reroute the same destructive operation", "coordinator-protected-target")
+			diagnostic := diagnosticForToken(hookCodeCoordinatorEditRouting, "Git checkout physically overwrites protected live hook "+target,
+				record.Segment, argument.offset, argument, "edit tracked hook source in place and stage exact owned paths through native Git", "coordinator-protected-target")
 			diagnostic.Path = target
 			return diagnostic
 		}
@@ -988,60 +985,4 @@ func hookSessionsOperandDiagnostic(
 		segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
 	diagnostic.Path = resolved
 	return diagnostic
-}
-
-// inspectHookCleanup protects existing live hooks from removal or relocation.
-// Generated and ordinary task-owned leaves remain available for scoped cleanup.
-//
-// Example: rm of a live validate-bash.sh or its ancestor names the affected hook.
-func inspectHookCleanup(
-	record ShellCommandRecord,
-	argv []token,
-) *Diagnostic {
-	name := filepath.Base(argv[0].value)
-	if name != "rm" && name != "mv" && name != "rmdir" && name != "unlink" && name != "shred" && name != "srm" {
-		return nil
-	}
-	for _, argument := range argv[1:] {
-		if argument.value == "" || strings.HasPrefix(argument.value, "-") || !hookArgumentKnown(record, argument.offset) {
-			continue
-		}
-		if !filepath.IsAbs(argument.value) && !record.CWDKnown {
-			continue
-		}
-		target := argument.value
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(record.CWD, target)
-		}
-		if hookUnlinksDirectoryEntry(argv) {
-			entry, err := resolvePathEntryWithMissingSuffix(target)
-			if err != nil {
-				// The cleanup target remains advisory when its parent entry
-				// cannot be observed; do not invent a live-hook relationship.
-				continue
-			}
-			target = entry
-		}
-		if !hookUnlinksDirectoryEntry(argv) {
-			target = resolvePathIdentity(target)
-		}
-		for _, root := range protectedHookModeRoots() {
-			for _, relative := range protectedHookModeRelativePaths {
-				hook := filepath.Join(root, relative)
-				if !pathWithin(hook, target) {
-					continue
-				}
-				if info, err := os.Stat(hook); err != nil || !info.Mode().IsRegular() {
-					// Missing or unavailable hook entries do not prove a live
-					// target. Keep ordinary cleanup available in that case.
-					continue
-				}
-				diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "cleanup "+name+" removes or relocates live provider hook "+hook+" through target "+target,
-					record.Segment, argument.offset, argument, "remove only the exact owned generated artifact; preserve this live hook entry and edit tracked source in place through its responsible Producer", "live-hook-cleanup")
-				diagnostic.Path = target
-				return diagnostic
-			}
-		}
-	}
-	return nil
 }
