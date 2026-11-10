@@ -5,8 +5,9 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { homedir } from "node:os";
 import { on } from "node:events";
 import { join } from "node:path";
-import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, bashHostCwd, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
+import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, advisoryContext, bashHostCwd, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
 import eciBashGate from "../pre/eci-bash-gate";
+import eciSessionStart from "../post/eci-session-start";
 
 const id = { sessionId: "s", cwd: "/", isSubagent: false };
 const savedPath = process.env.PATH;
@@ -80,6 +81,44 @@ test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empt
 	expect(preToolVerdict(failed, "validate-bash")?.reason).toContain("exited 1: boom");
 	const quiet = await runEciHook(script("quiet.sh", "exit 0\n"), {}, id, 10);
 	expect(preToolVerdict(quiet, "validate-bash")).toBeUndefined();
+});
+
+test("advisory context is delivered only for a successful matching envelope", () => {
+	const stdout = JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "snapshot" } });
+	expect(advisoryContext({ outcome: exited(0), stdout, stderr: "" }, "SessionStart")).toBe("snapshot");
+	expect(advisoryContext({ outcome: exited(0), stdout, stderr: "" }, "UserPromptSubmit")).toBeUndefined();
+	for (const outcome of [
+		exited(1),
+		deadline("graceful"),
+		{ kind: "spawn-error" as const, message: "unavailable" },
+		{ kind: "ran" as const, stop: { kind: "exit" as const, code: 0 }, cleanup: "unconfirmed" as const },
+	]) {
+		expect(advisoryContext({ outcome, stdout, stderr: "" }, "SessionStart")).toBeUndefined();
+	}
+});
+
+test("session-start factory emits a hidden advisory and suppresses failed hooks", async () => {
+	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+	const messages: unknown[] = [];
+	eciSessionStart({ on: (_name: string, callback: typeof handler) => { handler = callback; }, sendMessage: (...args: unknown[]) => { messages.push(args); } } as never);
+	const savedHome = process.env.HOME;
+	const hooks = join(dir, ".omp", "agent", "eci", "hooks");
+	mkdirSync(hooks, { recursive: true });
+	const hook = join(hooks, "session-snapshot.sh");
+	const envelope = JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "snapshot" } });
+	const ctx = { cwd: dir, sessionManager: { getSessionFile: () => undefined } };
+	try {
+		process.env.HOME = dir;
+		writeFileSync(hook, `printf '%s\\n' '${envelope}'\n`);
+		await handler!({}, ctx);
+		expect(messages).toEqual([[{ customType: "eci-session-snapshot", content: "snapshot", display: false, attribution: "agent" }, { deliverAs: "nextTurn" }]]);
+		writeFileSync(hook, "exit 1\n");
+		await handler!({}, ctx);
+		expect(messages).toHaveLength(1);
+	} finally {
+		if (savedHome === undefined) delete process.env.HOME;
+		else process.env.HOME = savedHome;
+	}
 });
 
 test("Bash failures block with fixed diagnostics without exposing hook data", () => {

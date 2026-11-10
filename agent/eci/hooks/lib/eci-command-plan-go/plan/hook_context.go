@@ -527,11 +527,12 @@ func recordHookActivity(
 			for index := 1; index+1 < len(argv); index++ {
 				if argv[index] == "--repo" {
 					directory := argv[index+1]
-					if filepath.IsAbs(directory) {
+					switch {
+					case filepath.IsAbs(directory):
 						touched.CWD = directory
-					} else if filepath.IsAbs(touched.CWD) {
+					case filepath.IsAbs(touched.CWD):
 						touched.CWD = filepath.Join(touched.CWD, directory)
-					} else {
+					default:
 						touched.CWD = ""
 					}
 					break
