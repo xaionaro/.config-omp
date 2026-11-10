@@ -13,7 +13,7 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
-**Context:** Follow the active workflow's checkout rules and [clean system and repair](../../eci-binding-contract.md#clean-system-and-repair). Use a dedicated worktree only when permitted by that workflow and needed for isolation. ECI follows its [shared-tree rules](../explore-critique-implement/references/fast-path.md#shared-tree-and-eci-priority).
+**Context:** Follow the [Git policy](../../eci-binding-contract.md#git), including its SSOT checkout and branch rules. ECI also follows its [shared-tree rules](../explore-critique-implement/references/fast-path.md#shared-tree-and-eci-priority).
 
 **Save plans to:** the destination recommended by the tool-hook flow that redirects `docs/plans` artifacts.
 - Do not choose or hardcode a path inside the working repo, including `docs/plans/` or `docs/superpowers/plans/`.
