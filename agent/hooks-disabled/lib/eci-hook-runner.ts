@@ -359,7 +359,7 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 
 /** Blocks an unchecked Bash call without exposing callback data. */
 export function bashGateUnavailable(detail: string): PreToolVerdict {
-	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. Repair the gate outside the blocked Bash tool, then retry; if it remains unavailable, continue non-Bash work and report it.` };
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. If eci_bash_gate_repair is available (top-level or xd://eci_bash_gate_repair), call it, then retry; if unavailable here or the gate stays unavailable, continue non-Bash work and report it to the parent.` };
 }
 
 /** Accepts only a complete Bash gate decision; failures never expose hook output. */

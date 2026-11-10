@@ -96,7 +96,8 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 	]) {
 		const verdict = bashPreToolVerdict(run);
 		expect(verdict?.block).toBe(true);
-		expect(verdict?.reason).toContain("outside the blocked Bash tool");
+		expect(verdict?.reason).toContain("If eci_bash_gate_repair is available");
+		expect(verdict?.reason).toContain("if unavailable here");
 		expect(verdict?.reason).not.toContain("secret");
 	}
 	expect(bashPreToolVerdict({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })?.reason).toBe("bounded route");
@@ -104,14 +105,14 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 	expect(BASH_GATE_DEADLINE_SEC + KILL_GRACE_SEC + DRAIN_SEC).toBeLessThan(30);
 });
 
-test("Bash factory exceptions block with external repair guidance without exposing the exception", async () => {
+test("Bash factory exceptions block with conditional repair guidance without exposing the exception", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
-	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; } } as never);
+	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; }, zod: { object: () => ({}) }, registerTool: () => {} } as never);
 	expect(handler).toBeDefined();
 	const event = { toolName: "bash", get input(): never { throw new Error("sensitive-value"); } };
 	const verdict = await handler!(event, {});
 	expect(verdict).toMatchObject({ block: true });
-	expect(JSON.stringify(verdict)).toContain("outside the blocked Bash tool");
+	expect(JSON.stringify(verdict)).toContain("If eci_bash_gate_repair is available");
 	expect(JSON.stringify(verdict)).not.toContain("sensitive-value");
 });
 
@@ -139,7 +140,7 @@ test("Bash cwd only claims host spellings it can resolve exactly", () => {
 
 test("Bash callback uses the session manager identity without inventing a transcript", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
-	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; } } as never);
+	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; }, zod: { object: () => ({}) }, registerTool: () => {} } as never);
 	const savedHome = process.env.HOME;
 	const hooks = join(dir, ".omp", "agent", "eci", "hooks");
 	mkdirSync(hooks, { recursive: true });

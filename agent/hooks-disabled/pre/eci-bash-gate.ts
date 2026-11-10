@@ -1,10 +1,12 @@
 // omp PreToolUse gate for `bash` → validate-bash.sh.
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { BASH_GATE_DEADLINE_SEC, basePayload, bashGateUnavailable, bashHostCwd, bashPreToolVerdict, identityFor, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
+import { registerBashGateRepair } from "../lib/eci-bash-repair.ts";
 
 const SCRIPT = "validate-bash.sh";
 
 export default function eciBashGate(pi: ExtensionAPI): void {
+	registerBashGateRepair(pi);
 	pi.on("tool_call", async (event, ctx) => {
 		try {
 			if (event.toolName !== "bash") return undefined;
