@@ -190,6 +190,19 @@ eci_native_provision() (
 
 # Provision only the helper and, on Linux, the verifier needed to run it.
 eci_native_prepare_hook() (
+  local account_home cache
+  if { [ -z "${GOCACHE:-}" ] || [ -z "${GOMODCACHE:-}" ]; } && command -v go >/dev/null 2>&1; then
+    source "$eci_native_provision_lib/eci-portable.sh"
+    account_home="$(eci_user_home)" || { printf 'eci-native-provision: cannot resolve account home\n' >&2; return 1; }
+    if [ -z "${GOCACHE:-}" ]; then
+      cache="$(cd / && HOME="$account_home" GOTOOLCHAIN=local GOFLAGS=' ' go env GOCACHE)" || return 1
+      case "$cache" in /*) GOCACHE="$cache"; export GOCACHE ;; *) printf 'eci-native-provision: go env GOCACHE did not return an absolute path\n' >&2; return 1 ;; esac
+    fi
+    if [ -z "${GOMODCACHE:-}" ]; then
+      cache="$(cd / && HOME="$account_home" GOTOOLCHAIN=local GOFLAGS=' ' go env GOMODCACHE)" || return 1
+      case "$cache" in /*) GOMODCACHE="$cache"; export GOMODCACHE ;; *) printf 'eci-native-provision: go env GOMODCACHE did not return an absolute path\n' >&2; return 1 ;; esac
+    fi
+  fi
   eci_native_gate_set=eci-hook-helper
   eci_native_receipt_only=
   [ "$eci_runtime_platform" != Linux ] || eci_native_receipt_only=eci-verexec

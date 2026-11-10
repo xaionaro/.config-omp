@@ -8,8 +8,6 @@
 #   eci_sha256_hex FILE                      the 64-hex digest alone
 #   eci_mtime FILE                           modification time with sub-second digits, for
 #                                            equality checks only (GNU %y / BSD %Fm text)
-#   eci_user_home                            the current user's home from the user database
-#                                            (~user tilde expansion; getent is absent on macOS)
 #   eci_tree_listing DIR DEPTH               sorted "relpath:type:size" lines for entries up to
 #                                            DEPTH below DIR (find -printf '%P:%y:%s' stand-in)
 #   eci_test_run_with_deadline SECS CMD...   CMD with stdin passed through, in its own process
@@ -42,14 +40,6 @@ eci_mtime() {
   else
     stat -c %y -- "${1:?file}"
   fi
-}
-
-eci_user_home() {
-  local user home
-  user="$(id -un)" || return 1
-  case "$user" in *[!A-Za-z0-9._-]*|'') return 1 ;; esac
-  eval "home=~$user"
-  case "$home" in /*) printf '%s\n' "$home" ;; *) return 1 ;; esac
 }
 
 eci_tree_listing() {

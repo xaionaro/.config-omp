@@ -24,20 +24,8 @@ export async function ensureHookBinary(): Promise<string> {
 	let build = builds.get(root);
 	if (!build) {
 		build = (async () => {
-			const env = { ...process.env };
-			const missing = ["GOCACHE", "GOMODCACHE"].filter(name => !env[name]);
-			if (missing.length) {
-				const { stdout } = await exec("go", ["env", "-json", ...missing], {
-					cwd: "/", env: { ...env, HOME: userInfo().homedir, GOTOOLCHAIN: "local", GOFLAGS: " " },
-				});
-				const caches = JSON.parse(stdout) as Record<string, string>;
-				for (const name of missing) {
-					if (!isAbsolute(caches[name] ?? "")) throw new Error(`go env ${name} did not return an absolute path`);
-					env[name] = caches[name];
-				}
-			}
 			const provisioner = join(root, "eci", "hooks", "lib", "eci-native-provision.sh");
-			await exec("bash", ["-c", 'source "$1" && eci_native_prepare_hook', "bash", provisioner], { env });
+			await exec("bash", ["-c", 'source "$1" && eci_native_prepare_hook', "bash", provisioner]);
 		})();
 		builds.set(root, build);
 		build.finally(() => builds.delete(root)).catch(() => {});

@@ -13,6 +13,7 @@
 #   eci_realpath_relative BASE PATH  realpath -m --relative-to=BASE PATH
 #   eci_stat FIELD PATH              FIELD: mode (octal permission bits, e.g. 755), dev, uid, size,
 #                                    type (GNU %F wording: regular file, directory, symbolic link, ...)
+#   eci_user_home                    account home from the user database, independent of HOME
 #
 # Example: eci_stat mode /tmp prints 1777 on both hosts.
 
@@ -23,6 +24,15 @@ if [ "$eci_portable_platform" = Darwin ]; then
 else
   eci_sha256_command=(sha256sum)
 fi
+
+# Tilde expansion queries the account database on Linux and macOS without using HOME.
+eci_user_home() {
+  local user home
+  user="$(id -un)" || return 1
+  case "$user" in *[!A-Za-z0-9._-]*|'') return 1 ;; esac
+  eval "home=~$user"
+  case "$home" in /*) printf '%s\n' "$home" ;; *) return 1 ;; esac
+}
 
 eci_sha256() {
   "${eci_sha256_command[@]}" "$@"

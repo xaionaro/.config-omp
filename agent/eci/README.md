@@ -43,6 +43,8 @@ bash 3.2.
   the helper directly. Provisioning does not enable either hook. A source change
   does not refresh an existing binary: rebuild it with
   `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`.
+  Hook provisioning inherits `GOCACHE` and `GOMODCACHE` when set; otherwise it
+  resolves them with `go env` using the account home, not the hook's `HOME`.
 - No GNU coreutils are needed: the hook libraries take their `sha256sum`, `realpath`
   and `stat` forms from `hooks/lib/eci-portable.sh`, and the adapters need no `timeout`.
 
