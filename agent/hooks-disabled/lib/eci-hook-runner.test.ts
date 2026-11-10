@@ -5,6 +5,7 @@ import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
+import eciBashGate from "../pre/eci-bash-gate";
 
 const id = { sessionId: "s", cwd: "/", isSubagent: false };
 const savedPath = process.env.PATH;
@@ -85,6 +86,17 @@ test("Bash hook transport failures explain how to diagnose and retry without cha
 	expect(timeout?.reason).toContain("disk");
 	const malformed = preToolVerdict({ ok: true, code: 0, stdout: "broken", stderr: "" }, "validate-bash");
 	expect(malformed?.reason).toContain("outside the blocked Bash tool");
+});
+
+test("Bash factory exceptions block with external repair guidance without exposing the exception", async () => {
+	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; } } as never);
+	expect(handler).toBeDefined();
+	const event = { toolName: "bash", get input(): never { throw new Error("sensitive-value"); } };
+	const verdict = await handler!(event, {});
+	expect(verdict).toMatchObject({ block: true });
+	expect(JSON.stringify(verdict)).toContain("outside the blocked Bash tool");
+	expect(JSON.stringify(verdict)).not.toContain("sensitive-value");
 });
 
 test("a deadline stops the hook with SIGTERM and reports 124", async () => {

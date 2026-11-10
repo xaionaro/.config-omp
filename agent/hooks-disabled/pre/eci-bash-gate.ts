@@ -17,8 +17,8 @@ export default function eciBashGate(pi: ExtensionAPI): void {
 				75,
 			);
 			return preToolVerdict(run, "validate-bash");
-		} catch (err) {
-			return { block: true, reason: "ECI hook error: " + String(err) };
+		} catch {
+			return preToolVerdict({ ok: false, code: -1, stdout: "", stderr: "unexpected hook runner failure" }, "validate-bash");
 		}
 	});
 }
