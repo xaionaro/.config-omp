@@ -142,7 +142,7 @@ test("does not carry an in-flight old-branch result across navigation", async ()
 
 test("reports an actionable error when the provisioned engine disappears", async () => {
 	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
-	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
 	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "five", getBranch: () => []}};
 	await handlers.session_start({}, ctx);
 	await handlers.tool_result({toolName: "read", input: {path: "skill://coding-common"}, isError: false}, ctx);
@@ -151,6 +151,11 @@ test("reports an actionable error when the provisioned engine disappears", async
 	try {
 		const result = await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx);
 		expect(result).toMatchObject({block: true, reason: expect.stringContaining("Restore the separately provisioned engine")});
+		expect(await handlers.tool_call({toolName: "write", input: {path: "[a.go#ABCD]"}}, ctx)).toMatchObject({block: true});
+		expect(await handlers.tool_call({toolName: "write", input: {path: "notes.txt"}}, ctx)).toBeUndefined();
+		editMode = "sloppy";
+		expect(await handlers.tool_call({toolName: "edit", input: {input: "*** Edit File: notes.txt"}}, ctx)).toBeUndefined();
+		editMode = "hashline";
 	} finally {
 		renameSync(`${engine}.held`, engine);
 	}

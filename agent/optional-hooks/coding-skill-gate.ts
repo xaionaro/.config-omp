@@ -109,21 +109,22 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 
 	pi.on("tool_call", async (event, ctx): Promise<Verdict> => {
 		const current = generation;
+		let editTargets: string[] | undefined;
+		let paths = event.toolName === "write" && typeof event.input.path === "string" ? [event.input.path] : [];
 		try {
+			if (event.toolName === "edit") {
+				const mode = resolveEditMode({settings: pi.pi.settings, getActiveModelString: () =>
+					ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined});
+				const inspection = editInspect(mode, JSON.stringify(event.input));
+				paths = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
+				if (paths.length) editTargets = paths;
+			}
 			if (!(await describe).callTools.includes(event.toolName)) return undefined;
 			if (current !== generation) throw new Error("session changed; retry the call");
 			return await enqueue(ctx, async slot => {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (!slot.initialized) await reduce(slot, ctx, []);
 				if (current !== generation) throw new Error("session changed; retry the call");
-				let editTargets: string[] | undefined;
-				if (event.toolName === "edit") {
-					const mode = resolveEditMode({settings: pi.pi.settings, getActiveModelString: () =>
-						ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined});
-					const inspection = editInspect(mode, JSON.stringify(event.input));
-					const targets = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
-					if (targets.length) editTargets = targets;
-				}
 				const response = await invoke(binary, "check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
@@ -132,8 +133,8 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				return { block: true, reason: response.reason };
 			});
 		} catch (error) {
+			if (!paths.some(path => /\.(?:go|py)(?:#[a-f0-9]{4}\])?(?::(?:raw|conflicts))?$/i.test(path))) return undefined;
 			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
-			if (!["write", "edit"].includes(event.toolName)) return undefined;
 			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Restore the separately provisioned engine at ${binary} and restart, or remove the optional hook and restart.` };
 		}
 	});
