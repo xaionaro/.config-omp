@@ -29,12 +29,12 @@ function pathArgumentTarget(path: string): GateTarget {
 
 /**
  * Edit payload shapes select the inspection grammar, as the host's ACP permission gate
- * does: `edits` is patch mode, `input` is hashline (sloppy mode shares its grammar) or
- * apply_patch, and a bare `path` is replace mode.
+ * does: `edits` is patch mode, `input` is hashline, apply_patch or sloppy (`*** Edit File:`;
+ * the three grammars do not overlap), and a bare `path` is replace mode.
  */
 function editModes(input: Record<string, unknown>): string[] {
 	if (Array.isArray(input.edits)) return ["patch"];
-	if (typeof input.input === "string") return ["hashline", "apply_patch"];
+	if (typeof input.input === "string") return ["hashline", "apply_patch", "sloppy"];
 	return [];
 }
 

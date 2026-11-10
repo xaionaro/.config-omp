@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -247,6 +248,7 @@ type editGateWarnings struct {
 // runEditGate serves `edit-gate <bash> <dispatcher>`: it reads one request
 // from stdin and writes the gate decision to stdout. A rejected request exits
 // 2 with the reason on stderr; an allowed call without warnings prints nothing.
+// Both paths must be absolute, as the launcher passes them.
 //
 // Example: run([]string{"edit-gate", "/usr/bin/bash", dispatcher}, ...) from main.
 func runEditGate(
@@ -255,7 +257,7 @@ func runEditGate(
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
-	if len(args) != 2 || args[0] == "" || args[1] == "" {
+	if len(args) != 2 || !filepath.IsAbs(args[0]) || !filepath.IsAbs(args[1]) {
 		return statusRejected
 	}
 	request, status := readEditGateRequest(stdin, stderr)

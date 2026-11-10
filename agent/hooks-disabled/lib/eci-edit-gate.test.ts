@@ -75,7 +75,8 @@ describe("adapter", () => {
 			[{ path: "[:~/r.txt#ABCD]", old_string: "a", new_string: "b" }, [["[:~/r.txt#ABCD]", `${HOME}/r.txt`]]],
 			[{ path: ":~/p.txt", edits: [{ op: "update", rename: ":~/q.txt", diff: "@@\n-a\n+b" }] }, [[":~/p.txt", `${HOME}/p.txt`], [":~/q.txt", `${HOME}/q.txt`]]],
 			[{ input: "*** Begin Patch\n*** Update File: :~/ap.txt\n*** Move to: :../ap2.txt\n@@\n-a\n+b\n*** End Patch" }, [[":~/ap.txt", `${HOME}/ap.txt`], [":../ap2.txt", "../ap2.txt"]]],
-			[{ input: "[:~/s.txt#ABCD]\nPUT 1.=1:\n+b" }, [[":~/s.txt", `${HOME}/s.txt`]]],
+			[{ input: "[:~/h.txt#ABCD]\nPUT 1.=1:\n+b" }, [[":~/h.txt", `${HOME}/h.txt`]]],
+			[{ input: "*** Edit File: :~/s.txt\n*** Find\na\n*** Replace\nb\n*** Edit File: \"sub dir/t.txt\"\n*** Find\nc\n*** Insert After\nd\n" }, [[":~/s.txt", `${HOME}/s.txt`], ["sub dir/t.txt", "sub dir/t.txt"]]],
 		];
 		for (const [input, targets] of cases) {
 			await withStubLauncher("", async (handler, dir, request) => {
@@ -233,6 +234,23 @@ describe.skipIf(!chain)("real launcher, helper and dispatcher", () => {
 		const ordinary = { toolName: "edit", input: { input: "[a.txt#1234]\nMV \"b.txt\"\n[c.txt#ABCD]\nCUT 1.=1" } };
 		expect(await handler(ordinary, context(repo))).toBeUndefined();
 	}, 60_000);
+
+	test("checks sloppy edit targets", async () => {
+		const handler = loadGate();
+		const sloppy = (path: string) => ({ toolName: "edit", input: { input: `*** Edit File: ${path}\n*** Find\na\n*** Replace\nb\n` } });
+		expect(((await handler(sloppy(":~/.agent/context/sessions/other/x.txt"), context(repo))) as { block?: boolean } | undefined)?.block).toBe(true);
+		expect(await handler(sloppy("ordinary.txt"), context(repo))).toBeUndefined();
+	}, 60_000);
+
+	test("an unusable TMPDIR does not block an ordinary edit", async () => {
+		const saved = process.env.TMPDIR;
+		process.env.TMPDIR = join(HOME, "missing-tmp");
+		try {
+			expect(await loadGate()(write("ordinary.txt"), context(repo))).toBeUndefined();
+		} finally {
+			if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+		}
+	}, 30_000);
 
 	test("a failed guard denies protected targets and warns with a rerun command on ordinary ones", async () => {
 		const guard = join(eci, "hooks/validate-edit-write.sh");

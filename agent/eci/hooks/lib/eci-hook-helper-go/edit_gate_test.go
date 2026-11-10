@@ -236,7 +236,7 @@ func TestEditGateFailsClosedWhenDispatcherCannotStart(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	request, err := json.Marshal(editRequest("a", "/repo/a"))
 	require.NoError(t, err)
-	status := run([]string{"edit-gate", filepath.Join(t.TempDir(), "missing-bash"), "dispatch.sh"}, bytes.NewReader(request), &stdout, &stderr)
+	status := run([]string{"edit-gate", filepath.Join(t.TempDir(), "missing-bash"), "/dispatch.sh"}, bytes.NewReader(request), &stdout, &stderr)
 	require.Equal(t, statusOK, status)
 	decision := decodeDecision(t, stdout.String())
 	assert.Equal(t, decisionDeny, decision.PermissionDecision)
@@ -272,7 +272,7 @@ func TestEditGateRejectsMalformedRequests(t *testing.T) {
 		})
 	}
 	assert.Empty(t, fixture.calls(t), "a rejected request ran the dispatcher")
-	for _, args := range [][]string{{"edit-gate"}, {"edit-gate", fixture.bash}, {"edit-gate", "", fixture.script}, {"edit-gate", fixture.bash, fixture.script, "extra"}} {
+	for _, args := range [][]string{{"edit-gate"}, {"edit-gate", fixture.bash}, {"edit-gate", "", fixture.script}, {"edit-gate", "bash", fixture.script}, {"edit-gate", fixture.bash, "dispatch.sh"}, {"edit-gate", fixture.bash, fixture.script, "extra"}} {
 		status, _ := runMode(t, args, "")
 		assert.Equal(t, statusRejected, status, "args %v", args)
 	}
