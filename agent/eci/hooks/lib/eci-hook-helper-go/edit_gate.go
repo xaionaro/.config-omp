@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // The edit-gate mode serves the omp edit adapter. The adapter sends one
@@ -17,7 +18,8 @@ import (
 // in request order. The first denial decides the call. Otherwise the exact
 // failed-guard and unclassified-target markers the dispatcher prints become
 // one advisory context. The adapter owns the deadline and the process-group
-// cleanup, so this mode starts no timer and no process group.
+// cleanup, so this mode starts no process group; it only bounds how long it
+// drains a dispatcher's output pipes after the dispatcher has exited.
 
 const (
 	// dispatchLabel names the dispatcher in fail-closed denial reasons.
@@ -56,32 +58,80 @@ const (
 	//
 	// Example: a guard's concrete target denial.
 	decisionDeny = "deny"
+
+	// dispatchDrainDelay bounds how long output pipes held by a dispatcher
+	// descendant are drained after the dispatcher itself exited.
+	//
+	// Example: a guard leaves `sleep 30 &` holding stdout; the gate still
+	// decides about one second after the dispatcher exits.
+	dispatchDrainDelay = time.Second
 )
 
 // editGateTool names the host tool whose targets one request carries.
 //
-// Example: editGateToolWrite for a write call.
-type editGateTool string
+// Example: editGateToolWrite for a write call; it encodes as "Write".
+type editGateTool int
 
 const (
+	// editGateToolUnknown is the zero value; a request never carries it.
+	//
+	// Example: an editGateRequest decoded without a tool_name.
+	editGateToolUnknown editGateTool = iota
+
 	// editGateToolEdit is the callback tool name for the host edit tool.
 	//
-	// Example: a hashline patch or a replace edit.
-	editGateToolEdit editGateTool = "Edit"
+	// Example: a hashline patch or a replace edit; it encodes as "Edit".
+	editGateToolEdit
 
 	// editGateToolWrite is the callback tool name for the host write tool.
 	//
-	// Example: a whole-file write.
-	editGateToolWrite editGateTool = "Write"
+	// Example: a whole-file write; it encodes as "Write".
+	editGateToolWrite
 )
 
-// editGuards are the dispatcher children whose failure markers the gate
-// reports; any other marker text is ignored.
+// String is the hook tool_name of t.
 //
-// Example: editGuards["validate-edit-write.sh"] is true.
-var editGuards = map[string]bool{
-	"validate-edit-write.sh": true,
-	"eci-active-gate.sh":     true,
+// Example: editGateToolEdit.String() is "Edit".
+func (t editGateTool) String() string {
+	switch t {
+	case editGateToolEdit:
+		return "Edit"
+	case editGateToolWrite:
+		return "Write"
+	default:
+		return fmt.Sprintf("editGateTool(%d)", int(t))
+	}
+}
+
+// MarshalJSON encodes t as its hook tool_name.
+//
+// Example: editGateToolWrite encodes as "Write".
+func (t editGateTool) MarshalJSON() ([]byte, error) {
+	switch t {
+	case editGateToolEdit, editGateToolWrite:
+		return json.Marshal(t.String())
+	default:
+		return nil, fmt.Errorf("unsupported tool %s", t)
+	}
+}
+
+// UnmarshalJSON decodes a hook tool_name; any other value is rejected.
+//
+// Example: "Edit" decodes to editGateToolEdit; "Bash" is an error.
+func (t *editGateTool) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err != nil {
+		return err
+	}
+	switch name {
+	case "Edit":
+		*t = editGateToolEdit
+	case "Write":
+		*t = editGateToolWrite
+	default:
+		return fmt.Errorf("unsupported tool_name %q", name)
+	}
+	return nil
 }
 
 // editTarget is one edit target as the model requested it and as the host
@@ -130,7 +180,8 @@ type dispatchCallback struct {
 	ToolInput      dispatchToolInput `json:"tool_input"`
 }
 
-// hookDecision is the gate's PreToolUse output envelope.
+// hookDecision is the PreToolUse envelope the gate writes and the
+// dispatcher returns.
 //
 // Example: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}.
 type hookDecision struct {
@@ -196,7 +247,14 @@ type editGateWarnings struct {
 // runEditGate serves `edit-gate <bash> <dispatcher>`: it reads one request
 // from stdin and writes the gate decision to stdout. A rejected request exits
 // 2 with the reason on stderr; an allowed call without warnings prints nothing.
-func runEditGate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+//
+// Example: run([]string{"edit-gate", "/usr/bin/bash", dispatcher}, ...) from main.
+func runEditGate(
+	args []string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
 	if len(args) != 2 || args[0] == "" || args[1] == "" {
 		return statusRejected
 	}
@@ -220,7 +278,12 @@ func runEditGate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // readEditGateRequest decodes and validates the bounded request on stdin;
 // it reports a rejection on stderr.
-func readEditGateRequest(stdin io.Reader, stderr io.Writer) (editGateRequest, int) {
+//
+// Example: a request with no targets returns statusRejected.
+func readEditGateRequest(
+	stdin io.Reader,
+	stderr io.Writer,
+) (editGateRequest, int) {
 	var request editGateRequest
 	data, overflow, err := readBounded(stdin)
 	switch {
@@ -246,17 +309,24 @@ func readEditGateRequest(stdin io.Reader, stderr io.Writer) (editGateRequest, in
 }
 
 // rejectEditGateRequest prints the rejection and returns statusRejected.
-func rejectEditGateRequest(stderr io.Writer, reason string) int {
+//
+// Example: "eci-hook-helper edit-gate: request names no targets".
+func rejectEditGateRequest(
+	stderr io.Writer,
+	reason string,
+) int {
 	fmt.Fprintf(stderr, "eci-hook-helper edit-gate: %s\n", reason)
 	return statusRejected
 }
 
 // invalidReason names the first violated request invariant, or returns "".
+//
+// Example: a PostToolUse request returns `unsupported hook_event_name "PostToolUse"`.
 func (r editGateRequest) invalidReason() string {
 	switch r.ToolName {
 	case editGateToolEdit, editGateToolWrite:
 	default:
-		return fmt.Sprintf("unsupported tool_name %q", r.ToolName)
+		return "request names no tool_name"
 	}
 	if r.HookEventName != hookEventPreToolUse {
 		return fmt.Sprintf("unsupported hook_event_name %q", r.HookEventName)
@@ -273,6 +343,8 @@ func (r editGateRequest) invalidReason() string {
 }
 
 // callback is the dispatcher stdin for target.
+//
+// Example: the request identity with tool_input {file_path: "/repo/a.txt"}.
 func (r editGateRequest) callback(target editTarget) dispatchCallback {
 	return dispatchCallback{
 		SessionID:      r.SessionID,
@@ -287,13 +359,33 @@ func (r editGateRequest) callback(target editTarget) dispatchCallback {
 
 // subagentFlag is the inherited ECI_HOOK_IS_SUBAGENT value the adapter's
 // runner set for this call; diagnostics repeat it.
+//
+// Example: "1" for a subagent session.
 func subagentFlag() string {
 	return os.Getenv("ECI_HOOK_IS_SUBAGENT")
 }
 
+// isEditGuard reports whether name is a dispatcher child whose failure
+// marker the gate reports; any other marker text is ignored.
+//
+// Example: isEditGuard("validate-edit-write.sh") is true.
+func isEditGuard(name string) bool {
+	switch name {
+	case "validate-edit-write.sh", "eci-active-gate.sh":
+		return true
+	default:
+		return false
+	}
+}
+
 // decide checks each distinct normalized target in order. The first denial
 // returns at once and discards earlier warnings; nil allows silently.
-func (d editDispatcher) decide(request editGateRequest, subagent string) *hookDecision {
+//
+// Example: targets [ordinary, protected] deny with the protected target's reason.
+func (d editDispatcher) decide(
+	request editGateRequest,
+	subagent string,
+) *hookDecision {
 	var warnings editGateWarnings
 	checked := map[string]bool{}
 	for _, target := range request.Targets {
@@ -317,13 +409,18 @@ func (d editDispatcher) decide(request editGateRequest, subagent string) *hookDe
 }
 
 // run executes the dispatcher once with payload on stdin. The child stays in
-// this process group so the adapter's group cleanup reaches it.
+// this process group so the adapter's group cleanup reaches it. Pipes a
+// descendant still holds are drained for at most dispatchDrainDelay after the
+// dispatcher exits; its own exit status still decides.
+//
+// Example: a dispatcher that backgrounds `sleep 30` returns about one second after it exits.
 func (d editDispatcher) run(payload []byte) dispatchRun {
 	var run dispatchRun
 	command := exec.Command(d.Bash, d.Script)
 	command.Stdin = bytes.NewReader(payload)
 	command.Stdout = &run.Stdout
 	command.Stderr = &run.Stderr
+	command.WaitDelay = dispatchDrainDelay
 	err := command.Run()
 
 	var exitErr *exec.ExitError
@@ -331,6 +428,8 @@ func (d editDispatcher) run(payload []byte) dispatchRun {
 	case err == nil:
 	case errors.As(err, &exitErr):
 		run.ExitCode = exitErr.ExitCode()
+	case errors.Is(err, exec.ErrWaitDelay):
+		run.ExitCode = command.ProcessState.ExitCode()
 	default:
 		run.StartErr = err
 	}
@@ -339,6 +438,8 @@ func (d editDispatcher) run(payload []byte) dispatchRun {
 
 // denial returns the fail-closed or dispatcher denial reason, or "" when
 // the dispatcher allowed its target.
+//
+// Example: exit 17 returns "ECI hook pretooluse-edit-dispatch exited 17: ...".
 func (r dispatchRun) denial() string {
 	switch {
 	case r.StartErr != nil:
@@ -359,24 +460,31 @@ func (r dispatchRun) denial() string {
 // dispatchOutputDenial classifies a successful dispatcher's stdout: empty
 // or an allow decision admits the target; anything but a well-formed
 // PreToolUse allow or deny fails closed.
+//
+// Example: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"x"}}` returns "x".
 func dispatchOutputDenial(output []byte) string {
 	if len(output) == 0 {
 		return ""
 	}
-	var parsed map[string]any
-	if err := json.Unmarshal(output, &parsed); err != nil {
+	var decision hookDecision
+	var typeErr *json.UnmarshalTypeError
+	err := json.Unmarshal(output, &decision)
+	switch {
+	case errors.As(err, &typeErr):
+		return failClosed("returned unrecognized output")
+	case err != nil:
 		return failClosed("returned non-JSON output")
 	}
-	specific, ok := parsed["hookSpecificOutput"].(map[string]any)
-	if !ok || specific["hookEventName"] != hookEventPreToolUse {
+	specific := decision.HookSpecificOutput
+	if specific.HookEventName != hookEventPreToolUse {
 		return failClosed("returned unrecognized output")
 	}
-	switch specific["permissionDecision"] {
+	switch specific.PermissionDecision {
 	case decisionAllow:
 		return ""
 	case decisionDeny:
-		if reason, ok := specific["permissionDecisionReason"].(string); ok && reason != "" {
-			return reason
+		if specific.PermissionDecisionReason != "" {
+			return specific.PermissionDecisionReason
 		}
 		return "denied by ECI hook " + dispatchLabel
 	default:
@@ -385,12 +493,16 @@ func dispatchOutputDenial(output []byte) string {
 }
 
 // failClosed words a denial caused by the dispatcher's own failure.
+//
+// Example: failClosed("exited 3") is "ECI hook pretooluse-edit-dispatch exited 3; blocking (fail-closed).".
 func failClosed(why string) string {
 	return fmt.Sprintf("ECI hook %s %s; blocking (fail-closed).", dispatchLabel, why)
 }
 
 // requestedSpelling notes the requested spelling when normalization changed
 // it, so a denial names both forms.
+//
+// Example: ` (requested as ":~/a", checked as "/home/u/a")`.
 func requestedSpelling(target editTarget) string {
 	if target.Path == target.FilePath {
 		return ""
@@ -399,6 +511,8 @@ func requestedSpelling(target editTarget) string {
 }
 
 // denyDecision is the gate's deny envelope.
+//
+// Example: denyDecision("protected target").
 func denyDecision(reason string) *hookDecision {
 	return &hookDecision{HookSpecificOutput: hookSpecificOutput{
 		HookEventName:            hookEventPreToolUse,
@@ -409,6 +523,8 @@ func denyDecision(reason string) *hookDecision {
 
 // Write keeps the first inputBudget bytes and reports every byte consumed so
 // the child never blocks on a full pipe.
+//
+// Example: exec.Cmd copies the dispatcher's stdout into it.
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	room := inputBudget - len(b.Data)
 	kept := p
@@ -422,7 +538,12 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 
 // collect records the exact markers among stderr lines; other text is
 // untrusted and ignored.
-func (w *editGateWarnings) collect(stderr []byte, callback dispatchCallback) {
+//
+// Example: "ECI_EDIT_GATE_FAILED_ALLOWED eci-active-gate.sh" records that guard.
+func (w *editGateWarnings) collect(
+	stderr []byte,
+	callback dispatchCallback,
+) {
 	for _, line := range strings.Split(string(stderr), "\n") {
 		switch {
 		case line == unclassifiedMarker:
@@ -434,6 +555,8 @@ func (w *editGateWarnings) collect(stderr []byte, callback dispatchCallback) {
 }
 
 // addUnclassified records path once.
+//
+// Example: two unclassified callbacks for /repo/a record it once.
 func (w *editGateWarnings) addUnclassified(path string) {
 	for _, known := range w.Unclassified {
 		if known == path {
@@ -444,8 +567,13 @@ func (w *editGateWarnings) addUnclassified(path string) {
 }
 
 // addFailedGuard records a known guard once, with its first callback.
-func (w *editGateWarnings) addFailedGuard(name string, callback dispatchCallback) {
-	if !editGuards[name] {
+//
+// Example: validate-edit-write.sh failing on two targets keeps the first.
+func (w *editGateWarnings) addFailedGuard(
+	name string,
+	callback dispatchCallback,
+) {
+	if !isEditGuard(name) {
 		return
 	}
 	for _, known := range w.FailedGuards {
@@ -457,6 +585,8 @@ func (w *editGateWarnings) addFailedGuard(name string, callback dispatchCallback
 }
 
 // decision is the allow envelope carrying the warnings, or nil without any.
+//
+// Example: one failed guard yields an allow with its rerun command.
 func (w editGateWarnings) decision(subagent string) *hookDecision {
 	var lines []string
 	for _, guard := range w.FailedGuards {
@@ -481,6 +611,8 @@ func (w editGateWarnings) decision(subagent string) *hookDecision {
 
 // diagnostic tells the agent how to rerun the failed guard with the exact
 // callback and ECI identity environment of the failed check.
+//
+// Example: "... rerun it with: printf '%s\n' '{...}' | ECI_SESSION_ID='s' ... bash -x ...".
 func (g failedGuard) diagnostic(subagent string) string {
 	payload, err := json.Marshal(g.Callback)
 	if err != nil {
@@ -492,6 +624,8 @@ func (g failedGuard) diagnostic(subagent string) string {
 }
 
 // shellQuote quotes s as one POSIX shell word.
+//
+// Example: shellQuote("a b") is "'a b'"; an embedded quote is closed, escaped and reopened.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

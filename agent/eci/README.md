@@ -11,7 +11,7 @@ shebang, so they take the first `bash` on `PATH`.
 ## bash 4.4 or newer for hooks
 
 The hook entry points (`hooks/validate-bash.sh`, `hooks/pretooluse-edit-dispatch.sh`,
-`hooks/session-snapshot.sh`, `hooks/prompt-task-reminder.sh`,
+`hooks/eci-edit-gate.sh`, `hooks/session-snapshot.sh`, `hooks/prompt-task-reminder.sh`,
 `hooks/eci-post-compact-refresh.sh`) need bash 4.4 or newer. Stock macOS ships bash 3.2
 as `/bin/bash`. Under an older bash, every hook answers with one
 `[ECI_HOOK_BASH_TOO_OLD]` message (`hooks/lib/eci-bash-guard.sh`): a PreToolUse hook
@@ -34,8 +34,11 @@ bash 3.2.
 ## Go, sha256 and BSD userland
 
 - Go: `go` on `PATH`, at least the newest `go` directive in `hooks/lib/*/go.mod` and
-  `tools/*/go.mod`. Native binaries are built on first use by
-  `hooks/build-native-binaries.sh`.
+  `tools/*/go.mod`. The gate binaries (`eci-command-plan`, `eci-safe-import`,
+  `eci-hook-helper`, and `eci-verexec` on Linux) are built by
+  `hooks/build-native-binaries.sh`, not on first use, and an installed binary is not
+  refreshed when its source changes: rebuild it, for example with
+  `hooks/build-native-binaries.sh eci-hook-helper` before using the omp edit gate.
 - No GNU coreutils are needed: the hook libraries take their `sha256sum`, `realpath`
   and `stat` forms from `hooks/lib/eci-portable.sh`, and the adapters need no `timeout`.
 

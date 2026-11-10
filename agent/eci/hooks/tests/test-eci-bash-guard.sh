@@ -17,7 +17,7 @@ out="$(bash -c '. "$1/hooks/lib/eci-bash-guard.sh" PreToolUse; printf continued'
 [ "$out" = continued ] || fail "guard is not a no-op under bash $BASH_VERSION: $out"
 
 # Each entry point the omp adapters run (agent/hooks-disabled) sources the guard first.
-entries='validate-bash.sh:PreToolUse pretooluse-edit-dispatch.sh:PreToolUse session-snapshot.sh:SessionStart prompt-task-reminder.sh:UserPromptSubmit eci-post-compact-refresh.sh:PostCompact'
+entries='validate-bash.sh:PreToolUse pretooluse-edit-dispatch.sh:PreToolUse eci-edit-gate.sh:PreToolUse session-snapshot.sh:SessionStart prompt-task-reminder.sh:UserPromptSubmit eci-post-compact-refresh.sh:PostCompact'
 for entry in $entries; do
   script="${entry%%:*}" event="${entry#*:}"
   guard_line="$(grep -n 'lib/eci-bash-guard.sh' "$ROOT/hooks/$script" | head -n 1)" || fail "$script does not source the guard"

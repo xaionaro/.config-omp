@@ -62,6 +62,14 @@ describe("adapter", () => {
 		});
 	});
 
+	test("uses host parsing for whitespace, CRLF, untagged headers and quoted moves", async () => {
+		await withStubLauncher("", async (handler, dir, request) => {
+			const input = "*** Begin Patch\r\n[ untagged ]\r\nMV \"protected path\"\r\n[other#ABCD]\r\nCUT 1.=1\r\n*** End Patch";
+			expect(await handler({ toolName: "edit", input: { input } }, context(dir))).toBeUndefined();
+			expect(request().targets.map(target => target.file_path).sort()).toEqual(["other", "protected path", "untagged"]);
+		});
+	});
+
 	test("selects the inspection grammar from the payload shape", async () => {
 		const cases: [Record<string, unknown>, [string, string][]][] = [
 			[{ path: "[:~/r.txt#ABCD]", old_string: "a", new_string: "b" }, [["[:~/r.txt#ABCD]", `${HOME}/r.txt`]]],
@@ -264,7 +272,7 @@ describe.skipIf(!chain)("real launcher, helper and dispatcher", () => {
 			writeFileSync(receipt, `${digest}  eci-hook-helper\n`);
 			const outdated = await loadGate()(write("ordinary.txt"), context(repo)) as { block: boolean; reason: string };
 			expect(outdated.block).toBe(true);
-			expect(outdated.reason).toContain("eci-hook-helper edit-gate exited 2");
+			expect(outdated.reason).toContain("the verified eci-hook-helper does not support edit-gate");
 			expect(outdated.reason).toContain("build-native-binaries.sh\" eci-hook-helper");
 		} finally {
 			renameSync(`${helper}.saved`, helper);
