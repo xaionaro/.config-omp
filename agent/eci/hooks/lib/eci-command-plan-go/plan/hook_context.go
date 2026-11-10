@@ -1,7 +1,5 @@
 package plan
 
-// TODO: Derive callback scope and parent ownership without reading the retired ECI marker.
-
 import (
 	"bytes"
 	"crypto/sha256"
@@ -18,14 +16,6 @@ import (
 )
 
 const (
-	// maxHookRecordBytes bounds one marker or dependency allowance record.
-	//
-	// Example: records over 4 KiB are advisory metadata rather than authority.
-	maxHookRecordBytes = 4096
-	// maxHookObservedMarkers bounds advisory peer marker discovery.
-	//
-	// Example: the direct session is checked before observing up to 64 markers.
-	maxHookObservedMarkers = 64
 	// maxHookTranscriptPrefixBytes bounds the transcript prefix read for role classification.
 	//
 	// Example: a session header inside the first 64 KiB and 16 lines classifies the transcript.
@@ -45,9 +35,9 @@ type HookInput struct {
 	} `json:"tool_input"`
 }
 
-// hookRequest resolves bounded marker and transcript metadata into planner facts.
+// hookRequest resolves callback and transcript metadata into planner facts.
 //
-// Example: a spawned child uses its parent's active marker and approved roots.
+// Example: a child transcript selects the Worker role without activating legacy markers.
 func hookRequest(input HookInput) (Request, error) {
 	request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: input.CWD, Command: input.ToolInput.Command, Marker: MarkerInactive, ActiveSession: input.SessionID}
 	request.HookSessionID = input.SessionID
@@ -60,7 +50,7 @@ func hookRequest(input HookInput) (Request, error) {
 	}
 	request.CommandPath, request.CommandPathSet = os.LookupEnv("PATH")
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
-	role, parent, transcriptErr := hookTranscriptRole(input.TranscriptPath)
+	role, _, transcriptErr := hookTranscriptRole(input.TranscriptPath)
 	request.Role = role
 	var advisoryErrors []error
 	if errors.Is(transcriptErr, errHookTranscriptUnknown) {
@@ -70,78 +60,6 @@ func hookRequest(input HookInput) (Request, error) {
 	}
 	if os.Getenv("ECI_HOOK_IS_SUBAGENT") == "1" || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "true" {
 		request.Role = RoleWorker
-	}
-	root, err := hookProofRoot()
-	if err != nil {
-		return request, err
-	}
-	entries, err := os.ReadDir(root)
-	if errors.Is(err, os.ErrNotExist) {
-		return request, errors.Join(advisoryErrors...)
-	}
-	if err != nil {
-		return request, err
-	}
-	// Direct callback identity and inherited parent identity must survive the advisory peer cap.
-	direct := make([]os.DirEntry, 0, 4)
-	peers := make([]os.DirEntry, 0, len(entries))
-	for _, entry := range entries {
-		if hookCallbackOwner(entry.Name(), input.SessionID, parent) {
-			direct = append(direct, entry)
-		} else {
-			peers = append(peers, entry)
-		}
-	}
-	entries = append(direct, peers...)
-	count := 0
-	for _, entry := range entries {
-		if !entry.IsDir() || !hookSessionID(entry.Name()) {
-			continue
-		}
-		marker := filepath.Join(root, entry.Name(), "eci_active")
-		data, err := hookSmallRecord(marker)
-		if err != nil {
-			advisoryErrors = append(advisoryErrors, fmt.Errorf("read active marker: %w", err))
-			continue
-		}
-		if data == nil {
-			continue
-		}
-		count++
-		if count > maxHookObservedMarkers {
-			break
-		}
-		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-		if len(lines) < 3 || len(lines) > 4 || !strings.HasPrefix(lines[0], "scope: ") || strings.TrimPrefix(lines[0], "scope: ") == "" || !strings.HasPrefix(lines[1], "cwd: ") || lines[2] != "session_id: "+entry.Name() {
-			continue
-		}
-		if len(lines) == 4 && !strings.HasPrefix(lines[3], "created_utc: ") {
-			continue
-		}
-		markerCWD := strings.TrimPrefix(lines[1], "cwd: ")
-		if !filepath.IsAbs(markerCWD) {
-			continue
-		}
-		request.ActiveMarkers = append(request.ActiveMarkers, marker)
-		matches := hookCallbackOwner(entry.Name(), input.SessionID, parent)
-		if !matches || request.Marker == MarkerActive {
-			continue
-		}
-		request.Marker = MarkerActive
-		request.ActiveSession = entry.Name()
-		canonicalCWD, err := hookCanonicalPath(markerCWD)
-		if err != nil {
-			return request, err
-		}
-		request.ApprovedRoots = []string{canonicalCWD}
-		repository, err := hookAdditionalRepository(root, entry.Name(), markerCWD)
-		if err != nil {
-			advisoryErrors = append(advisoryErrors, fmt.Errorf("read declared repository: %w", err))
-			continue
-		}
-		if repository != "" {
-			request.ApprovedRoots = append(request.ApprovedRoots, repository)
-		}
 	}
 	return request, errors.Join(advisoryErrors...)
 }
@@ -160,11 +78,6 @@ func hookSessionID(value string) bool {
 	}
 	return true
 }
-
-// hookSessionAlias preserves the historical bare and session_ discovery forms.
-//
-// Example: session_owner and owner select the same marker identity.
-func hookSessionAlias(value string) string { return strings.TrimPrefix(value, "session_") }
 
 // hookCanonicalPath resolves existing ancestors and tolerates absent targets.
 //
@@ -200,59 +113,6 @@ func hookProofRoot() (string, error) {
 		return filepath.Clean(root), nil
 	}
 	return canonical, err
-}
-
-// hookSmallRecord reads a bounded regular control record without following its final symlink.
-//
-// Example: an oversized marker returns no metadata instead of reading its tail.
-func hookSmallRecord(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxHookRecordBytes {
-		return nil, nil
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxHookRecordBytes+1))
-	closeErr := file.Close()
-	if err := errors.Join(readErr, closeErr); err != nil {
-		return nil, err
-	}
-	if len(data) > maxHookRecordBytes || len(data) == 0 || data[len(data)-1] != '\n' {
-		return nil, nil
-	}
-	for _, c := range data {
-		if c < 32 && c != '\n' || c == 127 {
-			return nil, nil
-		}
-	}
-	return data, nil
-}
-
-// hookAdditionalRepository decodes one owning session's declared dependency.
-//
-// Example: an active six-line record adds its canonical repository root.
-func hookAdditionalRepository(
-	root string,
-	session string,
-	cwd string,
-) (string, error) {
-	data, err := hookSmallRecord(filepath.Join(root, session, "eci-additional-repository"))
-	if err != nil || data == nil {
-		return "", err
-	}
-	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-	if len(lines) != 6 || lines[0] != "schema: eci-additional-repository/v1" || lines[1] != "session_id: "+session || lines[2] != "cwd: "+cwd || !strings.HasPrefix(lines[3], "repository: /") || !strings.HasPrefix(lines[4], "reason: ") || strings.TrimSpace(strings.TrimPrefix(lines[4], "reason: ")) == "" || lines[5] != "state: active" {
-		return "", nil
-	}
-	return hookCanonicalPath(strings.TrimPrefix(lines[3], "repository: "))
 }
 
 // errHookTranscriptUnknown marks a callback transcript that fails closed to the worker role.
@@ -652,15 +512,6 @@ func hookParentSessionID(declared string) (string, error) {
 		return "", errors.New("parent transcript header has no valid session id")
 	}
 	return id, nil
-}
-
-// hookCallbackOwner reports whether a marker directory is the callback session
-// or the parent session it inherits.
-//
-// Example: a child callback is owned by its parent's marker directory.
-func hookCallbackOwner(name, session, parent string) bool {
-	alias := hookSessionAlias(name)
-	return alias == hookSessionAlias(session) || (parent != "" && alias == hookSessionAlias(parent))
 }
 
 // recordHookActivity preserves coordinator activity and callback-session writes.

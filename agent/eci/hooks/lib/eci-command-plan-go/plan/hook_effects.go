@@ -1,9 +1,6 @@
 package plan
 
-// TODO: Separate concrete target checks from the retired ECI marker activation state.
-
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,30 +9,10 @@ import (
 )
 
 const (
-	// hookCodeCommitProducerRequired identifies a coordinator-owned commit attempt.
-	//
-	// Example: git commit during active coordinator work selects this gate.
-	hookCodeCommitProducerRequired DiagnosticCode = "ECI_GIT_COMMIT_PRODUCER_REQUIRED"
-	// hookCodeGitCrossScopeDenied identifies another undeclared repository target.
-	//
-	// Example: git -C /dependency add file needs the same owner's declaration.
-	hookCodeGitCrossScopeDenied DiagnosticCode = "ECI_GIT_CROSS_SCOPE_DENIED"
 	// hookCodeCoordinatorEditRouting identifies a physical protected-hook mutation.
 	//
 	// Example: git checkout -- hooks/validate-bash.sh selects this gate.
 	hookCodeCoordinatorEditRouting DiagnosticCode = "ECI_COORDINATOR_EDIT_ROUTING_REQUIRED"
-	// hookCodeWorkerHookInstallerDenied identifies provider installation ownership.
-	//
-	// Example: a Worker executing the canonical installer uses the Supervisor route.
-	hookCodeWorkerHookInstallerDenied DiagnosticCode = "ECI_WORKER_HOOK_INSTALLER_DENIED"
-	// hookCodeWorkerScriptTargetDenied identifies an undeclared Worker script root.
-	//
-	// Example: bash /dependency/check.sh requires the owner-bound dependency route.
-	hookCodeWorkerScriptTargetDenied DiagnosticCode = "ECI_WORKER_SCRIPT_TARGET_DENIED"
-	// hookCodeCoordinatorScriptTargetDenied identifies an undeclared coordinator script.
-	//
-	// Example: an existing foreign test script needs its repository declaration.
-	hookCodeCoordinatorScriptTargetDenied DiagnosticCode = "ECI_COORDINATOR_SCRIPT_TARGET_DENIED"
 	// hookCodeCrossSessionActiveMarkerDenied identifies foreign live-session writes.
 	//
 	// Example: tee targeting another owner's eci_active selects this gate.
@@ -73,37 +50,10 @@ func inspectHookEffects(
 		if len(child) == 0 {
 			continue
 		}
-		if request.Marker != MarkerActive {
-			if hookArgumentKnown(record, child[0].offset) {
-				if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
-					return diagnostic
-				}
-				if diagnostic := inspectHookCleanup(record, child); diagnostic != nil {
-					return diagnostic
-				}
-			}
-			continue
-		}
 		if !hookArgumentKnown(record, child[0].offset) {
-			// An unresolved executable such as "$HOME/…" or an unquoted ~ keeps the
-			// provider-control identity checks; its other effects remain advisory.
-			if diagnostic := inspectHookLifecycle(request, record, child); diagnostic != nil {
-				return diagnostic
-			}
-			if hookPresumedControlTarget(child[0].value) != "" {
-				if diagnostic := inspectHookScript(request, record, child); diagnostic != nil {
-					return diagnostic
-				}
-			}
 			continue
 		}
 		if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
-			return diagnostic
-		}
-		if diagnostic := inspectHookLifecycle(request, record, child); diagnostic != nil {
-			return diagnostic
-		}
-		if diagnostic := inspectHookScript(request, record, child); diagnostic != nil {
 			return diagnostic
 		}
 		if diagnostic := inspectHookCleanup(record, child); diagnostic != nil {
@@ -117,7 +67,7 @@ func inspectHookEffects(
 				child[index].value = ""
 			}
 		}
-		if diagnostic := inspectHookControlWriter(childRequest, child, record.Segment); diagnostic != nil {
+		if diagnostic := inspectHookSessionsWriter(childRequest, child, record.Segment); diagnostic != nil {
 			return diagnostic
 		}
 	}
@@ -531,10 +481,9 @@ func hookGitDirectory(
 	return directory
 }
 
-// inspectHookGit routes selected Worker families and resolves coordinator scope.
-// Native show, diff, log and bisect retain every option and repository context.
+// inspectHookGit checks concrete broad and protected-target Git effects.
 //
-// Example: an owned Worker add is redirected to stage-content with its target.
+// Example: a Git checkout of a live hook selects the protected-target gate.
 func inspectHookGit(
 	request Request,
 	record ShellCommandRecord,
@@ -565,89 +514,16 @@ func inspectHookGit(
 	if argv[verbIndex].value == "worktree" && verbIndex+1 < len(argv) && !hookArgumentKnown(record, argv[verbIndex+1].offset) {
 		return nil
 	}
-	if request.Marker != MarkerActive {
-		directory := hookGitDirectory(record, argv, verbIndex)
-		if diagnostic := inspectHookGitBroad(record, argv, verbIndex, directory); diagnostic != nil {
-			return diagnostic
-		}
-		if hookGitCoordinatorMutation(argv, verbIndex) {
-			if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
-				return inspectHookGitProtectedTarget(record, argv, verbIndex, repository)
-			}
-		}
-		return nil
-	}
-	family := hookGitFamily(argv, verbIndex)
-	mutation := hookGitCoordinatorMutation(argv, verbIndex)
-	if request.Role == RoleWorker && !family && !mutation {
-		return nil
-	}
-	if request.Role == RoleCoordinator && !mutation {
-		return nil
-	}
 	directory := hookGitDirectory(record, argv, verbIndex)
-	if request.Role == RoleWorker {
-		// Worker Git mutations meet the Coordinator-only denials before the typed-route diagnostic.
-		if mutation {
-			if diagnostic := inspectHookGitMutation(request, record, argv, verbIndex, directory); diagnostic != nil {
-				return diagnostic
-			}
-		}
-		if !family {
-			return nil
-		}
-		if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
-			directory = repository
-		}
-		diagnostic := diagnosticForToken(CodeWorkerGitOwnershipDenied,
-			fmt.Sprintf("native Worker Git family %s selects repository context %s", argv[verbIndex].value, firstNonEmpty(directory, "<unresolved>")),
-			record.Segment, argv[verbIndex].offset, argv[verbIndex],
-			"use native Git with exact literal paths and explicit source/destination modes; preserve the original repository context, scope agreement, fresh same-index lookup and complete staged-result review; the typed Worker Git route is built but not launcher-wired (\"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" installs its binary without a launcher), so its named operations are unavailable",
-			"worker-git-ownership")
-		diagnostic.Path = directory
-		return diagnostic
-	}
-	if argv[verbIndex].value == "commit" {
-		diagnostic := diagnosticForToken(hookCodeCommitProducerRequired, "active coordinator selects a Producer-owned commit in "+directory,
-			record.Segment, argv[verbIndex].offset, argv[verbIndex], "hand the exact prepared-index checkpoint to its assigned Producer; inspect the complete staged result and preserve other contributions", "producer-checkpoint")
-		diagnostic.Path = directory
-		return diagnostic
-	}
-	return inspectHookGitMutation(request, record, argv, verbIndex, directory)
-}
-
-// inspectHookGitMutation applies the broad, cross-scope and protected-target denials to one native Git mutation.
-// Read-only verbs never reach it, so Worker and Coordinator share one set of mutation denials.
-//
-// Example: git clean -fdx and git -C foreign branch -D topic select denied effects.
-func inspectHookGitMutation(
-	request Request,
-	record ShellCommandRecord,
-	argv []token,
-	verbIndex int,
-	directory string,
-) *Diagnostic {
 	if diagnostic := inspectHookGitBroad(record, argv, verbIndex, directory); diagnostic != nil {
 		return diagnostic
 	}
-	repository := hookGitRepository(record, argv, verbIndex)
-	if repository == "" {
-		return nil
-	}
-	approved := false
-	for _, root := range request.ApprovedRoots {
-		if repository == resolvePathIdentity(root) {
-			approved = true
-			break
+	if hookGitCoordinatorMutation(argv, verbIndex) {
+		if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
+			return inspectHookGitProtectedTarget(record, argv, verbIndex, repository)
 		}
 	}
-	if !approved && len(request.ApprovedRoots) > 0 {
-		diagnostic := diagnosticForToken(hookCodeGitCrossScopeDenied, "Git mutation selects another repository: "+repository,
-			record.Segment, argv[verbIndex].offset, argv[verbIndex], "repository-allow-on writes an inert record and no gate honors it unless a legacy marker is active; keep this Git work within the approved repository scope or report the unavailable dependency route", "git-cross-scope")
-		diagnostic.Path = repository
-		return diagnostic
-	}
-	return inspectHookGitProtectedTarget(record, argv, verbIndex, repository)
+	return nil
 }
 
 // hookGitCoordinatorMutation recognizes concrete native coordinator effects.
@@ -943,336 +819,15 @@ func inspectHookGitProtectedTarget(
 	return nil
 }
 
-// hookResolvedExecutable resolves a concrete command against its proven CWD
-// and visible PATH assignments. Unavailable filesystem observations remain advisory.
+// inspectHookSessionsWriter protects the runtime's session transcript directory.
 //
-// Example: an existing ./bin/eci-active alias resolves to its canonical target.
-func hookResolvedExecutable(
-	record ShellCommandRecord,
-	value string,
-) string {
-	if !record.CWDKnown && !filepath.IsAbs(value) && strings.ContainsRune(value, '/') {
-		return ""
-	}
-	directory := ""
-	if record.CWDKnown {
-		directory = record.CWD
-	}
-	resolved := resolveExecutable(value, directory)
-	if !strings.ContainsRune(value, '/') {
-		for index, argument := range record.Argv {
-			if argument == value {
-				break
-			}
-			name, path, assignment := strings.Cut(argument, "=")
-			if !assignment || name != "PATH" {
-				continue
-			}
-			if !hookArgumentKnown(record, index) {
-				return ""
-			}
-			resolved = ""
-			for _, entry := range filepath.SplitList(path) {
-				if !filepath.IsAbs(entry) {
-					if !record.CWDKnown {
-						continue
-					}
-					entry = filepath.Join(directory, entry)
-				}
-				candidate := filepath.Join(entry, value)
-				if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
-					resolved = candidate
-					break
-				}
-			}
-		}
-	}
-	if resolved == "" {
-		return ""
-	}
-	return resolvePathIdentity(resolved)
-}
-
-// inspectHookLifecycle binds resolved lifecycle mutations to their owner/session.
-// Read-only help and status remain available even for an unrelated PATH collision.
-//
-// Example: Worker repository-allow-on stays available in the current session.
-func inspectHookLifecycle(
-	request Request,
-	record ShellCommandRecord,
-	argv []token,
-) *Diagnostic {
-	if len(argv) < 2 || !hookArgumentKnown(record, argv[1].offset) || isLifecycleReadOnlyInvocation(argv) {
-		return nil
-	}
-	canonical := resolvePathIdentity(filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci", "bin", "eci-active"))
-	resolved := ""
-	if hookArgumentKnown(record, argv[0].offset) {
-		resolved = hookResolvedExecutable(record, argv[0].value)
-	}
-	if resolved == "" {
-		// An unresolved "$HOME/…", ~, PATH or CWD spelling cannot prove that it
-		// avoids the canonical route, so it keeps the canonical identity checks.
-		if !lifecycleExecutableCandidate(argv[0].value) {
-			return nil
-		}
-		resolved = canonical
-	}
-	if resolved != canonical {
-		if !strings.HasPrefix(filepath.Base(argv[0].value), "eci-active") {
-			return nil
-		}
-		if info, err := os.Stat(resolved); err != nil || !info.Mode().IsRegular() {
-			return nil
-		}
-		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation selects a different executable target: "+resolved,
-			record.Segment, argv[0].offset, argv[0], "the lifecycle control route is present but rejects lifecycle commands without publishing state; native goals own continuation and the Supervisor owns ECI lifecycle; keep the lifecycle mutation with its legitimate owner or report the unavailable control route", "lifecycle-target")
-		diagnostic.Path = resolved
-		return diagnostic
-	}
-	// Session-independent verbs keep the worker owner and target identity checks.
-	sessionIndependent := isLifecycleSessionIndependentInvocation(argv)
-	for index, argument := range record.Argv {
-		name, value, assignment := strings.Cut(argument, "=")
-		if sessionIndependent || index >= argv[0].offset || !assignment || name != "ECI_SESSION_ID" || !hookArgumentKnown(record, index) || value == request.ActiveSession {
-			continue
-		}
-		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation environment selects another session: "+value,
-			record.Segment, index, token{value: argument}, "preserve the callback owner session "+request.ActiveSession+" when using its canonical lifecycle route", "lifecycle-session")
-		diagnostic.Path = canonical
-		return diagnostic
-	}
-	if request.Role == RoleWorker && !isWorkerRepositoryAllowInvocation(argv) {
-		return workerLifecycleIdentityDiagnostic(argv, argv[0], record.Segment, canonical)
-	}
-	if sessionIndependent {
-		return nil
-	}
-	for index := 1; index+1 < len(argv); index++ {
-		if argv[index].value != "--session" && argv[index].value != "--session-id" {
-			continue
-		}
-		if !hookArgumentKnown(record, argv[index+1].offset) || argv[index+1].value == request.ActiveSession {
-			continue
-		}
-		diagnostic := diagnosticForToken(CodeControlIdentityDenied, "lifecycle mutation selects another session: "+argv[index+1].value,
-			record.Segment, argv[index+1].offset, argv[index+1], "keep the lifecycle mutation on owner session "+request.ActiveSession+"; do not select another session", "lifecycle-session")
-		diagnostic.Path = canonical
-		return diagnostic
-	}
-	return nil
-}
-
-// inspectHookScript checks existing script targets against session and scratch roots.
-// Syntax checking and missing script operands have no execution effect. File
-// inspection is an external observation: failed stat/open/read/close observations
-// cannot establish a concrete execution target and therefore remain advisory.
-//
-// Example: bash -n /dependency/check.sh is inspection; bash runs its target.
-func inspectHookScript(
-	request Request,
-	record ShellCommandRecord,
-	argv []token,
-) *Diagnostic {
-	name := filepath.Base(argv[0].value)
-	index := 0
-	if isShellInterpreter(name) || name == "python" || name == "python3" || name == "node" || name == "perl" || name == "ruby" || name == "source" || name == "." {
-		index = 1
-		for index < len(argv) {
-			value := argv[index].value
-			if value == "--noexec" || value == "-c" || value == "-" || (value == "-m" || value == "-e") && !isShellInterpreter(name) {
-				return nil
-			}
-			if isShellInterpreter(name) && strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") && strings.ContainsAny(value[1:], "ncs") {
-				return nil
-			}
-			if isShellInterpreter(name) && (value == "-O" || value == "-o") {
-				if index+1 >= len(argv) || !hookArgumentKnown(record, argv[index+1].offset) {
-					return nil
-				}
-				index += 2
-				continue
-			}
-			if value == "--" {
-				index++
-				break
-			}
-			if !strings.HasPrefix(value, "-") {
-				break
-			}
-			if isShellInterpreter(name) && strings.HasPrefix(value, "--") {
-				switch value {
-				case "--noprofile", "--norc", "--posix", "--restricted", "--verbose", "--trace":
-				default:
-					return nil
-				}
-			}
-			if isShellInterpreter(name) && !strings.HasPrefix(value, "--") && strings.Trim(value[1:], "abefhkmpruvxBCEHPT") != "" {
-				return nil
-			}
-			index++
-		}
-	}
-	if index >= len(argv) {
-		return nil
-	}
-	known := hookArgumentKnown(record, argv[index].offset)
-	if known && index == 0 && !strings.ContainsRune(argv[index].value, '/') {
-		return nil
-	}
-	target := ""
-	if known {
-		target = hookResolvedExecutable(record, argv[index].value)
-		if index > 0 && record.CWDKnown && !filepath.IsAbs(argv[index].value) {
-			target = resolvePathIdentity(filepath.Join(record.CWD, argv[index].value))
-		}
-	}
-	if target == "" {
-		target = hookPresumedControlTarget(argv[index].value)
-	}
-	info, err := os.Stat(target)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil
-	}
-	if index == 0 {
-		// Direct binaries are ordinary executables; only script files have an
-		// execution ownership boundary.
-		file, openErr := os.Open(target)
-		if openErr != nil {
-			return nil
-		}
-		var prefix [2]byte
-		count, readErr := file.Read(prefix[:])
-		closeErr := file.Close()
-		if readErr != nil || closeErr != nil || count != len(prefix) || string(prefix[:]) != "#!" {
-			return nil
-		}
-	}
-	providerRoot := resolvePathIdentity(filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci"))
-	if target == filepath.Join(providerRoot, "bin", "eci-active") {
-		return inspectHookLifecycle(request, record, argv[index:])
-	}
-	for _, root := range canonicalLifecycleRoots() {
-		relative, relativeErr := filepath.Rel(root, target)
-		if relativeErr != nil {
-			continue
-		}
-		code := CodeControlOwnerRequired
-		if filepath.ToSlash(relative) == "hooks/install-pre-commit-go-mod.sh" {
-			code = hookCodeWorkerHookInstallerDenied
-		}
-		protected := slices.Contains(hookProviderControlScripts, filepath.ToSlash(relative))
-		if protected && request.Role == RoleWorker {
-			diagnostic := diagnosticForToken(code, "Worker execution selects Supervisor-owned provider control: "+target,
-				record.Segment, argv[index].offset, argv[index], "route this exact provider control invocation through the Supervisor in the same session", "worker-control-script")
-			diagnostic.Path = target
-			return diagnostic
-		}
-		if relative == filepath.Join("hooks", "eci-review-gate.sh") && len(argv) > index+2 && hookArgumentKnown(record, argv[index+2].offset) && argv[index+2].value != request.ActiveSession {
-			diagnostic := diagnosticForToken(CodeControlIdentityDenied, "review gate selects another session: "+argv[index+2].value,
-				record.Segment, argv[index+2].offset, argv[index+2], "invoke this canonical review gate for the current owner session "+request.ActiveSession, "review-session")
-			diagnostic.Path = target
-			return diagnostic
-		}
-	}
-	if pathWithin(target, providerRoot) {
-		return nil
-	}
-	if request.Role == RoleCoordinator {
-		for _, root := range canonicalLifecycleRoots() {
-			if target == filepath.Join(root, "hooks", "install-pre-commit-go-mod.sh") || pathWithin(target, filepath.Join(root, "hooks", "tests")) {
-				return nil
-			}
-		}
-	}
-	for _, root := range request.ApprovedRoots {
-		if pathWithin(target, resolvePathIdentity(root)) {
-			return nil
-		}
-	}
-	if hookScratchScriptAllowed(target, request.ApprovedRoots) {
-		return nil
-	}
-	code := hookCodeWorkerScriptTargetDenied
-	if request.Role == RoleCoordinator {
-		code = hookCodeCoordinatorScriptTargetDenied
-	}
-	diagnostic := diagnosticForToken(code, "script execution selects target outside its assigned roots: "+target,
-		record.Segment, argv[index].offset, argv[index], "repository-allow-on writes an inert record and no gate honors it unless a legacy marker is active; keep the script inside the approved repositories or the canonical $HOME/tmp scratch directory, or report the unavailable dependency route", "script-target")
-	diagnostic.Path = target
-	return diagnostic
-}
-
-// hookProviderControlScripts names the provider-root executables whose
-// invocation is Supervisor-owned.
-//
-// Example: hooks/stop-gate.sh under the provider root is a control script.
-var hookProviderControlScripts = []string{"hooks/install-pre-commit-go-mod.sh", "hooks/eci-review-gate.sh", "hooks/stop-gate.sh", "hooks/eci-active-gate.sh", "hooks/ate-orchestrator-gate.sh", "bin/eci-active", "bin/eci-review-gate", "bin/eci-stage"}
-
-// hookPresumedControlTarget presumes the canonical provider control target for
-// a script or executable word that cannot be resolved, so an unresolved spelling
-// keeps the identity checks of its absolute form. Other words stay unresolved.
-//
-// Example: "$HOME/.omp/agent/eci/hooks/stop-gate.sh" presumes the provider-root
-// hooks/stop-gate.sh, while "$HOME/tmp/check.sh" presumes nothing.
-func hookPresumedControlTarget(value string) string {
-	providerRoot := resolvePathIdentity(filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci"))
-	if lifecycleExecutableCandidate(value) {
-		return filepath.Join(providerRoot, "bin", "eci-active")
-	}
-	for _, relative := range hookProviderControlScripts {
-		if value == relative || strings.HasSuffix(value, "/"+relative) {
-			return filepath.Join(providerRoot, relative)
-		}
-	}
-	return ""
-}
-
-// hookScratchScriptAllowed admits a resolved script below the canonical HOME/tmp directory.
-// Scratch must not contain HOME, shared temp roots or a current repository anchor.
-// Failed external observations establish no additional execution admission; the caller
-// retains its existing script-target and advisory behavior. This does not grant Git scope.
-//
-// Example: HOME/tmp may point to a dedicated volume descendant, but never its broad parent.
-func hookScratchScriptAllowed(
-	target string,
-	approvedRoots []string,
-) bool {
-	home := os.Getenv("HOME")
-	if !filepath.IsAbs(home) {
-		return false
-	}
-	scratch, err := filepath.EvalSymlinks(filepath.Join(home, "tmp"))
-	if err != nil || !filepath.IsAbs(scratch) {
-		return false
-	}
-	info, err := os.Stat(scratch)
-	if err != nil || !info.IsDir() || !pathWithin(target, scratch) {
-		return false
-	}
-	anchors := append([]string{home, "/tmp", "/var/tmp"}, approvedRoots...)
-	for _, anchor := range anchors {
-		canonical, err := filepath.EvalSymlinks(anchor)
-		if err != nil || !filepath.IsAbs(canonical) {
-			return false
-		}
-		if pathWithin(canonical, scratch) {
-			return false
-		}
-	}
-	return true
-}
-
-// inspectHookControlWriter protects validated live sessions and their namespaces.
-// It is shared with the planner's redirect pass to retain exact nested CWD facts.
-//
-// Example: tee to a sibling eci_active or rm of its ancestor names that target.
-func inspectHookControlWriter(
+// Example: a Worker redirect to a resolved session transcript is denied.
+func inspectHookSessionsWriter(
 	request Request,
 	argv []token,
 	segmentIndex int,
 ) *Diagnostic {
-	if request.Marker != MarkerActive || request.Role != RoleWorker || len(argv) == 0 {
+	if request.Role != RoleWorker || len(argv) == 0 {
 		return nil
 	}
 	name := filepath.Base(argv[0].value)
@@ -1297,55 +852,8 @@ func inspectHookControlWriter(
 		if !pathLike {
 			continue
 		}
-		sessionsDiagnostic := hookSessionsOperandDiagnostic(request, name, argv, segmentIndex, index, pathArgument)
-		lexical := pathArgument.value
-		if !filepath.IsAbs(lexical) {
-			if !request.CWDKnown {
-				if sessionsDiagnostic != nil {
-					return sessionsDiagnostic
-				}
-				continue
-			}
-			lexical = filepath.Join(request.CWD, lexical)
-		}
-		lexical = filepath.Clean(lexical)
-		resolved := resolvePathIdentity(lexical)
-		if hookUnlinksDirectoryEntry(argv) {
-			entry, err := resolvePathEntryWithMissingSuffix(lexical)
-			if err != nil {
-				// An unavailable external filesystem observation cannot
-				// establish which directory entry would be unlinked.
-				if sessionsDiagnostic != nil {
-					return sessionsDiagnostic
-				}
-				continue
-			}
-			resolved = entry
-		}
-		for _, marker := range request.ActiveMarkers {
-			marker = resolvePathIdentity(marker)
-			session := filepath.Dir(marker)
-			current := filepath.Base(session) == request.ActiveSession
-			if current && isCanonicalWorkerHandoffPath(resolved, []string{marker}) {
-				continue
-			}
-			reserved := pathWithin(resolved, session) && isECIControlBasename(filepath.Base(resolved)) ||
-				pathWithin(lexical, session) && isECIControlBasename(filepath.Base(lexical))
-			ancestor := (name == "rm" || name == "mv" || name == "rmdir" || name == "find") && pathWithin(marker, resolved)
-			if !reserved && !ancestor {
-				continue
-			}
-			code := CodeControlOwnerRequired
-			if !current {
-				code = hookCodeCrossSessionActiveMarkerDenied
-			}
-			diagnostic := diagnosticForToken(code, "resolved write selects live session control target "+resolved+" (owner="+filepath.Base(session)+")",
-				segmentIndex, index, pathArgument, "use the current session's owned task path; route the named live-control operation through its owning Supervisor without changing owner or session", "worker-live-control")
-			diagnostic.Path = resolved
+		if diagnostic := hookSessionsOperandDiagnostic(request, name, argv, segmentIndex, index, pathArgument); diagnostic != nil {
 			return diagnostic
-		}
-		if sessionsDiagnostic != nil {
-			return sessionsDiagnostic
 		}
 	}
 	return nil
@@ -1459,11 +967,9 @@ func hookSessionsAmbiguous(argument token, cwdKnown bool) bool {
 	return false
 }
 
-// hookSessionsOperandDiagnostic applies the Worker sessions-root rule to one path operand.
-// An ambiguous operand that mentions the sessions location denies, and so does any resolution
-// error. It returns nil when the operand does not reach the sessions root.
+// hookSessionsOperandDiagnostic denies a resolved Worker write to the sessions root.
 //
-// Example: tee ~/.omp/agent/sess*/x denies; tee ~/tmp/x passes.
+// Example: tee to a session transcript is denied; an ambiguous glob is advisory.
 func hookSessionsOperandDiagnostic(
 	request Request,
 	name string,
@@ -1478,8 +984,7 @@ func hookSessionsOperandDiagnostic(
 		text = home + argument.value[1:]
 	}
 	if (hookSessionsMention(argument.value) || hookSessionsMention(text)) && hookSessionsAmbiguous(argument, request.CWDKnown || filepath.IsAbs(text)) {
-		return diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal spells omp session transcript root ambiguously: "+argument.value,
-			segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
+		return nil
 	}
 	lexical := argument.value
 	switch {
@@ -1500,10 +1005,7 @@ func hookSessionsOperandDiagnostic(
 		resolved, err = resolvePathWithMissingSuffix(lexical)
 	}
 	if err != nil {
-		diagnostic := diagnosticForToken(hookCodeWorkerSessionsRootDenied, "Worker write or removal cannot resolve "+lexical+" to rule out the omp session transcript root",
-			segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
-		diagnostic.Path = lexical
-		return diagnostic
+		return nil
 	}
 	if !hookSessionsRootTarget(name, argvIndex == len(argv)-1, lexical, resolved) {
 		return nil

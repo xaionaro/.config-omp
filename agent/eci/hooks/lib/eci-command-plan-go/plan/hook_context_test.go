@@ -82,7 +82,10 @@ func TestHookContextParentPrefix(t *testing.T) {
 	writeSubagentTranscript(t, transcript, "child", parent, `{"type":"message","pad":"`+strings.Repeat("x", 2<<20)+`"}`)
 	got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
 	require.NoError(t, err)
-	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession != "parent" || got.Marker != MarkerActive || len(got.ActiveMarkers) != 1, "context=%+v", got)
+	require.Equal(t, RoleWorker, got.Role)
+	require.Equal(t, MarkerInactive, got.Marker)
+	require.Empty(t, got.ActiveMarkers)
+	require.Empty(t, got.ApprovedRoots)
 }
 
 // TestHookContextOversizedFirstRecordTail fails closed when the session header exceeds the bounded prefix before parentSession.
@@ -459,7 +462,8 @@ func TestHookContextMarkerAliasAndInvalid(t *testing.T) {
 	contextMarker(t, root, "session_owner", cwd)
 	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd})
 	require.NoError(t, err)
-	require.Falsef(t, got.ActiveSession != "session_owner" || got.Marker != MarkerActive, "context=%+v", got)
+	require.Equal(t, MarkerInactive, got.Marker)
+	require.Empty(t, got.ActiveMarkers)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "session_owner", "eci_active"), []byte("broken\n"), 0600))
 	got, err = hookRequest(HookInput{SessionID: "owner", CWD: cwd})
 	require.NoError(t, err)
@@ -514,11 +518,9 @@ func TestHookContextDependencyAndRootAlias(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "owner", "eci-additional-repository"), []byte(data), 0600))
 	got, err := hookRequest(HookInput{SessionID: "owner", CWD: dependency})
 	require.NoError(t, err)
-	canonicalDependency, err := hookCanonicalPath(dependency)
-	require.NoError(t, err)
-	canonicalRoot, err := hookCanonicalPath(root)
-	require.NoError(t, err)
-	require.Falsef(t, len(got.ApprovedRoots) != 2 || got.ApprovedRoots[1] != canonicalDependency || got.ActiveMarkers[0] != filepath.Join(canonicalRoot, "owner", "eci_active"), "context=%+v", got)
+	require.Equal(t, MarkerInactive, got.Marker)
+	require.Empty(t, got.ApprovedRoots)
+	require.Empty(t, got.ActiveMarkers)
 }
 
 // TestHookContextTouchedBaseline checks consumer-compatible child-session records.
@@ -560,7 +562,8 @@ func TestHookContextDirectOwnerBeyondPeerCap(t *testing.T) {
 	contextMarker(t, root, "zzz-owner", cwd)
 	request, err := hookRequest(HookInput{SessionID: "zzz-owner", CWD: cwd})
 	require.NoError(t, err)
-	require.Falsef(t, request.Marker != MarkerActive || request.ActiveSession != "zzz-owner", "direct owner hidden: %+v", request)
+	require.Equal(t, MarkerInactive, request.Marker)
+	require.Equal(t, "zzz-owner", request.ActiveSession)
 	require.False(t, !hookReadonlyCommand(ShellCommandRecord{Argv: []string{"git", "-C", cwd, "diff"}}) || hookReadonlyCommand(ShellCommandRecord{Argv: []string{"git", "add", "diff"}}), "git arguments confused with command verb")
 }
 

@@ -18,16 +18,16 @@ func TestHookReachabilityAfterHomeWrapper(t *testing.T) {
 	request := Request{Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, ActiveSession: "reachability", CWD: cwd, HookMode: true, CollectShellCommands: true}
 	prefix := `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo "$HOME/project" run-once --reason "authorized disposable status fixture" --user-authorized -- status --short; `
 	tests := []struct {
-		name    string
-		command string
-		denied  bool
+		name      string
+		command   string
+		reachable bool
 	}{
 		{name: "literal false and", command: "false && git add ordinary"},
 		{name: "literal true or", command: "true || git add ordinary"},
-		{name: "literal true and", command: "true && git add ordinary", denied: true},
-		{name: "literal false or", command: "false || git add ordinary", denied: true},
-		{name: "unknown or false and", command: "unknown || false && git add ordinary", denied: true},
-		{name: "unknown and true or", command: "unknown && true || git add ordinary", denied: true},
+		{name: "literal true and", command: "true && git add ordinary", reachable: true},
+		{name: "literal false or", command: "false || git add ordinary", reachable: true},
+		{name: "unknown or false and", command: "unknown || false && git add ordinary", reachable: true},
+		{name: "unknown and true or", command: "unknown && true || git add ordinary", reachable: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name,
@@ -40,16 +40,13 @@ func TestHookReachabilityAfterHomeWrapper(t *testing.T) {
 				require.NotEqual(t, DecisionError, result.Decision)
 				require.NotNil(t, result.ShellAnalysis)
 				diagnostic := inspectHookEffects(request, result)
-				assert.Equal(t, test.denied, result.Decision == DecisionDeny || diagnostic != nil, "result=%+v diagnostic=%+v", result, diagnostic)
-				if test.denied {
-					require.NotNil(t, diagnostic)
-					assert.Equal(t, CodeWorkerGitOwnershipDenied, diagnostic.Code)
-				}
+				assert.NotEqual(t, DecisionDeny, result.Decision)
+				assert.Nil(t, diagnostic, "ordinary Git remains native")
 				require.NotNil(t, result.Plan)
 				require.NotEmpty(t, result.Plan.Segments)
 				finalSegment := result.Plan.Segments[len(result.Plan.Segments)-1]
 				assert.True(t, finalSegment.CWDUnknown, "dynamic prefix must retain CWD uncertainty")
-				if !test.denied {
+				if !test.reachable {
 					assert.Equal(t, segmentUnreachable, finalSegment.Reachability)
 				}
 				foundGit := false
@@ -59,11 +56,11 @@ func TestHookReachabilityAfterHomeWrapper(t *testing.T) {
 					}
 					foundGit = true
 					assert.False(t, record.CWDKnown, "dynamic prefix must retain explicit CWD uncertainty")
-					if !test.denied {
+					if !test.reachable {
 						assert.Equal(t, segmentUnreachable, record.Reachability)
 					}
 				}
-				if test.denied {
+				if test.reachable {
 					require.True(t, foundGit, "reachable Git effect must remain available")
 				}
 			},

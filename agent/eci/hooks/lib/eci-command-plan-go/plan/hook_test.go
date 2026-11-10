@@ -40,9 +40,9 @@ func TestRunHookScratchScript(t *testing.T) {
 	input.ToolInput.Command = "bash '" + script + "'"
 	request, err := hookRequest(input)
 	require.NoError(t, err)
-	require.Equal(t, MarkerActive, request.Marker)
+	require.Equal(t, MarkerInactive, request.Marker)
 	require.Equal(t, RoleWorker, request.Role)
-	require.Equal(t, []string{resolvePathIdentity(cwd)}, request.ApprovedRoots)
+	require.Empty(t, request.ApprovedRoots)
 	callback, err := json.Marshal(input)
 	require.NoError(t, err)
 	var output bytes.Buffer
@@ -52,9 +52,9 @@ func TestRunHookScratchScript(t *testing.T) {
 	require.Empty(t, output.String(), "active scratch script callback denied: %s", &output)
 }
 
-// TestRunHookScratchAliases binds resolved scratch admission to real callback roles.
+// TestRunHookScratchAliases verifies callback roles do not restore marker scope.
 //
-// Example: a transcript child inherits its parent's marker without changing repository roots.
+// Example: a child transcript remains a Worker without inheriting marker roots.
 func TestRunHookScratchAliases(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()
@@ -101,10 +101,10 @@ func TestRunHookScratchAliases(t *testing.T) {
 			request, err := hookRequest(input)
 			require.NoError(t, err)
 			require.Equal(t, role, request.Role, actor)
-			require.Equal(t, MarkerActive, request.Marker, actor)
-			require.Equal(t, "scratch-parent", request.ActiveSession, actor)
+			require.Equal(t, MarkerInactive, request.Marker, actor)
+			require.Equal(t, input.SessionID, request.ActiveSession, actor)
 			require.Equal(t, input.SessionID, request.HookSessionID, actor)
-			require.Equal(t, []string{resolvePathIdentity(cwd)}, request.ApprovedRoots, actor)
+			require.Empty(t, request.ApprovedRoots, actor)
 			callback, err := json.Marshal(input)
 			require.NoError(t, err)
 			var output bytes.Buffer
@@ -218,6 +218,7 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		require.NoError(t, os.MkdirAll(repository, 0700))
 		require.NoError(t, exec.Command("git", "init", "-q", repository).Run())
 	}
+	contextMarker(t, filepath.Join(home, "proof"), "marker-free", primary)
 	script := filepath.Join(dependency, "check.sh")
 	sentinel := filepath.Join(home, "executed")
 	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\ntouch '"+sentinel+"'\n"), 0700))
@@ -356,6 +357,7 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	contextMarker(t, filepath.Join(home, "proof"), "inactive", home)
 	config := filepath.Join(home, "config", "eci", "command-gate-mode")
 	require.NoError(t, os.MkdirAll(filepath.Dir(config), 0700))
 	require.NoError(t, os.WriteFile(config, []byte("permissive\n"), 0600))
@@ -390,7 +392,7 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 
 // TestHookAnalysisNeverExecutesTimeout retains child facts without wrapper execution.
 //
-// Example: timeout around git add keeps ownership routing without creating a sentinel.
+// Example: timeout around native git add does not execute the inspected wrapper.
 func TestHookAnalysisNeverExecutesTimeout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -411,7 +413,8 @@ func TestHookAnalysisNeverExecutesTimeout(t *testing.T) {
 	var output bytes.Buffer
 	{
 		status := RunHook(bytes.NewReader(callback), &output)
-		require.Falsef(t, status != 0 || !strings.Contains(output.String(), string(CodeWorkerGitOwnershipDenied)), "finite timeout child lost ownership effect: status=%d output=%s", status, &output)
+		require.Zero(t, status)
+		require.Empty(t, output.String(), "ordinary Git command denied")
 	}
 	{
 		_, err := os.Stat(sentinel)
@@ -451,9 +454,9 @@ func TestHookBookkeepingUsesNativeGit(t *testing.T) {
 	}
 }
 
-// TestHookOwnedLinkCleanup distinguishes removing aliases from changing controls.
+// TestHookOwnedLinkCleanup verifies a stale marker does not protect its aliases.
 //
-// Example: unlinking an owned marker alias is allowed; writing through it is denied.
+// Example: removing or writing a marker alias is not a marker-based denial.
 func TestHookOwnedLinkCleanup(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -478,10 +481,10 @@ func TestHookOwnedLinkCleanup(t *testing.T) {
 		{"unlink '" + link + "'", false},
 		{"unlink '" + hardlink + "'", false},
 		{"mv '" + link + "' '" + filepath.Join(home, "moved-link") + "'", false},
-		{"tee '" + link + "'", true},
-		{"tee '" + hardlink + "'", true},
-		{"rm '" + marker + "'", true},
-		{"unlink '" + marker + "'", true},
+		{"tee '" + link + "'", false},
+		{"tee '" + hardlink + "'", false},
+		{"rm '" + marker + "'", false},
+		{"unlink '" + marker + "'", false},
 	} {
 		input := HookInput{SessionID: "cleanup", CWD: home, ToolName: "Bash"}
 		input.ToolInput.Command = test.command
@@ -530,9 +533,9 @@ func TestRunHookLargeCallback(t *testing.T) {
 	require.Equal(t, StatusInternal, Run(strings.NewReader(strings.Repeat(" ", maxRequestBytes+1)+"{}"), &plannerOutput))
 }
 
-// TestHookControlIndexKeepsAllObservedAliases retains immediate control inode facts.
+// TestHookControlIndexKeepsAllObservedAliases ignores stale marker inode aliases.
 //
-// Example: 129 controls cannot erase a marker alias or a later control alias.
+// Example: marker and control aliases do not activate a callback denial.
 func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -561,16 +564,14 @@ func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
 		require.NoError(t, err)
 		var output bytes.Buffer
 		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
-		require.Equal(t, target != ordinary, output.Len() != 0, "target=%s", target)
+		require.Empty(t, output.String(), "stale marker must not protect %s", target)
 	}
 }
 
-// TestHookMalformedIdentityFailsClosedOnlyWithActiveScope verifies that a
-// malformed callback identity denies under an active marker and stays advisory
-// without one.
+// TestHookMalformedIdentityAdvisory verifies stale markers do not deny malformed input.
 //
-// Example: session_id [] under an active marker emits malformed hook identity.
-func TestHookMalformedIdentityFailsClosedOnlyWithActiveScope(t *testing.T) {
+// Example: session_id [] stays advisory with or without a legacy marker.
+func TestHookMalformedIdentityAdvisory(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("ECI_PROOF_ROOT", root)
 	malformed := `{"session_id":[],"tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"true"}}`
@@ -581,5 +582,5 @@ func TestHookMalformedIdentityFailsClosedOnlyWithActiveScope(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "scratch-owner", "eci_active"), []byte("scope: x\ncwd: /tmp\nsession_id: scratch-owner\n"), 0600))
 	output.Reset()
 	require.Zero(t, RunHook(strings.NewReader(malformed), &output))
-	require.Contains(t, output.String(), "malformed hook identity")
+	require.Empty(t, output.String())
 }

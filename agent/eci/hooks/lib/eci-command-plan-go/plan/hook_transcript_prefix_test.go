@@ -86,7 +86,8 @@ func TestHookTranscriptPrefixLargeSubagentReadsPrefix(t *testing.T) {
 	got, err := hookRequest(HookInput{SessionID: "child", CWD: cwd, TranscriptPath: transcript})
 	read := readChars(t) - before
 	require.NoError(t, err)
-	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession != "parent" || got.Marker != MarkerActive, "context=%+v", got)
+	require.Equal(t, RoleWorker, got.Role)
+	require.Equal(t, MarkerInactive, got.Marker)
 	require.LessOrEqual(t, read, int64(maxClassifyReadBytes))
 }
 

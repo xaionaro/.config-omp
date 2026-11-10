@@ -22,9 +22,6 @@ func RunHook(
 	decoder := json.NewDecoder(input)
 	var envelope HookInput
 	if err := decoder.Decode(&envelope); err != nil {
-		if code, denied := hookMalformedIdentityDenied(output); denied {
-			return code
-		}
 		return hookAdvisory("decode callback", err)
 	}
 	var trailing json.RawMessage
@@ -35,9 +32,7 @@ func RunHook(
 		return 0
 	}
 	if hookIdentityMalformed(envelope) {
-		if code, denied := hookMalformedIdentityDenied(output); denied {
-			return code
-		}
+		hookAdvisory("invalid callback identity", errors.New("missing or malformed identity"))
 	}
 	request, err := hookRequest(envelope)
 	if err != nil {
@@ -79,9 +74,6 @@ func RunHook(
 	return 0
 }
 
-// hookCodeMalformedIdentity identifies a callback whose identity cannot be trusted.
-const hookCodeMalformedIdentity DiagnosticCode = "ECI_MALFORMED_HOOK_IDENTITY"
-
 // hookIdentityMalformed reports an envelope whose identity fields cannot name a scope.
 // Absent cwd remains valid because the callback resolves it from the process.
 //
@@ -98,76 +90,13 @@ func hookIdentityMalformed(envelope HookInput) bool {
 	return false
 }
 
-// hookMalformedIdentityDenied emits a fail-closed denial when any active ECI scope exists.
-// Unknown marker state is treated as active, so an unreadable proof root also denies.
+// finalizeHookDenial applies the user's gate mode to a callback denial.
 //
-// Example: session_id [] with an active marker emits malformed hook identity.
-func hookMalformedIdentityDenied(output io.Writer) (int, bool) {
-	active, err := hookActiveMarkerPresent()
-	if err == nil && !active {
-		return 0, false
-	}
-	request := Request{Provider: ProviderOmp, Role: RoleCoordinator, Marker: MarkerActive, HookMode: true}
-	result := deniedResult(request, Diagnostic{
-		Code:        hookCodeMalformedIdentity,
-		Operation:   "hook-identity",
-		Reason:      "malformed hook identity",
-		Remediation: "repair session_id, tool_name, and cwd in the callback envelope",
-	})
-	encoded, err := json.Marshal(struct {
-		HookSpecificOutput *HookSpecificOutput `json:"hookSpecificOutput"`
-	}{HookSpecificOutput: result.HookSpecificOutput})
-	if err != nil {
-		return hookAdvisory("encode identity denial", err), true
-	}
-	if _, err := fmt.Fprintln(output, string(encoded)); err != nil {
-		hookAdvisory("write identity denial", err)
-		return 2, true
-	}
-	return 0, true
-}
-
-// hookActiveMarkerPresent reports whether any session directory holds an eci_active marker.
-//
-// Example: an empty proof root has no active scope; an unreadable entry returns an error.
-func hookActiveMarkerPresent() (bool, error) {
-	root, err := hookProofRoot()
-	if err != nil {
-		return false, err
-	}
-	entries, err := os.ReadDir(root)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		_, err := os.Stat(filepath.Join(root, entry.Name(), "eci_active"))
-		if err == nil {
-			return true, nil
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return false, err
-		}
-	}
-	return false, nil
-}
-
-// finalizeHookDenial preserves the optional compiled inactive gate-mode route.
-// Active ECI denials never enter its permissive telemetry reduction.
-//
-// Example: an inactive permissive callback records telemetry and emits silence.
+// Example: permissive mode records telemetry and emits silence.
 func finalizeHookDenial(
 	request Request,
 	denial []byte,
 ) ([]byte, error) {
-	if request.Marker == MarkerActive {
-		return denial, nil
-	}
 	tool := filepath.Join(os.Getenv("HOME"), ".omp", "agent", "eci", "bin", "eci-command-gate-mode")
 	info, err := os.Stat(tool)
 	if errors.Is(err, os.ErrNotExist) {

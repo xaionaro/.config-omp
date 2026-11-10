@@ -3736,11 +3736,6 @@ func inspectSegment(
 					*ledgerRedirectAppend = true
 				}
 			}
-			if request.HookMode && !currentLedgerAppend {
-				if diagnostic := inspectHookControlWriter(request, redirectWriterArgv(redirect), segmentIndex); diagnostic != nil {
-					return DecisionDeny, diagnostic
-				}
-			}
 		}
 		decision, diagnostic := inspectProofPathOwnership(request, current.argv, segmentIndex, nil, nil, controlIndex)
 		if diagnostic != nil {
@@ -3748,6 +3743,13 @@ func inspectSegment(
 		}
 		if deferToProvider || decision == DecisionDefer {
 			return DecisionDefer, nil
+		}
+	}
+	if request.HookMode {
+		for _, redirect := range current.redirects {
+			if diagnostic := inspectHookSessionsWriter(request, redirectWriterArgv(redirect), segmentIndex); diagnostic != nil {
+				return DecisionDeny, diagnostic
+			}
 		}
 	}
 	argvForUnwrap := current.argv
@@ -3768,8 +3770,8 @@ func inspectSegment(
 	}
 	argv := unwrapped.argv
 	name := filepath.Base(argv[0].value)
-	if request.HookMode && request.Marker == MarkerActive {
-		if diagnostic := inspectHookControlWriter(request, argv, segmentIndex); diagnostic != nil {
+	if request.HookMode {
+		if diagnostic := inspectHookSessionsWriter(request, argv, segmentIndex); diagnostic != nil {
 			return DecisionDeny, diagnostic
 		}
 	}
@@ -7146,7 +7148,8 @@ func suppressInactiveDiagnostic(request Request, diagnostic *Diagnostic) bool {
 	if request.Marker != MarkerInactive {
 		return false
 	}
-	if diagnostic.Operation == "worker-control" || diagnostic.Predicate == "broad-destructive-root" {
+	if diagnostic.Operation == "worker-control" || diagnostic.Predicate == "broad-destructive-root" ||
+		request.HookMode && diagnostic.Code == hookCodeWorkerSessionsRootDenied {
 		return false
 	}
 	code := string(diagnostic.Code)
