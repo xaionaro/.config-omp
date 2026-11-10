@@ -312,4 +312,69 @@ if [ "$host_os" = Linux ]; then
   pass "verifier bootstrap with a tampered gate binary: the verifier is built, the gate binary is denied, rc nonzero"
 fi
 
+# Explicit repair must not loosen bin or retain an identical but unsafe binary.
+reset_bin
+run_provision repair-fill
+chmod 0700 "$bin"
+chmod 0775 "$bin/eci-command-plan"
+"$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/repair.out" 2>"$base/out/repair.err" || fail "repair failed"
+[ -n "$(find "$bin" -prune -perm 700 -print)" ] || fail "repair changed existing bin mode"
+[ -n "$(find "$bin/eci-command-plan" -prune -type f -links 1 -perm 755 -print)" ] || fail "repair retained invalid binary metadata"
+pass "repair preserves bin mode and replaces an identical binary with invalid metadata"
+
+ln "$bin/eci-command-plan" "$base/linked-planner"
+"$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/hardlink.out" 2>"$base/out/hardlink.err" || fail "hardlink repair failed"
+[ -n "$(find "$bin/eci-command-plan" -prune -type f -links 1 -print)" ] || fail "repair retained hard-linked binary"
+[ -f "$base/linked-planner" ] || fail "repair removed the other hard link"
+pass "repair replaces hard-linked binary without removing the other link"
+
+rm "$bin/eci-command-plan.sha256"
+run_provision partial-publish
+[ "$(rc_of partial-publish)" = 0 ] || fail "partial publication did not recover"
+[ -f "$bin/eci-command-plan.sha256" ] || fail "partial publication left receipt missing"
+[ -n "$(find "$bin" -prune -perm 700 -print)" ] || fail "provisioning changed existing bin mode"
+pass "provisioning recovers receipt-first interrupted publication and preserves bin mode"
+
+rm "$bin/eci-command-plan"
+ln -s "$base/fixture" "$bin/eci-command-plan"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/refuse.out" 2>"$base/out/refuse.err"; then
+  fail "repair accepted symlink target"
+fi
+[ -L "$bin/eci-command-plan" ] || fail "repair replaced symlink"
+pass "repair refuses a symlinked managed leaf"
+
+reset_bin
+run_provision interrupted-fill
+printf x >>"$bin/eci-command-plan"
+cat >"$base/fakebin/mv" <<'EOF'
+#!/bin/sh
+case "$*" in *eci-command-plan.sha256*) exec /bin/mv "$@" ;; *eci-command-plan*) exit 1 ;; esac
+exec /bin/mv "$@"
+EOF
+chmod 0755 "$base/fakebin/mv"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/interrupted.out" 2>"$base/out/interrupted.err"; then
+  fail "interrupted publication unexpectedly succeeded"
+fi
+[ ! -e "$bin/eci-command-plan.sha256" ] || fail "failed publication retained an old receipt"
+rm "$base/fakebin/mv"
+run_provision interrupted-recovery
+[ "$(rc_of interrupted-recovery)" = 0 ] || fail "failed publication was not recovered"
+pass "failed binary rename removes the receipt and next provisioning repairs the pair"
+
+printf y >>"$bin/eci-command-plan"
+before_lock=$(digest_of "$bin/eci-command-plan")
+mkfifo "$base/publish-wait"
+exec 8>>"$bin/.planner-importer.publish.lock"
+source "$eci/hooks/lib/eci-file-lock.sh"
+eci_file_lock_acquire_fd 8 blocking || fail "cannot hold publication lock"
+"$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/locked.out" 2>"$base/publish-wait" &
+locked_builder=$!
+IFS= read -r waiting_line <"$base/publish-wait" || fail "builder exited before waiting"
+[ "$waiting_line" = 'build-native-binaries: waiting for publication lock' ] || fail "unexpected builder diagnostic: $waiting_line"
+[ "$(digest_of "$bin/eci-command-plan")" = "$before_lock" ] || fail "builder published while lock held"
+eci_file_lock_release_fd 8 || fail "cannot release publication lock"
+wait "$locked_builder" || fail "builder failed after publication lock released"
+[ "$(digest_of "$bin/eci-command-plan")" != "$before_lock" ] || fail "builder did not publish after lock release"
+pass "builder waits for another publisher before changing the managed pair"
+
 printf 'eci-native-provision: %s checks passed (host %s, bash %s)\n' "$checks" "$host_os" "$BASH_VERSION"

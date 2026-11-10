@@ -20,7 +20,7 @@ die() {
   printf 'build-native-binaries: %s\n' "$*" >&2
   exit 1
 }
-source "$hook_dir/lib/eci-native-binary.sh"
+source "$hook_dir/lib/eci-native-provision.sh"
 
 # Select a PATH executable; a shell function or a relative PATH entry cannot build.
 go=$(command -v go) || die 'go not found on PATH; install Go 1.24 or newer and retry'
@@ -69,8 +69,15 @@ if [ "$#" -gt 0 ]; then
 fi
 
 bin_dir="$HOME/.omp/agent/eci/bin"
-mkdir -p -- "$bin_dir"
-chmod -- 0755 "$bin_dir"
+if [ ! -d "$bin_dir" ]; then
+  [ ! -L "$bin_dir" ] || die "unresolved bin directory $bin_dir"
+  mkdir -p -- "$bin_dir"
+  chmod -- 0755 "$bin_dir"
+fi
+bin_dir="$(cd -P -- "$bin_dir" && pwd -P)" || die 'cannot resolve bin directory'
+[ -O "$bin_dir" ] || die "bin directory not owned by current user: $bin_dir"
+lock="$bin_dir/.planner-importer.publish.lock"
+eci_native_leaf_unresolved "$lock" && die "publication lock is not a user-owned regular file: $lock"
 stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 
@@ -92,8 +99,31 @@ for name in "${names[@]}"; do
   printf '%s  %s\n' "${digest%% *}" "$name" >"$stage/$name.sha256"
 done
 
+# Cooperate with planner maintenance and runtime synchronization on the same lock.
+exec 6>>"$lock"
+if ! eci_file_lock_acquire_fd 6 nonblocking 2>/dev/null; then
+  echo "build-native-binaries: waiting for publication lock" >&2
+  eci_file_lock_acquire_fd 6 blocking || die "cannot acquire publication lock $lock"
+fi
+status=0
 for name in "${names[@]}"; do
-  mv -f -- "$stage/$name" "$bin_dir/$name"
-  mv -f -- "$stage/$name.sha256" "$bin_dir/$name.sha256"
-  echo "build-native-binaries: installed $bin_dir/$name"
+  binary="$bin_dir/$name"
+  receipt="$binary.sha256"
+  if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
+    echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
+    status=1
+    continue
+  fi
+  if cmp -s -- "$stage/$name" "$binary" && cmp -s -- "$stage/$name.sha256" "$receipt" &&
+    [ -n "$(find "$binary" -prune -type f -links 1 -perm 755 -user "$(id -u)" -print)" ]; then
+    echo "build-native-binaries: unchanged $binary and $receipt"
+    continue
+  fi
+  # A missing receipt makes an interrupted publication eligible for reprovisioning.
+  rm -f -- "$receipt"
+  mv -f -- "$stage/$name" "$binary"
+  mv -f -- "$stage/$name.sha256" "$receipt"
+  echo "build-native-binaries: installed $binary and $receipt"
 done
+eci_file_lock_release_fd 6 || status=1
+exit "$status"

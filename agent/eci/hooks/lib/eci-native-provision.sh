@@ -23,6 +23,11 @@ eci_native_receipt_only='eci-worker-git'
 # makes sure it is present, native and has a receipt, like eci-worker-git.
 if [ "$eci_runtime_platform" = Linux ]; then eci_native_receipt_only='eci-worker-git eci-verexec'; fi
 
+# Managed leaves must be regular, user-owned files or absent; links remain untouched.
+eci_native_leaf_unresolved() {
+  [ -L "$1" ] || { [ -e "$1" ] && { [ ! -f "$1" ] || [ ! -O "$1" ]; }; }
+}
+
 # Sets eci_native_class for bin/$1:
 #   stuck   - the binary or its receipt is a symlink or a non-regular entry; never built over;
 #   build   - the binary or receipt is absent, or the binary is regular but not native to this host;
@@ -30,8 +35,7 @@ if [ "$eci_runtime_platform" = Linux ]; then eci_native_receipt_only='eci-worker
 eci_native_classify() {
   local path="$HOME/.omp/agent/eci/bin/$1"
   eci_native_class=stuck
-  if [ -L "$path" ] || { [ -e "$path" ] && [ ! -f "$path" ]; }; then return 0; fi
-  if [ -L "$path.sha256" ] || { [ -e "$path.sha256" ] && [ ! -f "$path.sha256" ]; }; then return 0; fi
+  if eci_native_leaf_unresolved "$path" || eci_native_leaf_unresolved "$path.sha256"; then return 0; fi
   if [ ! -e "$path" ] || [ ! -e "$path.sha256" ] || ! eci_runtime_binary_is_native "$path"; then
     eci_native_class=build
     return 0
@@ -136,7 +140,9 @@ eci_native_provision() (
   [ -n "$build" ] || return 0
   bin="$HOME/.omp/agent/eci/bin"
   lock="$bin/.native-provision.lock"
-  mkdir -p -- "$bin" && chmod -- 0755 "$bin" || return 1
+  if [ ! -d "$bin" ]; then
+    mkdir -p -- "$bin" && chmod -- 0755 "$bin" || return 1
+  fi
   if [ -L "$lock" ] || { [ -e "$lock" ] && [ ! -f "$lock" ]; }; then
     printf 'eci-active: %s is a symlink or not a regular file; native provisioning stopped\n' "$lock" >&2
     return 1
