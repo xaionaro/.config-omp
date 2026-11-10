@@ -62,7 +62,7 @@ test("passes the script exit code through", async () => {
 test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empty stdout allows", async () => {
 	const failed = await runEciHook(script("die.sh", "echo boom >&2\nexit 1\n"), {}, id, 10);
 	expect(failed.stdout).toBe("");
-	expect(preToolVerdict(failed, "validate-bash")).toEqual({ block: true, reason: "ECI hook validate-bash exited 1: boom; blocking (fail-closed). Inspect the hook stderr and $HOME/.omp/agent/eci/hooks/validate-bash.sh, repair the reported runtime or output failure, then retry the same command." });
+	expect(preToolVerdict(failed, "validate-bash")?.reason).toContain("exited 1: boom");
 	const quiet = await runEciHook(script("quiet.sh", "exit 0\n"), {}, id, 10);
 	expect(preToolVerdict(quiet, "validate-bash")).toBeUndefined();
 });
@@ -80,6 +80,11 @@ test("Bash hook transport failures explain how to diagnose and retry without cha
 		expect(verdict?.reason).toContain("retry");
 		expect(preToolVerdict(run, "pretooluse-edit-dispatch")?.reason).not.toContain("validate-bash");
 	}
+	const timeout = preToolVerdict({ ok: false, code: 124, stdout: "", stderr: "" }, "validate-bash");
+	expect(timeout?.reason).toContain("process");
+	expect(timeout?.reason).toContain("disk");
+	const malformed = preToolVerdict({ ok: true, code: 0, stdout: "broken", stderr: "" }, "validate-bash");
+	expect(malformed?.reason).toContain("outside the blocked Bash tool");
 });
 
 test("a deadline stops the hook with SIGTERM and reports 124", async () => {

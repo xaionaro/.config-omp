@@ -245,7 +245,7 @@ export type PreToolVerdict = { block: true; reason: string } | undefined;
 export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	const fail = (why: string): PreToolVerdict => ({
 		block: true,
-		reason: `ECI hook ${label} ${why}; blocking (fail-closed).${label === "validate-bash" ? " Inspect the hook stderr and $HOME/.omp/agent/eci/hooks/validate-bash.sh, repair the reported runtime or output failure, then retry the same command." : ""}`,
+		reason: `ECI hook ${label} ${why}; blocking (fail-closed).${label === "validate-bash" ? run.code === TIMEOUT_EXIT || run.code === KILL_EXIT ? " Inspect host process and disk availability and $HOME/.omp/agent/eci/hooks/validate-bash.sh; persistent failures need repair outside the blocked Bash tool before retry." : " Inspect $HOME/.omp/agent/eci/hooks/validate-bash.sh and its runtime dependencies; persistent failures need repair outside the blocked Bash tool before retry." : ""}`,
 	});
 	if (run.code === -1) return fail(`could not run (${run.stderr.trim()})`);
 	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return fail("timed out");
