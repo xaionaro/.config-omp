@@ -25,13 +25,13 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 		{"write", map[string]any{"path": "file.go"}},
 		{"edit", map[string]any{"input": "*** Begin Patch\n[file.go#ABCD]\nCUT 1.=1\n*** End Patch"}},
 	} {
-		got, err := decide(Request{Action: "call", Tool: tc.tool, Input: tc.input, State: state})
+		got, err := decide(Request{Action: callAction, Tool: tc.tool, Input: tc.input, State: state})
 		require.NoError(t, err)
 		require.Contains(t, got.Reason, "skill://coding-common")
 		require.Contains(t, got.Reason, "skill://coding-go")
 	}
 	for _, name := range []string{"coding-common", "coding-go"} {
-		got, err := decide(Request{Action: "result", Tool: "read", Input: map[string]any{"path": "skill://" + name}, Details: completeRead(), State: state})
+		got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://" + name}, Details: completeRead(), State: state})
 		require.NoError(t, err)
 		state = got.State
 	}
@@ -42,11 +42,11 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 		{"write", map[string]any{"path": "file.go"}},
 		{"edit", map[string]any{"input": "*** Begin Patch\n[file.go#ABCD]\nCUT 1.=1\n*** End Patch"}},
 	} {
-		got, err := decide(Request{Action: "call", Tool: tc.tool, Input: tc.input, State: state})
+		got, err := decide(Request{Action: callAction, Tool: tc.tool, Input: tc.input, State: state})
 		require.NoError(t, err)
 		require.Empty(t, got.Reason)
 	}
-	got, err := decide(Request{Action: "call", Tool: "write", Input: map[string]any{"path": "a.py"}, State: state})
+	got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "a.py"}, State: state})
 	require.NoError(t, err)
 	require.Contains(t, got.Reason, "skill://coding-python")
 }
@@ -86,7 +86,7 @@ func TestBranchHydrationRequiresSuccessfulPairs(t *testing.T) {
 		{"type": "message", "message": map[string]any{"role": "toolResult", "toolName": "read", "toolCallId": "1", "details": completeRead()}},
 		{"type": "message", "message": map[string]any{"role": "toolResult", "toolName": "read", "toolCallId": "2", "details": completeRead(), "isError": true}},
 	}
-	got, err := decide(Request{Action: "call", Tool: "write", Input: map[string]any{"path": "a.go"}, Branch: branch})
+	got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "a.go"}, Branch: branch})
 	require.NoError(t, err)
 	require.NotContains(t, got.Reason, "coding-common")
 	require.Contains(t, got.Reason, "coding-go")

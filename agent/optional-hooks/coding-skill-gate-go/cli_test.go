@@ -20,6 +20,13 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	var output bytes.Buffer
 	require.NoError(t, run([]string{"reduce"}, bytes.NewReader(request), &output))
+	var wire struct {
+		State struct {
+			Reads map[string]bool `json:"reads"`
+		} `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &wire))
+	require.Equal(t, map[string]bool{"coding-common": true, "coding-go": true}, wire.State.Reads)
 	var reduced struct {
 		State State `json:"state"`
 	}

@@ -52,13 +52,14 @@ func run(
 	if len(args) != 1 {
 		return fmt.Errorf("expected describe, reduce, or check")
 	}
-	if args[0] == "describe" {
+	switch args[0] {
+	case "describe":
 		return json.NewEncoder(output).Encode(map[string]any{
 			"callTools":   []string{"write", "edit"},
 			"resultTools": []string{"read"},
 		})
-	}
-	if args[0] != "reduce" && args[0] != "check" {
+	case "reduce", "check":
+	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 	var in cliInput
