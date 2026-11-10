@@ -22,16 +22,80 @@ const (
 	maxHookTranscriptPrefixBytes = 64 << 10
 )
 
+// OmpAgentKind represents the host's documented identity independently of transcript state.
+//
+// Example: main identity can fill the verified pending-transcript gap without changing saved sessions.
+type OmpAgentKind int
+
+const (
+	// ompAgentKindAbsent preserves callbacks from adapters that supply no host identity.
+	//
+	// Example: an older adapter relies entirely on transcript classification.
+	ompAgentKindAbsent OmpAgentKind = iota
+	// ompAgentKindMain identifies the host's main agent.
+	//
+	// Example: a main callback may arrive before its transcript is persisted.
+	ompAgentKindMain
+	// ompAgentKindSub identifies a host child or advisor.
+	//
+	// Example: a child with no transcript never gains the pending-main exception.
+	ompAgentKindSub
+	// ompAgentKindInvalid retains unrecognized string identities for advisory classification.
+	//
+	// Example: "Main" is not the documented "main" identity.
+	ompAgentKindInvalid
+)
+
+// UnmarshalJSON translates host identity strings without admitting unknown identities as main.
+//
+// Example: "sub" is recognized, while a numeric or null identity rejects the callback.
+func (kind *OmpAgentKind) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errors.New("omp_agent_kind must be a string")
+	}
+	var wire string
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return fmt.Errorf("decode omp_agent_kind: %w", err)
+	}
+	switch wire {
+	case "":
+		*kind = ompAgentKindAbsent
+	case "main":
+		*kind = ompAgentKindMain
+	case "sub":
+		*kind = ompAgentKindSub
+	default:
+		*kind = ompAgentKindInvalid
+	}
+	return nil
+}
+
+// MarshalJSON preserves the documented wire strings for callbacks constructed in Go.
+//
+// Example: a recognized main identity serializes as "main", not its integer representation.
+func (kind OmpAgentKind) MarshalJSON() ([]byte, error) {
+	switch kind {
+	case ompAgentKindAbsent:
+		return []byte(`""`), nil
+	case ompAgentKindMain:
+		return []byte(`"main"`), nil
+	case ompAgentKindSub:
+		return []byte(`"sub"`), nil
+	default:
+		return nil, errors.New("cannot encode invalid omp_agent_kind")
+	}
+}
+
 // HookInput contains the callback fields needed to resolve command ownership.
 //
 // Example: Bash callbacks supply ToolInput.Command and the callback SessionID.
 type HookInput struct {
-	SessionID      string `json:"session_id"`
-	CWD            string `json:"cwd"`
-	CWDUnknown     bool   `json:"cwd_unknown"`
-	TranscriptPath string `json:"transcript_path"`
-	OmpAgentKind   string `json:"omp_agent_kind"`
-	ToolName       string `json:"tool_name"`
+	SessionID      string       `json:"session_id"`
+	CWD            string       `json:"cwd"`
+	CWDUnknown     bool         `json:"cwd_unknown"`
+	TranscriptPath string       `json:"transcript_path"`
+	OmpAgentKind   OmpAgentKind `json:"omp_agent_kind,omitempty"`
+	ToolName       string       `json:"tool_name"`
 	ToolInput      struct {
 		Command string `json:"command"`
 	} `json:"tool_input"`
@@ -58,12 +122,12 @@ func hookRequest(input HookInput) (Request, error) {
 	role, transcriptErr := hookTranscriptRole(input.TranscriptPath)
 	request.Role = role
 	// Host identity fills only the lazy-file gap; saved transcripts remain authoritative.
-	if input.OmpAgentKind == "main" && errors.Is(transcriptErr, errHookTranscriptPending) {
+	if input.OmpAgentKind == ompAgentKindMain && errors.Is(transcriptErr, errHookTranscriptPending) {
 		request.Role = RoleCoordinator
 		transcriptErr = nil
 	}
-	if input.OmpAgentKind != "" && input.OmpAgentKind != "main" && input.OmpAgentKind != "sub" {
-		hookAdvisory("classify callback agent", fmt.Errorf("invalid omp_agent_kind %q", input.OmpAgentKind))
+	if input.OmpAgentKind == ompAgentKindInvalid {
+		hookAdvisory("classify callback agent", errors.New("invalid omp_agent_kind: expected main or sub"))
 	}
 	switch {
 	case transcriptErr == nil:
@@ -212,6 +276,9 @@ func hookTranscriptStatus(path string) (string, error) {
 //
 // Example: sessions/project/main.jsonl may be absent, but project must already be a real directory.
 func hookPendingTranscriptParent(path string) error {
+	if filepath.Clean(path) != path {
+		return errors.New("pending transcript path is not clean")
+	}
 	lexical, root, err := hookTranscriptRoots()
 	if err != nil {
 		return err

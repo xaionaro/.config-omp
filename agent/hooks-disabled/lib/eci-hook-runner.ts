@@ -88,8 +88,8 @@ export function prefixMarksSubagent(prefix: Uint8Array): boolean {
 
 /**
  * Subagent detection from the bounded transcript prefix (prefixMarksSubagent).
- * Only documented main identity tolerates ENOENT while omp has not saved its
- * transcript. Read failures are not cached, so they cannot pin a later callback.
+ * Bash callers may opt into the documented-main ENOENT gap; other consumers
+ * keep fail-closed reads. Read failures are never cached.
  */
 function detectSubagent(transcriptPath: string | undefined, agentKind: EciIdentity["agentKind"]): boolean {
 	if (!transcriptPath) return false;
@@ -114,7 +114,8 @@ function detectSubagent(transcriptPath: string | undefined, agentKind: EciIdenti
 	return found;
 }
 
-export function identityFor(ctx: EciSessionContext): EciIdentity {
+/** Keeps shared transcript classification unchanged unless the Bash boundary opts into lazy persistence. */
+export function identityFor(ctx: EciSessionContext, options: { allowPendingMain?: boolean } = {}): EciIdentity {
 	const transcriptPath = ctx.sessionManager.getSessionFile() ?? undefined;
 	let agentKind: EciIdentity["agentKind"];
 	try {
@@ -128,7 +129,7 @@ export function identityFor(ctx: EciSessionContext): EciIdentity {
 		transcriptPath,
 		cwd: ctx.cwd,
 		agentKind,
-		isSubagent: detectSubagent(transcriptPath, agentKind),
+		isSubagent: detectSubagent(transcriptPath, options.allowPendingMain ? agentKind : undefined),
 	};
 }
 

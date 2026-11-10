@@ -197,7 +197,7 @@ test("Bash callback uses the session manager identity without inventing a transc
 	const savedHome = process.env.HOME;
 	const hooks = join(dir, ".omp", "agent", "eci", "hooks");
 	mkdirSync(hooks, { recursive: true });
-	writeFileSync(join(hooks, "validate-bash.sh"), `pwd > '${join(dir, "hook-pwd")}'\ncat > '${join(dir, "callback.json")}'\n`);
+	writeFileSync(join(hooks, "validate-bash.sh"), `pwd > '${join(dir, "hook-pwd")}'\nprintf '%s' "$ECI_HOOK_IS_SUBAGENT" > '${join(dir, "hook-role")}'\ncat > '${join(dir, "callback.json")}'\n`);
 	try {
 		process.env.HOME = dir;
 		const verdict = await handler!({ toolName: "bash", input: { command: "true" } }, {
@@ -226,6 +226,16 @@ test("Bash callback uses the session manager identity without inventing a transc
 			expect(callback.tool_input.command).toBe(command);
 		}
 		expect(payload.transcript_path).toBeUndefined();
+		const pendingTranscript = join(dir, "pending.jsonl");
+		expect(await handler!({ toolName: "bash", input: { command: "true" } }, {
+			cwd: dir,
+			agent: { kind: "main" },
+			sessionManager: { getSessionId: () => "native-session", getSessionFile: () => pendingTranscript },
+		})).toBeUndefined();
+		expect(readFileSync(join(dir, "hook-role"), "utf8")).toBe("0");
+		const pendingPayload = await Bun.file(join(dir, "callback.json")).json();
+		expect(pendingPayload.omp_agent_kind).toBe("main");
+		expect(pendingPayload.transcript_path).toBe(pendingTranscript);
 	} finally {
 		if (savedHome === undefined) delete process.env.HOME;
 		else process.env.HOME = savedHome;
@@ -594,27 +604,27 @@ test("subagent detection reads only the prefix of a large transcript", () => {
 test("documented main identity admits an uncached missing transcript only", async () => {
 	const transcript = join(dir, "pending.jsonl");
 	const ctx = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => transcript } };
-	const pending = identityFor(ctx);
+	const pending = identityFor(ctx, { allowPendingMain: true });
 	expect(pending.isSubagent).toBe(false);
 	expect(basePayload(pending, "PreToolUse").omp_agent_kind).toBe("main");
 	const run = await runEciHook(script("role.sh", 'printf "%s" "$ECI_HOOK_IS_SUBAGENT"\n'), {}, pending, 5);
 	expect(run.stdout).toBe("0");
 	writeFileSync(transcript, '{"type":"session","parentSession":"parent"}\n');
-	expect(identityFor(ctx).isSubagent).toBe(true);
-	expect(identityFor({ ...ctx, sessionManager: { getSessionFile: () => dir } }).isSubagent).toBe(true);
+	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(true);
+	expect(identityFor({ ...ctx, sessionManager: { getSessionFile: () => dir } }, { allowPendingMain: true }).isSubagent).toBe(true);
 });
 
 test("missing invalid and throwing agent identities preserve fail-closed detection", () => {
 	const ctx = { cwd: dir, sessionManager: { getSessionFile: () => join(dir, "missing.jsonl") } };
 	for (const agent of [undefined, null, {}, { kind: "Main" }, { kind: 1 }, { get kind() { throw new Error("unavailable"); } }]) {
-		const identity = identityFor({ ...ctx, agent } as never);
+		const identity = identityFor({ ...ctx, agent } as never, { allowPendingMain: true });
 		expect(identity.isSubagent).toBe(true);
 		expect(basePayload(identity, "PreToolUse")).not.toHaveProperty("omp_agent_kind");
 	}
-	const identity = identityFor({ ...ctx, get agent() { throw new Error("unavailable"); } });
+	const identity = identityFor({ ...ctx, get agent() { throw new Error("unavailable"); } }, { allowPendingMain: true });
 	expect(identity.isSubagent).toBe(true);
 	expect(basePayload(identity, "PreToolUse")).not.toHaveProperty("omp_agent_kind");
-	expect(identityFor({ ...ctx, agent: { kind: "sub" } } as never).isSubagent).toBe(true);
+	expect(identityFor({ ...ctx, agent: { kind: "sub" } } as never, { allowPendingMain: true }).isSubagent).toBe(true);
 });
 
 test("main identity does not admit EACCES or cache unreadable transcripts", () => {
@@ -623,13 +633,13 @@ test("main identity does not admit EACCES or cache unreadable transcripts", () =
 	writeFileSync(transcript, '{"type":"session"}\n', { mode: 0o000 });
 	const ctx = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => transcript } };
 	try {
-		expect(identityFor(ctx).isSubagent).toBe(true);
+		expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(true);
 	} finally {
 		chmodSync(transcript, 0o600);
 	}
-	expect(identityFor(ctx).isSubagent).toBe(false);
+	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(false);
 	writeFileSync(transcript, '{"type":"session","parentSession":"parent"}\n');
-	expect(identityFor(ctx).isSubagent).toBe(false);
+	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(false);
 });
 
 test("existing resumed main advisor fork and child transcripts retain prefix classification", () => {
@@ -648,6 +658,12 @@ test("existing resumed main advisor fork and child transcripts retain prefix cla
 	}
 	const noSession = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => undefined } };
 	expect(identityFor(noSession).isSubagent).toBe(false);
+});
+
+test("shared identity consumers retain missing-transcript fail-closed behavior", () => {
+	const transcript = join(dir, "missing.jsonl");
+	const ctx = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => transcript } };
+	expect(identityFor(ctx).isSubagent).toBe(true);
 });
 
 test("an unusable ECI_BASH or a PATH without bash fails closed", async () => {

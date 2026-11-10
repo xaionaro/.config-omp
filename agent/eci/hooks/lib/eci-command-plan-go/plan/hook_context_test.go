@@ -191,8 +191,12 @@ func TestHookContextPendingIdentity(t *testing.T) {
 		{name: "not directory", path: filepath.Join(root, "file-parent", "pending.jsonl"), kind: "main", want: RoleWorker},
 		{name: "outside root", path: filepath.Join(t.TempDir(), "pending.jsonl"), kind: "main", want: RoleWorker},
 		{name: "parent traversal", path: project + "/../../outside/pending.jsonl", kind: "main", want: RoleWorker},
+		{name: "missing then parent traversal", path: root + "/missing/../project/pending.jsonl", kind: "main", want: RoleWorker},
+		{name: "symlink then parent traversal", path: root + "/linked/../project/pending.jsonl", kind: "main", want: RoleWorker},
 	} {
 		// Each callback uses the wire decoder, keeping compatibility with older adapters.
+		//
+		// Example: missing host identity keeps a pending transcript on Worker.
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv("ECI_HOOK_IS_SUBAGENT", testCase.workerOverride)
 			payload := map[string]any{"session_id": "owner", "cwd": cwd, "transcript_path": testCase.path}
@@ -218,12 +222,14 @@ func TestHookContextPendingIdentity(t *testing.T) {
 func TestHookContextIdentityPreservesExistingTranscript(t *testing.T) {
 	_, cwd := contextFixture(t)
 	project := sessionsFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(project, "children"), 0700))
 	for _, kind := range []string{"main", "sub", ""} {
 		for name, contents := range map[string]string{
-			"main":      "{\"type\":\"session\"}\n",
-			"fork":      "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
-			"malformed": "not json\n",
-			"empty":     "",
+			"main":           "{\"type\":\"session\"}\n",
+			"fork":           "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+			"children/child": "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+			"malformed":      "not json\n",
+			"empty":          "",
 		} {
 			path := filepath.Join(project, name+".jsonl")
 			require.NoError(t, os.WriteFile(path, []byte(contents), 0600))
@@ -253,6 +259,8 @@ func TestHookContextPendingRejectsUnreadableParent(t *testing.T) {
 	project := sessionsFixture(t)
 	require.NoError(t, os.Chmod(project, 0000))
 	// Restore traversal before the temporary home is cleaned.
+	//
+	// Example: cleanup can remove the fixture home after a permission-denied callback.
 	defer func() { require.NoError(t, os.Chmod(project, 0700)) }()
 	body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": filepath.Join(project, "pending.jsonl"), "omp_agent_kind": "main"})
 	require.NoError(t, err)
@@ -267,10 +275,63 @@ func TestHookContextPendingRejectsUnreadableParent(t *testing.T) {
 //
 // Example: a numeric kind cannot be interpreted as a documented main identity.
 func TestHookInputRejectsNonStringAgentKind(t *testing.T) {
-	for _, value := range []string{"1", "true", "{}", "[]"} {
+	for _, value := range []string{"1", "true", "{}", "[]", "null"} {
 		var input HookInput
 		require.Error(t, json.Unmarshal([]byte(`{"omp_agent_kind":`+value+`}`), &input))
 	}
+}
+
+// TestHookInputAgentKindWireRoundTrip preserves recognized strings and omits absent identity.
+//
+// Example: a Go callback with main identity encodes the same "main" value accepted from TypeScript.
+func TestHookInputAgentKindWireRoundTrip(t *testing.T) {
+	for _, wire := range []string{"main", "sub", ""} {
+		var input HookInput
+		require.NoError(t, json.Unmarshal([]byte(`{"omp_agent_kind":"`+wire+`"}`), &input))
+		body, err := json.Marshal(input)
+		require.NoError(t, err)
+		var fields map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(body, &fields))
+		if wire == "" {
+			require.NotContains(t, fields, "omp_agent_kind")
+			continue
+		}
+		require.JSONEq(t, `"`+wire+`"`, string(fields["omp_agent_kind"]))
+	}
+	var invalid HookInput
+	require.NoError(t, json.Unmarshal([]byte(`{"omp_agent_kind":"Main"}`), &invalid))
+	_, err := json.Marshal(invalid)
+	require.Error(t, err)
+}
+
+// TestHookContextPendingSessionsAliases preserves the configured sessions store and HOME aliases.
+//
+// Example: a pending main file beneath the configured sessions symlink is coordinator, but a linked project is not.
+func TestHookContextPendingSessionsAliases(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project, alias := sessionsLinkFixture(t)
+	root := filepath.Join(os.Getenv("HOME"), ".omp", "agent", "sessions")
+	require.NoError(t, os.Symlink(project, filepath.Join(filepath.Dir(project), "linked")))
+	for _, path := range []string{
+		filepath.Join(project, "pending.jsonl"),
+		filepath.Join(root, "project", "pending.jsonl"),
+		filepath.Join(alias, ".omp", "agent", "sessions", "project", "pending.jsonl"),
+	} {
+		body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": path, "omp_agent_kind": "main"})
+		require.NoError(t, err)
+		var input HookInput
+		require.NoError(t, json.Unmarshal(body, &input))
+		got, err := hookRequest(input)
+		require.NoError(t, err)
+		require.Equal(t, RoleCoordinator, got.Role, path)
+	}
+	body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": filepath.Join(root, "linked", "pending.jsonl"), "omp_agent_kind": "main"})
+	require.NoError(t, err)
+	var input HookInput
+	require.NoError(t, json.Unmarshal(body, &input))
+	got, err := hookRequest(input)
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
 }
 
 // TestHookContextOversizedMainIsWorker keeps a depth-two transcript whose header exceeds the bounded prefix on the worker role; a long record after the header keeps main.
