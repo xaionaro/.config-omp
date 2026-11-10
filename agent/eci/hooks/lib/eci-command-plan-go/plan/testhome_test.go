@@ -16,6 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // testRootEnv names the provisioned test root. A re-executed test child inherits it and keeps the
@@ -296,9 +298,9 @@ func TestProvisionedTemporaryDirectory(t *testing.T) {
 	root := os.Getenv(testRootEnv)
 	directory := t.TempDir()
 	relative, err := filepath.Rel(root, directory)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		t.Fatalf("temporary directory %q is outside root %q: %v", directory, root, err)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, "..", relative)
+	require.False(t, strings.HasPrefix(relative, ".."+string(filepath.Separator)), "temporary directory %q is outside root %q", directory, root)
 }
 
 // pinGoEnvironment fixes Go's HOME-derived settings to what `go env` reports under the account
