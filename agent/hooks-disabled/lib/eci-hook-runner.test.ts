@@ -174,6 +174,14 @@ test("Bash cwd only claims host spellings it can resolve exactly", () => {
 	}
 	expect(bashHostCwd(undefined, "cd /abs && pwd", session, noCDPath)).toBe(session);
 	expect(bashHostCwd(undefined, "cd @/x && pwd", session, noCDPath)).toBeUndefined();
+	for (const command of [
+		`cd ""@/d && pwd`, `cd '@'/d && pwd`, String.raw`cd \@/d && pwd`,
+		`cd "@/d" && pwd`, `cd ":"/d && pwd`, "cd /a/link/.. && pwd",
+		"cd /a/../b; pwd", `cd "/p q" && pwd`, "cd ~/x && pwd",
+	]) expect(bashHostCwd(undefined, command, session, noCDPath)).toBeUndefined();
+	for (const command of ["cd /a/b && pwd", "cd /a/./b/ && pwd", "cd ../s && pwd", "cd - && pwd", " cd /x && pwd", "cdx /y"]) {
+		expect(bashHostCwd(undefined, command, session, noCDPath)).toBe(session);
+	}
 	expect(bashHostCwd(undefined, "cd sub/child && pwd", session, { CDPATH: "/other" })).toBeUndefined();
 });
 
@@ -391,6 +399,103 @@ test("other hook consumers retain normal-exit behavior", async () => {
 		process.kill = originalKill;
 	}
 });
+
+test("deadline after leader exit still blocks inherited output", async () => {
+	const pidFile = join(dir, "inherited-deadline.pid");
+	const envelope = JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "partial" } });
+	const hook = script("inherited-deadline.sh", `printf '%s\\n' '${envelope}'\nsleep 30 &\necho $! > '${pidFile}'\nexit 0\n`);
+	const run = await runEciHook(hook, {}, id, 1);
+	expect(run.outcome).toEqual(deadline("graceful"));
+	expect(preToolVerdict(run, "edit")?.reason).toContain("timed out");
+	expect(bashPreToolVerdict(run)?.reason).toContain("deadline");
+	expect(advisoryContext(run, "SessionStart")).toBeUndefined();
+	expectProcessGone(pidFile);
+}, 15000);
+
+test("abort after leader exit while output remains open is cancellation", async () => {
+	const controller = new AbortController();
+	const ready = join(dir, "leader-exited");
+	const pidFile = join(dir, "inherited-cancel.pid");
+	const hook = script("inherited-cancel.sh", `parent=$$\nbash -c 'while kill -0 "$1" 2>/dev/null; do :; done; echo $$ > "$2"; exec sleep 30' _ "$parent" '${ready}' &\necho $! > '${pidFile}'\nexit 0\n`);
+	const watcher = watch(dir);
+	const changes = on(watcher, "change");
+	try {
+		const runPromise = runEciHook(hook, {}, id, 20, { cleanup: "owned-group", signal: controller.signal });
+		while (!(await Bun.file(ready).exists())) await changes.next();
+		controller.abort();
+		const run = await runPromise;
+		expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "cancel" }, cleanup: "graceful" });
+		expect(bashPreToolVerdict(run)?.reason).toContain("cancel");
+		expectProcessGone(pidFile);
+	} finally {
+		watcher.close();
+	}
+}, 15000);
+
+test("abort after output closes does not change an exit during cleanup", async () => {
+	const controller = new AbortController();
+	const pidFile = join(dir, "post-close.pid");
+	const ready = join(dir, "post-close.ready");
+	const hook = script("post-close.sh", `bash -c 'trap "" TERM; echo ready > "$1"; exec sleep 30' _ '${ready}' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwhile [ ! -f '${ready}' ]; do sleep 0.01; done\nexit 0\n`);
+	const originalKill = process.kill;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0 && signal === "SIGTERM") controller.abort();
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const run = await runEciHook(hook, {}, id, 10, { cleanup: "owned-group", signal: controller.signal });
+		expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "exit", code: 0 }, cleanup: "forced" });
+		expectProcessGone(pidFile);
+	} finally {
+		process.kill = originalKill;
+	}
+}, 15000);
+
+test("a deadline preceding an abort remains the stop cause and sends TERM once", async () => {
+	const controller = new AbortController();
+	const originalKill = process.kill;
+	let terms = 0;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0 && signal === "SIGTERM") {
+			terms++;
+			controller.abort();
+		}
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const run = await runEciHook(script("deadline-first.sh", "exec sleep 30\n"), {}, id, 1, { signal: controller.signal });
+		expect(run.outcome).toEqual(deadline("graceful"));
+		expect(terms).toBe(1);
+	} finally {
+		process.kill = originalKill;
+	}
+}, 15000);
+
+test("an abort preceding a deadline remains the stop cause and sends TERM once", async () => {
+	const controller = new AbortController();
+	const pidFile = join(dir, "cancel-first.pid");
+	const hook = script("cancel-first.sh", `trap '' TERM\necho $$ > '${pidFile}.tmp'\nmv '${pidFile}.tmp' '${pidFile}'\nexec sleep 30\n`);
+	const watcher = watch(dir);
+	const changes = on(watcher, "change");
+	const originalKill = process.kill;
+	let terms = 0;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0 && signal === "SIGTERM") terms++;
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const runPromise = runEciHook(hook, {}, id, 1, { signal: controller.signal });
+		while (!(await Bun.file(pidFile).exists())) await changes.next();
+		controller.abort();
+		const run = await runPromise;
+		expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "cancel" }, cleanup: "forced" });
+		expect(terms).toBe(1);
+		expectProcessGone(pidFile);
+	} finally {
+		process.kill = originalKill;
+		watcher.close();
+	}
+}, 15000);
 
 test("pre-aborted runs never spawn", async () => {
 	const controller = new AbortController();

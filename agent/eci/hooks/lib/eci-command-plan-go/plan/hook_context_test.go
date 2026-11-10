@@ -664,3 +664,31 @@ func TestHookActivityRelativeWorkerRepositoryUsesSegmentCWD(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 }
+
+// TestHookUnknownCWDDoesNotRecoverAfterAbsoluteCD preserves explicit uncertainty.
+//
+// Example: cd /absolute cannot turn an unknown callback cwd into a known segment.
+func TestHookUnknownCWDDoesNotRecoverAfterAbsoluteCD(t *testing.T) {
+	target := t.TempDir()
+	for _, tc := range []struct {
+		name      string
+		cwd       string
+		candidate bool
+	}{
+		{name: "unknown", cwd: "", candidate: false},
+		{name: "known", cwd: t.TempDir(), candidate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: tc.cwd, Command: "cd " + target + " && touch relative", HookMode: true, CollectShellCommands: true}
+			result := Classify(request)
+			require.NotNil(t, result.ShellAnalysis)
+			require.Len(t, result.ShellAnalysis.Commands, 2)
+			if tc.candidate {
+				require.Contains(t, result.ShellAnalysis.Commands[1].CWDCandidates, target)
+			} else {
+				require.False(t, result.ShellAnalysis.Commands[1].CWDKnown)
+				require.Empty(t, result.ShellAnalysis.Commands[1].CWDCandidates)
+			}
+		})
+	}
+}

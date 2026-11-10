@@ -133,14 +133,17 @@ export function basePayload(id: EciIdentity, hookEventName: string): Record<stri
 }
 
 const HOST_PATH_SPACE = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/;
+const HOST_CD_PREFIX = /^cd[ \t]/;
+const HOST_CD_PLAIN = /^cd[ \t]+([A-Za-z0-9._+,=%\/-]+)(?=[ \t\n\r&|;<>()]|$)/;
 
 /** Returns omp 18.18.6's Bash cwd only for spellings resolved exactly here.
  * Recheck host resolution when upgrading omp; undefined means unknown.
  */
 export function bashHostCwd(requested: unknown, command: string, sessionCwd: string, env = process.env): string | undefined {
 	if (requested === undefined || requested === "") {
-		const word = /^cd[ \t]+([^\n]*?)[ \t]*(?:&&|;)/.exec(command)?.[1];
-		if (word !== undefined && (word.includes(":") || /^['"]?@/.test(word) || HOST_PATH_SPACE.test(word) || !!env.CDPATH)) return undefined;
+		if (!HOST_CD_PREFIX.test(command)) return sessionCwd;
+		const word = HOST_CD_PLAIN.exec(command)?.[1];
+		if (word === undefined || (isAbsolute(word) && word.split("/").includes("..")) || !!env.CDPATH) return undefined;
 		return sessionCwd;
 	}
 	if (typeof requested !== "string" || /[:\\]/.test(requested) || requested.startsWith("@") || HOST_PATH_SPACE.test(requested)) return undefined;
@@ -241,7 +244,8 @@ export async function runEciHook(
 		resolve(run);
 	};
 	const result = (): HookRun => {
-		const outcome: HookOutcome = { kind: "ran", stop: stop ?? { kind: "exit", code: -1 }, cleanup: cleanupUnconfirmed ? "unconfirmed" : killed ? "forced" : "graceful" };
+		// Every caller sets stop before beginning or completing retirement.
+		const outcome: HookOutcome = { kind: "ran", stop: stop!, cleanup: cleanupUnconfirmed ? "unconfirmed" : killed ? "forced" : "graceful" };
 		return { outcome, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() };
 	};
 	const retireGroup = (pid: number): void => {
@@ -270,7 +274,6 @@ export async function runEciHook(
 	child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
 	child.on("exit", (code, signal) => {
 		exitCode = code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : -1);
-		stop ??= { kind: "exit", code: exitCode };
 	});
 	child.on("close", () => {
 		if (finished) return;
@@ -287,7 +290,8 @@ export async function runEciHook(
 			if (group === "absent") finish(result());
 			return;
 		}
-		if ((stop?.kind !== "exit" || retireOnExit) && child.pid !== undefined) {
+		stop = { kind: "exit", code: exitCode };
+		if (retireOnExit && child.pid !== undefined) {
 			const group = signalGroup(child.pid, 0);
 			if (group === "unknown") cleanupUnconfirmed = true;
 			if (group !== "absent") {
@@ -301,8 +305,8 @@ export async function runEciHook(
 	child.stdin?.end(JSON.stringify(stdin));
 	const pid = child.pid;
 	const onAbort = (): void => {
-		if (finished || pid === undefined) return;
-		stop ??= { kind: "cancel" };
+		if (finished || pid === undefined || stop !== undefined) return;
+		stop = { kind: "cancel" };
 		retireGroup(pid);
 	};
 	if (pid !== undefined) {
