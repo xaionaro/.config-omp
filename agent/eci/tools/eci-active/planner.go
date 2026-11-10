@@ -256,6 +256,14 @@ type plannerLeaf struct {
 	new     string // state of the staged file
 }
 
+// plannerTool groups a staged executable with its matching receipt.
+//
+// Example: a receipt is removed before replacing its executable.
+type plannerTool struct {
+	binary  plannerLeaf
+	receipt plannerLeaf
+}
+
 // plannerLeafState describes path as absent, symlink, other, or regular:<mode>:<sha256>.
 func plannerLeafState(path string) (string, error) {
 	info, err := os.Lstat(path)
@@ -332,7 +340,7 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 	}
 	fmt.Fprintf(os.Stderr, "ECI build: original modules; GOCACHEPROG cleared; scratch=%s\n", txn)
 
-	leaves := make([]*plannerLeaf, 0, 2*len(plannerPairTools))
+	tools := make([]*plannerTool, 0, len(plannerPairTools))
 	for _, name := range plannerPairTools {
 		built, err := plannerBuildTool(ctx, root, goTool, txn, name, goos, goarch)
 		if err != nil {
@@ -349,46 +357,55 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		if err := writeFileAtomic(receipt, strings.NewReader(digest+"  "+name+"\n"), 0o644); err != nil {
 			return "", fmt.Errorf("[ECI_PLANNER_RECEIPT_FAILED] receipt of %s not staged: %v; no planner state was changed", name, err)
 		}
-		leaves = append(leaves, &plannerLeaf{name: name, install: built}, &plannerLeaf{name: name + ".sha256", install: receipt})
+		tools = append(tools, &plannerTool{
+			binary:  plannerLeaf{name: name, install: built},
+			receipt: plannerLeaf{name: name + ".sha256", install: receipt},
+		})
 	}
 	if interruption := plannerInterrupted(interrupt, "the builds"); interruption != nil {
 		return "", interruption
 	}
-	retained, err = publishPlannerLeaves(binDir, txn, leaves, interrupt)
+	retained, err = publishPlannerLeaves(binDir, txn, tools, interrupt)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(binDir, "eci-command-plan"), nil
 }
 
-// publishPlannerLeaves installs the staged leaves under binDir as one unit, following planner_prepare_pair,
-// planner_publish_pair, planner_restore_pair and planner_finish of pre-migration source 575bb81
-// bin/eci-runtime-sync. Every previous regular leaf is backed up first. Each rename first confirms that its
-// leaf still has the state observed before publication. A failure, or a termination signal, before every
-// leaf has its staged state restores the previous leaves. A leaf that changed under the transaction is left
-// in place and reported; the transaction directory is then retained for recovery and retained is true.
-func publishPlannerLeaves(binDir, txn string, leaves []*plannerLeaf, interrupt <-chan os.Signal) (retained bool, err error) {
-	for _, l := range leaves {
-		path := filepath.Join(binDir, l.name)
-		if l.old, err = plannerLeafState(path); err != nil {
-			return false, err
-		}
-		switch {
-		case l.old == "absent":
-		case strings.HasPrefix(l.old, "regular:"):
-			l.backup = filepath.Join(txn, l.name+".backup")
-			if err := copyLeaf(path, l.backup); err != nil {
+// publishPlannerLeaves backs up every leaf and publishes each tool with its
+// receipt absent during binary replacement. Catchable failures restore the old
+// leaves; foreign changes retain the transaction for recovery.
+//
+// Example: a failure after replacing a binary restores its previous pair.
+func publishPlannerLeaves(
+	binDir string,
+	txn string,
+	tools []*plannerTool,
+	interrupt <-chan os.Signal,
+) (retained bool, err error) {
+	for _, tool := range tools {
+		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
+			path := filepath.Join(binDir, l.name)
+			if l.old, err = plannerLeafState(path); err != nil {
 				return false, err
 			}
-		default:
-			return false, fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] pair target retained: %s (%s); no planner state was changed", path, l.old)
-		}
-		if l.new, err = plannerLeafState(l.install); err != nil {
-			return false, err
+			switch {
+			case l.old == "absent":
+			case strings.HasPrefix(l.old, "regular:"):
+				l.backup = filepath.Join(txn, l.name+".backup")
+				if err := copyLeaf(path, l.backup); err != nil {
+					return false, err
+				}
+			default:
+				return false, fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] pair target retained: %s (%s); no planner state was changed", path, l.old)
+			}
+			if l.new, err = plannerLeafState(l.install); err != nil {
+				return false, err
+			}
 		}
 	}
 
-	failure := renamePlannerLeaves(binDir, leaves)
+	failure := renamePlannerLeaves(binDir, tools)
 	if failure == nil {
 		select {
 		case s := <-interrupt:
@@ -397,85 +414,191 @@ func publishPlannerLeaves(binDir, txn string, leaves []*plannerLeaf, interrupt <
 			return false, nil
 		}
 	}
-	if !restorePlannerLeaves(binDir, txn, leaves) {
+	if !restorePlannerLeaves(binDir, txn, tools) {
 		fmt.Fprintf(os.Stderr, "ECI recovery transaction retained: %s\n", txn)
 		return true, failure
 	}
 	return false, failure
 }
 
-// renamePlannerLeaves renames every staged leaf into place and confirms that each then has its staged state.
-func renamePlannerLeaves(binDir string, leaves []*plannerLeaf) error {
-	for _, l := range leaves {
-		path := filepath.Join(binDir, l.name)
-		if err := plannerEvent("before-rename:"+l.name, path); err != nil {
+// renamePlannerLeaf installs one staged leaf after checking its expected state.
+//
+// Example: a staged receipt replaces the absent receipt after its binary.
+func renamePlannerLeaf(
+	binDir string,
+	leaf *plannerLeaf,
+	expected string,
+) error {
+	path := filepath.Join(binDir, leaf.name)
+	if err := plannerEvent("before-rename:"+leaf.name, path); err != nil {
+		return err
+	}
+	if state, err := plannerLeafState(path); err != nil || state != expected {
+		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s changed during publication", path)
+	}
+	if err := os.Rename(leaf.install, path); err != nil {
+		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %v", err)
+	}
+	return plannerEvent("after-rename:"+leaf.name, path)
+}
+
+// renamePlannerLeaves removes each old receipt before replacing its binary.
+// An interruption leaves a matching pair or an absent receipt for reprovision.
+//
+// Example: a binary rename happens between receipt removal and receipt install.
+func renamePlannerLeaves(
+	binDir string,
+	tools []*plannerTool,
+) error {
+	for _, tool := range tools {
+		receipt := &tool.receipt
+		path := filepath.Join(binDir, receipt.name)
+		if receipt.old != "absent" {
+			if err := plannerEvent("before-remove-receipt:"+receipt.name, path); err != nil {
+				return err
+			}
+			if state, err := plannerLeafState(path); err != nil || state != receipt.old {
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s changed during publication", path)
+			}
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %v", err)
+			}
+			if err := plannerEvent("after-remove-receipt:"+receipt.name, path); err != nil {
+				return err
+			}
+		}
+		if err := renamePlannerLeaf(binDir, &tool.binary, tool.binary.old); err != nil {
 			return err
 		}
-		if state, err := plannerLeafState(path); err != nil || state != l.old {
-			return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s changed during publication", path)
-		}
-		if err := os.Rename(l.install, path); err != nil {
-			return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %v", err)
-		}
-		if err := plannerEvent("after-rename:"+l.name, path); err != nil {
+		if err := renamePlannerLeaf(binDir, receipt, "absent"); err != nil {
 			return err
 		}
 	}
-	for _, l := range leaves {
-		path := filepath.Join(binDir, l.name)
-		if state, err := plannerLeafState(path); err != nil || state != l.new {
-			return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s does not match its staged state", path)
+	for _, tool := range tools {
+		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
+			path := filepath.Join(binDir, l.name)
+			if state, err := plannerLeafState(path); err != nil || state != l.new {
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s does not match its staged state", path)
+			}
 		}
 	}
 	return nil
 }
 
-// restorePlannerLeaves returns every leaf that has its staged state to its previous state and reports the
-// final state of each leaf. It reports false when any leaf could not be restored or held a foreign state.
-func restorePlannerLeaves(binDir, txn string, leaves []*plannerLeaf) bool {
-	ok := true
-	for _, l := range leaves {
-		path := filepath.Join(binDir, l.name)
-		state, err := plannerLeafState(path)
-		if err != nil {
-			ok = false
-			continue
+// restorePlannerLeaf restores an absent or staged leaf to its previous state.
+//
+// Example: an absent old receipt is restored by removing the staged receipt.
+func restorePlannerLeaf(
+	binDir string,
+	txn string,
+	leaf *plannerLeaf,
+	state string,
+) error {
+	path := filepath.Join(binDir, leaf.name)
+	if err := plannerEvent("before-restore:"+leaf.name, path); err != nil {
+		return err
+	}
+	if current, err := plannerLeafState(path); err != nil || current != state {
+		return fmt.Errorf("%s changed during recovery", path)
+	}
+	if leaf.old == "absent" {
+		if err := os.Remove(path); err != nil {
+			return err
 		}
-		if state == l.old {
-			continue
+	} else {
+		restore := filepath.Join(txn, leaf.name+".restore")
+		if err := copyLeaf(leaf.backup, restore); err != nil {
+			return err
 		}
-		if state != l.new {
-			fmt.Fprintf(os.Stderr, "ECI recovery retained foreign state: %s=%s\n", path, state)
-			ok = false
-			continue
-		}
-		if err := plannerEvent("before-restore:"+l.name, path); err != nil {
-			ok = false
-			continue
-		}
-		if l.old == "absent" {
-			err = os.Remove(path)
-		} else {
-			restore := filepath.Join(txn, l.name+".restore")
-			if err = copyLeaf(l.backup, restore); err == nil {
-				err = os.Rename(restore, path)
-			}
-		}
-		if err != nil {
-			ok = false
-			continue
-		}
-		if state, err := plannerLeafState(path); err != nil || state != l.old {
-			ok = false
+		if err := os.Rename(restore, path); err != nil {
+			return err
 		}
 	}
-	for _, l := range leaves {
-		path := filepath.Join(binDir, l.name)
-		state, err := plannerLeafState(path)
+	if current, err := plannerLeafState(path); err != nil || current != leaf.old {
+		return fmt.Errorf("%s did not restore its previous state", path)
+	}
+	return plannerEvent("after-restore:"+leaf.name, path)
+}
+
+// restorePlannerLeaves removes a staged receipt before restoring its binary.
+// Foreign leaves remain untouched and incomplete rollback retains the transaction.
+//
+// Example: a failed binary restore leaves its receipt absent for reprovisioning.
+func restorePlannerLeaves(
+	binDir string,
+	txn string,
+	tools []*plannerTool,
+) bool {
+	ok := true
+	for _, tool := range tools {
+		receipt := &tool.receipt
+		receiptPath := filepath.Join(binDir, receipt.name)
+		receiptState, err := plannerLeafState(receiptPath)
 		if err != nil {
-			state = "unknown"
+			ok = false
+			continue
 		}
-		fmt.Fprintf(os.Stderr, "ECI recovery state: %s=%s\n", path, state)
+		if receiptState == receipt.new && receiptState != receipt.old {
+			if err := plannerEvent("before-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
+				ok = false
+				continue
+			}
+			if state, err := plannerLeafState(receiptPath); err != nil || state != receiptState {
+				ok = false
+				continue
+			}
+			if err := os.Remove(receiptPath); err != nil {
+				ok = false
+				continue
+			}
+			receiptState = "absent"
+			if err := plannerEvent("after-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
+				ok = false
+				continue
+			}
+		}
+		if receiptState != receipt.old && receiptState != "absent" {
+			fmt.Fprintf(os.Stderr, "ECI recovery retained foreign state: %s=%s\n", receiptPath, receiptState)
+			ok = false
+		}
+
+		binary := &tool.binary
+		binaryPath := filepath.Join(binDir, binary.name)
+		binaryState, err := plannerLeafState(binaryPath)
+		if err != nil {
+			ok = false
+			continue
+		}
+		switch {
+		case binaryState == binary.old:
+		case binaryState == binary.new:
+			if err := restorePlannerLeaf(binDir, txn, binary, binaryState); err != nil {
+				ok = false
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "ECI recovery retained foreign state: %s=%s\n", binaryPath, binaryState)
+			ok = false
+		}
+		binaryState, err = plannerLeafState(binaryPath)
+		if err != nil {
+			ok = false
+			continue
+		}
+		if receiptState == "absent" && receipt.old != "absent" && (binaryState != binary.new || binaryState == binary.old) {
+			if err := restorePlannerLeaf(binDir, txn, receipt, receiptState); err != nil {
+				ok = false
+			}
+		}
+	}
+	for _, tool := range tools {
+		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
+			path := filepath.Join(binDir, l.name)
+			state, err := plannerLeafState(path)
+			if err != nil {
+				state = "unknown"
+			}
+			fmt.Fprintf(os.Stderr, "ECI recovery state: %s=%s\n", path, state)
+		}
 	}
 	return ok
 }

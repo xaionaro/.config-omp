@@ -134,9 +134,43 @@ func failAt(t *testing.T, step string) {
 	})
 }
 
+// checkPlannerPairReceipts checks that each present receipt matches its binary.
+//
+// Example: an absent receipt is recoverable, while a stale receipt is rejected.
+func (fx plannerFixture) checkPlannerPairReceipts() error {
+	for _, name := range plannerPairTools {
+		path := filepath.Join(fx.binDir, name)
+		receipt, err := os.ReadFile(path + ".sha256")
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		digest, err := digestFile(path)
+		if err != nil {
+			return err
+		}
+		if string(receipt) != digest+"  "+name+"\n" {
+			return fmt.Errorf("torn planner pair %s", name)
+		}
+	}
+	return nil
+}
+
 func TestPlannerApplyPublishesToolsWithLoaderReceipts(t *testing.T) {
 	fx := newPlannerFixture(t)
 	fx.seedPreviousPair(t)
+	onPlannerEvent(t,
+		// Check every publication step for a stale receipt.
+		//
+		// Example: a binary rename before receipt removal fails the invariant.
+		func(
+			_ string,
+			_ string,
+		) error {
+			return fx.checkPlannerPairReceipts()
+		})
 
 	planner, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -192,6 +226,7 @@ func TestPlannerApplyBuildFailureKeepsPreviousPair(t *testing.T) {
 
 func TestPlannerApplyFailureRestoresPreviousPair(t *testing.T) {
 	for _, tt := range []struct{ name, step string }{
+		{"receipt removal fails before binary rename", "before-remove-receipt:eci-safe-import.sha256"},
 		{"publish fails after two tools are renamed", "before-rename:eci-hook-helper"},
 		{"receipt fails after its tool is renamed", "before-rename:eci-safe-import.sha256"},
 		{"last receipt fails after its rename", "after-rename:eci-hook-helper.sha256"},
@@ -199,7 +234,22 @@ func TestPlannerApplyFailureRestoresPreviousPair(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newPlannerFixture(t)
 			before := fx.seedPreviousPair(t)
-			failAt(t, tt.step)
+			onPlannerEvent(t,
+				// Check the invariant before injecting the selected failure.
+				//
+				// Example: a receipt remains absent while its binary is replaced.
+				func(
+					got string,
+					_ string,
+				) error {
+					if err := fx.checkPlannerPairReceipts(); err != nil {
+						return err
+					}
+					if got == tt.step {
+						return errors.New("injected failure at " + tt.step)
+					}
+					return nil
+				})
 
 			_, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
 			if err == nil || !strings.Contains(err.Error(), "injected failure at "+tt.step) {
@@ -210,6 +260,43 @@ func TestPlannerApplyFailureRestoresPreviousPair(t *testing.T) {
 				t.Errorf("transactions left: %v", left)
 			}
 		})
+	}
+}
+
+// TestPlannerApplyFailedBinaryRestoreLeavesReceiptAbsent preserves reprovisioning.
+//
+// Example: a failed rollback of the importer does not restore its old receipt.
+func TestPlannerApplyFailedBinaryRestoreLeavesReceiptAbsent(t *testing.T) {
+	fx := newPlannerFixture(t)
+	fx.seedPreviousPair(t)
+	onPlannerEvent(t,
+		// Check each state and fail once on publication and binary restore.
+		//
+		// Example: a failed binary restore keeps its receipt absent.
+		func(
+			step string,
+			_ string,
+		) error {
+			if err := fx.checkPlannerPairReceipts(); err != nil {
+				return err
+			}
+			switch step {
+			case "after-rename:eci-safe-import.sha256":
+				return errors.New("injected publication failure")
+			case "before-restore:eci-safe-import":
+				return errors.New("injected binary restore failure")
+			default:
+				return nil
+			}
+		})
+	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil {
+		t.Fatal("plannerApply succeeded despite injected failures")
+	}
+	if _, err := os.Lstat(filepath.Join(fx.binDir, "eci-safe-import.sha256")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("receipt should remain absent after failed binary restore: %v", err)
+	}
+	if left := fx.transactions(t); len(left) != 1 {
+		t.Errorf("transactions left: %v, want retained recovery transaction", left)
 	}
 }
 
