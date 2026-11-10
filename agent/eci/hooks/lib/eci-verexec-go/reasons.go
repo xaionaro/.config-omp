@@ -111,7 +111,7 @@ const (
 
 // buildStep is literal: the deny text names $HOME unexpanded, as the bash loader always has.
 //
-// Example: every deny line ends in `provision it with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry`.
+// Example: a missing binary names `provision it with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry`.
 const buildStep = `$HOME/.omp/agent/eci/hooks/build-native-binaries.sh`
 
 // selfName is the verifier's own artifact name; its self-check denies under this name.
@@ -124,5 +124,8 @@ const selfName = "eci-verexec"
 // Example: denialText("eci-hook-helper", reasonNotExecutable) is
 // "ECI native gate binary eci-hook-helper is unavailable or unverified (is not executable); provision it with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry\n".
 func denialText(name, reason string) string {
+	if reason == reasonChain {
+		return "ECI native gate binary " + name + " is unavailable or unverified (" + reason + "); inspect the bin directory and its ancestors; ask its owner to correct ownership or remove group/other write where appropriate, then retry\n"
+	}
 	return "ECI native gate binary " + name + " is unavailable or unverified (" + reason + "); provision it with \"" + buildStep + "\" and retry\n"
 }

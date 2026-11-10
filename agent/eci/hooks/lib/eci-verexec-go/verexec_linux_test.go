@@ -686,6 +686,20 @@ func TestFIFOAfterStatDoesNotHang(t *testing.T) {
 	}
 }
 
+// TestDirectoryDenialGuidance checks that a writable bin requires an owner action, not a rebuild.
+//
+// Example: a 0775 bin produces guidance to inspect and correct directory permissions.
+func TestDirectoryDenialGuidance(t *testing.T) {
+	h := newHome(t)
+	if err := os.Chmod(h.bin, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	r := h.run("", "", []string{"--check", "--deny-fd", "3", "eci-hook-helper"})
+	if r.rc != exitDenied || !strings.Contains(r.deny, "ask its owner") || !strings.Contains(r.deny, "group/other write") || strings.Contains(r.deny, "provision it") {
+		t.Fatalf("unsafe directory guidance: rc %d deny %q", r.rc, r.deny)
+	}
+}
+
 // Every reason constant appears exactly once in the module's non-test sources.
 //
 // Example: a second quoted copy of a reason in any non-test file fails this test.

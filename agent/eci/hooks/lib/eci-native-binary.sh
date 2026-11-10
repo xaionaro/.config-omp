@@ -35,6 +35,10 @@ eci_runtime_copy_dir=''
 eci_runtime_build_step='$HOME/.omp/agent/eci/hooks/build-native-binaries.sh'
 
 eci_runtime_denial() {
+  if [ "$2" = 'bin directory or an ancestor is not owned by the current user or root, or is group/other-writable' ]; then
+    ECI_RUNTIME_DENY_REASON="ECI native gate binary $1 is unavailable or unverified ($2); inspect the bin directory and its ancestors; ask its owner to correct ownership or remove group/other write where appropriate, then retry"
+    return
+  fi
   ECI_RUNTIME_DENY_REASON="ECI native gate binary $1 is unavailable or unverified ($2); provision it with \"$eci_runtime_build_step\" and retry"
 }
 

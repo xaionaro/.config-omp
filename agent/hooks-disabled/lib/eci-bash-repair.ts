@@ -14,16 +14,20 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 			const build = await runEciHook(scriptPath("build-native-binaries.sh"), {}, id, 600, { cleanup: "owned-group", args, signal });
 			const output = `${build.stdout}${build.stderr}`.slice(-8192);
 			if (build.outcome.kind === "cancelled-before-start" || (build.outcome.kind === "ran" && build.outcome.stop.kind === "cancel")) {
-				return { content: [{ type: "text", text: `Repair cancelled; retry to finish.\n${output}` }], details: {} };
+				return { isError: true, content: [{ type: "text", text: `Repair cancelled; retry to finish.\n${output}` }], details: {} };
 			}
 			if (build.outcome.kind !== "ran" || build.outcome.stop.kind !== "exit" || build.outcome.stop.code !== 0 || build.outcome.cleanup !== "graceful") {
-				return { content: [{ type: "text", text: `Repair failed (${JSON.stringify(build.outcome)}); gate readiness is unknown.\n${output}` }], details: {} };
+				return { isError: true, content: [{ type: "text", text: `Repair failed (${JSON.stringify(build.outcome)}); gate readiness is unknown.\n${output}` }], details: {} };
 			}
 			const probe = await runEciHook(scriptPath("validate-bash.sh"), { ...basePayload(id, "PreToolUse"), tool_name: "Bash", tool_input: { command: "true" } }, id, BASH_GATE_DEADLINE_SEC, { cleanup: "owned-group", signal });
-			if (probe.outcome.kind !== "ran" || probe.outcome.stop.kind !== "exit" || probe.outcome.stop.code !== 0 || probe.outcome.cleanup !== "graceful" || bashPreToolVerdict(probe) !== undefined) {
-				return { content: [{ type: "text", text: `Repair finished, but the Bash gate is not ready (${JSON.stringify(probe.outcome)}). Check the reported path and ask its owner to correct unsafe directory permissions before retrying.\n${output}\n${probe.stderr.slice(-8192)}` }], details: {} };
+			if (probe.outcome.kind === "cancelled-before-start" || (probe.outcome.kind === "ran" && probe.outcome.stop.kind === "cancel")) {
+				return { isError: true, content: [{ type: "text", text: `Repair probe cancelled; gate readiness is unknown.\n${output}` }], details: {} };
 			}
-			return { content: [{ type: "text", text: `Bash gate ready.\n${output}` }], details: {} };
+			const verdict = bashPreToolVerdict(probe);
+			if (probe.outcome.kind !== "ran" || probe.outcome.stop.kind !== "exit" || probe.outcome.stop.code !== 0 || probe.outcome.cleanup !== "graceful" || verdict !== undefined) {
+				return { isError: true, content: [{ type: "text", text: `Repair finished, but the Bash gate is not ready (${JSON.stringify(probe.outcome)}).${verdict ? ` ${verdict.reason}` : ""}\n${output}\n${probe.stderr.slice(-8192)}` }], details: {} };
+			}
+			return { content: [{ type: "text", text: `Bash gate accepted the fixed true probe.\n${output}` }], details: {} };
 		},
 	});
 }

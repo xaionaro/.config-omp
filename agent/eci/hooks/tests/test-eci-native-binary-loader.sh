@@ -163,6 +163,10 @@ expect_verexec() {
 byte_at() { od -An -tx1 -j "$2" -N1 -- "$1" | tr -d ' \n'; }
 patch_bytes() { printf "$3" | dd of="$1" bs=1 seek="$2" conv=notrunc 2>/dev/null; }
 deny_text() {  # deny_text <name> <reason>: the exact message the loader builds
+  if [ "$2" = 'bin directory or an ancestor is not owned by the current user or root, or is group/other-writable' ]; then
+    printf 'ECI native gate binary %s is unavailable or unverified (%s); inspect the bin directory and its ancestors; ask its owner to correct ownership or remove group/other write where appropriate, then retry' "$1" "$2"
+    return
+  fi
   printf 'ECI native gate binary %s is unavailable or unverified (%s); provision it with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" and retry' "$1" "$2"
 }
 
@@ -238,6 +242,9 @@ fi
   reset_bin; install_binary "$fixtures/native"; chmod -- 0770 "$home/.omp/agent/eci"
   expect_deny group-writable-ancestor 'bin directory or an ancestor is not owned by the current user or root, or is group/other-writable'
   chmod -- 0755 "$home/.omp/agent/eci"
+  reset_bin; install_binary "$fixtures/native"; chmod -- 0775 "$bin"
+  expect_deny group-writable-bin 'bin directory or an ancestor is not owned by the current user or root, or is group/other-writable'
+  chmod -- 0700 "$bin"
   reset_bin; install_binary "$fixtures/native"; chmod -- 0644 "$bin/eci-hook-helper"
   expect_deny non-executable 'is not executable'
   reset_bin; install_binary "$fixtures/native"
