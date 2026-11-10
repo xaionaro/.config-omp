@@ -23,7 +23,7 @@ run_validate() {
   jq -cn --arg session_id "$session_id" --arg cwd "$cwd" --arg command "$command" \
     '{session_id:$session_id,cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
-      bash "$TEST_HOOK_ROOT/validate-bash.sh" >"$output"
+      bash "$TEST_HOOK_ROOT/validate-bash.sh" >"$output" || return $?
   cat "$output"
 }
 
@@ -41,6 +41,11 @@ current_session=current-session
 stale_session=stale-session
 mkdir -p "$proof_root/$stale_session" "$TMP_ROOT/other-cwd"
 printf '%s\n' 'not a marker' >"$proof_root/$stale_session/eci_active"
+if ( TEST_HOOK_ROOT="$TMP_ROOT/missing-hook"; run_validate "$proof_root" "$current_session" "$ROOT" 'git status' ) >/dev/null 2>&1; then
+  printf '%s\n' 'marker-scope runner accepted a failed hook' >&2
+  exit 1
+fi
+
 
 # A deleted current marker plus an unrelated malformed marker is inactive for
 # the current session.  The old global strict scan incorrectly denied this.

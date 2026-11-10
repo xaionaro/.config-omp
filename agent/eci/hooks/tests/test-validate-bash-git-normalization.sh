@@ -66,13 +66,13 @@ run_hook() {
       ECI_ROLE=coordinator ECI_HOOK_IS_SUBAGENT=false \
       XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_STATE_HOME="$TMP_ROOT/state" \
       PATH="$RUNTIME_ROOT/bin:$PATH" \
-      bash "$RUNTIME_ROOT/hooks/validate-bash.sh" >"$output"
+      bash "$RUNTIME_ROOT/hooks/validate-bash.sh" >"$output" || return $?
   printf '%s\n' "$output"
 }
 
 assert_allowed() {
   local command="$1" output
-  output="$(run_hook "$command")"
+  output="$(run_hook "$command")" || return $?
   if [ -s "$output" ]; then
     printf 'ordinary Git command was denied: %q\n' "$command" >&2
     cat -- "$output" >&2
@@ -82,7 +82,7 @@ assert_allowed() {
 
 assert_denied_code() {
   local command="$1" code="$2" output
-  output="$(run_hook "$command")"
+  output="$(run_hook "$command")" || return $?
   jq -e --arg code "[$code]" '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains($code))
@@ -92,6 +92,11 @@ assert_denied_code() {
     return 1
   }
 }
+
+if ( HOME_ROOT="$TMP_ROOT/missing-home"; assert_allowed 'git status' ) >/dev/null 2>&1; then
+  printf '%s\n' 'normalization assertion accepted a failed hook' >&2
+  exit 1
+fi
 
 # These are normal coordinator Git actions.  They must not require a special
 # route, a canonical executable spelling, a receipt, or a shell-shape ritual.

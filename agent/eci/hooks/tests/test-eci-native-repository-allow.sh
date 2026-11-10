@@ -5,24 +5,38 @@ umask 077
 runtime="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 . "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 scratch="$(mktemp -d "${ECI_TMPDIR:-$HOME/tmp}/eci-native-allow.XXXXXX")"
+scratch="$(eci_realpath_existing "$scratch")"
 trap 'rm -rf -- "$scratch"' EXIT
 mkdir -p "$scratch/proof/session" "$scratch/proof/other" "$scratch/work" "$scratch/dependency"
 git -C "$scratch/work" init -q
 git -C "$scratch/dependency" init -q
 work="$(eci_realpath_existing "$scratch/work")"
 dependency="$(eci_realpath_existing "$scratch/dependency")"
+# Provision an entirely private launcher runtime before invoking eci-active.
+# Keep the caller's Go caches while all runtime and XDG writes stay in scratch.
+export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
+scratch_home="$scratch/home"
+fixture_runtime="$scratch_home/.omp/agent/eci"
+mkdir -p "$fixture_runtime/bin" "$fixture_runtime/tools" "$scratch/config/eci" \
+  "$scratch/state" "$scratch/cache" "$scratch/data" "$scratch/runtime" "$scratch/tmp"
+cp -a "$runtime/hooks" "$fixture_runtime/"
+cp -a "$runtime/tools/eci-active" "$fixture_runtime/tools/"
+cp -- "$runtime/bin/eci-active" "$fixture_runtime/bin/eci-active"
+export HOME="$scratch_home" ECI_HOME="$fixture_runtime" KIMI_CODE_HOME="$scratch_home/.kimi-code"
+export XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" XDG_CACHE_HOME="$scratch/cache" XDG_DATA_HOME="$scratch/data"
+export XDG_RUNTIME_DIR="$scratch/runtime" TMPDIR="$scratch/tmp" GOTMPDIR="$scratch/tmp" ECI_TMPDIR="$scratch/tmp"
 export ECI_PROOF_ROOT="$scratch/proof" ECI_SESSION_ID=session
 cd -- "$work"
-"$runtime/bin/eci-active" repository-allow-on "$dependency" 'dependency repair'
-"$runtime/bin/eci-active" repository-allow-status | grep -Fq -- "$dependency"
-if "$runtime/bin/eci-active" repository-allow-on "$dependency" again; then
+"$fixture_runtime/bin/eci-active" repository-allow-on "$dependency" 'dependency repair'
+"$fixture_runtime/bin/eci-active" repository-allow-status | grep -Fq -- "$dependency"
+if "$fixture_runtime/bin/eci-active" repository-allow-on "$dependency" again; then
   echo 'Existing record overwritten' >&2; exit 1
 fi
-if ECI_SESSION_ID=other "$runtime/bin/eci-active" repository-allow-off "$dependency"; then
+if ECI_SESSION_ID=other "$fixture_runtime/bin/eci-active" repository-allow-off "$dependency"; then
   echo 'Other session removed allowance' >&2; exit 1
 fi
-"$runtime/bin/eci-active" repository-allow-off "$dependency"
-"$runtime/bin/eci-active" repository-allow-status | grep -Fq inactive
+"$fixture_runtime/bin/eci-active" repository-allow-off "$dependency"
+"$fixture_runtime/bin/eci-active" repository-allow-status | grep -Fq inactive
 
 
 # The hook runs under a scratch HOME. The native gate loads eci-command-plan only
@@ -30,11 +44,8 @@ fi
 # with the real build step. The coordinator role comes from a main-session
 # transcript under $HOME/.omp/agent/sessions; without one the hook classifies the
 # caller as a worker.
-scratch_home="$scratch/home"
-mkdir -p "$scratch_home/.omp/agent/eci" "$scratch_home/.omp/agent/sessions/-native-allow-" "$scratch/config/eci"
-cp -a "$runtime/hooks" "$scratch_home/.omp/agent/eci/"
-GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" HOME="$scratch_home" \
-  bash "$scratch_home/.omp/agent/eci/hooks/build-native-binaries.sh" >/dev/null
+mkdir -p "$scratch_home/.omp/agent/sessions/-native-allow-"
+bash "$fixture_runtime/hooks/build-native-binaries.sh" >/dev/null
 transcript="$scratch_home/.omp/agent/sessions/-native-allow-/main.jsonl"
 jq -cn --arg cwd "$work" '{type:"session",version:3,id:"session",cwd:$cwd}' >"$transcript"
 printf '%s\n' '{"type":"message","message":{"role":"user","content":"native allowance"}}' >>"$transcript"

@@ -375,14 +375,14 @@ run_copied_home_hook() {
         ECI_PROOF_ROOT_STABLE_ALIAS="$COPIED_PROOF_ROOT" XDG_CONFIG_HOME="$COPIED_HOME/xdg-config" \
         XDG_STATE_HOME="$COPIED_HOME/xdg-state" KIMI_CODE_HOME="$COPIED_HOME/.kimi-code" \
         PATH="$COPIED_ROOT/bin:$PATH" bash "$COPIED_ROOT/hooks/validate-bash.sh"
-    ) >"$output"
+    ) >"$output" || return $?
   printf '%s\n' "$output"
 }
 
 assert_copied_home_admitted() {
   local command="$1" callback_session="$2" callback_cwd="$3" output
 
-  output="$(run_copied_home_hook "$command" "$callback_session" "$callback_cwd")"
+  output="$(run_copied_home_hook "$command" "$callback_session" "$callback_cwd")" || return $?
   [ ! -s "$output" ] || {
     printf 'copied-home same-target lifecycle command was unexpectedly denied: command=%q\n' "$command" >&2
     cat -- "$output" >&2
@@ -409,6 +409,10 @@ run_hook_without_marker() {
 # command session. A real Kimi copy remains a different concrete mutating
 # target and must still be denied before normal fallback.
 prepare_stale_copied_home
+if ( COPIED_HOME="$TMP_ROOT/missing-home"; assert_copied_home_admitted 'printf ordinary' "$COPIED_SESSION" "$COPIED_ROOT" ) >/dev/null 2>&1; then
+  printf '%s\n' 'copied-home assertion accepted a failed hook' >&2
+  exit 1
+fi
 assert_copied_home_admitted \
   "$(copied_home_lifecycle_command ECI_SESSION_ID=wrong-session maintain-planner)" \
   "$COPIED_SESSION" "$COPIED_ROOT"
@@ -2476,7 +2480,7 @@ assert_archive_case_allowed() {
     else
       jq -cn --arg cwd "$ROOT" --arg command "$command" \
         '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}'
-    fi | env "${env_args[@]}" bash "$classifier_hook_fixture" >"$output"
+    fi | env "${env_args[@]}" bash "$classifier_hook_fixture" >"$output" || return $?
     [ ! -s "$output" ] || {
       printf 'archive case was not admitted: case=%s role=%s command=%q\n' "$name" "$role" "$command" >&2
       cat -- "$output" >&2
@@ -2484,6 +2488,10 @@ assert_archive_case_allowed() {
     }
   done
 }
+if ( classifier_hook_fixture="$TMP_ROOT/no-such-hook"; assert_archive_case_allowed broken 'git archive HEAD' "$ROOT/bin:$PATH" - ) >/dev/null 2>&1; then
+  printf '%s\n' 'archive assertion accepted a failed hook' >&2
+  exit 1
+fi
 archive_case_failed=0
 for archive_case in \
   'direct|git archive HEAD|root|-' \
