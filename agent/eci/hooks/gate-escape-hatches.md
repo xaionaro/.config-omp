@@ -10,8 +10,11 @@ The Bash `--hook` callback never activates legacy marker-based ownership
 gates. Native Git and scripts remain available in any repository, subject to
 independent concrete effect checks. Worker session-transcript writes, protected
 live-hook mutations, cleanup, broad-root and broad Git checks remain applicable.
-The user's gate mode finalizes callback denials. Direct planner and other hook
-paths may retain separate legacy behavior documented below.
+When the mode tool is executable, enforcing mode forwards callback denials and
+permissive mode allows them while attempting to record telemetry. An absent or
+non-executable mode tool leaves the denial in force; a finalization failure blocks
+the call. Direct planner and other hook paths may retain separate legacy behavior
+documented below.
 
 | Gate family | Stops only this resolved effect | Legitimate path / escape hatch |
 | --- | --- | --- |

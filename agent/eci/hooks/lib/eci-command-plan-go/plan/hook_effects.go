@@ -747,7 +747,7 @@ func inspectHookGitBroad(
 		return nil
 	}
 	diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "Git "+verb+" selects the whole repository index or worktree: "+directory,
-		record.Segment, argv[verbIndex].offset, argv[verbIndex], "name the exact owned repository-relative paths or use the bounded typed Worker operation; preserve unrelated work", "git-broad-effect")
+		record.Segment, argv[verbIndex].offset, argv[verbIndex], "use native Git with exact owned repository-relative paths; preserve unrelated work", "git-broad-effect")
 	diagnostic.Path = directory
 	return diagnostic
 }
