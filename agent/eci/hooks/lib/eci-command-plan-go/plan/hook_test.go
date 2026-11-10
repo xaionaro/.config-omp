@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,7 @@ func TestRunHookScratchScript(t *testing.T) {
 	callback, err := json.Marshal(input)
 	require.NoError(t, err)
 	var output bytes.Buffer
-	require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+	require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 	_, err = os.Stat(sentinel)
 	require.ErrorIs(t, err, os.ErrNotExist, "hook must never execute the inspected script")
 	require.Empty(t, output.String(), "active scratch script callback denied: %s", &output)
@@ -108,7 +109,7 @@ func TestRunHookScratchAliases(t *testing.T) {
 			callback, err := json.Marshal(input)
 			require.NoError(t, err)
 			var output bytes.Buffer
-			require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+			require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 			require.Empty(t, output.String(), "%s: %s", actor, command)
 		}
 	}
@@ -146,7 +147,7 @@ func TestRunHookEnvelope(t *testing.T) {
 			func(t *testing.T) {
 				var output bytes.Buffer
 				{
-					status := RunHook(strings.NewReader(test.input), &output)
+					status := RunHook(strings.NewReader(test.input), &output, io.Discard)
 					require.Falsef(t, status != 0, "hook status=%d, want0", status)
 				}
 				if !test.denied {
@@ -162,7 +163,7 @@ func TestRunHookEnvelope(t *testing.T) {
 	}
 	for _, input := range []string{`{`, `{"tool_name":"Bash"} trailing`, `{"tool_name":"Bash"} {}`} {
 		var output bytes.Buffer
-		require.Equal(t, 2, RunHook(strings.NewReader(input), &output), "malformed callback must block")
+		require.Equal(t, 2, RunHook(strings.NewReader(input), &output, io.Discard), "malformed callback must block")
 		require.Empty(t, output.String())
 	}
 	closed, err := os.CreateTemp(t.TempDir(), "closed-output")
@@ -172,8 +173,18 @@ func TestRunHookEnvelope(t *testing.T) {
 		`{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"rm -rf /"}}`,
 		`{`,
 	} {
-		require.Equal(t, 2, RunHook(strings.NewReader(input), closed), "an undeliverable denial must block")
+		require.Equal(t, 2, RunHook(strings.NewReader(input), closed, io.Discard), "an undeliverable denial must block")
 	}
+}
+
+// TestRunHookMalformedReportsToDiagnosticWriter keeps errors separate from decisions.
+//
+// Example: malformed JSON blocks the call and reports the failure to its caller.
+func TestRunHookMalformedReportsToDiagnosticWriter(t *testing.T) {
+	var output, diagnostic bytes.Buffer
+	require.Equal(t, 2, RunHook(strings.NewReader("{"), &output, &diagnostic))
+	require.Empty(t, output.String())
+	require.Contains(t, diagnostic.String(), "decode callback failed")
 }
 
 // TestRunHookMarkerFreeBroadRoot protects a concrete root deletion without
@@ -198,7 +209,7 @@ func TestRunHookMarkerFreeBroadRoot(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 		if current.denied {
 			require.Contains(t, output.String(), string(CodeBroadDestructiveDenied))
 		} else {
@@ -229,7 +240,7 @@ func TestRunHookWorkerRemovalDiagnostics(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 		if current.code == "" {
 			require.Empty(t, output.String(), current.command)
 			continue
@@ -272,7 +283,7 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 		if current.denied {
 			require.Contains(t, output.String(), string(CodeBroadDestructiveDenied), current.command)
 		} else {
@@ -313,7 +324,7 @@ func TestRunHookMarkerFreeLiveHookOperations(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 		if current.denied {
 			require.Contains(t, output.String(), `"permissionDecision":"deny"`, current.command)
 		} else {
@@ -405,12 +416,12 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 	require.NoError(t, err)
 	var output bytes.Buffer
 	{
-		status := RunHook(bytes.NewReader(callback), &output)
+		status := RunHook(bytes.NewReader(callback), &output, io.Discard)
 		require.Falsef(t, status != 0 || output.Len() != 0, "inactive permissive callback status=%d output=%s", status, &output)
 	}
 	require.NoError(t, os.WriteFile(config, []byte("enforcing\n"), 0600))
 	{
-		status := RunHook(bytes.NewReader(callback), &output)
+		status := RunHook(bytes.NewReader(callback), &output, io.Discard)
 		require.Falsef(t, status != 0 || !strings.Contains(output.String(), `"permissionDecision":"deny"`), "inactive enforcing callback status=%d output=%s", status, &output)
 	}
 	require.Falsef(t, !strings.Contains(output.String(), string(CodeControlOwnerRequired)), "resolved worker control effect lost its ownership diagnostic: %s", &output)
@@ -423,7 +434,7 @@ func TestHookInactivePermissiveFinalization(t *testing.T) {
 	require.NoError(t, err)
 	output.Reset()
 	{
-		status := RunHook(bytes.NewReader(callback), &output)
+		status := RunHook(bytes.NewReader(callback), &output, io.Discard)
 		require.Falsef(t, status != 0 || output.Len() != 0, "quoted coordinator control target denied: status=%d output=%s", status, &output)
 	}
 }
@@ -450,7 +461,7 @@ func TestHookAnalysisNeverExecutesTimeout(t *testing.T) {
 	require.NoError(t, err)
 	var output bytes.Buffer
 	{
-		status := RunHook(bytes.NewReader(callback), &output)
+		status := RunHook(bytes.NewReader(callback), &output, io.Discard)
 		require.Zero(t, status)
 		require.Empty(t, output.String(), "ordinary Git command denied")
 	}
@@ -483,7 +494,7 @@ func TestHookBookkeepingUsesNativeGit(t *testing.T) {
 	require.NoError(t, err)
 	var output bytes.Buffer
 	{
-		status := RunHook(bytes.NewReader(callback), &output)
+		status := RunHook(bytes.NewReader(callback), &output, io.Discard)
 		require.Falsef(t, status != 0 || output.Len() != 0, "owned write denied: status=%d output=%s", status, &output)
 	}
 	{
@@ -529,7 +540,7 @@ func TestHookOwnedLinkCleanup(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		RunHook(bytes.NewReader(callback), &output)
+		RunHook(bytes.NewReader(callback), &output, io.Discard)
 		{
 			got := output.Len() != 0
 			require.Falsef(t, got != test.denied, "command=%s denied=%v want=%v output=%s", test.command, got, test.denied, &output)
@@ -564,7 +575,7 @@ func TestRunHookLargeCallback(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(strings.NewReader(string(callback)+test.trailing), &output))
+		require.Zero(t, RunHook(strings.NewReader(string(callback)+test.trailing), &output, io.Discard))
 		require.Equal(t, test.denied, output.Len() != 0, "trailing=%q", test.trailing)
 	}
 	var plannerOutput bytes.Buffer
@@ -601,7 +612,7 @@ func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output, io.Discard))
 		require.Empty(t, output.String(), "stale marker must not protect %s", target)
 	}
 }
@@ -614,11 +625,11 @@ func TestHookMalformedIdentityAdvisory(t *testing.T) {
 	t.Setenv("ECI_PROOF_ROOT", root)
 	malformed := `{"session_id":[],"tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"true"}}`
 	var output bytes.Buffer
-	require.Zero(t, RunHook(strings.NewReader(malformed), &output))
+	require.Zero(t, RunHook(strings.NewReader(malformed), &output, io.Discard))
 	require.Empty(t, output.String())
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "scratch-owner"), 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "scratch-owner", "eci_active"), []byte("scope: x\ncwd: /tmp\nsession_id: scratch-owner\n"), 0600))
 	output.Reset()
-	require.Zero(t, RunHook(strings.NewReader(malformed), &output))
+	require.Zero(t, RunHook(strings.NewReader(malformed), &output, io.Discard))
 	require.Empty(t, output.String())
 }

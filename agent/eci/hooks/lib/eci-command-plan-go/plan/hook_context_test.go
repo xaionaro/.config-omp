@@ -194,24 +194,25 @@ func TestHookContextPendingIdentity(t *testing.T) {
 		{name: "missing then parent traversal", path: root + "/missing/../project/pending.jsonl", kind: "main", want: RoleWorker},
 		{name: "symlink then parent traversal", path: root + "/linked/../project/pending.jsonl", kind: "main", want: RoleWorker},
 	} {
-		// Each callback uses the wire decoder, keeping compatibility with older adapters.
-		//
-		// Example: missing host identity keeps a pending transcript on Worker.
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Setenv("ECI_HOOK_IS_SUBAGENT", testCase.workerOverride)
-			payload := map[string]any{"session_id": "owner", "cwd": cwd, "transcript_path": testCase.path}
-			if testCase.kind != nil {
-				payload["omp_agent_kind"] = testCase.kind
-			}
-			body, err := json.Marshal(payload)
-			require.NoError(t, err)
-			var input HookInput
-			require.NoError(t, json.Unmarshal(body, &input))
-			got, err := hookRequest(input)
-			require.NoError(t, err)
-			require.Equal(t, testCase.want, got.Role)
-			require.Equal(t, MarkerInactive, got.Marker)
-		})
+		t.Run(testCase.name,
+			// Decode each callback through the wire format for older-adapter compatibility.
+			//
+			// Example: missing host identity keeps a pending transcript on Worker.
+			func(t *testing.T) {
+				t.Setenv("ECI_HOOK_IS_SUBAGENT", testCase.workerOverride)
+				payload := map[string]any{"session_id": "owner", "cwd": cwd, "transcript_path": testCase.path}
+				if testCase.kind != nil {
+					payload["omp_agent_kind"] = testCase.kind
+				}
+				body, err := json.Marshal(payload)
+				require.NoError(t, err)
+				var input HookInput
+				require.NoError(t, json.Unmarshal(body, &input))
+				got, err := hookRequest(input)
+				require.NoError(t, err)
+				require.Equal(t, testCase.want, got.Role)
+				require.Equal(t, MarkerInactive, got.Marker)
+			})
 	}
 	require.NoFileExists(t, filepath.Join(project, "pending.jsonl"))
 }
@@ -956,17 +957,21 @@ func TestHookUnknownCWDDoesNotRecoverAfterAbsoluteCD(t *testing.T) {
 		{name: "unknown", cwd: "", candidate: false},
 		{name: "known", cwd: t.TempDir(), candidate: true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: tc.cwd, Command: "cd " + target + " && touch relative", HookMode: true, CollectShellCommands: true}
-			result := Classify(request)
-			require.NotNil(t, result.ShellAnalysis)
-			require.Len(t, result.ShellAnalysis.Commands, 2)
-			if tc.candidate {
-				require.Contains(t, result.ShellAnalysis.Commands[1].CWDCandidates, target)
-			} else {
-				require.False(t, result.ShellAnalysis.Commands[1].CWDKnown)
-				require.Empty(t, result.ShellAnalysis.Commands[1].CWDCandidates)
-			}
-		})
+		t.Run(tc.name,
+			// Preserve uncertainty when the incoming working directory is unknown.
+			//
+			// Example: an absolute cd does not recover an unknown callback cwd.
+			func(t *testing.T) {
+				request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: tc.cwd, Command: "cd " + target + " && touch relative", HookMode: true, CollectShellCommands: true}
+				result := Classify(request)
+				require.NotNil(t, result.ShellAnalysis)
+				require.Len(t, result.ShellAnalysis.Commands, 2)
+				if tc.candidate {
+					require.Contains(t, result.ShellAnalysis.Commands[1].CWDCandidates, target)
+				} else {
+					require.False(t, result.ShellAnalysis.Commands[1].CWDKnown)
+					require.Empty(t, result.ShellAnalysis.Commands[1].CWDCandidates)
+				}
+			})
 	}
 }

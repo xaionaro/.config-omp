@@ -18,15 +18,16 @@ import (
 func RunHook(
 	input io.Reader,
 	output io.Writer,
+	diagnostics io.Writer,
 ) int {
 	decoder := json.NewDecoder(input)
 	var envelope HookInput
 	if err := decoder.Decode(&envelope); err != nil {
-		return hookUnavailable("decode callback")
+		return hookUnavailable(diagnostics, "decode callback")
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return hookUnavailable("decode trailing callback")
+		return hookUnavailable(diagnostics, "decode trailing callback")
 	}
 	if envelope.ToolName != "" && envelope.ToolName != "Bash" {
 		return 0
@@ -53,7 +54,7 @@ func RunHook(
 		}{HookSpecificOutput: result.HookSpecificOutput}
 		encoded, err := json.Marshal(denial)
 		if err != nil {
-			return hookUnavailable("encode callback denial")
+			return hookUnavailable(diagnostics, "encode callback denial")
 		}
 		encoded, err = finalizeHookDenial(request, encoded)
 		if err != nil {
@@ -121,8 +122,11 @@ func finalizeHookDenial(
 // hookUnavailable reports a callback that could not reach a decision.
 //
 // Example: malformed input blocks the tool call instead of silently allowing it.
-func hookUnavailable(operation string) int {
-	if _, err := fmt.Fprintf(os.Stderr, "command hook: %s failed; could not decide; the tool call is blocked\n", operation); err != nil {
+func hookUnavailable(
+	diagnostics io.Writer,
+	operation string,
+) int {
+	if _, err := fmt.Fprintf(diagnostics, "command hook: %s failed; could not decide; the tool call is blocked\n", operation); err != nil {
 		return 2
 	}
 	return 2

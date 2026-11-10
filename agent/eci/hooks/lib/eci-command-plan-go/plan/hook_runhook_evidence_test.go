@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"syscall"
@@ -41,7 +42,7 @@ func TestB3RunHookEvidence(t *testing.T) {
 			var stdout strings.Builder
 			var status int
 			stderr := captureStderr(t, func() {
-				status = RunHook(strings.NewReader(string(input)), &stdout)
+				status = RunHook(strings.NewReader(string(input)), &stdout, io.Discard)
 			})
 			sum := sha256.Sum256(realGate)
 			homeInfo, _ := os.Stat(fixture.home)

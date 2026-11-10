@@ -12,7 +12,7 @@ import (
 // Example: --hook consumes one PreToolUse callback; no arguments use the planner.
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--hook" {
-		os.Exit(plan.RunHook(os.Stdin, os.Stdout))
+		os.Exit(plan.RunHook(os.Stdin, os.Stdout, os.Stderr))
 	}
 	os.Exit(plan.Run(os.Stdin, os.Stdout))
 }
