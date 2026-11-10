@@ -304,7 +304,7 @@ func checkPlannerConflictRecords(
 		record := filepath.Join(binDir, txnName, name+".conflict")
 		_, err := os.Lstat(record)
 		if err == nil {
-			return fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] retained conflict for %s; have its owner resolve the pair, then remove %s before retrying", name, record)
+			return fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] retained conflict for %s (%s); if Bash works, run bash \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" --preserve-conflict %s; otherwise see the retained planner conflict gate catalog entry. Do not remove the record or overwrite unresolved leaves", name, record, name)
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("inspect retained conflict %s: %w", record, err)

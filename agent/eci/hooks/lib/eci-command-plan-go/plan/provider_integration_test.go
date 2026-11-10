@@ -196,6 +196,12 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 		{name: "coordinator broad destructive", command: "rm -rf /", wantCode: CodeBroadDestructiveDenied},
 		{name: "worker broad destructive", worker: true, command: "rm -rf /", wantCode: CodeBroadDestructiveDenied},
 		{name: "coordinator legacy marker write", command: "touch " + marker},
+		{name: "coordinator planner conflict repair", command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan`},
+		{name: "worker planner conflict repair", worker: true, command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-command-plan`},
+		{name: "coordinator importer conflict repair", command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-safe-import`},
+		{name: "worker importer conflict repair", worker: true, command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-safe-import`},
+		{name: "coordinator helper conflict repair", command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-hook-helper`},
+		{name: "worker helper conflict repair", worker: true, command: `bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict eci-hook-helper`},
 	} {
 		output := run(testCase.worker, testCase.command, validator...)
 		if direct := run(testCase.worker, testCase.command, published, "--hook"); output != direct {

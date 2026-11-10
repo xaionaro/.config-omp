@@ -27,19 +27,19 @@ if [ "${1-}" = --preserve-conflict ]; then
   shift
 fi
 
+# Keep the transaction prefix so peer sync excludes retained data; retired records
+# use a non-conflict suffix and retain their source transaction name for inspection.
 # Called under the publication lock only after both leaves have been validated.
 retain_conflicted_pair() {
-  local name="$1" binary="$2" receipt="$3" retained record count
+  local name="$1" binary="$2" receipt="$3" retained record txn
   retained="$(mktemp -d -- "$bin_dir/.planner-importer.txn.XXXXXX")" || return 1
   echo "build-native-binaries: retaining conflict for $name in $retained" >&2
   if [ -e "$binary" ]; then mv -- "$binary" "$retained/$name" || return 1; fi
   if [ -e "$receipt" ]; then mv -- "$receipt" "$retained/$name.sha256" || return 1; fi
-  count=0
-  for record in "$bin_dir/.planner-importer.txn."*/"$name.conflict"; do
-    if [ -e "$record" ] || [ -L "$record" ]; then
-      count=$((count + 1))
-      mv -- "$record" "$retained/marker.$count" || return 1
-    fi
+  while eci_native_conflict_record "$name"; do
+    record="$eci_native_conflict"
+    txn="${record%/*}"
+    mv -- "$record" "$retained/${txn##*/}.retired" || return 1
   done
 }
 
@@ -131,22 +131,18 @@ for name in "${names[@]}"; do
   binary="$bin_dir/$name"
   receipt="$binary.sha256"
   # Recheck under the shared lock: a planner may have recorded a conflict while we built.
-  if eci_native_conflict_record "$name"; then
-    if [ "$preserve_conflict" != true ]; then
-      eci_native_stuck_advisory "$name"
-      status=1
-      continue
-    fi
-    if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
-      echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
-      status=1
-      continue
-    fi
-    retain_conflicted_pair "$name" "$binary" "$receipt" || die "could not retain conflict for $name; retry repair"
-  elif eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
+  if eci_native_conflict_record "$name" && [ "$preserve_conflict" != true ]; then
+    eci_native_stuck_advisory "$name"
+    status=1
+    continue
+  fi
+  if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
     echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
     status=1
     continue
+  fi
+  if eci_native_conflict_record "$name"; then
+    retain_conflicted_pair "$name" "$binary" "$receipt" || die "could not retain conflict for $name; retry repair"
   fi
   if cmp -s -- "$stage/$name" "$binary" && cmp -s -- "$stage/$name.sha256" "$receipt" &&
     [ -n "$(find "$binary" -prune -type f -links 1 -perm 755 -user "$(id -u)" -print)" ]; then

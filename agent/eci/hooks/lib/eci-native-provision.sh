@@ -79,7 +79,7 @@ eci_native_check() {
 eci_native_stuck_advisory() {
   local path
   if eci_native_conflict_record "$1"; then
-    printf 'eci-active: retained planner conflict for %s; have its owner inspect and resolve the binary and receipt, then remove %s before retrying\n' "$1" "$eci_native_conflict" >&2
+    printf 'eci-active: retained planner conflict for %s (%s); if Bash works, run bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" --preserve-conflict %s; otherwise see the retained planner conflict gate catalog entry. Do not remove the record or overwrite unresolved leaves\n' "$1" "$eci_native_conflict" "$1" >&2
     return
   fi
   for path in "$HOME/.omp/agent/eci/bin/$1" "$HOME/.omp/agent/eci/bin/$1.sha256"; do
