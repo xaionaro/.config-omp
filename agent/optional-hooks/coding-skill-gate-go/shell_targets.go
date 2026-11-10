@@ -18,7 +18,8 @@ func shellWriteTargets(
 	cwd string,
 ) ([]string, error) {
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "")
-	if err != nil { return nil, err }
+	// A parser error is uncertainty, not evidence that a file will be written.
+	if err != nil { return nil, nil }
 	var targets []string
 	var scanErr error
 	syntax.Walk(file, func(node syntax.Node) bool {

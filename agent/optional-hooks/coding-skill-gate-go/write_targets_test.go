@@ -37,3 +37,16 @@ func TestEditTargetsPreferHostInspection(t *testing.T) {
 	got, err = writeTargets(req)
 	if err != nil || len(got) != 0 { t.Fatalf("empty host inspection was replaced by heuristic %v, error %v",got,err) }
 }
+
+// TestUnparseableShellIsNotDeniedForSyntaxUncertainty preserves the host's behavior.
+//
+// Example: incomplete shell syntax should reach Bash instead of becoming a gate error.
+func TestUnparseableShellIsNotDeniedForSyntaxUncertainty(t *testing.T) {
+	cwd := t.TempDir()
+	invalid := Request{Tool:"bash",CWD:cwd,Input:map[string]any{"command":"if"}}
+	paths, err := writeTargets(invalid)
+	if err != nil || len(paths) != 0 { t.Fatalf("unparseable shell became gate error: %v %v", paths, err) }
+	valid := Request{Tool:"bash",CWD:cwd,Input:map[string]any{"command":"printf ok > source.go"}}
+	paths, err = writeTargets(valid)
+	if err != nil || !slices.Contains(paths,"source.go") { t.Fatalf("known target lost: %v %v", paths, err) }
+}
