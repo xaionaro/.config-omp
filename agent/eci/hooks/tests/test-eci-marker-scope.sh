@@ -32,7 +32,7 @@ run_edit_gate() {
   jq -cn --arg session_id "$session_id" --arg cwd "$cwd" --arg path "$path" \
     '{tool_name:"Write",session_id:$session_id,cwd:$cwd,tool_input:{file_path:$path,content:"forged"}}' |
     ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" \
-      bash "$ROOT/hooks/eci-active-gate.sh" >"$output"
+      bash "$ROOT/hooks/eci-active-gate.sh" >"$output" || return $?
   cat "$output"
 }
 
@@ -43,6 +43,10 @@ mkdir -p "$proof_root/$stale_session" "$TMP_ROOT/other-cwd"
 printf '%s\n' 'not a marker' >"$proof_root/$stale_session/eci_active"
 if ( TEST_HOOK_ROOT="$TMP_ROOT/missing-hook"; run_validate "$proof_root" "$current_session" "$ROOT" 'git status' ) >/dev/null 2>&1; then
   printf '%s\n' 'marker-scope runner accepted a failed hook' >&2
+  exit 1
+fi
+if ( ROOT="$TMP_ROOT/missing-edit-hook"; run_edit_gate "$proof_root" "$current_session" "$TMP_ROOT" "$TMP_ROOT/file" ) >/dev/null 2>&1; then
+  printf '%s\n' 'edit-gate runner accepted a failed hook' >&2
   exit 1
 fi
 

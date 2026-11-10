@@ -14,7 +14,9 @@ work="$(eci_realpath_existing "$scratch/work")"
 dependency="$(eci_realpath_existing "$scratch/dependency")"
 # Provision an entirely private launcher runtime before invoking eci-active.
 # Keep the caller's Go caches while all runtime and XDG writes stay in scratch.
-export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
+GOCACHE="$(go env GOCACHE)"
+GOMODCACHE="$(go env GOMODCACHE)"
+export GOCACHE GOMODCACHE
 scratch_home="$scratch/home"
 fixture_runtime="$scratch_home/.omp/agent/eci"
 mkdir -p "$fixture_runtime/bin" "$fixture_runtime/tools" "$scratch/config/eci" \
