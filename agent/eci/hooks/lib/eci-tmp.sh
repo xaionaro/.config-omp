@@ -56,7 +56,7 @@ eci_init_tmp() {
 }
 
 _eci_fail_closed_constant() {
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] hook %s failed after its gate decision point and denied the tool call; jq is unavailable or failed; inspect the hook log and available temporary-directory/disk state, then retry"}}\n' "$1"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] hook %s failed after its gate decision point and denied the tool call; jq is unavailable or failed; inspect the failing hook and available temporary-directory/disk state, then retry"}}\n' "$1"
 }
 
 # Constant deny for a hook whose ECI library cannot load.  The marker state is
@@ -83,7 +83,7 @@ eci_require_jq_or_deny() {
 _eci_fail_closed_emit() {
   local hook_name="$1" line="$2" exit_code="$3" cmd="$4" reason
   reason="$(eci_diagnostic_reason "ECI_HOOK_FAIL_CLOSED" "PreToolUse" "hook-fail-closed" "hook=$hook_name,line=$line,exit=$exit_code,command=$cmd" "hook command failed after its gate decision point; denying the tool call" "inspect the failing command and available temporary-directory/disk state, then retry")" ||
-    reason="[ECI_HOOK_FAIL_CLOSED] hook $hook_name failed after its gate decision point and denied the tool call; inspect the hook log and available temporary-directory/disk state, then retry"
+    reason="[ECI_HOOK_FAIL_CLOSED] hook $hook_name failed after its gate decision point and denied the tool call; inspect the failing hook and available temporary-directory/disk state, then retry"
   if ! jq -n --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null; then
     _eci_fail_closed_constant "$hook_name"
   fi

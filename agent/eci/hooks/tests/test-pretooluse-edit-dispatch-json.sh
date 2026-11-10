@@ -138,7 +138,7 @@ run_case malformed empty
 run_case multi empty
 run_case fail empty
 run_case ownership-unknown empty
-[ ! -s "$TMP_ROOT/fail.err" ]
+grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' "$TMP_ROOT/fail.err"
 [ ! -s "$TMP_ROOT/ownership-unknown.err" ]
 
 printf '%s\n' 'pretooluse edit-dispatch JSON assertions: PASS'

@@ -35,7 +35,13 @@ for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_d
 done
 eci_init_tmp || true
 eci_require_jq_or_deny validate-edit-write
-eci_install_fail_closed_trap validate-edit-write
+# Leave failure classification to the dispatcher, which knows the target.
+edit_guard_error() {
+  local line="$1" code="$2" cmd="$3"
+  printf 'validate-edit-write failed at line %s (exit %s): %s\n' "$line" "$code" "$cmd" >&2 || true
+  exit "$code"
+}
+trap 'edit_guard_error "$LINENO" "$?" "$BASH_COMMAND"' ERR
 
 input=$(cat)
 # pretooluse-edit-dispatch.sh parsed the fields below from this stdin with one jq
@@ -210,7 +216,7 @@ elif { eci_path_is_under_proof_root "$lexical_file_path" ||
   deny "$(eci_diagnostic_reason "ECI_SESSION_OWNER_UNRESOLVED" "PreToolUse" "edit-validation" "$file_path" "Session-scoped file ${file_path##*/} has no resolvable session owner; refusing fail-open on a session-scoped path." "use the current session's canonical path")"
 fi
 trap - ERR
-eci_install_fail_closed_trap validate-edit-write
+trap 'edit_guard_error "$LINENO" "$?" "$BASH_COMMAND"' ERR
 
 eci_proof_root_load
 eci_direct_marker="$eci_proof_root_value/${session_id}/eci_active"

@@ -19,24 +19,13 @@ if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker
   dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
-# Unexpected failure after the lib load.  With an active or unknown marker the
-# tool call is denied with the fail-closed constant; with no marker the hook
-# exits with the failing status, as errexit does in the source.  A subshell
-# failure exits with its own status so no deny JSON is captured into a value.
-# Every command in this handler is guarded, so a failure cannot reach errexit
-# inside it.
+# Report dispatcher failures directly; Bash remains available for repair.
 _dispatch_err_trap() {
-  local status="$1"
-  if [ "$BASHPID" != "$$" ]; then
-    exit "$status"
-  fi
-  if eci_marker_active_or_unknown; then
-    dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: an unexpected failure occurred while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
-    exit 0
-  fi
+  local status="$1" line="$2" cmd="$3"
+  printf 'pretooluse-edit-dispatch failed at line %s (exit %s): %s; inspect the dispatcher and retry via Bash if necessary\n' "$line" "$status" "$cmd" >&2 || true
   exit "$status"
 }
-trap '_dispatch_err_trap "$?"' ERR
+trap '_dispatch_err_trap "$?" "$LINENO" "$BASH_COMMAND"' ERR
 tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
 if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
   if eci_marker_active_or_unknown; then
@@ -194,13 +183,58 @@ for index in "${!pids[@]}"; do
   fi
 done
 
+# Classify concrete session/control targets using the same path predicates as
+# the guards. Return 2 when no target could be classified.
+dispatch_protected_target() {
+  local cwd targets path lexical resolved classified=0 unknown=0
+  cwd="$(jq -r '.cwd // empty' <"$input_file")"
+  if [ "$tool_name" = apply_patch ]; then
+    targets="$(jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' <"$input_file" |
+      awk '/^\*\*\* (Add|Update|Delete) File: / {sub(/^\*\*\* (Add|Update|Delete) File: /, ""); print}
+           /^\*\*\* Move to: / {sub(/^\*\*\* Move to: /, ""); print}')"
+  else
+    targets="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .tool_input.target_file // empty' <"$input_file")"
+  fi
+  eci_hook_roots_load || return 2
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      "~") path="$HOME" ;;
+      "~/"*) path="$HOME/${path#~/}" ;;
+    esac
+    case "$path" in /*) ;; *) path="${cwd:-$PWD}/$path" ;; esac
+    lexical="$(eci_realpath_lexical "$path" 2>/dev/null || true)"
+    resolved="$(eci_realpath_canonical "$path" 2>/dev/null || true)"
+    if [ -z "$lexical" ] || [ -z "$resolved" ]; then unknown=1; fi
+    [ -n "$lexical$resolved" ] || continue
+    classified=1
+    for path in "$lexical" "$resolved"; do
+      [ -n "$path" ] || continue
+      case "$path" in "$HOME/tmp/agent/proof/"*) return 0 ;; esac
+      if [ -n "$eci_hook_roots_resolved_default" ]; then
+        case "$path" in "$eci_hook_roots_resolved_default/"*) return 0 ;; esac
+      fi
+      if eci_path_is_under_proof_root "$path" ||
+         eci_context_session_rest "$path" >/dev/null ||
+         eci_path_is_eci_control_file "$path" ||
+         eci_path_is_eci_control_alias "$path" ||
+         eci_path_is_git_approval_file "$path"; then
+        return 0
+      fi
+    done
+  done <<<"$targets"
+  [ "$classified" = 1 ] && [ "$unknown" = 0 ] && return 1
+  return 2
+}
+
 candidate_output=""
 gate_failed=""
+failed_guards=()
 for index in "${!gates[@]}"; do
-  # Ignore child stderr and malformed output.  Only a well-formed, explicit
-  # denial is actionable; a non-zero gate exit is recorded for the marker gate.
+  # Preserve the first failed child while still looking for a healthy denial.
   if [ "$index" != "$reminder_index" ] && [ "${statuses[$index]:-1}" -ne 0 ]; then
-    gate_failed=1
+    failed_guards+=("$index")
+    [ -n "$gate_failed" ] || gate_failed="$index"
   fi
   if [ "${statuses[$index]:-1}" -eq 0 ] &&
     [ -s "$tmp_dir/output-$index" ] &&
@@ -222,8 +256,26 @@ if [ -n "$candidate_output" ]; then
     fi
     exit "$candidate_status"
   }
-elif [ -n "$gate_failed" ] && eci_marker_active_or_unknown; then
-  dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_EDIT_GATE_FAILED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: a gate child exited non-zero while an active marker exists, so the edit cannot be classified; inspect the hook log and retry"}}'
+elif [ -n "$gate_failed" ]; then
+  failure_detail=""
+  IFS= read -r failure_detail <"$tmp_dir/error-$gate_failed" || true
+  failure_reason="[ECI_EDIT_GATE_FAILED] ${gates[$gate_failed]##*/} exited ${statuses[$gate_failed]}: ${failure_detail:-no diagnostic}"
+  target_status=0
+  dispatch_protected_target || target_status=$?
+  if eci_marker_active_or_unknown; then
+    failure_reason="$failure_reason; inspect the named hook using Bash; active-marker failures have no Edit/Write repair route"
+    jq -cn --arg reason "$failure_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  elif [ "$target_status" = 0 ]; then
+    failure_reason="$failure_reason; inspect and repair $hook_dir/${gates[$gate_failed]##*/} using an ordinary Edit or Write, then retry"
+    jq -cn --arg reason "$failure_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  else
+    for index in "${failed_guards[@]}"; do
+      printf 'ECI_EDIT_GATE_FAILED_ALLOWED %s\n' "${gates[$index]##*/}" >&2
+    done
+    if [ "$target_status" = 2 ]; then
+      printf '%s\n' 'ECI_EDIT_GATE_TARGET_UNCLASSIFIED' >&2
+    fi
+  fi
 fi
 
 # The explicitly requested advisory is intentionally outside the provider
