@@ -707,13 +707,12 @@ func inspectHookGitBroad(
 	directory string,
 ) *Diagnostic {
 	verb := argv[verbIndex].value
-	if verb != "add" && verb != "reset" && verb != "clean" {
+	if verb != "add" && verb != "clean" {
 		return nil
 	}
-	whole := verb == "reset" && verbIndex+1 == len(argv)
+	whole := false
 	paths := 0
 	options := true
-	revision := false
 	for _, argument := range argv[verbIndex+1:] {
 		if !hookArgumentKnown(record, argument.offset) {
 			if !options && whole && slices.Contains(record.MayDisappearArguments, argument.offset) {
@@ -724,9 +723,6 @@ func inspectHookGitBroad(
 		value := argument.value
 		if options && value == "--" {
 			options = false
-			if verb == "reset" {
-				whole = true
-			}
 			continue
 		}
 		if options && strings.HasPrefix(value, "-") {
@@ -735,25 +731,12 @@ func inspectHookGitBroad(
 				return nil
 			case "-A", "--all", "-u", "--update":
 				whole = verb == "add"
-			case "--hard", "--mixed", "--merge", "--keep":
-				whole = verb == "reset"
-			case "--soft":
-				return nil
 			case "-f", "-d", "-x", "-X", "-fd", "-fdx", "-df", "-ff", "-ffdx":
 				whole = verb == "clean"
 			case "-q", "--quiet", "-v", "--verbose":
 			default:
 				return nil
 			}
-			continue
-		}
-		if verb == "reset" && options && !revision {
-			if !whole {
-				// Without an explicit reset mode or --, this literal may be
-				// a path rather than a revision. That identity stays advisory.
-				return nil
-			}
-			revision = true
 			continue
 		}
 		if value != "." && value != ":/" && value != directory {

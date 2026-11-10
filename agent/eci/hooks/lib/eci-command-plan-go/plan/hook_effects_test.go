@@ -21,7 +21,10 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		denied  bool
 	}{
 		{command: "git add -A", denied: true},
-		{command: "git reset --hard", denied: true},
+		{command: "git reset --hard"},
+		{command: "git reset --hard HEAD"},
+		{command: "git reset"},
+		{command: "git reset -- ."},
 		{command: "git add -- owned.txt"},
 		{command: "git status"},
 	} {
@@ -61,14 +64,14 @@ func TestHookCoordinatorGitTargets(t *testing.T) {
 	root := t.TempDir()
 	foreign := t.TempDir()
 	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleCoordinator, Marker: MarkerInactive, CWD: root, CollectShellCommands: true}
-	for _, command := range []string{"git add file", "git add -A file", "git reset -- file", "git reset file", "git -C " + foreign + " diff --output=result"} {
+	for _, command := range []string{"git add file", "git add -A file", "git reset -- file", "git reset file", "git reset --hard", "git reset", "git reset -- .", "git -C " + foreign + " diff --output=result"} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
 			require.Falsef(t, diagnostic != nil, "scoped/read-only command %s denied: %+v", command, diagnostic)
 		}
 	}
-	for _, command := range []string{"git reset --hard", "git reset", "git reset -- .", "git add -A", "git add -A -- ."} {
+	for _, command := range []string{"git add -A", "git add -A -- ."} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
