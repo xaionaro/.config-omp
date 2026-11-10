@@ -302,3 +302,47 @@ test("does not credit host raw range output without truncation metadata", () => 
  result("read", {path: "skill://coding-go:raw:1-2"}, {raw: true, totalLines: 152, displayContent: {startLine: 1, lineNumbers: [1, 2], text: "---\nname: coding-go"}});
  assert.match(call("write", {path: "a.go"})!.reason, /coding-go/);
 });
+
+test("retires only the resolved AST preview and preserves other pending previews", () => {
+ const {call, result, read} = setup();
+ result("ast_edit", {}, {files: ["first.go"]});
+ result("ast_edit", {}, {files: ["second.py"]});
+ result("write", {path: "xd://reject"}, {xdev: {tool: "reject", inner: {sourceToolName: "ast_edit", action: "discard"}}});
+ assert.match(call("write", {path: "xd://resolve"})!.reason, /coding-go/);
+ read("skill://coding-common");
+ read("skill://coding-go");
+ assert.equal(call("write", {path: "xd://resolve"}), undefined);
+ result("write", {path: "xd://resolve"}, {xdev: {tool: "resolve", inner: {sourceToolName: "ast_edit", action: "apply"}}});
+ result("ast_edit", {}, {files: ["note.txt"]});
+ assert.equal(call("write", {path: "xd://resolve"}), undefined);
+});
+
+test("failed or unrelated resolution does not retire an AST preview", () => {
+ const {call, result} = setup();
+ result("ast_edit", {}, {files: ["first.go"]});
+ result("write", {path: "xd://resolve"}, undefined, undefined, true);
+ assert.match(call("write", {path: "xd://resolve"})!.reason, /coding-common/);
+ result("write", {path: "xd://resolve"}, {xdev: {tool: "resolve", inner: {sourceToolName: "other", action: "apply"}}});
+ assert.match(call("write", {path: "xd://resolve"})!.reason, /coding-common/);
+});
+
+test("detects copy and move into existing directories without blocking text files", () => {
+ const {call} = setup();
+ const src = join(agentDir, "source.go");
+ const text = join(agentDir, "notes.txt");
+ const dir = join(agentDir, "destination");
+ writeFileSync(src, "package source\n");
+ writeFileSync(text, "notes\n");
+ mkdirSync(dir);
+ assert.match(call("bash", {command: `cp '${src}' '${dir}'`})!.reason, /coding-go/);
+ assert.match(call("bash", {command: `mv '${src}' '${dir}/'`})!.reason, /coding-go/);
+ assert.equal(call("bash", {command: `cp '${text}' '${dir}'`}), undefined);
+});
+
+test("retires a preview when the resolved action returns a stale-result error", () => {
+ const {call, result} = setup();
+ result("ast_edit", {}, {files: ["first.go"]});
+ result("write", {path: "xd://resolve"}, {xdev: {tool: "resolve", inner: {sourceToolName: "ast_edit", action: "apply"}}}, undefined, true);
+ result("ast_edit", {}, {files: ["note.txt"]});
+ assert.equal(call("write", {path: "xd://resolve"}), undefined);
+});

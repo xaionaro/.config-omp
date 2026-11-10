@@ -1,12 +1,17 @@
 // Disabled until deliberately installed under hooks/. Successful reads are scoped
 // to the current agent and reconstructed from its active transcript branch.
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const LANGUAGES: Record<string, string> = { go: "go", py: "python" };
+const SKILLS = ["common", ...Object.values(LANGUAGES)];
 const PATCH_HEADER = /^\[(.+)#[a-zA-Z0-9]{4}\]\s*$/gm;
+
+function skillRoot(): string {
+ return join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills");
+}
 
 function languageForExistingSkills(path: string): string | undefined {
  path = path.replace(/^\[(.*)#[0-9a-fA-F]{4}\]$/, "$1");
@@ -15,7 +20,7 @@ function languageForExistingSkills(path: string): string | undefined {
  if (!extension) return undefined;
  const name = LANGUAGES[extension];
  if (!name) return undefined;
- return ["common", name].every(skill => existsSync(join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills", `coding-${skill}`, "SKILL.md"))) ? name : undefined;
+ return ["common", name].every(skill => existsSync(join(skillRoot(), `coding-${skill}`, "SKILL.md"))) ? name : undefined;
 }
 
 function verifiedReadSkill(input: Record<string, unknown>, result: { isError?: boolean; details?: unknown }, cwd: string): string | undefined {
@@ -27,10 +32,10 @@ function verifiedReadSkill(input: Record<string, unknown>, result: { isError?: b
  const raw = input.path.endsWith(":raw");
  const readPath = raw ? input.path.slice(0, -4) : input.path;
  if (raw !== (details.raw === true)) return undefined;
- const uri = /^skill:\/\/(coding-(?:common|go|python))(?:\/SKILL\.md)?$/.exec(readPath);
+ const uri = /^skill:\/\/(coding-[a-z]+)(?:\/SKILL\.md)?$/.exec(readPath);
  if (!uri && /:\d|:raw|[?;]/.test(readPath)) return undefined;
- for (const name of ["common", "go", "python"]) {
-  const canonical = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills", `coding-${name}`, "SKILL.md");
+ for (const name of SKILLS) {
+  const canonical = join(skillRoot(), `coding-${name}`, "SKILL.md");
   try {
    if (uri ? uri[1] !== `coding-${name}` : realpathSync(resolve(cwd, readPath)) !== realpathSync(canonical)) continue;
    const text = readFileSync(canonical, "utf8").replace(/\r\n/g, "\n");
@@ -89,6 +94,23 @@ function findGofmtTarget(operands: string[], cwd: string): string | undefined {
 	return undefined;
 }
 
+function copyOrMoveTargets(argv: string[], cwd: string): string[] {
+ const destination = argv[argv.length - 1];
+ const targets = [destination];
+ if (/[$`*?{}]/.test(destination)) return targets;
+ try {
+  if (!statSync(resolve(cwd, destination)).isDirectory()) return targets;
+ } catch (error) {
+  if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
+  return targets;
+ }
+ for (const source of argv.slice(1, -1)) {
+  if (source.startsWith("-") || /[$`*?{}]/.test(source) || !existsSync(resolve(cwd, source))) continue;
+  targets.push(join(destination, basename(source)));
+ }
+ return targets;
+}
+
 // Recognize literal shell words and redirections without interpreting expansions.
 function literalShellWriteTargets(command: string, cwd: string): string[] {
  // Heredoc bodies are data, not shell commands.
@@ -125,7 +147,8 @@ function literalShellWriteTargets(command: string, cwd: string): string[] {
  const collect = () => {
   const name = argv[0]?.split("/").pop();
   if (name === "tee") paths.push(...argv.slice(1).filter(arg => !arg.startsWith("-")));
-  if ((name === "cp" || name === "mv" || name === "install") && argv.length > 2) paths.push(argv[argv.length - 1]);
+  if ((name === "cp" || name === "mv") && argv.length > 2) paths.push(...copyOrMoveTargets(argv, cwd));
+  if (name === "install" && argv.length > 2) paths.push(argv[argv.length - 1]);
   if (name === "sed" && argv.some(arg => /^-[^-]*i/.test(arg) || /^--in-place(?:=|$)/.test(arg))) paths.push(argv[argv.length - 1]);
   if (name === "gofmt") {
    let writes = false, options = true;
@@ -211,7 +234,7 @@ function writeTargetsFor(tool: string, input: Record<string, unknown>, cwd: stri
 
 export default function codingSkillGate(pi: ExtensionAPI): void {
  const reads = new Map<string, Set<string>>();
- const pending = new Map<string, Set<string>>();
+ const pending = new Map<string, string[][]>();
  let ownAgent: string | undefined;
  function agentKey(ctx: ExtensionContext): string {
   return JSON.stringify([ctx.sessionManager.getSessionId(), ctx.agent?.id]);
@@ -252,14 +275,26 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
    if (skill) hydrateReads(ctx).add(skill);
   }
   if (event.toolName === "ast_edit" && !event.isError && event.details && typeof event.details === "object" && "files" in event.details && Array.isArray(event.details.files)) {
-   const files = pending.get(id) ?? new Set<string>();
-   for (const path of event.details.files) if (typeof path === "string") files.add(path);
-   pending.set(id, files);
+   const files = event.details.files.filter((path): path is string => typeof path === "string");
+   if (files.length) {
+    const previews = pending.get(id) ?? [];
+    previews.push(files);
+    pending.set(id, previews);
+   }
+  }
+  if (event.toolName === "write" && (event.input.path === "xd://resolve" || event.input.path === "xd://reject")) {
+   const details = event.details as { xdev?: { inner?: { sourceToolName?: string; action?: string } } } | undefined;
+   const inner = details?.xdev?.inner;
+   if (inner?.sourceToolName === "ast_edit" && (inner.action === "apply" || inner.action === "discard")) {
+    const previews = pending.get(id);
+    previews?.pop();
+    if (previews?.length === 0) pending.delete(id);
+   }
   }
  });
  pi.on("tool_call", (event, ctx) => {
   const input = event.input as Record<string, unknown>;
-  const paths = event.toolName === "write" && input.path === "xd://resolve" ? [...pending.get(agentKey(ctx)) ?? []] : writeTargetsFor(event.toolName, input, ctx.cwd);
+  const paths = event.toolName === "write" && input.path === "xd://resolve" ? (pending.get(agentKey(ctx)) ?? []).flat() : writeTargetsFor(event.toolName, input, ctx.cwd);
   for (const path of paths) {
    const lang = languageForExistingSkills(path);
    if (!lang) continue;
@@ -267,7 +302,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
    const missing = ["coding-common", `coding-${lang}`].filter(skill => !seen.has(skill));
    if (missing.length) {
     const retry = input.path === "xd://resolve" ? "First write xd://reject, then read the skills and rerun the preview." : "Then retry.";
-    const base = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills");
+    const base = skillRoot();
     return { block: true, reason: `Coding skill gate: writing ${path} requires ${missing.map(skill => `skill://${skill} (or ${join(base, skill, "SKILL.md")})`).join(" and ")}. Read each named skill without a line range and let the reads finish in an earlier tool batch. ${retry}` };
    }
   }
