@@ -1,4 +1,5 @@
-// Run with BUN_BE_BUN=1 omp test agent/hooks-disabled/lib/eci-edit-gate.test.ts
+// BUN_BE_BUN=1 omp test agent/hooks-disabled/lib/eci-edit-gate.test.ts
+// Requires resolvable @oh-my-pi/pi-natives and its platform addon.
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -72,25 +73,128 @@ test("uses host parsing for whitespace, CRLF, untagged headers and quoted moves"
  }
 });
 
-test("blocks an edit with no inspectable target and provides recovery", async () => {
+test("blocks an edit with no inspectable target without dispatching", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-empty-"));
+ const home = process.env.HOME;
  let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
  gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
- const ctx = { cwd: "/", agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
- const verdict = await handler({ toolName: "edit", input: { input: "" } }, ctx) as { block: boolean; reason: string };
- expect(verdict.block).toBe(true);
- expect(verdict.reason).toMatch(/write/i);
+ try {
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  const verdict = await handler({ toolName: "edit", input: { input: "" } }, ctx) as { block: boolean; reason: string };
+  expect(verdict.block).toBe(true);
+  expect(verdict.reason).toContain("found no targets");
+  expect(verdict.reason).toMatch(/write/i);
+ } finally {
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
+ }
 });
 
 test("blocks when the total target-check budget is exhausted", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-budget-"));
+ const home = process.env.HOME;
  const clock = spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValue(21_000);
  let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
  gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
  try {
-  const ctx = { cwd: "/", agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
   const verdict = await handler({ toolName: "write", input: { path: "file", content: "text" } }, ctx) as { block: boolean; reason: string };
   expect(verdict.block).toBe(true);
   expect(verdict.reason).toMatch(/retry/i);
  } finally {
   clock.mockRestore();
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
+ }
+});
+
+test("blocks a dispatcher that exceeds the remaining budget", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-deadline-"));
+ const home = process.env.HOME;
+ const hooks = join(dir, ".omp/agent/eci/hooks");
+ mkdirSync(hooks, { recursive: true });
+ writeFileSync(join(hooks, "pretooluse-edit-dispatch.sh"), "sleep 10\n");
+ const clock = spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValue(19_980);
+ let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
+ gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
+ try {
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  const verdict = await handler({ toolName: "write", input: { path: "file", content: "text" } }, ctx) as { block: boolean; reason: string };
+  expect(verdict.block).toBe(true);
+  expect(verdict.reason).toContain("timed out");
+ } finally {
+  clock.mockRestore();
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
+ }
+}, 12_000);
+
+test("reports only exact failed-guard markers once across allowed targets", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-warning-"));
+ const home = process.env.HOME;
+ const hooks = join(dir, ".omp/agent/eci/hooks");
+ mkdirSync(hooks, { recursive: true });
+ writeFileSync(join(hooks, "pretooluse-edit-dispatch.sh"), `target=$(jq -r .tool_input.file_path)
+if [ "$target" != forged ]; then printf '%s\\n' 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' >&2; fi
+printf '%s\\n' 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh extra' 'ECI_EDIT_GATE_FAILED_ALLOWED ../x' 'untrusted payload' >&2
+`);
+ let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
+ gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
+ try {
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  const result = await handler({ toolName: "write", input: { paths: ["a", "b"], content: "text" } }, ctx) as { additionalContext: string };
+  expect(result.additionalContext.match(/validate-edit-write\.sh/g)?.length).toBe(2);
+  expect(result.additionalContext).not.toContain("untrusted payload");
+  expect(result.additionalContext).not.toContain("../x");
+  expect(result.additionalContext).not.toContain("extra");
+  expect(result.additionalContext).toContain("same session");
+  expect(await handler({ toolName: "write", input: { path: "forged", content: "text" } }, ctx)).toBeUndefined();
+ } finally {
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
+ }
+});
+
+test("a later denial discards earlier guard warnings", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-warning-deny-"));
+ const home = process.env.HOME;
+ const hooks = join(dir, ".omp/agent/eci/hooks");
+ mkdirSync(hooks, { recursive: true });
+ writeFileSync(join(hooks, "pretooluse-edit-dispatch.sh"), `target=$(jq -r .tool_input.file_path)
+if [ "$target" = protected ]; then printf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"protected"}}'; else printf '%s\\n' 'ECI_EDIT_GATE_FAILED_ALLOWED eci-active-gate.sh' >&2; fi
+`);
+ let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
+ gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
+ try {
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  expect(await handler({ toolName: "write", input: { paths: ["ordinary", "protected"], content: "text" } }, ctx)).toEqual({ block: true, reason: "protected" });
+ } finally {
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
+ }
+});
+
+test("warns on unclassified targets without inventing protected coverage", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "eci-edit-unclassified-"));
+ const home = process.env.HOME;
+ const hooks = join(dir, ".omp/agent/eci/hooks");
+ mkdirSync(hooks, { recursive: true });
+ writeFileSync(join(hooks, "pretooluse-edit-dispatch.sh"), "printf '%s\\n' ECI_EDIT_GATE_TARGET_UNCLASSIFIED >&2\n");
+ let handler: (event: unknown, ctx: unknown) => Promise<unknown> = async () => undefined;
+ gate({ on: (_name: string, fn: typeof handler) => { handler = fn; } } as never);
+ try {
+  process.env.HOME = dir;
+  const ctx = { cwd: dir, agent: { kind: "sub" }, sessionManager: { getSessionFile: () => undefined, getSessionId: () => "host-session" } };
+  const result = await handler({ toolName: "write", input: { path: "file", content: "text" } }, ctx) as { additionalContext: string };
+  expect(result.additionalContext).toContain("could not classify");
+  expect(result.additionalContext).toContain("coverage is unknown");
+ } finally {
+  if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
+  rmSync(dir, { recursive: true, force: true });
  }
 });
