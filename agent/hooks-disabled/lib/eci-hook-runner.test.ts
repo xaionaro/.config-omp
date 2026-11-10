@@ -149,6 +149,29 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 	expect(BASH_GATE_DEADLINE_SEC + KILL_GRACE_SEC + DRAIN_SEC).toBeLessThan(30);
 });
 
+test("native denial guidance exposes only recognized binary reasons", () => {
+	const line = (reason: string) => `[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable or unverified (${reason}); private trailing data`;
+	const run = (reason: string) => ({ outcome: exited(2), stdout: "", stderr: line(reason) });
+	expect(bashPreToolVerdict(run("has no sha256 receipt"))?.reason).toContain(": eci-bash-gate-repair");
+	const unsafe = bashPreToolVerdict(run("is group- or other-writable"))?.reason ?? "";
+	expect(unsafe).toContain("eci-command-plan");
+	expect(unsafe).toContain("is group- or other-writable");
+	expect(unsafe).not.toContain(": eci-bash-gate-repair");
+	expect(unsafe).not.toContain("private trailing data");
+	expect(bashPreToolVerdict(run("private attacker data"))?.reason).not.toContain("private attacker data");
+});
+
+test("shared repair reasons match native verifier and builder", () => {
+	const native = readFileSync(join(import.meta.dir, "../../eci/hooks/lib/eci-verexec-go/reasons.go"), "utf8");
+	const builder = readFileSync(join(import.meta.dir, "../../eci/hooks/build-native-binaries.sh"), "utf8");
+	for (const reason of ["is missing or a symlink", "is not an ELF binary for this host", "has no sha256 receipt", "has a malformed sha256 receipt", "sha256 does not match its receipt"]) {
+		expect(native).toContain(`"${reason}"`);
+		expect(builder).toContain(`'${reason}'`);
+		const stderr = `[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable or unverified (${reason}); provision it`;
+		expect(bashPreToolVerdict({ outcome: exited(2), stdout: "", stderr })?.reason).toContain(": eci-bash-gate-repair");
+	}
+});
+
 test("Bash factory exceptions block with conditional repair guidance without exposing the exception", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
 	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; }, zod: { object: () => ({}) }, registerTool: () => {} } as never);

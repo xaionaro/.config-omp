@@ -71,7 +71,7 @@ gate_repair_target() {
   eci_native_leaf_unresolved "$receipt" && return 1
   for leaf in "$binary" "$receipt"; do
     if [ -e "$leaf" ]; then
-      [ -n "$(find "$leaf" -prune -type f -links 1 ! -perm -022 -print)" ] || return 1
+      [ -n "$(find "$leaf" -prune -type f -links 1 ! -perm -020 ! -perm -002 -print)" ] || return 1
     fi
   done
   if [ -e "$binary" ]; then [ -x "$binary" ] || return 1; fi
@@ -85,13 +85,22 @@ gate_repair_target() {
 
 # A staged Linux verifier proves the existing bin chain before its missing self-check.
 gate_missing_verifier_chain() {
-  local reason
-  reason="$("$stage/eci-verexec" --check --deny-fd 3 eci-command-plan 3>&1 >/dev/null)" && return 1
+  local reason rc=0
+  reason="$("$stage/eci-verexec" --check --deny-fd 3 eci-command-plan 3>&1 >/dev/null)" || rc=$?
+  if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+    echo 'build-native-binaries: cannot execute staged verifier; choose an executable TMPDIR and retry --gate-repair' >&2
+    return 1
+  fi
+  [ "$rc" -ne 0 ] || return 1
   case "$reason" in
     'ECI native gate binary eci-verexec is unavailable or unverified (is missing or a symlink); '*) return 0 ;;
     *) printf '%s\n' "$reason" >&2; return 1 ;;
   esac
 }
+if [ "$gate_repair" = true ]; then
+  gate_repair_target || die "unsafe or unsupported gate failure: $ECI_RUNTIME_DENY_REASON"
+fi
+
 
 # Select a PATH executable; a shell function or a relative PATH entry cannot build.
 go=$(command -v go) || die 'go not found on PATH; install Go 1.24 or newer and retry'
@@ -139,7 +148,7 @@ if [ "$#" -gt 0 ]; then
   names=("$@")
 fi
 if [ "$gate_repair" = true ]; then
-  gate_repair_target || die "unsafe or unsupported gate failure: $ECI_RUNTIME_DENY_REASON"
+  # The target was classified before requiring Go.
   names=("$gate_target")
   echo 'build-native-binaries: fixed gate repair uses current working-tree source and changes shared binaries for all sessions' >&2
   GIT_OPTIONAL_LOCKS=0 git -C "$hook_dir/lib" status -suall -- eci-command-plan-go eci-verexec-go >&2 || echo 'build-native-binaries: source status unknown' >&2
@@ -157,7 +166,8 @@ else
   fi
   stage=''
 fi
-trap '[ -z "$stage" ] || rm -rf -- "$stage"' EXIT
+publish=''
+trap '[ -z "$publish" ] || rm -rf -- "$publish"; [ -z "$stage" ] || rm -rf -- "$stage"' EXIT
 bin_dir="$(cd -P -- "$bin_dir" && pwd -P)" || die 'cannot resolve bin directory'
 [ -O "$bin_dir" ] || die "bin directory not owned by current user: $bin_dir"
 lock="$bin_dir/.planner-importer.publish.lock"
@@ -174,10 +184,14 @@ for name in "${names[@]}"; do
   (cd -- "$module" && env -u GO386 -u GOAMD64 -u GOARM -u GOARM64 -u GOMIPS -u GOMIPS64 -u GOPPC64 -u GORISCV64 -u GOWASM \
     GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
-    || die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""
+    || { if [ "$gate_repair" = true ]; then die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\" --gate-repair"; else die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""; fi; }
   chmod -- 0755 "$stage/$name"
-  eci_runtime_binary_is_native "$stage/$name" \
-    || die "$name: built $host_os/$host_arch binary is not native for this host"
+  if ! eci_runtime_binary_is_native "$stage/$name"; then
+    if [ "$gate_repair" = true ] && [ "$name" = eci-verexec ]; then
+      die "staged verifier is not executable or native for $host_os/$host_arch; choose an executable TMPDIR and retry --gate-repair"
+    fi
+    die "$name: built $host_os/$host_arch binary is not native for this host"
+  fi
   digest="$("${sha256_command[@]}" -- "$stage/$name")"
   printf '%s  %s\n' "${digest%% *}" "$name" >"$stage/$name.sha256"
 done
@@ -209,6 +223,7 @@ if [ "$gate_repair" = true ]; then
   mv -- "$publish/$gate_target" "$binary"
   mv -- "$publish/$gate_target.sha256" "$receipt"
   rmdir -- "$publish"
+  publish=''
   eci_file_lock_release_fd 6 || exit 1
   if eci_runtime_verify eci-command-plan; then
     echo 'build-native-binaries: Bash gate binaries verified'

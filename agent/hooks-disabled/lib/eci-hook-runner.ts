@@ -383,14 +383,34 @@ export function bashGateUnavailable(detail: string, repairable = false): PreTool
 	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${repair} Continue non-Bash work and report the failure.` };
 }
 
-/** The fixed repair is offered only for the validator's native binary denial. */
-export function bashGateRepairable(run: HookRun): boolean {
+const nativeRepairReasons = [
+	"is missing or a symlink", "is not an ELF binary for this host", "is not a Mach-O executable for this host",
+	"has no sha256 receipt", "has a malformed sha256 receipt", "sha256 does not match its receipt",
+];
+const nativeOtherReasons = [
+	"not an allowed artifact name or HOME is not absolute", "bin directory is missing",
+	"bin directory or an ancestor is not owned by the current user or root, or is group/other-writable",
+	"cannot be opened", "descriptor cannot be resolved", "resolves outside the verified bin directory",
+	"cannot be stat'ed", "is not a regular file", "is not owned by the current user", "has an unreadable mode",
+	"is group- or other-writable", "is not executable", "is not an allowed artifact name", "cannot be hashed",
+	"cannot be copied for execution", "cannot be made executable", "private verification directory cannot be created",
+];
+
+/** Extracts only fixed native denial data, never the untrusted diagnostic suffix. */
+function nativeGateDenial(run: HookRun): { name: string; reason: string } | undefined {
 	const outcome = run.outcome;
-	if (outcome.kind !== "ran" || outcome.cleanup !== "graceful" || outcome.stop.kind !== "exit" || outcome.stop.code !== 2 || run.stdout !== "") return false;
+	if (outcome.kind !== "ran" || outcome.cleanup !== "graceful" || outcome.stop.kind !== "exit" || outcome.stop.code !== 2 || run.stdout !== "") return undefined;
 	const line = run.stderr.trimEnd().split("\n").at(-1) ?? "";
-	const names = process.platform === "linux" ? "(?:eci-command-plan|eci-verexec)" : "eci-command-plan";
-	const reason = "(?:is missing or a symlink|is not an ELF binary for this host|is not a Mach-O executable for this host|has no sha256 receipt|has a malformed sha256 receipt|sha256 does not match its receipt)";
-	return new RegExp(`^\\[ECI_HOOK_NATIVE_GATE_UNAVAILABLE\\] ECI native gate binary ${names} is unavailable or unverified \\(${reason}\\); .+$`).test(line);
+	const match = /^\[ECI_HOOK_NATIVE_GATE_UNAVAILABLE\] ECI native gate binary (eci-command-plan|eci-verexec) is unavailable or unverified \(([^()\n]+)\); .+$/.exec(line);
+	if (!match || (match[1] === "eci-verexec" && process.platform !== "linux")) return undefined;
+	if (![...nativeRepairReasons, ...nativeOtherReasons].includes(match[2])) return undefined;
+	return { name: match[1], reason: match[2] };
+}
+
+/** The fixed repair is offered only for recognized buildable native binary denials. */
+export function bashGateRepairable(run: HookRun): boolean {
+	const denial = nativeGateDenial(run);
+	return denial !== undefined && nativeRepairReasons.includes(denial.reason);
 }
 
 export type BashGateDecision =
@@ -434,7 +454,11 @@ export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
 	switch (decision.kind) {
 		case "allow": return undefined;
 		case "deny": return { block: true, reason: decision.reason };
-		case "unavailable": return bashGateUnavailable(decision.detail, bashGateRepairable(run));
+		case "unavailable": {
+			const native = nativeGateDenial(run);
+			const detail = native ? `${native.name}: ${native.reason}` : decision.detail;
+			return bashGateUnavailable(detail, bashGateRepairable(run));
+		}
 	}
 }
 

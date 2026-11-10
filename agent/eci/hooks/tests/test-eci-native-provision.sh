@@ -548,6 +548,18 @@ for retained in "$bin"/.planner-importer.txn.*/eci-command-plan; do
 done
 [ "$found" = 1 ] || fail "gate repair did not retain damaged planner"
 : >"$bin/eci-command-plan.sha256"
+chmod 0664 "$bin/eci-command-plan.sha256"
+before_receipt=$(digest_of "$bin/eci-command-plan.sha256")
+: >"$build_log"
+if PATH=/usr/bin:/bin "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-writable-receipt.out" 2>"$base/out/gate-writable-receipt.err"; then fail "group-writable receipt accepted"; fi
+grep -Fq 'unsafe or unsupported gate failure' "$base/out/gate-writable-receipt.err" || fail "unsafe failure masked by Go prerequisite"
+[ "$(builds)" = 0 ] && [ "$(digest_of "$bin/eci-command-plan.sha256")" = "$before_receipt" ] && [ -n "$(find "$bin/eci-command-plan.sha256" -prune -perm 664 -print)" ] || fail "unsafe receipt changed"
+chmod 0644 "$bin/eci-command-plan.sha256"
+export FAKE_GO_FAIL=1
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-go-fail.out" 2>"$base/out/gate-go-fail.err"; then fail "failed Go build succeeded"; fi
+unset FAKE_GO_FAIL
+grep -Fq 'build-native-binaries.sh" --gate-repair' "$base/out/gate-go-fail.err" || fail "build failure omitted fixed retry mode"
+: >"$bin/eci-command-plan.sha256"
 : >"$build_log"
 "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-malformed.out" 2>"$base/out/gate-malformed.err" || fail "malformed receipt repair failed"
 [ "$(built_names)" = eci-command-plan ] && eci_runtime_verify eci-command-plan || fail "malformed receipt not repaired"
@@ -568,6 +580,18 @@ if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-
 rm "$base/fakebin/mv"
 "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-retry.out" 2>"$base/out/gate-retry.err" || fail "interrupted gate repair retry failed"
 eci_runtime_verify eci-command-plan || fail "gate did not verify after retry"
+previous_stages="$(find "$bin" -maxdepth 1 -name '.build.*' -print | LC_ALL=C sort)"
+printf 'publication cleanup' >>"$bin/eci-command-plan"
+cat >"$base/fakebin/cp" <<'EOF'
+#!/bin/sh
+case "$*" in *".eci-gate-repair."*".build."*) exit 1 ;; esac
+exec /bin/cp "$@"
+EOF
+chmod 0755 "$base/fakebin/cp"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-copy-fail.out" 2>"$base/out/gate-copy-fail.err"; then fail "injected publication failure succeeded"; fi
+[ "$(find "$bin" -maxdepth 1 -name '.build.*' -print | LC_ALL=C sort)" = "$previous_stages" ] || fail "publication stage was not cleaned"
+rm "$base/fakebin/cp"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-copy-retry.out" 2>"$base/out/gate-copy-retry.err" || fail "publication failure retry failed"
 chmod 0775 "$bin/eci-command-plan"
 : >"$build_log"
 if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-unsafe.out" 2>"$base/out/gate-unsafe.err"; then fail "unsafe mode accepted"; fi
@@ -590,10 +614,48 @@ if [ "$host_os" = Linux ]; then
   if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-chain.out" 2>"$base/out/gate-chain.err"; then fail "untrusted chain accepted"; fi
   [ ! -e "$bin/eci-verexec" ] || fail "untrusted chain received verifier"
   chmod 0700 "$bin"
+  cat >"$base/fakebin/chmod" <<'EOF'
+#!/bin/sh
+case "$*" in *".eci-gate-repair."*"/eci-verexec"*) exec /bin/chmod 0644 "$3" ;; esac
+exec /bin/chmod "$@"
+EOF
+  chmod 0755 "$base/fakebin/chmod"
+  if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-stage-mode.out" 2>"$base/out/gate-stage-mode.err"; then fail "unexecutable staged verifier accepted"; fi
+  grep -Fq 'choose an executable TMPDIR' "$base/out/gate-stage-mode.err" || fail "staged verifier failure did not name TMPDIR"
+  [ ! -e "$bin/eci-verexec" ] || fail "failed staged verifier installed"
+  rm "$base/fakebin/chmod"
+  if [ -n "${ECI_TEST_NOEXEC_TMPDIR:-}" ]; then
+    if TMPDIR="$ECI_TEST_NOEXEC_TMPDIR" "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-stage-exec.out" 2>"$base/out/gate-stage-exec.err"; then fail "unexecutable staged verifier accepted"; fi
+    grep -Fq 'choose an executable TMPDIR' "$base/out/gate-stage-exec.err" || fail "staged execution failure did not name TMPDIR"
+    [ ! -e "$bin/eci-verexec" ] || fail "failed staged verifier installed"
+  else
+    skip "staged execution failure requires ECI_TEST_NOEXEC_TMPDIR"
+  fi
   : >"$build_log"
   "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-verifier.out" 2>"$base/out/gate-verifier.err" || fail "missing verifier repair failed"
   [ "$(built_names)" = eci-verexec ] || fail "missing verifier rebuilt unrelated binary"
   eci_runtime_verify eci-command-plan || fail "gate did not verify after verifier repair"
+  printf 'verifier damaged' >>"$bin/eci-verexec"
+  printf 'planner damaged' >>"$bin/eci-command-plan"
+  cp -p "$bin/eci-verexec" "$base/sequential-verifier"
+  cp -p "$bin/eci-verexec.sha256" "$base/sequential-verifier.sha256"
+  cp -p "$bin/eci-command-plan" "$base/sequential-planner"
+  cp -p "$bin/eci-command-plan.sha256" "$base/sequential-planner.sha256"
+  : >"$build_log"
+  "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-sequential.out" 2>"$base/out/gate-sequential.err" || fail "sequential repair failed"
+  [ "$(cat "$build_log")" = "$(printf 'eci-verexec\neci-command-plan')" ] || fail "wrong sequential build order"
+  eci_runtime_verify eci-command-plan || fail "sequential repair not verified"
+  for name in eci-verexec eci-command-plan; do
+    case "$name" in eci-verexec) expected="$base/sequential-verifier" ;; *) expected="$base/sequential-planner" ;; esac
+    found=0
+    for retained in "$bin"/.planner-importer.txn.*/"$name"; do
+      if cmp -s "$retained" "$expected"; then
+        cmp -s "${retained%/*}/$name.sha256" "$expected.sha256" || fail "sequential repair lost $name receipt"
+        found=1
+      fi
+    done
+    [ "$found" = 1 ] || fail "sequential repair lost $name binary"
+  done
 fi
 pass "gate repair retains damaged pairs, skips healthy binaries and refuses unsafe modes"
 
