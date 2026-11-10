@@ -1164,17 +1164,24 @@ run_hook_matrix_parallel allowed ordinary-coordinator-literal \
   "./tools/repo-check --context" \
   "rg -n -C 3 'needle' hooks"
 
-# make without a finite memory cap is a concrete resource boundary
-# (hook_effects.go hookCodeMakeMemoryCapRequired; same at source 575bb81:105).
+# The make-cap gate has no verified launcher route on Darwin.
 output="$(run_hook "make -B test")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_MAKE_MEMORY_CAP_REQUIRED]"))
-' "$output" >/dev/null || {
-  printf 'uncapped make was not denied ECI_MAKE_MEMORY_CAP_REQUIRED: make -B test\n' >&2
-  cat -- "$output" >&2
-  exit 1
-}
+if [ "$(uname -s)" = Darwin ]; then
+  [ ! -s "$output" ] || {
+    printf 'uncapped make was unexpectedly denied on Darwin:\n' >&2
+    cat -- "$output" >&2
+    exit 1
+  }
+else
+  jq -e '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_MAKE_MEMORY_CAP_REQUIRED]"))
+  ' "$output" >/dev/null || {
+    printf 'uncapped make was not denied ECI_MAKE_MEMORY_CAP_REQUIRED: make -B test\n' >&2
+    cat -- "$output" >&2
+    exit 1
+  }
+fi
 
 # Opaque shell/interpreter spelling is not a source-write or target boundary.
 # Keep it hook-transparent unless a later recognizer sees a concrete wrong

@@ -2390,43 +2390,52 @@ run_validate_bash_command() {
 is_make_memory_cap_deny() {
   is_pretool_deny "$1" &&
     json_field_contains "$1" '.hookSpecificOutput.permissionDecisionReason // empty' \
-      "make must be run with a finite memory cap"
+      "[ECI_MAKE_MEMORY_CAP_REQUIRED]"
+}
+
+# The make cap is disabled only on Darwin; every other platform retains denial.
+expect_uncapped_make_platform_decision() {
+  if [ "$(uname -s)" = Darwin ]; then
+    expect_no_output "$1"
+  else
+    is_make_memory_cap_deny "$1"
+  fi
 }
 
 test_validate_bash_blocks_direct_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "make test" "bash-make-direct")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_env_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "env make test" "bash-make-env")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_sudo_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "sudo make test" "bash-make-sudo")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_command_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "command -- make test" "bash-make-command")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_exec_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "exec -- make test" "bash-make-exec")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_time_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "time make test" "bash-make-time")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_time_format_make_without_memory_cap() {
@@ -2434,43 +2443,43 @@ test_validate_bash_blocks_time_format_make_without_memory_cap() {
   out="$(run_validate_bash_command \
     "/usr/bin/time -f '%M' make test" \
     "bash-make-time-format")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_nice_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "nice make test" "bash-make-nice")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_timeout_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "timeout 30s make test" "bash-make-timeout")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_bash_c_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "bash -c 'make test'" "bash-make-bash-c")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_bash_lc_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "bash -lc 'make test'" "bash-make-bash-lc")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_sh_c_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "sh -c 'make test'" "bash-make-sh-c")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_xargs_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "printf test | xargs make" "bash-make-xargs")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_find_exec_make_without_memory_cap() {
@@ -2478,7 +2487,7 @@ test_validate_bash_blocks_find_exec_make_without_memory_cap() {
   out="$(run_validate_bash_command \
     "find . -maxdepth 0 -exec make test \\;" \
     "bash-make-find-exec")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_allows_systemd_run_property_capped_make() {
@@ -2526,7 +2535,7 @@ test_validate_bash_blocks_systemd_run_without_memorymax_for_make() {
   out="$(run_validate_bash_command \
     "systemd-run --scope make test" \
     "bash-make-systemd-uncapped")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make() {
@@ -2534,7 +2543,7 @@ test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make() {
   out="$(run_validate_bash_command \
     "systemd-run --scope -u build make test" \
     "bash-make-systemd-unit-uncapped")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_systemd_run_memoryhigh_for_make() {
@@ -2542,7 +2551,7 @@ test_validate_bash_blocks_systemd_run_memoryhigh_for_make() {
   out="$(run_validate_bash_command \
     "systemd-run --scope -p MemoryHigh=1G make test" \
     "bash-make-systemd-memoryhigh")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_blocks_prlimit_unlimited_cap_for_make() {
@@ -2550,7 +2559,7 @@ test_validate_bash_blocks_prlimit_unlimited_cap_for_make() {
   out="$(run_validate_bash_command \
     "prlimit --as=unlimited make test" \
     "bash-make-prlimit-unlimited")" || return 1
-  is_make_memory_cap_deny "$out"
+  expect_uncapped_make_platform_decision "$out"
 }
 
 test_validate_bash_allows_non_make_command_with_make_substring() {
@@ -2603,6 +2612,10 @@ test_validate_bash_denied_make_does_not_mark_activity() {
     "$FIXTURES/validate-bash-go-test-bare.json" >"$input" || return 1
 
   run_hook "$out" "$ROOT/hooks/validate-bash.sh" "$input" ECI_PROOF_ROOT="$proof_root" || return 1
+  if [ "$(uname -s)" = Darwin ]; then
+    expect_no_output "$out"
+    return
+  fi
   touched_count="$(find "$proof_root/touched-repos/sessions/t00-session" -type f 2>/dev/null | wc -l)"
 
   is_make_memory_cap_deny "$out" &&
@@ -3119,33 +3132,33 @@ run_case "validate-bash allows in-place imports paths" \
   test_validate_bash_allows_in_place_imports_path
 run_case "validate-bash allows vendor test with tmp redirect" \
   test_validate_bash_allows_vendor_test_with_tmp_redirect
-run_case "validate-bash blocks direct make without memory cap" \
+run_case "validate-bash platform decision for direct uncapped make" \
   test_validate_bash_blocks_direct_make_without_memory_cap
-run_case "validate-bash blocks env make without memory cap" \
+run_case "validate-bash platform decision for env uncapped make" \
   test_validate_bash_blocks_env_make_without_memory_cap
-run_case "validate-bash blocks sudo make without memory cap" \
+run_case "validate-bash platform decision for sudo uncapped make" \
   test_validate_bash_blocks_sudo_make_without_memory_cap
-run_case "validate-bash blocks command make without memory cap" \
+run_case "validate-bash platform decision for command uncapped make" \
   test_validate_bash_blocks_command_make_without_memory_cap
-run_case "validate-bash blocks exec make without memory cap" \
+run_case "validate-bash platform decision for exec uncapped make" \
   test_validate_bash_blocks_exec_make_without_memory_cap
-run_case "validate-bash blocks time make without memory cap" \
+run_case "validate-bash platform decision for time uncapped make" \
   test_validate_bash_blocks_time_make_without_memory_cap
-run_case "validate-bash blocks time format make without memory cap" \
+run_case "validate-bash platform decision for time format uncapped make" \
   test_validate_bash_blocks_time_format_make_without_memory_cap
-run_case "validate-bash blocks nice make without memory cap" \
+run_case "validate-bash platform decision for nice uncapped make" \
   test_validate_bash_blocks_nice_make_without_memory_cap
-run_case "validate-bash blocks timeout make without memory cap" \
+run_case "validate-bash platform decision for timeout uncapped make" \
   test_validate_bash_blocks_timeout_make_without_memory_cap
-run_case "validate-bash blocks bash -c make without memory cap" \
+run_case "validate-bash platform decision for bash -c uncapped make" \
   test_validate_bash_blocks_bash_c_make_without_memory_cap
-run_case "validate-bash blocks bash -lc make without memory cap" \
+run_case "validate-bash platform decision for bash -lc uncapped make" \
   test_validate_bash_blocks_bash_lc_make_without_memory_cap
-run_case "validate-bash blocks sh -c make without memory cap" \
+run_case "validate-bash platform decision for sh -c uncapped make" \
   test_validate_bash_blocks_sh_c_make_without_memory_cap
-run_case "validate-bash blocks xargs make without memory cap" \
+run_case "validate-bash platform decision for xargs uncapped make" \
   test_validate_bash_blocks_xargs_make_without_memory_cap
-run_case "validate-bash blocks find -exec make without memory cap" \
+run_case "validate-bash platform decision for find -exec uncapped make" \
   test_validate_bash_blocks_find_exec_make_without_memory_cap
 run_case "validate-bash allows systemd-run property capped make" \
   test_validate_bash_allows_systemd_run_property_capped_make
@@ -3157,13 +3170,13 @@ run_case "validate-bash allows prlimit --as capped make" \
   test_validate_bash_allows_prlimit_as_capped_make
 run_case "validate-bash allows prlimit attached -v capped make" \
   test_validate_bash_allows_prlimit_attached_v_capped_make
-run_case "validate-bash blocks systemd-run without MemoryMax for make" \
+run_case "validate-bash platform decision for systemd-run without MemoryMax" \
   test_validate_bash_blocks_systemd_run_without_memorymax_for_make
-run_case "validate-bash blocks systemd-run unit without MemoryMax for make" \
+run_case "validate-bash platform decision for systemd-run unit without MemoryMax" \
   test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make
-run_case "validate-bash blocks systemd-run MemoryHigh-only for make" \
+run_case "validate-bash platform decision for systemd-run MemoryHigh-only" \
   test_validate_bash_blocks_systemd_run_memoryhigh_for_make
-run_case "validate-bash blocks prlimit unlimited cap for make" \
+run_case "validate-bash platform decision for prlimit unlimited make" \
   test_validate_bash_blocks_prlimit_unlimited_cap_for_make
 run_case "validate-bash allows non-make command with make substring" \
   test_validate_bash_allows_non_make_command_with_make_substring
@@ -3177,7 +3190,7 @@ run_case "validate-bash allows find name make print" \
   test_validate_bash_allows_find_name_make_print
 run_case "validate-bash allows xargs echo make word" \
   test_validate_bash_allows_xargs_echo_make_word
-run_case "validate-bash denied make does not mark shell activity or touched repo" \
+run_case "validate-bash uncapped make decision and denied-activity behavior" \
   test_validate_bash_denied_make_does_not_mark_activity
 run_case "validate-apply-patch marks edit activity" \
   test_validate_apply_patch_marks_edit_activity

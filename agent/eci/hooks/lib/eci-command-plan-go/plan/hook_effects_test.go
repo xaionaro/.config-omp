@@ -485,9 +485,13 @@ func TestHookMakeMemoryCapPlatform(t *testing.T) {
 		{"darwin", []string{"env", "make"}, false},
 		{"freebsd", []string{"make"}, true},
 	} {
-		t.Run(tc.goos+"/"+strings.Join(tc.argv, "_"), func(t *testing.T) {
-			diagnostic := inspectHookMakeMemoryCapForOS(ShellCommandRecord{Argv: tc.argv}, tc.goos)
-			require.Equal(t, tc.denied, diagnostic != nil)
-		})
+		t.Run(tc.goos+"/"+strings.Join(tc.argv, "_"),
+			// Check the selected platform's diagnostic for this launch.
+			//
+			// Example: Darwin make produces no cap diagnostic.
+			func(t *testing.T) {
+				diagnostic := inspectHookMakeMemoryCapForOS(ShellCommandRecord{Argv: tc.argv}, tc.goos)
+				require.Equal(t, tc.denied, diagnostic != nil)
+			})
 	}
 }
