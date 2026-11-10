@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -263,45 +262,10 @@ func TestHookWorkerSessionsWritesDenied(t *testing.T) {
 	}
 }
 
-// TestHookGitPreviewSemantics binds preview interpretation to the selected verb.
+// TestHookGitPreviewSemantics preserves native commit invocations.
 //
-// Example: commit -n bypasses hooks while add -n is a dry run.
+// Example: commit -n bypasses hooks without selecting a broad Git effect.
 func TestHookGitPreviewSemantics(t *testing.T) {
-	for _, current := range []struct {
-		Command  string
-		Mutation bool
-	}{
-		{Command: "commit -n -m checkpoint", Mutation: true},
-		{Command: "commit --dry-run -m checkpoint", Mutation: false},
-		{Command: "commit -m --dry-run", Mutation: true},
-		{Command: "commit --message --dry-run", Mutation: true},
-		{Command: "commit -am --dry-run", Mutation: true},
-		{Command: "commit --message=--dry-run", Mutation: true},
-		{Command: "commit -F --dry-run", Mutation: true},
-		{Command: "commit -m --help", Mutation: true},
-		{Command: "commit -- --dry-run", Mutation: true},
-		{Command: "commit -m checkpoint --dry-run", Mutation: false},
-		{Command: "cherry-pick -n HEAD", Mutation: true},
-		{Command: "revert -n HEAD", Mutation: true},
-		{Command: "pull -n", Mutation: true},
-		{Command: "fetch -n", Mutation: true},
-		{Command: "reset --dry-run", Mutation: true},
-		{Command: "cherry-pick --dry-run HEAD", Mutation: true},
-		{Command: "add -n file", Mutation: false},
-		{Command: "rm -n file", Mutation: false},
-		{Command: "mv -n old new", Mutation: false},
-		{Command: "clean -n", Mutation: false},
-		{Command: "push -n", Mutation: false},
-		{Command: "fetch --dry-run", Mutation: false},
-		{Command: "add --dry-run file", Mutation: false},
-		{Command: "commit --help", Mutation: false},
-	} {
-		arguments := []token{{value: "git"}}
-		for _, value := range strings.Fields(current.Command) {
-			arguments = append(arguments, token{value: value})
-		}
-		require.Equalf(t, current.Mutation, hookGitCoordinatorMutation(arguments, 1), "preview semantics: %s", current.Command)
-	}
 	root := t.TempDir()
 	for _, command := range []string{"git commit -n -m checkpoint", "git commit -m --dry-run", "git commit -- --dry-run", "git commit -m --help"} {
 		request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleCoordinator, Marker: MarkerActive, CWD: root, Command: command, CollectShellCommands: true}
@@ -417,9 +381,9 @@ func TestHookCleanupTargets(t *testing.T) {
 	}
 }
 
-// TestHookGitRemovalRemainsNative preserves checkout protection independently.
+// TestHookGitRemovalRemainsNative preserves broad Git protection independently.
 //
-// Example: git rm of a hook is allowed while checkout of it remains protected.
+// Example: git rm and checkout of a hook are allowed while broad add is denied.
 func TestHookGitRemovalRemainsNative(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -435,18 +399,22 @@ func TestHookGitRemovalRemainsNative(t *testing.T) {
 	}{
 		{"git rm agent/eci/hooks/validate-bash.sh", false},
 		{"git mv agent/eci/hooks/validate-bash.sh saved", false},
-		{"git checkout -- agent/eci/hooks/validate-bash.sh", true},
+		{"git checkout -- agent/eci/hooks/validate-bash.sh", false},
 		{"git add -A", true},
 	} {
-		t.Run(tc.command, func(t *testing.T) {
-			request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: repo, CWDKnown: true, Command: tc.command, CollectShellCommands: true}
-			diagnostic := inspectHookEffects(request, Classify(request))
-			if tc.denied {
-				require.NotNil(t, diagnostic)
-			} else {
-				require.Nil(t, diagnostic)
-			}
-		})
+		t.Run(tc.command,
+			// Check one Git command against the callback-owned effect gates.
+			//
+			// Example: a whole-tree add stays denied.
+			func(t *testing.T) {
+				request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: repo, CWDKnown: true, Command: tc.command, CollectShellCommands: true}
+				diagnostic := inspectHookEffects(request, Classify(request))
+				if tc.denied {
+					require.NotNil(t, diagnostic)
+				} else {
+					require.Nil(t, diagnostic)
+				}
+			})
 	}
 }
 

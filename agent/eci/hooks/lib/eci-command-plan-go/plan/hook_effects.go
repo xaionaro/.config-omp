@@ -2,22 +2,15 @@ package plan
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 )
 
-const (
-	// hookCodeCoordinatorEditRouting identifies a physical protected-hook mutation.
-	//
-	// Example: git checkout -- hooks/validate-bash.sh selects this gate.
-	hookCodeCoordinatorEditRouting DiagnosticCode = "ECI_COORDINATOR_EDIT_ROUTING_REQUIRED"
-	// hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
-	//
-	// Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
-	hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROOT_DENIED"
-)
+// hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
+//
+// Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
+const hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROOT_DENIED"
 
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
@@ -401,20 +394,6 @@ func hookArgumentKnown(
 		!slices.Contains(record.UnknownCardinalityArguments, index)
 }
 
-// hookGitFamily identifies native Git verbs that may mutate repository state.
-//
-// Example: git add may mutate state while git worktree has separate handling.
-func hookGitFamily(
-	argv []token,
-	verbIndex int,
-) bool {
-	switch argv[verbIndex].value {
-	case "add", "rm", "mv", "reset", "checkout", "switch", "commit", "update-index", "read-tree", "merge", "rebase", "cherry-pick", "revert", "am", "stash", "pull":
-		return true
-	}
-	return false
-}
-
 // hookGitDirectory resolves explicit Git directory selection in original order.
 // It never substitutes the callback directory for an unknown child directory.
 //
@@ -473,9 +452,9 @@ func hookGitDirectory(
 	return directory
 }
 
-// inspectHookGit checks concrete broad and protected-target Git effects.
+// inspectHookGit checks concrete broad Git effects.
 //
-// Example: a Git checkout of a live hook selects the protected-target gate.
+// Example: git add -A selects the whole-index gate.
 func inspectHookGit(
 	request Request,
 	record ShellCommandRecord,
@@ -510,187 +489,7 @@ func inspectHookGit(
 	if diagnostic := inspectHookGitBroad(record, argv, verbIndex, directory); diagnostic != nil {
 		return diagnostic
 	}
-	if hookGitCoordinatorMutation(argv, verbIndex) {
-		if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
-			return inspectHookGitProtectedTarget(record, argv, verbIndex, repository)
-		}
-	}
 	return nil
-}
-
-// hookGitCoordinatorMutation recognizes concrete native coordinator effects.
-// Read-only native verbs retain their original options without a legacy denylist.
-// Preview flags are exempt only for verbs that define them as a dry run.
-// Commit message and other option operands are data; -- ends option parsing.
-//
-// Example: branch --list is inspection while branch feature changes a ref.
-func hookGitCoordinatorMutation(
-	argv []token,
-	verbIndex int,
-) bool {
-	for index := verbIndex + 1; index < len(argv); index++ {
-		value := argv[index].value
-		if value == "--" {
-			break
-		}
-		if argv[verbIndex].value == "commit" {
-			switch value {
-			case "--message", "--file", "--reuse-message", "--reedit-message", "--author", "--date", "--cleanup", "--template", "--trailer", "--pathspec-from-file", "--fixup", "--squash":
-				index++
-				continue
-			}
-			if strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") {
-				for offset, option := range value[1:] {
-					// Commit's -m, -F, -c, -C and -t consume the rest of
-					// their short-option word or the following argument.
-					if strings.ContainsRune("mFcCt", option) {
-						if offset+2 == len(value) {
-							index++
-						}
-						break
-					}
-				}
-			}
-		}
-		if value == "--help" || value == "-h" {
-			return false
-		}
-		if value == "-n" {
-			switch argv[verbIndex].value {
-			case "add", "rm", "mv", "clean", "push":
-				return false
-			}
-		}
-		if value == "--dry-run" {
-			switch argv[verbIndex].value {
-			case "add", "rm", "mv", "clean", "push", "fetch", "commit":
-				return false
-			}
-		}
-	}
-	if hookGitFamily(argv, verbIndex) {
-		return true
-	}
-	switch argv[verbIndex].value {
-	case "branch", "tag":
-		if verbIndex+1 >= len(argv) {
-			return false
-		}
-		for _, argument := range argv[verbIndex+1:] {
-			switch argument.value {
-			case "--list", "-l", "--show-current", "--contains", "--merged", "--no-merged", "--points-at", "-v", "-vv":
-				return false
-			}
-		}
-		return true
-	case "config":
-		for _, argument := range argv[verbIndex+1:] {
-			switch argument.value {
-			case "--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--show-origin", "--show-scope", "get", "list":
-				return false
-			}
-		}
-		return verbIndex+2 < len(argv)
-	case "clean", "push", "fetch", "pull", "gc", "prune", "repack":
-		return true
-	case "update-ref", "replace", "reflog":
-		return verbIndex+1 < len(argv)
-	case "symbolic-ref":
-		return verbIndex+2 < len(argv)
-	case "remote":
-		if verbIndex+1 >= len(argv) {
-			return false
-		}
-		switch argv[verbIndex+1].value {
-		case "add", "prune", "remove", "rename", "set-head", "set-url", "update":
-			return true
-		}
-	case "worktree":
-		return verbIndex+1 < len(argv) && argv[verbIndex+1].value == "add"
-	}
-	return false
-}
-
-// hookGitRepository asks native Git to resolve only the selected repository.
-// Unavailable repository observations remain advisory and never invent a target.
-//
-// Example: -C and core.worktree configuration are interpreted by Git itself.
-func hookGitRepository(
-	record ShellCommandRecord,
-	argv []token,
-	verbIndex int,
-) string {
-	directory := record.CWD
-	if !record.CWDKnown {
-		directory = ""
-		for index := 1; index < verbIndex; index++ {
-			value := argv[index].value
-			target := ""
-			switch {
-			case value == "-C":
-				index++
-				if index >= verbIndex || !hookArgumentKnown(record, argv[index].offset) {
-					return ""
-				}
-				target = argv[index].value
-			case strings.HasPrefix(value, "-C"):
-				if !hookArgumentKnown(record, argv[index].offset) {
-					return ""
-				}
-				target = strings.TrimPrefix(value, "-C")
-			case isGitSplitContextOption(value):
-				index++
-			}
-			if target == "" {
-				continue
-			}
-			if !filepath.IsAbs(target) {
-				return ""
-			}
-			// The first concrete absolute -C makes native Git's selected
-			// repository independent of its otherwise unknown incoming CWD.
-			directory = string(filepath.Separator)
-			break
-		}
-		if directory == "" {
-			return ""
-		}
-	}
-	arguments := make([]string, 0, verbIndex+1)
-	for _, argument := range argv[1:verbIndex] {
-		if !hookArgumentKnown(record, argument.offset) {
-			return ""
-		}
-		arguments = append(arguments, argument.value)
-	}
-	arguments = append(arguments, "rev-parse", "--show-toplevel")
-	command := exec.Command("/usr/bin/git", arguments...)
-	command.Dir = directory
-	command.Env = os.Environ()
-	for index, argument := range record.Argv {
-		if index >= argv[0].offset {
-			break
-		}
-		name, _, assignment := strings.Cut(argument, "=")
-		if !assignment || !isIdentifier(name) {
-			continue
-		}
-		if !hookArgumentKnown(record, index) {
-			return ""
-		}
-		command.Env = append(command.Env, argument)
-	}
-	output, err := command.Output()
-	if err != nil {
-		// Git owns nonrepository, unsupported-option and unavailable-path
-		// errors. None of them establishes another concrete repository.
-		return ""
-	}
-	root := strings.TrimSuffix(string(output), "\n")
-	if !filepath.IsAbs(root) {
-		return ""
-	}
-	return resolvePathIdentity(root)
 }
 
 // inspectHookGitBroad identifies explicit whole-index or whole-worktree effects.
@@ -747,51 +546,6 @@ func inspectHookGitBroad(
 		record.Segment, argv[verbIndex].offset, argv[verbIndex], "use native Git with exact owned repository-relative paths; preserve unrelated work", "git-broad-effect")
 	diagnostic.Path = directory
 	return diagnostic
-}
-
-// inspectHookGitProtectedTarget checks checkout writes to live hooks.
-// Index-only operations leave the physical hook entry intact.
-//
-// Example: git checkout -- hooks/validate-bash.sh names a live hook.
-func inspectHookGitProtectedTarget(
-	record ShellCommandRecord,
-	argv []token,
-	verbIndex int,
-	repository string,
-) *Diagnostic {
-	verb := argv[verbIndex].value
-	if verb != "checkout" {
-		return nil
-	}
-	physical := true
-	paths := false
-	for _, argument := range argv[verbIndex+1:] {
-		if argument.value == "--cached" || argument.value == "--staged" || argument.value == "-S" {
-			physical = false
-		}
-		if argument.value == "--worktree" || argument.value == "-W" {
-			physical = true
-		}
-	}
-	if !physical {
-		return nil
-	}
-	for _, argument := range argv[verbIndex+1:] {
-		if argument.value == "--" {
-			paths = true
-			continue
-		}
-		if !paths || !hookArgumentKnown(record, argument.offset) || strings.HasPrefix(argument.value, "-") {
-			continue
-		}
-		if target, protected := protectedHookModeTargetPath(repository, argument.value); protected {
-			diagnostic := diagnosticForToken(hookCodeCoordinatorEditRouting, "Git checkout physically overwrites protected live hook "+target,
-				record.Segment, argument.offset, argument, "edit tracked hook source in place and stage exact owned paths through native Git", "coordinator-protected-target")
-			diagnostic.Path = target
-			return diagnostic
-		}
-	}
-	return nil
 }
 
 // inspectHookSessionsWriter protects the runtime's session transcript directory.

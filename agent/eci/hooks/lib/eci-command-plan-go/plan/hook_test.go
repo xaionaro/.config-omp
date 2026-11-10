@@ -283,11 +283,10 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist, "callback must not run the dependency script")
 }
 
-// TestRunHookMarkerFreeLiveHookProtection checks concrete physical hook targets
-// without treating index-only operations as worktree deletion.
+// TestRunHookMarkerFreeLiveHookOperations leaves hatchless path operations native.
 //
-// Example: removing a live hook is denied while index-only removal is allowed.
-func TestRunHookMarkerFreeLiveHookProtection(t *testing.T) {
+// Example: removing or checking out a live hook is not denied by this callback.
+func TestRunHookMarkerFreeLiveHookOperations(t *testing.T) {
 	home := t.TempDir()
 	provider := filepath.Join(home, ".omp", "agent", "eci")
 	hook := filepath.Join(provider, "hooks", "validate-bash.sh")
@@ -295,15 +294,19 @@ func TestRunHookMarkerFreeLiveHookProtection(t *testing.T) {
 	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
 	require.NoError(t, os.MkdirAll(filepath.Dir(hook), 0700))
 	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\n"), 0700))
-	require.NoError(t, exec.Command("git", "init", "-q", provider).Run())
+	_, err := hookGitOutput(provider, "init", "-q")
+	require.NoError(t, err)
 	for _, current := range []struct {
 		command string
 		denied  bool
 	}{
-		{command: "rm '" + hook + "'", denied: true},
-		{command: "git checkout -- hooks/validate-bash.sh", denied: true},
+		{command: "rm '" + hook + "'"},
+		{command: "git checkout -- hooks/validate-bash.sh"},
+		{command: "git rm -- hooks/validate-bash.sh"},
+		{command: "git mv hooks/validate-bash.sh saved"},
 		{command: "git rm --cached -- hooks/validate-bash.sh"},
 		{command: "cat '" + hook + "'"},
+		{command: "git add -A", denied: true},
 	} {
 		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: provider}
 		input.ToolInput.Command = current.command
