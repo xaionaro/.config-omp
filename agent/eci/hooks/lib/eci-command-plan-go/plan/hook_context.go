@@ -647,10 +647,9 @@ func recordHookActivity(
 			return err
 		}
 	}
+	var candidates []string
 	if result.ShellAnalysis.OutputWrites {
-		if err := hookTouchedRepository(ctx, request); err != nil {
-			return err
-		}
+		candidates = append(candidates, request.CWD)
 	}
 	for _, command := range result.ShellAnalysis.Commands {
 		argv := hookContextArgv(command)
@@ -697,11 +696,27 @@ func recordHookActivity(
 				}
 			}
 		}
-		if err := hookTouchedRepository(ctx, touched); err != nil {
-			return err
+		candidates = append(candidates, touched.CWD)
+	}
+	// Discover every root before a slow status scan can consume the shared budget.
+	var repositories []string
+	var errs []error
+	for _, candidate := range candidates {
+		repository, err := hookRepositoryRoot(ctx, candidate)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if repository != "" {
+			repositories = append(repositories, repository)
 		}
 	}
-	return nil
+	for _, repository := range repositories {
+		if err := hookRecordRepository(ctx, request, repository); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // hookReadonlyCommand identifies commands that need no mutation bookkeeping.
@@ -816,24 +831,45 @@ func hookTouchedRepository(
 	ctx context.Context,
 	request Request,
 ) error {
-	if !filepath.IsAbs(request.CWD) {
-		return nil
+	repository, err := hookRepositoryRoot(ctx, request.CWD)
+	if err != nil || repository == "" {
+		return err
 	}
-	output, err := hookGitOutput(ctx, request.CWD, "rev-parse", "--show-toplevel")
+	return hookRecordRepository(ctx, request, repository)
+}
+
+// hookRepositoryRoot identifies a concrete repository within the callback budget.
+//
+// Example: a discovery timeout remains advisory and never masquerades as a non-repository.
+func hookRepositoryRoot(
+	ctx context.Context,
+	directory string,
+) (string, error) {
+	if !filepath.IsAbs(directory) {
+		return "", nil
+	}
+	output, err := hookGitOutput(ctx, directory, "rev-parse", "--show-toplevel")
+	if err != nil && (ctx.Err() != nil || errors.Is(err, exec.ErrWaitDelay)) {
+		return "", errors.Join(ctx.Err(), err)
+	}
 	var exitError *exec.ExitError
 	if errors.As(err, &exitError) {
-		return nil
+		return "", nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
-	repository, err := hookCanonicalPath(strings.TrimSpace(string(output)))
-	if err != nil {
-		return err
-	}
-	if repository == "" {
-		return nil
-	}
+	return hookCanonicalPath(strings.TrimSpace(string(output)))
+}
+
+// hookRecordRepository retains the first observation, including an unavailable scan.
+//
+// Example: a root discovered before another repository times out still gets an honest record.
+func hookRecordRepository(
+	ctx context.Context,
+	request Request,
+	repository string,
+) error {
 	root, err := hookProofRoot()
 	if err != nil {
 		return err
@@ -854,23 +890,25 @@ func hookTouchedRepository(
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	head, err := hookGitOutput(ctx, repository, "rev-parse", "--verify", "HEAD")
+	head, err := hookGitOutput(ctx, repository, "rev-parse", "--verify", "--quiet", "HEAD")
+	var exitError *exec.ExitError
 	headValue := strings.TrimSpace(string(head))
 	statusValue := "unavailable"
 	var scanErr error
 	switch {
-	case ctx.Err() != nil:
+	case ctx.Err() != nil || errors.Is(err, exec.ErrWaitDelay):
 		headValue = "unavailable"
-		scanErr = ctx.Err()
-	case err != nil && !errors.As(err, &exitError):
-		return err
+		scanErr = errors.Join(ctx.Err(), err)
+	case err != nil && (!errors.As(err, &exitError) || exitError.ExitCode() != 1):
+		headValue = "unavailable"
+		scanErr = err
 	default:
 		status, err := hookGitOutput(ctx, repository, "status", "--porcelain=v1", "--untracked-files=normal")
 		switch {
-		case ctx.Err() != nil:
-			scanErr = ctx.Err()
+		case ctx.Err() != nil || errors.Is(err, exec.ErrWaitDelay):
+			scanErr = errors.Join(ctx.Err(), err)
 		case err != nil:
-			return err
+			scanErr = err
 		default:
 			statusSum := sha256.Sum256([]byte(strings.TrimRight(string(status), "\n")))
 			statusValue = hex.EncodeToString(statusSum[:])
@@ -878,8 +916,15 @@ func hookTouchedRepository(
 	}
 	// Persist an explicit incomplete baseline so later writes do not rescan or
 	// misrepresent post-mutation state as the session's starting point.
-	writeErr := os.WriteFile(path, []byte("repo: "+repository+"\nhead: "+headValue+"\nstatus_sha: "+statusValue+"\nrepo_wide: true\ncreated_utc: "+time.Now().UTC().Format(time.RFC3339)+"\n"), 0600)
-	return errors.Join(scanErr, writeErr)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return scanErr
+	}
+	if err != nil {
+		return errors.Join(scanErr, err)
+	}
+	_, writeErr := io.WriteString(file, "repo: "+repository+"\nhead: "+headValue+"\nstatus_sha: "+statusValue+"\nrepo_wide: true\ncreated_utc: "+time.Now().UTC().Format(time.RFC3339)+"\n")
+	return errors.Join(scanErr, writeErr, file.Close())
 }
 
 // hookGitOutput queries the concrete repository without inherited Git selectors.

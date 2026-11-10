@@ -17,11 +17,20 @@ the call. Direct planner and other hook paths may retain separate legacy behavio
 documented below.
 
 Bash mutation bookkeeping shares a five-second budget across repository queries,
-plus a one-second bound on output pipes held by Git's children. After identifying
-a repository, a timeout records `status_sha: unavailable` (and `head: unavailable`
-if HEAD was not read), warns, and allows the command. Later writes preserve the
-first record instead of rescanning. Git uses no optional locks and remains in the
-runner-owned process group for descendant cleanup.
+plus a one-second bound on output pipes held by Git's children. It discovers
+repository roots before scanning their baselines. For identified repositories,
+a failed Git query or context/output-pipe timeout records `status_sha: unavailable` (and
+`head: unavailable` if HEAD was not read), warns, and remains advisory. Later
+writes preserve that first record instead of rescanning. Git uses no optional
+locks and remains in the runner-owned process group for descendant cleanup.
+Forced or unconfirmed runner cleanup still blocks the command; bookkeeping does
+not override that safety check.
+
+A repository that cannot be identified within the budget has no baseline record.
+The callback reports incomplete bookkeeping, not complete repository coverage.
+If that repository is first identified on a later callback, its record describes
+that later observation, not necessarily the session's initial state; `created_utc`
+is the observation timestamp.
 
 | Gate family | Stops only this resolved effect | Legitimate path / escape hatch |
 | --- | --- | --- |

@@ -2,6 +2,8 @@ package plan
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1111,5 +1113,124 @@ func TestHookTouchedRepositoryStatusFailureDoesNotInventBaseline(t *testing.T) {
 	require.ErrorAs(t, err, &exitError)
 	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "failed"))
 	require.NoError(t, err)
-	require.Empty(t, entries)
+	require.Len(t, entries, 1)
+	data, err := os.ReadFile(filepath.Join(root, "touched-repos", "sessions", "failed", entries[0].Name()))
+	require.NoError(t, err)
+	require.Contains(t, string(data), "status_sha: unavailable\n")
+}
+
+// TestHookActivityTimeoutPreservesLaterRepositoryBaseline covers an exhausted shared budget.
+//
+// Example: a later repository cannot acquire a post-mutation hash on the next callback.
+func TestHookActivityTimeoutPreservesLaterRepositoryBaseline(t *testing.T) {
+	root, first := contextFixture(t)
+	second := t.TempDir()
+	slowHookRepository(t, first, "8")
+	output, err := hookGitOutput(context.Background(), second, "init", "-q")
+	require.NoErrorf(t, err, "%s", output)
+	request := Request{CWD: first, ActiveSession: "exhausted", Role: RoleWorker}
+	result := Result{ShellAnalysis: &ShellAnalysis{Commands: []ShellCommandRecord{
+		{Argv: []string{"touch", "first"}, CWD: first, CWDKnown: true},
+		{Argv: []string{"touch", "second"}, CWD: second, CWDKnown: true},
+	}}}
+	start := time.Now()
+	require.ErrorIs(t, recordHookActivity(request, result), context.DeadlineExceeded)
+	require.Less(t, time.Since(start), 7*time.Second)
+	dir := filepath.Join(root, "touched-repos", "sessions", "exhausted")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	canonical, err := hookCanonicalPath(second)
+	require.NoError(t, err)
+	var secondPath string
+	var baseline []byte
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		require.NoError(t, err)
+		if strings.Contains(string(data), "repo: "+canonical+"\n") {
+			secondPath = filepath.Join(dir, entry.Name())
+			baseline = data
+		}
+	}
+	require.NotEmpty(t, secondPath)
+	require.Contains(t, string(baseline), "head: unavailable\n")
+	require.Contains(t, string(baseline), "status_sha: unavailable\n")
+	require.NoError(t, os.WriteFile(filepath.Join(second, "post-mutation"), []byte("changed\n"), 0600))
+	result.ShellAnalysis.Commands = result.ShellAnalysis.Commands[1:]
+	require.NoError(t, recordHookActivity(request, result))
+	after, err := os.ReadFile(secondPath)
+	require.NoError(t, err)
+	require.Equal(t, baseline, after)
+}
+
+// TestHookTouchedRepositoryHeldStderrRetainsUnavailable handles a successful Git exit.
+//
+// Example: a filter's background child holding stderr must not trigger repeated scans.
+func TestHookTouchedRepositoryHeldStderrRetainsUnavailable(t *testing.T) {
+	root, repository := contextFixture(t)
+	slowHookRepository(t, repository, "0")
+	output, err := hookGitOutput(context.Background(), repository, "config", "filter.slow.clean", "cat; sleep 30 >&2 & echo $! > filter.pid")
+	require.NoErrorf(t, err, "%s", output)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request := Request{CWD: repository, ActiveSession: "held-stderr"}
+	start := time.Now()
+	require.ErrorIs(t, hookTouchedRepository(ctx, request), exec.ErrWaitDelay)
+	require.Less(t, time.Since(start), 3*time.Second)
+	require.NoError(t, ctx.Err())
+	dir := filepath.Join(root, "touched-repos", "sessions", "held-stderr")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	path := filepath.Join(dir, entries[0].Name())
+	baseline, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(baseline), "status_sha: unavailable\n")
+	start = time.Now()
+	require.NoError(t, hookTouchedRepository(ctx, request))
+	require.Less(t, time.Since(start), time.Second)
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, baseline, after)
+}
+
+// TestHookRecordRepositoryDoesNotOverwriteConcurrentRecord preserves the first writer.
+//
+// Example: a filter publishing a sentinel during status cannot have it overwritten.
+func TestHookRecordRepositoryDoesNotOverwriteConcurrentRecord(t *testing.T) {
+	root, repository := contextFixture(t)
+	slowHookRepository(t, repository, "0")
+	canonical, err := hookCanonicalPath(repository)
+	require.NoError(t, err)
+	sum := sha256.Sum256([]byte(canonical))
+	dir := filepath.Join(root, "touched-repos", "sessions", "concurrent")
+	require.NoError(t, os.MkdirAll(dir, 0700))
+	path := filepath.Join(dir, hex.EncodeToString(sum[:]))
+	output, err := hookGitOutput(context.Background(), repository, "config", "filter.slow.clean", "printf sentinel > '"+path+"'; cat")
+	require.NoErrorf(t, err, "%s", output)
+	require.NoError(t, hookTouchedRepository(context.Background(), Request{CWD: repository, ActiveSession: "concurrent"}))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "sentinel", string(data))
+}
+
+// TestHookRepositoryRootBlockedConfigReportsTimeout exercises cancellation during Git.
+//
+// Example: a FIFO include cannot turn a killed root lookup into a non-repository result.
+func TestHookRepositoryRootBlockedConfigReportsTimeout(t *testing.T) {
+	root, repository := contextFixture(t)
+	output, err := hookGitOutput(context.Background(), repository, "init", "-q")
+	require.NoErrorf(t, err, "%s", output)
+	fifo := filepath.Join(t.TempDir(), "config")
+	output, err = exec.Command("mkfifo", fifo).CombinedOutput()
+	require.NoErrorf(t, err, "%s", output)
+	output, err = hookGitOutput(context.Background(), repository, "config", "include.path", fifo)
+	require.NoErrorf(t, err, "%s", output)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	require.ErrorIs(t, hookTouchedRepository(ctx, Request{CWD: repository, ActiveSession: "blocked"}), context.DeadlineExceeded)
+	require.Less(t, time.Since(start), 2*time.Second)
+	_, err = os.Stat(filepath.Join(root, "touched-repos"))
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
