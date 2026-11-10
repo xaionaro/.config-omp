@@ -128,6 +128,20 @@ test("Bash callback uses the session manager identity without inventing a transc
 		expect(verdict).toBeUndefined();
 		const payload = await Bun.file(join(dir, "callback.json")).json();
 		expect(payload.session_id).toBe("native-session");
+		expect(payload.cwd).toBe(dir);
+		const dependency = join(dir, "dependency");
+		mkdirSync(dependency);
+		for (const requested of ["dependency", dependency, "local://repository"]) {
+			const command = "git -C nested status";
+			const next = await handler!({ toolName: "bash", input: { command, cwd: requested } }, {
+				cwd: dir,
+				sessionManager: { getSessionId: () => "native-session", getSessionFile: () => undefined },
+			});
+			expect(next).toBeUndefined();
+			const callback = await Bun.file(join(dir, "callback.json")).json();
+			expect(callback.cwd).toBe(requested.startsWith("local://") ? requested : dependency);
+			expect(callback.tool_input.command).toBe(command);
+		}
 		expect(payload.transcript_path).toBeUndefined();
 	} finally {
 		if (savedHome === undefined) delete process.env.HOME;
@@ -173,7 +187,7 @@ test("a deadline stops the hook with SIGTERM and reports 124", async () => {
 test("the deadline retires the hook's child within the cleanup bound", async () => {
 	const pidFile = join(dir, "child.pid");
 	const started = Date.now();
-	const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1);
+	const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, true);
 	expect(run.code).toBe(124);
 	expect(run.stdout).toBe("");
 	expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
@@ -182,8 +196,15 @@ test("the deadline retires the hook's child within the cleanup bound", async () 
 
 test("a redirected TERM-resistant child cannot outlive the cleanup", async () => {
 	const pidFile = join(dir, "stubborn-child.pid");
-	const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1);
+	const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, true);
 	expect(run.code).toBe(137);
+	expectProcessGone(pidFile);
+}, 15000);
+
+test("normal hook exit retires a redirected child in its process group", async () => {
+	const pidFile = join(dir, "normal-child.pid");
+	const run = await runEciHook(script("normal-child.sh", `sleep 30 </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nexit 0\n`), {}, id, 10, true);
+	expect(run.code === 0 || run.code === 137).toBe(true);
 	expectProcessGone(pidFile);
 }, 15000);
 
@@ -193,6 +214,51 @@ test("a hook that ignores SIGTERM is killed after the grace period and reports 1
 	expect(run.code).toBe(137);
 	expect(preToolVerdict(run, "t")?.block).toBe(true);
 }, 15000);
+
+test("unknown process-group probe errors remain an explicit cleanup failure", async () => {
+	const originalKill = process.kill;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0 && signal === 0) throw Object.assign(new Error("private diagnostic"), { code: "EPERM" });
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const run = await runEciHook(script("probe-error.sh", "exec sleep 30\n"), {}, id, 1, true);
+		expect(run.cleanupUncertain).toBe(true);
+		expect(run.ok).toBe(false);
+		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
+		expect(bashPreToolVerdict(run)?.reason).not.toContain("private diagnostic");
+	} finally {
+		process.kill = originalKill;
+	}
+}, 15000);
+
+test("a group still present after forced cleanup is not reported as settled", async () => {
+	const originalKill = process.kill;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0) return true;
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const run = await runEciHook(script("unsettled.sh", "exit 0\n"), {}, id, 5, true);
+		expect(run.cleanupUncertain).toBe(true);
+		expect(run.ok).toBe(false);
+		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
+	} finally {
+		process.kill = originalKill;
+	}
+}, 15000);
+
+test("other hook consumers retain normal-exit behavior", async () => {
+	const originalKill = process.kill;
+	process.kill = (() => { throw new Error("unexpected group probe"); }) as typeof process.kill;
+	try {
+		const run = await runEciHook(script("other-hook.sh", "exit 0\n"), {}, id, 5);
+		expect(run.ok).toBe(true);
+		expect(run.cleanupUncertain).toBeUndefined();
+	} finally {
+		process.kill = originalKill;
+	}
+});
 
 test("ECI_BASH selects the shell", async () => {
 	const marker = join(dir, "marker");

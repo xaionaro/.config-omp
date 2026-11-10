@@ -23,6 +23,7 @@ export interface HookRun {
 	code: number;
 	stdout: string;
 	stderr: string;
+	cleanupUncertain?: boolean;
 }
 
 export const eciHooksDir = (): string => {
@@ -150,13 +151,13 @@ export function resolveHookBash(env: Record<string, string | undefined> = proces
 	return found ? { bash: found } : { error: "bash not found on PATH" };
 }
 
-/** Signals every process in the hook's process group; false when none is left. */
-function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
+/** Signals the hook process group, distinguishing absence from an unknown error. */
+function signalGroup(pid: number, signal: NodeJS.Signals | 0): "present" | "absent" | "unknown" {
 	try {
 		process.kill(-pid, signal);
-		return true;
-	} catch {
-		return false;
+		return "present";
+	} catch (err) {
+		return isRecord(err) && err.code === "ESRCH" ? "absent" : "unknown";
 	}
 }
 
@@ -175,6 +176,7 @@ export async function runEciHook(
 	stdin: Record<string, unknown>,
 	id: EciIdentity,
 	timeoutSec: number,
+	strictCleanup = false,
 ): Promise<HookRun> {
 	if (!isAbsolute(script)) return { ok: false, code: -1, stdout: "", stderr: "ECI hook path is not absolute" };
 	const env: Record<string, string> = {};
@@ -191,6 +193,10 @@ export async function runEciHook(
 	let timedOut = false;
 	let killed = false;
 	let closed = false;
+	let cleanupUncertain = false;
+	let finished = false;
+	let retiring = false;
+	let deadlineTimer: Timer | undefined;
 	let exitCode: number | undefined;
 	const child = spawn(resolved.bash, [script], {
 		cwd: existsSync(id.cwd) ? id.cwd : undefined,
@@ -199,14 +205,37 @@ export async function runEciHook(
 		detached: true,
 	});
 	const finish = (run: HookRun): void => {
+		if (finished) return;
+		finished = true;
 		for (const timer of timers) clearTimeout(timer);
 		child.stdout?.destroy();
 		child.stderr?.destroy();
 		resolve(run);
 	};
 	const result = (): HookRun => {
-		const code = killed ? KILL_EXIT : timedOut ? TIMEOUT_EXIT : (exitCode ?? -1);
-		return { ok: code === 0, code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() };
+		const code = cleanupUncertain ? -1 : killed ? KILL_EXIT : timedOut ? TIMEOUT_EXIT : (exitCode ?? -1);
+		return { ok: code === 0, code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(), ...(cleanupUncertain ? { cleanupUncertain: true } : {}) };
+	};
+	const retireGroup = (pid: number): void => {
+		if (retiring) return;
+		retiring = true;
+		if (signalGroup(pid, "SIGTERM") === "unknown" && strictCleanup) cleanupUncertain = true;
+		timers.push(setTimeout(() => {
+			const group = signalGroup(pid, 0);
+			if (group === "present" || (group === "unknown" && strictCleanup)) {
+				if (group === "unknown") cleanupUncertain = true;
+				killed = true;
+				if (signalGroup(pid, "SIGKILL") === "unknown" && strictCleanup) cleanupUncertain = true;
+			}
+			if (closed && !killed) {
+				finish(result());
+				return;
+			}
+			timers.push(setTimeout(() => {
+				if (strictCleanup && signalGroup(pid, 0) !== "absent") cleanupUncertain = true;
+				finish(result());
+			}, DRAIN_SEC * 1000));
+		}, KILL_GRACE_SEC * 1000));
 	};
 	child.on("error", err => finish({ ok: false, code: -1, stdout: "", stderr: String(err) }));
 	child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
@@ -215,33 +244,28 @@ export async function runEciHook(
 		exitCode = code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : -1);
 	});
 	child.on("close", () => {
+		if (finished) return;
 		closed = true;
-		if (timedOut && child.pid !== undefined && signalGroup(child.pid, 0)) return;
+		clearTimeout(deadlineTimer);
+		if ((timedOut || strictCleanup) && child.pid !== undefined) {
+			const group = signalGroup(child.pid, 0);
+			if (group === "unknown" && strictCleanup) cleanupUncertain = true;
+			if (group === "present" || (group === "unknown" && strictCleanup)) {
+				retireGroup(child.pid);
+				return;
+			}
+		}
 		finish(result());
 	});
 	child.stdin?.on("error", () => {});
 	child.stdin?.end(JSON.stringify(stdin));
 	const pid = child.pid;
 	if (pid !== undefined) {
-		timers.push(
-			setTimeout(() => {
-				timedOut = true;
-				signalGroup(pid, "SIGTERM");
-				timers.push(
-					setTimeout(() => {
-						if (signalGroup(pid, 0)) {
-							killed = true;
-							signalGroup(pid, "SIGKILL");
-						}
-						if (closed && !killed) {
-							finish(result());
-							return;
-						}
-						timers.push(setTimeout(() => finish(result()), DRAIN_SEC * 1000));
-					}, KILL_GRACE_SEC * 1000),
-				);
-			}, timeoutSec * 1000),
-		);
+		deadlineTimer = setTimeout(() => {
+			timedOut = true;
+			retireGroup(pid);
+		}, timeoutSec * 1000);
+		timers.push(deadlineTimer);
 	}
 	return promise;
 }
@@ -286,6 +310,7 @@ export function bashGateUnavailable(kind: string, code: number): PreToolVerdict 
 
 /** Accepts only a complete Bash gate decision; failures never expose hook output. */
 export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
+	if (run.cleanupUncertain) return bashGateUnavailable("cleanup", run.code);
 	if (run.code === -1) return bashGateUnavailable("spawn", run.code);
 	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return bashGateUnavailable("deadline", run.code);
 	if (!run.ok || run.code !== 0) return bashGateUnavailable("exit", run.code);
