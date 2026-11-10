@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -462,5 +463,30 @@ func TestHookMakeMemoryCap(t *testing.T) {
 	}
 	for _, argv := range allowed {
 		require.False(t, hookMakeUncapped(argv), "expected capped or unrelated: %v", argv)
+	}
+}
+
+// TestHookMakeMemoryCapPlatform keeps Linux enforcement while disabling the
+// gate on Darwin, where its launcher routes have not been verified.
+//
+// Example: uncapped make is denied on Linux but not on Darwin.
+func TestHookMakeMemoryCapPlatform(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	for _, tc := range []struct {
+		goos   string
+		argv   []string
+		denied bool
+	}{
+		{"linux", []string{"make"}, true},
+		{"linux", []string{"prlimit", "--as=1073741824", "make"}, false},
+		{"darwin", []string{"make"}, false},
+		{"darwin", []string{"env", "make"}, false},
+		{"freebsd", []string{"make"}, true},
+	} {
+		t.Run(tc.goos+"/"+strings.Join(tc.argv, "_"), func(t *testing.T) {
+			diagnostic := inspectHookMakeMemoryCapForOS(ShellCommandRecord{Argv: tc.argv}, tc.goos)
+			require.Equal(t, tc.denied, diagnostic != nil)
+		})
 	}
 }

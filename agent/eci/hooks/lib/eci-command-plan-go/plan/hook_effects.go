@@ -3,6 +3,7 @@ package plan
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -65,11 +66,22 @@ func inspectHookEffects(
 // Example: make test without systemd-run MemoryMax selects this gate.
 const hookCodeMakeMemoryCapRequired DiagnosticCode = "ECI_MAKE_MEMORY_CAP_REQUIRED"
 
-// inspectHookMakeMemoryCap denies make unless a launcher imposes a finite memory cap.
+// inspectHookMakeMemoryCap applies the cap gate for the binary's target OS.
 //
-// Example: systemd-run --scope -p MemoryMax=1G make passes; env make is denied.
+// Example: an uncapped make is denied on Linux, but not on Darwin.
 func inspectHookMakeMemoryCap(record ShellCommandRecord) *Diagnostic {
-	if !hookMakeUncapped(record.Argv) {
+	return inspectHookMakeMemoryCapForOS(record, runtime.GOOS)
+}
+
+// inspectHookMakeMemoryCapForOS denies uncapped make except on Darwin, where
+// the recognized launcher routes have no verified macOS equivalent.
+//
+// Example: systemd-run --scope -p MemoryMax=1G make passes on Linux.
+func inspectHookMakeMemoryCapForOS(
+	record ShellCommandRecord,
+	goos string,
+) *Diagnostic {
+	if goos == "darwin" || !hookMakeUncapped(record.Argv) {
 		return nil
 	}
 	return &Diagnostic{
