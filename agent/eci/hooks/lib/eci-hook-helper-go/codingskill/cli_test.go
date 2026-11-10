@@ -1,4 +1,4 @@
-package main
+package codingskill
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ func TestCLIRoundTrip(t *testing.T) {
 	request, err := json.Marshal(input)
 	require.NoError(t, err)
 	var output bytes.Buffer
-	require.NoError(t, run([]string{"reduce"}, bytes.NewReader(request), &output))
+	require.NoError(t, Run([]string{"reduce"}, bytes.NewReader(request), &output))
 	var wire struct {
 		State struct {
 			Reads map[string]bool `json:"reads"`
@@ -34,7 +34,7 @@ func TestCLIRoundTrip(t *testing.T) {
 	request, err = json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": "a.go"}}})
 	require.NoError(t, err)
 	output.Reset()
-	require.NoError(t, run([]string{"check"}, bytes.NewReader(request), &output))
+	require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 	var verdict struct {
 		Block bool `json:"block"`
 	}

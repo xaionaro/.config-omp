@@ -41,6 +41,19 @@ func TestUnknownModeRejected(t *testing.T) {
 	}
 }
 
+// TestCodingSkillModeDispatch checks that the shared executable serves the skill bridge.
+//
+// Example: describe reports the edit and write tools.
+func TestCodingSkillModeDispatch(t *testing.T) {
+	status, out := runMode(t, []string{"coding-skill", "describe"}, "")
+	if status != 0 || !strings.Contains(out, `"write"`) || !strings.Contains(out, `"read"`) {
+		t.Fatalf("status=%d output=%q", status, out)
+	}
+	if status, _ := runMode(t, []string{"coding-skill", "unknown"}, ""); status == 0 {
+		t.Fatal("unknown skill mode accepted")
+	}
+}
+
 func TestHookTranscriptPathRules(t *testing.T) {
 	cases := map[string]bool{
 		`{"transcript_path":"/a/b.jsonl"}`:   true,

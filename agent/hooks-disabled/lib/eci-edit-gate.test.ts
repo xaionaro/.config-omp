@@ -29,6 +29,9 @@ async function withStubLauncher(script: string, body: (handler: Handler, dir: st
 	const home = process.env.HOME;
 	const hooks = join(dir, ".omp/agent/eci/hooks");
 	mkdirSync(hooks, { recursive: true });
+	mkdirSync(join(dir, ".omp/agent/eci/bin"), { recursive: true });
+	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-hook-helper"), "stub");
+	writeFileSync(join(dir, ".omp/agent/eci/bin/eci-hook-helper.sha256"), "stub");
 	const capture = join(dir, "request.json");
 	writeFileSync(join(hooks, "eci-edit-gate.sh"), `cat > '${capture}'\n${script}\n`);
 	try {

@@ -14,7 +14,6 @@ agent/sessions/
 agent/terminal-sessions/
 agent/custom-session-files/
 agent/blobs/
-agent/optional-hooks/coding-skill-gate
 # Built executables and their receipts in agent/eci/bin stay ignored. The negated
 # entries are tracked on-demand wrappers or scripts, not prebuilt binaries.
 agent/eci/bin/*

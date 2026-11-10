@@ -1,10 +1,10 @@
-// Optional hook: install only after separately provisioning its Go policy engine.
+// Optional hook: the shared Go helper is provisioned on first use.
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { resolveEditMode } from "@oh-my-pi/pi-coding-agent/utils/edit-mode";
 import { editInspect } from "@oh-my-pi/pi-natives";
-import { getAgentDir } from "@oh-my-pi/pi-utils";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
+import { ensureHookBinary, hookAgentRoot } from "../eci/native-hook-binary.ts";
 
 type Description = { callTools: string[]; resultTools: string[] };
 type HostEvent = { toolName: string; input: Record<string, unknown>; details?: unknown; isError?: boolean };
@@ -12,9 +12,10 @@ type AgentState = { state: unknown; initialized: boolean; tail: Promise<void> };
 type Verdict = { block: true; reason: string } | undefined;
 
 // Each invocation carries one complete JSON request; the engine owns its state format.
-function invoke(binary: string, command: string, request?: unknown): Promise<unknown> {
+async function invoke(root: string, command: string, request?: unknown): Promise<unknown> {
+	const binary = await ensureHookBinary(root);
 	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-	const child = spawn(binary, [command], { stdio: ["pipe", "pipe", "pipe"], signal: AbortSignal.timeout(10_000) });
+	const child = spawn(binary, ["coding-skill", command], { stdio: ["pipe", "pipe", "pipe"], signal: AbortSignal.timeout(10_000) });
 	let stdout = "", stderr = "";
 	child.stdout.setEncoding("utf8");
 	child.stderr.setEncoding("utf8");
@@ -60,9 +61,9 @@ function skillReadHistory(ctx: ExtensionContext): unknown[] {
 }
 
 export default function codingSkillGate(pi: ExtensionAPI): void {
-	const root = getAgentDir();
-	const binary = join(root, "optional-hooks", "coding-skill-gate");
-	const describe = invoke(binary, "describe").then(description);
+	const root = hookAgentRoot();
+	const binary = join(root, "eci", "bin", "eci-hook-helper");
+	const describe = invoke(root, "describe").then(description);
 	// Report startup failures even if no callback arrives.
 	describe.catch(error => console.error(`Coding skill gate unavailable: ${String(error)}`));
 	const agents = new Map<string, AgentState>();
@@ -89,7 +90,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 
 	async function reduce(slot: AgentState, ctx: ExtensionContext, results: HostEvent[]): Promise<void> {
 		const branch = !slot.initialized && ctx.agent?.id === ownAgent ? skillReadHistory(ctx) : undefined;
-		const response = await invoke(binary, "reduce", { state: slot.state, branch, results });
+		const response = await invoke(root, "reduce", { state: slot.state, branch, results });
 		if (response === null || typeof response !== "object" || !("state" in response) || response.state === null || typeof response.state !== "object") throw new Error("invalid engine state");
 		slot.state = response.state;
 		slot.initialized = true;
@@ -125,7 +126,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (!slot.initialized) await reduce(slot, ctx, []);
 				if (current !== generation) throw new Error("session changed; retry the call");
-				const response = await invoke(binary, "check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
+				const response = await invoke(root, "check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
 				if (!response.block) return undefined;
@@ -135,7 +136,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 		} catch (error) {
 			if (!paths.some(path => /\.(?:go|py)(?:#[a-f0-9]{4}\])?(?::(?:raw|conflicts))?$/i.test(path))) return undefined;
 			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
-			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Restore the separately provisioned engine at ${binary} and restart, or remove the optional hook and restart.` };
+			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Ensure Go and the native provisioner are available to build ${binary}, then retry, or remove the optional hook and restart.` };
 		}
 	});
 }

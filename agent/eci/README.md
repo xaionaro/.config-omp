@@ -36,11 +36,12 @@ bash 3.2.
 - Go: `go` on `PATH`, at least the newest `go` directive in `hooks/lib/*/go.mod` and
   `tools/*/go.mod`. `hooks/build-native-binaries.sh` is the only builder of the native
   tools (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`, `eci-worker-git`, and
-  `eci-verexec` on Linux); hooks never build, they only verify. `bin/eci-active` provisions
-  a tool on first use when its binary or receipt is missing or the binary is not native to
-  this host (`hooks/lib/eci-native-provision.sh`). A source change does not refresh an
-  existing binary: rebuild it, for example with `hooks/build-native-binaries.sh
-  eci-hook-helper` before using the omp edit gate.
+  `eci-verexec` on Linux). `bin/eci-active` provisions missing native tools
+  (`hooks/lib/eci-native-provision.sh`). The optional coding-skill and disabled
+  edit-hook bridges also invoke that provisioner when the shared `eci-hook-helper`
+  is absent; provisioning does not enable either hook. A source change does not
+  refresh an existing binary: rebuild it with `hooks/build-native-binaries.sh
+  eci-hook-helper`.
 - No GNU coreutils are needed: the hook libraries take their `sha256sum`, `realpath`
   and `stat` forms from `hooks/lib/eci-portable.sh`, and the adapters need no `timeout`.
 

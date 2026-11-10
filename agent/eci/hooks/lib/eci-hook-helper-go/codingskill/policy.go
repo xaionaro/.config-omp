@@ -1,4 +1,4 @@
-package main
+package codingskill
 
 import (
 	"fmt"

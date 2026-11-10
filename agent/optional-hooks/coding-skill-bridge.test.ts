@@ -5,16 +5,20 @@ import { join } from "node:path";
 import type gateFactory from "./coding-skill-gate.ts";
 
 let root: string;
+let home: string;
+const originalHome = process.env.HOME;
 let gate: typeof gateFactory;
 let editMode = "hashline";
 
 beforeAll(async () => {
-	root = mkdtempSync(join(tmpdir(), "coding-skill-bridge-"));
-	mkdirSync(join(root, "optional-hooks"));
-	const engine = join(root, "optional-hooks", "coding-skill-gate");
+	home = mkdtempSync(join(tmpdir(), "coding-skill-bridge-"));
+	root = join(home, ".omp", "agent");
+	process.env.HOME = home;
+	mkdirSync(join(root, "eci", "bin"), {recursive: true});
+	const engine = join(root, "eci", "bin", "eci-hook-helper");
 	writeFileSync(engine, `#!/usr/bin/env node
 const fs = require('fs');
-const mode = process.argv[2];
+const mode = process.argv[3];
 if (mode === 'describe') {
  process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']}));
 } else {
@@ -31,8 +35,8 @@ if (mode === 'describe') {
  });
 }
 `);
+	writeFileSync(`${engine}.sha256`, "stub");
 	chmodSync(engine, 0o755);
-	mock.module("@oh-my-pi/pi-utils", () => ({ getAgentDir: () => root }));
 	mock.module("@oh-my-pi/pi-natives", () => ({ editInspect: (mode: string) => ({paths: [mode === "sloppy" ? "notes.txt" : "a.go"], fileOps: []}) }));
 	mock.module("@oh-my-pi/pi-coding-agent/utils/edit-mode", () => ({ resolveEditMode: () => editMode }));
 	// Load after replacing the host-bundled modules.
@@ -41,7 +45,8 @@ if (mode === 'describe') {
 
 afterAll(() => {
 	mock.restore();
-	rmSync(root, {recursive: true, force: true});
+	if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+	rmSync(home, {recursive: true, force: true});
 });
 
 test("serializes parallel read reductions before the next write check", async () => {
@@ -146,11 +151,11 @@ test("reports an actionable error when the provisioned engine disappears", async
 	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "five", getBranch: () => []}};
 	await handlers.session_start({}, ctx);
 	await handlers.tool_result({toolName: "read", input: {path: "skill://coding-common"}, isError: false}, ctx);
-	const engine = join(root, "optional-hooks", "coding-skill-gate");
+	const engine = join(root, "eci", "bin", "eci-hook-helper");
 	renameSync(engine, `${engine}.held`);
 	try {
 		const result = await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx);
-		expect(result).toMatchObject({block: true, reason: expect.stringContaining("Restore the separately provisioned engine")});
+		expect(result).toMatchObject({block: true, reason: expect.stringContaining("Coding skill gate unavailable")});
 		expect(await handlers.tool_call({toolName: "write", input: {path: "[a.go#ABCD]"}}, ctx)).toMatchObject({block: true});
 		expect(await handlers.tool_call({toolName: "write", input: {path: "notes.txt"}}, ctx)).toBeUndefined();
 		editMode = "sloppy";

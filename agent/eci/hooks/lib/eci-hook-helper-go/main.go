@@ -15,11 +15,15 @@
 //	approval-commit-command <command>       approval commit command check
 //	edit-gate <bash> <dispatcher>           run the edit dispatcher once per
 //	                                        target of the omp edit request on stdin
+//	coding-skill <describe|reduce|check>     evaluate coding skill evidence
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
+
+	"github.com/xaionaro-go/eci-hook-helper/codingskill"
 )
 
 const (
@@ -61,6 +65,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runApprovalCommitCommand(args[1:], stdin, stdout, stderr)
 	case len(args) >= 1 && args[0] == "edit-gate":
 		return runEditGate(args[1:], stdin, stdout, stderr)
+	case len(args) >= 1 && args[0] == "coding-skill":
+		if err := codingskill.Run(args[1:], stdin, stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return statusRejected
+		}
+		return statusOK
 	}
 	return statusRejected
 }

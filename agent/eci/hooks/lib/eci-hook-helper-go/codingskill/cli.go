@@ -1,13 +1,12 @@
-// Command coding-skill-gate evaluates omp events against agent-local skill evidence.
+// Package codingskill evaluates omp events against agent-local skill evidence.
 //
-// Example: the optional omp bridge invokes describe, reduce, and check.
-package main
+// Example: the hook helper invokes Run with describe, reduce, or check.
+package codingskill
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 )
 
 // cliEvent carries the host data required to evaluate a single tool event.
@@ -31,20 +30,10 @@ type cliInput struct {
 	Call    cliEvent         `json:"call"`
 }
 
-// main invokes the selected command and reports errors to the host.
-//
-// Example: the bridge calls check before a write reaches the runtime.
-func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-// run applies a single JSON request or describes the supported events.
+// Run applies a single JSON request or describes the supported events.
 //
 // Example: reduce folds completed result events into an opaque agent state.
-func run(
+func Run(
 	args []string,
 	input io.Reader,
 	output io.Writer,
