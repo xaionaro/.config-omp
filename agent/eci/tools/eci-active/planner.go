@@ -293,6 +293,26 @@ func copyLeaf(src, dst string) error {
 	return copyFileAtomic(src, dst, info.Mode().Perm())
 }
 
+// checkPlannerConflictRecords refuses retained conflicts in one transaction.
+//
+// Example: a recorded planner conflict requires its owner's resolution.
+func checkPlannerConflictRecords(
+	binDir string,
+	txnName string,
+) error {
+	for _, name := range plannerPairTools {
+		record := filepath.Join(binDir, txnName, name+".conflict")
+		_, err := os.Lstat(record)
+		if err == nil {
+			return fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] retained conflict for %s; have its owner resolve the pair, then remove %s before retrying", name, record)
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect retained conflict %s: %w", record, err)
+		}
+	}
+	return nil
+}
+
 // plannerApply builds the pair into a transaction under <root>/bin and publishes the three tools and their
 // receipts there. It returns the built planner. Under the publication lock shared with bin/eci-runtime-sync.
 func plannerApply(root, goTool, goos, goarch string) (string, error) {
@@ -313,15 +333,8 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		if !strings.HasPrefix(entry.Name(), plannerTxnPrefix) {
 			continue
 		}
-		for _, name := range plannerPairTools {
-			record := filepath.Join(binDir, entry.Name(), name+".conflict")
-			_, err := os.Lstat(record)
-			if err == nil {
-				return "", fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] retained conflict for %s; have its owner resolve the pair, then remove %s before retrying", name, record)
-			}
-			if !errors.Is(err, os.ErrNotExist) {
-				return "", fmt.Errorf("inspect retained conflict %s: %w", record, err)
-			}
+		if err := checkPlannerConflictRecords(binDir, entry.Name()); err != nil {
+			return "", err
 		}
 	}
 	// The first termination signal cancels the builds and is handed to publication. The handler exists before the
@@ -434,10 +447,11 @@ func publishPlannerLeaves(
 	interrupt <-chan os.Signal,
 ) (retained bool, err error) {
 	for i := range tools {
-		for _, leaf := range [2]*plannerLeaf{&tools[i].Binary, &tools[i].Receipt} {
-			if err := preparePlannerLeaf(binDir, txn, leaf); err != nil {
-				return false, err
-			}
+		if err := preparePlannerLeaf(binDir, txn, &tools[i].Binary); err != nil {
+			return false, err
+		}
+		if err := preparePlannerLeaf(binDir, txn, &tools[i].Receipt); err != nil {
+			return false, err
 		}
 	}
 
@@ -445,14 +459,22 @@ func publishPlannerLeaves(
 	if failure == nil {
 		select {
 		case s := <-interrupt:
-			failure = exitError{code: 128 + int(s.(syscall.Signal)), msg: fmt.Sprintf("[ECI_PLANNER_PUBLISH_FAILED] %v during publication; the previous planner pair is restored", s)}
+			failure = exitError{code: 128 + int(s.(syscall.Signal)), msg: fmt.Sprintf("[ECI_PLANNER_PUBLISH_FAILED] %v during publication", s)}
 		default:
 			return false, nil
 		}
 	}
 	if rollbackErr := restorePlannerLeaves(binDir, txn, tools); rollbackErr != nil {
 		fmt.Fprintf(os.Stderr, "ECI recovery transaction retained: %s\n", txn)
+		var interrupted exitError
+		if errors.As(failure, &interrupted) {
+			return true, exitError{code: interrupted.code, msg: fmt.Sprintf("%s; rollback failed: %v", interrupted.msg, rollbackErr)}
+		}
 		return true, errors.Join(failure, fmt.Errorf("planner rollback: %w", rollbackErr))
+	}
+	var interrupted exitError
+	if errors.As(failure, &interrupted) {
+		return false, exitError{code: interrupted.code, msg: interrupted.msg + "; the previous planner pair is restored"}
 	}
 	return false, failure
 }
@@ -580,7 +602,11 @@ func restorePlannerLeaf(
 // restorePlannerPair leaves both leaves alone if either is foreign.
 //
 // Example: an externally changed receipt prevents restoration of its binary.
-func restorePlannerPair(binDir, txn string, tool *plannerTool) error {
+func restorePlannerPair(
+	binDir string,
+	txn string,
+	tool *plannerTool,
+) error {
 	receipt := &tool.Receipt
 	binary := &tool.Binary
 	receiptPath := filepath.Join(binDir, receipt.name)
@@ -632,7 +658,11 @@ func restorePlannerPair(binDir, txn string, tool *plannerTool) error {
 // recordPlannerConflict records only a pair observed outside the transaction's states.
 //
 // Example: a changed binary and absent receipt stop automatic reprovisioning.
-func recordPlannerConflict(binDir, txn string, tool *plannerTool) error {
+func recordPlannerConflict(
+	binDir string,
+	txn string,
+	tool *plannerTool,
+) error {
 	binary := &tool.Binary
 	receipt := &tool.Receipt
 	binaryPath := filepath.Join(binDir, binary.name)
@@ -659,7 +689,11 @@ func recordPlannerConflict(binDir, txn string, tool *plannerTool) error {
 // restorePlannerLeaves attempts rollback and records observed foreign pairs.
 //
 // Example: a failed binary restore leaves its receipt absent for reprovisioning.
-func restorePlannerLeaves(binDir, txn string, tools []plannerTool) error {
+func restorePlannerLeaves(
+	binDir string,
+	txn string,
+	tools []plannerTool,
+) error {
 	var failures []error
 	for i := range tools {
 		if err := restorePlannerPair(binDir, txn, &tools[i]); err != nil {

@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // plannerFixture is a canonical-root layout with three tiny planner modules and a bin/ for the pair.
@@ -289,15 +292,38 @@ func TestPlannerApplyFailedBinaryRestoreLeavesReceiptAbsent(t *testing.T) {
 				return nil
 			}
 		})
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "injected binary restore failure") {
-		t.Fatalf("plannerApply error = %v; want rollback failure", err)
-	}
-	if _, err := os.Lstat(filepath.Join(fx.binDir, "eci-safe-import.sha256")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("receipt should remain absent after failed binary restore: %v", err)
-	}
-	if left := fx.transactions(t); len(left) != 1 {
-		t.Errorf("transactions left: %v, want retained recovery transaction", left)
-	}
+	_, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	require.ErrorContains(t, err, "injected binary restore failure")
+	_, err = os.Lstat(filepath.Join(fx.binDir, "eci-safe-import.sha256"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.Len(t, fx.transactions(t), 1)
+}
+
+// TestPlannerPublicationSignalReportsRollbackFailure checks the message main prints.
+//
+// Example: SIGTERM with a failed restore reports both the signal and rollback error.
+func TestPlannerPublicationSignalReportsRollbackFailure(t *testing.T) {
+	fx := newPlannerFixture(t)
+	fx.seedPreviousPair(t)
+	txn := t.TempDir()
+	binary := filepath.Join(txn, "eci-command-plan")
+	receipt := binary + ".sha256"
+	writeTestFile(t, binary, "staged binary\n", 0o755)
+	writeTestFile(t, receipt, "staged receipt\n", 0o644)
+	tools := []plannerTool{{
+		Binary:  plannerLeaf{name: "eci-command-plan", install: binary},
+		Receipt: plannerLeaf{name: "eci-command-plan.sha256", install: receipt},
+	}}
+	failAt(t, "before-restore:eci-command-plan")
+	interrupt := make(chan os.Signal, 1)
+	interrupt <- syscall.SIGTERM
+	retained, err := publishPlannerLeaves(fx.binDir, txn, tools, interrupt)
+	var exitErr exitError
+	require.True(t, retained)
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, 128+int(syscall.SIGTERM), exitErr.code)
+	assert.Contains(t, exitErr.msg, "injected failure at before-restore:eci-command-plan")
+	assert.NotContains(t, exitErr.msg, "previous planner pair is restored")
 }
 
 func TestPlannerApplyFailureRemovesLeavesThatWereAbsent(t *testing.T) {
@@ -324,22 +350,14 @@ func (fx plannerFixture) provisionClassification(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	agentDir := filepath.Join(home, ".omp", "agent")
-	if err := os.MkdirAll(agentDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(fx.root, filepath.Join(agentDir, "eci")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(agentDir, 0o700))
+	require.NoError(t, os.Symlink(fx.root, filepath.Join(agentDir, "eci")))
 	provision, err := filepath.Abs(filepath.Join("..", "..", "hooks", "lib", "eci-native-provision.sh"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cmd := exec.Command("bash", "-c", `. "$1"; eci_native_classify eci-command-plan; printf '%s' "$eci_native_class"`, "bash", provision)
 	cmd.Env = append(os.Environ(), "HOME="+home)
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("classify provisioner: %s: %v", output, err)
-	}
+	require.NoError(t, err, "classify provisioner: %s", output)
 	return string(output)
 }
 
@@ -348,43 +366,43 @@ func TestPlannerApplyRetainsForeignLeafAndTransaction(t *testing.T) {
 	fx.seedPreviousPair(t)
 	foreign := filepath.Join(fx.binDir, "eci-command-plan")
 	var foreignReceipt, foreignData []byte
-	onPlannerEvent(t, func(step, _ string) error {
-		if step == "before-rename:eci-hook-helper" {
-			binary, err := os.ReadFile(foreign)
-			if err != nil {
-				return err
+	onPlannerEvent(t,
+		// Change a published binary while retaining its staged receipt.
+		//
+		// Example: an external write arrives before the final tool is published.
+		func(
+			step string,
+			_ string,
+		) error {
+			if step == "before-rename:eci-hook-helper" {
+				binary, err := os.ReadFile(foreign)
+				if err != nil {
+					return err
+				}
+				foreignReceipt, err = os.ReadFile(foreign + ".sha256")
+				if err != nil {
+					return err
+				}
+				foreignData = append(binary, []byte("\nforeign\n")...)
+				if err := os.WriteFile(foreign, foreignData, 0o755); err != nil {
+					return err
+				}
+				return errors.New("injected failure after a foreign write")
 			}
-			foreignReceipt, err = os.ReadFile(foreign + ".sha256")
-			if err != nil {
-				return err
-			}
-			foreignData = append(binary, []byte("\nforeign\n")...)
-			if err := os.WriteFile(foreign, foreignData, 0o755); err != nil {
-				return err
-			}
-			return errors.New("injected failure after a foreign write")
-		}
-		return nil
-	})
+			return nil
+		})
 
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil {
-		t.Fatal("plannerApply succeeded despite the injected failure")
-	}
-	if data, err := os.ReadFile(foreign); err != nil || !reflect.DeepEqual(data, foreignData) {
-		t.Errorf("foreign binary changed during rollback: %v", err)
-	}
-	if err := checkHostExecutable(foreign, runtime.GOOS, runtime.GOARCH); err != nil {
-		t.Errorf("foreign binary should remain host-native: %v", err)
-	}
-	if got := fx.provisionClassification(t); got != "stuck" {
-		t.Errorf("normal provision classification = %q; want stuck for retained foreign pair", got)
-	}
-	if data, err := os.ReadFile(foreign + ".sha256"); err != nil || !reflect.DeepEqual(data, foreignReceipt) {
-		t.Errorf("foreign binary receipt = %q, %v; want retained staged receipt %q", data, err, foreignReceipt)
-	}
-	if left := fx.transactions(t); len(left) != 1 {
-		t.Errorf("transactions left: %v, want the retained transaction", left)
-	}
+	_, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	require.Error(t, err)
+	data, err := os.ReadFile(foreign)
+	require.NoError(t, err)
+	assert.Equal(t, foreignData, data, "foreign binary changed during rollback")
+	assert.NoError(t, checkHostExecutable(foreign, runtime.GOOS, runtime.GOARCH))
+	assert.Equal(t, "stuck", fx.provisionClassification(t))
+	data, err = os.ReadFile(foreign + ".sha256")
+	require.NoError(t, err)
+	assert.Equal(t, foreignReceipt, data, "foreign binary receipt changed during rollback")
+	assert.Len(t, fx.transactions(t), 1)
 }
 
 // TestPlannerApplyRetainsForeignBinaryWithoutReceipt covers the publication gap.
@@ -395,43 +413,39 @@ func TestPlannerApplyRetainsForeignBinaryWithoutReceipt(t *testing.T) {
 	fx.seedPreviousPair(t)
 	foreign := filepath.Join(fx.binDir, "eci-command-plan")
 	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	foreignData, err := os.ReadFile(executable)
-	if err != nil {
-		t.Fatal(err)
-	}
-	onPlannerEvent(t, func(step, _ string) error {
-		if step == "before-rename:eci-command-plan" {
-			if err := os.WriteFile(foreign, foreignData, 0o755); err != nil {
-				return err
+	require.NoError(t, err)
+	onPlannerEvent(t,
+		// Install a foreign binary during the receipt-absent publication gap.
+		//
+		// Example: an external writer replaces the binary after receipt removal.
+		func(
+			step string,
+			_ string,
+		) error {
+			if step == "before-rename:eci-command-plan" {
+				if err := os.WriteFile(foreign, foreignData, 0o755); err != nil {
+					return err
+				}
+				return errors.New("injected foreign write after receipt removal")
 			}
-			return errors.New("injected foreign write after receipt removal")
-		}
-		return nil
-	})
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil {
-		t.Fatal("plannerApply succeeded despite the injected failure")
-	}
-	if data, err := os.ReadFile(foreign); err != nil || !reflect.DeepEqual(data, foreignData) {
-		t.Errorf("foreign binary changed during rollback: %v", err)
-	}
-	if _, err := os.Lstat(foreign + ".sha256"); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("receipt should remain absent: %v", err)
-	}
-	if left := fx.transactions(t); len(left) != 1 {
-		t.Errorf("transactions left: %v, want retained transaction", left)
-	}
-	if got := fx.provisionClassification(t); got != "stuck" {
-		t.Errorf("normal provision classification = %q; want stuck for retained foreign binary", got)
-	}
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "retained conflict") {
-		t.Errorf("second plannerApply error = %v; want retained conflict refusal", err)
-	}
-	if data, err := os.ReadFile(foreign); err != nil || !reflect.DeepEqual(data, foreignData) {
-		t.Errorf("second plannerApply changed foreign binary: %v", err)
-	}
+			return nil
+		})
+	_, err = plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	require.Error(t, err)
+	data, err := os.ReadFile(foreign)
+	require.NoError(t, err)
+	assert.Equal(t, foreignData, data, "foreign binary changed during rollback")
+	_, err = os.Lstat(foreign + ".sha256")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.Len(t, fx.transactions(t), 1)
+	assert.Equal(t, "stuck", fx.provisionClassification(t))
+	_, err = plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	assert.ErrorContains(t, err, "retained conflict")
+	data, err = os.ReadFile(foreign)
+	require.NoError(t, err)
+	assert.Equal(t, foreignData, data, "second plannerApply changed foreign binary")
 }
 
 // TestPlannerApplyRetainsForeignReceipt preserves a concurrently changed receipt.
@@ -457,15 +471,12 @@ func TestPlannerApplyRetainsForeignReceipt(t *testing.T) {
 			}
 			return nil
 		})
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil {
-		t.Fatal("plannerApply succeeded despite the injected failure")
-	}
-	if data, err := os.ReadFile(receipt); err != nil || string(data) != "foreign receipt\n" {
-		t.Errorf("foreign receipt = %q, %v; want it left in place", data, err)
-	}
-	if left := fx.transactions(t); len(left) != 1 {
-		t.Errorf("transactions left: %v, want the retained transaction", left)
-	}
+	_, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	require.Error(t, err)
+	data, err := os.ReadFile(receipt)
+	require.NoError(t, err)
+	assert.Equal(t, "foreign receipt\n", string(data))
+	assert.Len(t, fx.transactions(t), 1)
 }
 
 // TestPlannerApplyRetainsPairWithForeignReceiptMode preserves a matching pair.
@@ -498,21 +509,16 @@ func TestPlannerApplyRetainsPairWithForeignReceiptMode(t *testing.T) {
 			}
 			return errors.New("injected failure after receipt chmod")
 		})
-	if _, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH); err == nil {
-		t.Fatal("plannerApply succeeded despite the injected failure")
-	}
-	if data, err := os.ReadFile(binary); err != nil || !reflect.DeepEqual(data, stagedBinary) {
-		t.Errorf("binary changed after foreign receipt mode: %v", err)
-	}
-	if info, err := os.Stat(receipt); err != nil || info.Mode().Perm() != 0o600 {
-		t.Errorf("foreign receipt mode was not retained: %v", err)
-	}
-	if err := fx.checkPlannerPairReceipts(); err != nil {
-		t.Errorf("matching pair was torn during rollback: %v", err)
-	}
-	if left := fx.transactions(t); len(left) != 1 {
-		t.Errorf("transactions left: %v, want the retained transaction", left)
-	}
+	_, err := plannerApply(fx.root, fx.goTool, runtime.GOOS, runtime.GOARCH)
+	require.Error(t, err)
+	data, err := os.ReadFile(binary)
+	require.NoError(t, err)
+	assert.Equal(t, stagedBinary, data, "binary changed after foreign receipt mode")
+	info, err := os.Stat(receipt)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	assert.NoError(t, fx.checkPlannerPairReceipts(), "matching pair was torn during rollback")
+	assert.Len(t, fx.transactions(t), 1)
 }
 
 func TestPlannerApplyRefusesNonRegularTarget(t *testing.T) {
