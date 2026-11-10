@@ -107,6 +107,9 @@ func decodeDecision(
 	return decision.HookSpecificOutput
 }
 
+// TestEditGateDispatchesDistinctNormalizedTargetsInOrder runs the dispatcher once per normalized target, in order.
+//
+// Example: ":~/a" and "~/a" both normalized to /home/u/a dispatch once.
 func TestEditGateDispatchesDistinctNormalizedTargetsInOrder(t *testing.T) {
 	fixture := newEditGateFixture(t, "")
 	status, stdout, stderr := fixture.run(t, editRequest(":~/a", "/home/u/a", "b", "/repo/b", "~/a", "/home/u/a"))
@@ -123,6 +126,9 @@ func TestEditGateDispatchesDistinctNormalizedTargetsInOrder(t *testing.T) {
 	assert.Contains(t, string(data), `"tool_name":"Write"`)
 }
 
+// TestEditGateFirstDenialWinsAndNamesRequestedSpelling stops at the first denial and names both spellings.
+//
+// Example: ":/protected/one" is denied as "/protected/one" and later targets never run.
 func TestEditGateFirstDenialWinsAndNamesRequestedSpelling(t *testing.T) {
 	fixture := newEditGateFixture(t, `case "$target" in
 /protected*) printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"protected target"}}' ;;
@@ -137,6 +143,9 @@ esac`)
 	assert.Len(t, fixture.calls(t), 2, "a later target ran after the denial")
 }
 
+// TestEditGateReportsExactFailedGuardMarkersOnce reports only exact guard markers, once each, with a rerun command.
+//
+// Example: a forged "validate-apply-patch.sh" marker is ignored.
 func TestEditGateReportsExactFailedGuardMarkersOnce(t *testing.T) {
 	t.Setenv("ECI_HOOK_IS_SUBAGENT", "1")
 	fixture := newEditGateFixture(t, `printf '%s\n' 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' \
@@ -161,6 +170,9 @@ func TestEditGateReportsExactFailedGuardMarkersOnce(t *testing.T) {
 	assert.Contains(t, context, "same session")
 }
 
+// TestEditGateReportsUnclassifiedTargets turns the unclassified marker into an advisory naming the target.
+//
+// Example: "/repo/a" unclassified yields "could not classify the allowed target".
 func TestEditGateReportsUnclassifiedTargets(t *testing.T) {
 	fixture := newEditGateFixture(t, `printf '%s\n' ECI_EDIT_GATE_TARGET_UNCLASSIFIED >&2`)
 	status, stdout, _ := fixture.run(t, editRequest("a", "/repo/a"))
@@ -171,6 +183,9 @@ func TestEditGateReportsUnclassifiedTargets(t *testing.T) {
 	assert.Contains(t, decision.AdditionalContext, "coverage is unknown")
 }
 
+// TestEditGateFailsClosedOnDispatcherFailure denies every malformed or failed dispatcher result.
+//
+// Example: exit 17 with stderr denies with that stderr in the reason.
 func TestEditGateFailsClosedOnDispatcherFailure(t *testing.T) {
 	cases := map[string]struct {
 		body string
@@ -187,17 +202,22 @@ func TestEditGateFailsClosedOnDispatcherFailure(t *testing.T) {
 		"killed":          {"kill -9 $$", "ECI hook pretooluse-edit-dispatch was ended by a signal; blocking (fail-closed)."},
 	}
 	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			fixture := newEditGateFixture(t, tc.body)
-			status, stdout, _ := fixture.run(t, editRequest("/repo/a", "/repo/a"))
-			require.Equal(t, statusOK, status)
-			decision := decodeDecision(t, stdout)
-			assert.Equal(t, decisionDeny, decision.PermissionDecision)
-			assert.Equal(t, tc.want, decision.PermissionDecisionReason)
-		})
+		t.Run(name,
+			// runs one failure case against its own stub dispatcher.
+			func(t *testing.T) {
+				fixture := newEditGateFixture(t, tc.body)
+				status, stdout, _ := fixture.run(t, editRequest("/repo/a", "/repo/a"))
+				require.Equal(t, statusOK, status)
+				decision := decodeDecision(t, stdout)
+				assert.Equal(t, decisionDeny, decision.PermissionDecision)
+				assert.Equal(t, tc.want, decision.PermissionDecisionReason)
+			})
 	}
 }
 
+// TestEditGateBoundsDrainAfterDispatcherExit decides soon after the dispatcher exits even if a descendant holds its pipes.
+//
+// Example: `sleep 5 &` in the dispatcher delays the decision by at most dispatchDrainDelay.
 func TestEditGateBoundsDrainAfterDispatcherExit(t *testing.T) {
 	cases := map[string]struct {
 		body     string
@@ -208,22 +228,27 @@ func TestEditGateBoundsDrainAfterDispatcherExit(t *testing.T) {
 		"non-zero": {"sleep 5 & exit 3", decisionDeny},
 	}
 	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			fixture := newEditGateFixture(t, tc.body)
-			started := time.Now()
-			status, stdout, _ := fixture.run(t, editRequest("/repo/a", "/repo/a"))
-			elapsed := time.Since(started)
-			require.Equal(t, statusOK, status)
-			assert.Less(t, elapsed, dispatchDrainDelay+2*time.Second, "a held output pipe delayed the decision")
-			if tc.decision == "" {
-				assert.Empty(t, stdout)
-				return
-			}
-			assert.Equal(t, tc.decision, decodeDecision(t, stdout).PermissionDecision)
-		})
+		t.Run(name,
+			// times one held-pipe case against its own stub dispatcher.
+			func(t *testing.T) {
+				fixture := newEditGateFixture(t, tc.body)
+				started := time.Now()
+				status, stdout, _ := fixture.run(t, editRequest("/repo/a", "/repo/a"))
+				elapsed := time.Since(started)
+				require.Equal(t, statusOK, status)
+				assert.Less(t, elapsed, dispatchDrainDelay+2*time.Second, "a held output pipe delayed the decision")
+				if tc.decision == "" {
+					assert.Empty(t, stdout)
+					return
+				}
+				assert.Equal(t, tc.decision, decodeDecision(t, stdout).PermissionDecision)
+			})
 	}
 }
 
+// TestEditGateAllowDecisionKeepsChecking treats an explicit allow like silence and checks the next target.
+//
+// Example: two allowed targets run the dispatcher twice.
 func TestEditGateAllowDecisionKeepsChecking(t *testing.T) {
 	fixture := newEditGateFixture(t, `printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"fine"}}'`)
 	status, stdout, _ := fixture.run(t, editRequest("a", "/repo/a", "b", "/repo/b"))
@@ -232,6 +257,9 @@ func TestEditGateAllowDecisionKeepsChecking(t *testing.T) {
 	assert.Len(t, fixture.calls(t), 2)
 }
 
+// TestEditGateFailsClosedWhenDispatcherCannotStart denies when the interpreter cannot be started.
+//
+// Example: a missing bash path yields "could not run".
 func TestEditGateFailsClosedWhenDispatcherCannotStart(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	request, err := json.Marshal(editRequest("a", "/repo/a"))
@@ -243,6 +271,9 @@ func TestEditGateFailsClosedWhenDispatcherCannotStart(t *testing.T) {
 	assert.True(t, strings.HasPrefix(decision.PermissionDecisionReason, "ECI hook pretooluse-edit-dispatch could not run ("), decision.PermissionDecisionReason)
 }
 
+// TestEditGateRejectsMalformedRequests rejects invalid requests and arguments without running the dispatcher.
+//
+// Example: an unknown tool_name or a relative bash path exits 2.
 func TestEditGateRejectsMalformedRequests(t *testing.T) {
 	fixture := newEditGateFixture(t, "")
 	valid := editRequest("a", "/repo/a")
@@ -264,12 +295,14 @@ func TestEditGateRejectsMalformedRequests(t *testing.T) {
 		"NUL":           "{\x00}",
 	}
 	for name, request := range cases {
-		t.Run(name, func(t *testing.T) {
-			status, stdout, stderr := fixture.run(t, request)
-			assert.Equal(t, statusRejected, status)
-			assert.Empty(t, stdout)
-			assert.True(t, strings.HasPrefix(stderr, "eci-hook-helper edit-gate: "), stderr)
-		})
+		t.Run(name,
+			// sends one malformed request and expects a rejection.
+			func(t *testing.T) {
+				status, stdout, stderr := fixture.run(t, request)
+				assert.Equal(t, statusRejected, status)
+				assert.Empty(t, stdout)
+				assert.True(t, strings.HasPrefix(stderr, "eci-hook-helper edit-gate: "), stderr)
+			})
 	}
 	assert.Empty(t, fixture.calls(t), "a rejected request ran the dispatcher")
 	for _, args := range [][]string{{"edit-gate"}, {"edit-gate", fixture.bash}, {"edit-gate", "", fixture.script}, {"edit-gate", "bash", fixture.script}, {"edit-gate", fixture.bash, "dispatch.sh"}, {"edit-gate", fixture.bash, fixture.script, "extra"}} {
@@ -278,6 +311,9 @@ func TestEditGateRejectsMalformedRequests(t *testing.T) {
 	}
 }
 
+// TestEditGateToolJSON round-trips the tool names and refuses to encode the zero value.
+//
+// Example: editGateToolWrite encodes as "Write".
 func TestEditGateToolJSON(t *testing.T) {
 	for tool, name := range map[editGateTool]string{editGateToolEdit: `"Edit"`, editGateToolWrite: `"Write"`} {
 		encoded, err := json.Marshal(tool)
