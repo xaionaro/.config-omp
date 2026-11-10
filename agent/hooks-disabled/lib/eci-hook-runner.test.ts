@@ -184,29 +184,62 @@ test("a deadline stops the hook with SIGTERM and reports 124", async () => {
 	expect(preToolVerdict(run, "t")).toEqual({ block: true, reason: "ECI hook t timed out; blocking (fail-closed)." });
 });
 
-test("the deadline retires the hook's child within the cleanup bound", async () => {
-	const pidFile = join(dir, "child.pid");
-	const started = Date.now();
-	const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, true);
-	expect(run.code).toBe(124);
-	expect(run.stdout).toBe("");
-	expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
-	expectProcessGone(pidFile);
-}, 15000);
+for (const policy of ["deadline-only", "owned-group"] as const) {
+	test(`${policy}: deadline retires the hook's child within the cleanup bound`, async () => {
+		const pidFile = join(dir, "child.pid");
+		const started = Date.now();
+		const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, policy);
+		expect(run.code).toBe(124);
+		expect(run.ok).toBe(false);
+		expect(run.stdout).toBe("");
+		expect(preToolVerdict(run, "edit-consumer")?.block).toBe(true);
+		expect(bashPreToolVerdict(run)?.reason).toContain("deadline");
+		expect(run.deadlineExceeded).toBe(policy === "owned-group" ? true : undefined);
+		expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
+		expectProcessGone(pidFile);
+	}, 15000);
 
-test("a redirected TERM-resistant child cannot outlive the cleanup", async () => {
-	const pidFile = join(dir, "stubborn-child.pid");
-	const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, true);
-	expect(run.code).toBe(137);
-	expectProcessGone(pidFile);
-}, 15000);
+	test(`${policy}: redirected TERM-resistant child cannot outlive cleanup`, async () => {
+		const pidFile = join(dir, "stubborn-child.pid");
+		const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, policy);
+		expect(run.code).toBe(137);
+		expect(run.ok).toBe(false);
+		expect(preToolVerdict(run, "edit-consumer")?.block).toBe(true);
+		expectProcessGone(pidFile);
+	}, 15000);
+}
 
 test("normal hook exit retires a redirected child in its process group", async () => {
 	const pidFile = join(dir, "normal-child.pid");
-	const run = await runEciHook(script("normal-child.sh", `sleep 30 </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nexit 0\n`), {}, id, 10, true);
-	expect(run.code === 0 || run.code === 137).toBe(true);
+	const run = await runEciHook(script("normal-child.sh", `sleep 30 </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nexit 0\n`), {}, id, 10, "owned-group");
+	expect(run.code).toBe(0);
+	expect(run.ok).toBe(true);
+	expect(run.hookExitCode).toBe(0);
+	expect(run.deadlineExceeded).toBe(false);
+	expect(bashPreToolVerdict(run)).toBeUndefined();
 	expectProcessGone(pidFile);
 }, 15000);
+
+test("normal-exit forced cleanup reports cleanup and preserves the hook exit", async () => {
+	const pidFile = join(dir, "forced-child.pid");
+	const readyFile = join(dir, "forced-child.ready");
+	const run = await runEciHook(script("forced-child.sh", `bash -c 'trap "" TERM; echo ready > "$1"; exec sleep 30' _ '${readyFile}' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwhile [ ! -f '${readyFile}' ]; do sleep 0.01; done\nexit 0\n`), {}, id, 10, "owned-group");
+	expect(run.code).toBe(137);
+	expect(run.hookExitCode).toBe(0);
+	expect(run.deadlineExceeded).toBe(false);
+	expect(run.cleanupForced).toBe(true);
+	expect(bashPreToolVerdict(run)?.reason).toContain("cleanup, exit 0");
+	expectProcessGone(pidFile);
+}, 15000);
+
+for (const code of [124, 137]) {
+	test(`ordinary hook exit ${code} is not a deadline`, async () => {
+		const run = await runEciHook(script(`exit-${code}.sh`, `exit ${code}\n`), {}, id, 5, "owned-group");
+		expect(run.hookExitCode).toBe(code);
+		expect(run.deadlineExceeded).toBe(false);
+		expect(bashPreToolVerdict(run)?.reason).toContain(`exit, exit ${code}`);
+	});
+}
 
 test("a hook that ignores SIGTERM is killed after the grace period and reports 137", async () => {
 	const stubborn = script("stubborn.sh", "trap '' TERM\nwhile :; do sleep 1; done\n");
@@ -222,7 +255,7 @@ test("unknown process-group probe errors remain an explicit cleanup failure", as
 		return originalKill(pid, signal);
 	}) as typeof process.kill;
 	try {
-		const run = await runEciHook(script("probe-error.sh", "exec sleep 30\n"), {}, id, 1, true);
+		const run = await runEciHook(script("probe-error.sh", "exec sleep 30\n"), {}, id, 1, "owned-group");
 		expect(run.cleanupUncertain).toBe(true);
 		expect(run.ok).toBe(false);
 		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
@@ -232,6 +265,34 @@ test("unknown process-group probe errors remain an explicit cleanup failure", as
 	}
 }, 15000);
 
+for (const failedSignal of ["SIGTERM", "SIGKILL"] as const) {
+	test(`unknown ${failedSignal} errors remain an explicit cleanup failure`, async () => {
+		const originalKill = process.kill;
+		let probes = 0;
+		process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+			if (pid >= 0) return originalKill(pid, signal);
+			if (signal === 0) {
+				probes++;
+				if (probes === 1 || (failedSignal === "SIGKILL" && probes === 2)) return true;
+				throw Object.assign(new Error("absent"), { code: "ESRCH" });
+			}
+			if (signal === failedSignal) throw Object.assign(new Error("private diagnostic"), { code: "EPERM" });
+			return true;
+		}) as typeof process.kill;
+		try {
+			const run = await runEciHook(script("signal-error.sh", "exit 0\n"), {}, id, 5, "owned-group");
+			expect(run.cleanupUncertain).toBe(true);
+			expect(run.ok).toBe(false);
+			expect(run.hookExitCode).toBe(0);
+			expect(bashPreToolVerdict(run)?.reason).toContain("cleanup, exit 0");
+			expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
+			expect(bashPreToolVerdict(run)?.reason).not.toContain("private diagnostic");
+		} finally {
+			process.kill = originalKill;
+		}
+	}, 15000);
+}
+
 test("a group still present after forced cleanup is not reported as settled", async () => {
 	const originalKill = process.kill;
 	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
@@ -239,7 +300,7 @@ test("a group still present after forced cleanup is not reported as settled", as
 		return originalKill(pid, signal);
 	}) as typeof process.kill;
 	try {
-		const run = await runEciHook(script("unsettled.sh", "exit 0\n"), {}, id, 5, true);
+		const run = await runEciHook(script("unsettled.sh", "exit 0\n"), {}, id, 5, "owned-group");
 		expect(run.cleanupUncertain).toBe(true);
 		expect(run.ok).toBe(false);
 		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");

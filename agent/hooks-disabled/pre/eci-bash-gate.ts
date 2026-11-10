@@ -18,7 +18,7 @@ export default function eciBashGate(pi: ExtensionAPI): void {
 				{ ...basePayload(id, "PreToolUse"), tool_name: "Bash", tool_input: { command } },
 				id,
 				BASH_GATE_DEADLINE_SEC,
-				true,
+				"owned-group",
 			);
 			return bashPreToolVerdict(run);
 		} catch {

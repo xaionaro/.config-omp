@@ -24,6 +24,10 @@ export interface HookRun {
 	stdout: string;
 	stderr: string;
 	cleanupUncertain?: boolean;
+	/** Observed hook exit, independent of a strict cleanup outcome. */
+	hookExitCode?: number;
+	deadlineExceeded?: boolean;
+	cleanupForced?: boolean;
 }
 
 export const eciHooksDir = (): string => {
@@ -128,9 +132,9 @@ export function basePayload(id: EciIdentity, hookEventName: string): Record<stri
 	};
 }
 
-/** Seconds between the deadline's SIGTERM and the SIGKILL that follows it. */
+/** Seconds between group SIGTERM and a SIGKILL if the group remains. */
 export const KILL_GRACE_SEC = 5;
-/** Seconds after SIGKILL before abandoning output held by an escaped process. */
+/** Seconds after SIGKILL before abandoning held output and checking cleanup. */
 export const DRAIN_SEC = 2;
 /** Bash gate deadline leaves room for cleanup within omp's default 30-second budget. */
 export const BASH_GATE_DEADLINE_SEC = 20;
@@ -161,23 +165,30 @@ function signalGroup(pid: number, signal: NodeJS.Signals | 0): "present" | "abse
 	}
 }
 
+/** Selects whether ordinary exit also retires the hook's process group. */
+export type HookCleanupPolicy = "deadline-only" | "owned-group";
+
 /**
  * Spawns the hook script as `bash script` in its own process group, with the JSON
  * payload on stdin and a deadline enforced here, so no external `timeout` is needed.
  * Like coreutils timeout, the deadline sends SIGTERM to the whole group and, when any
  * member is still alive KILL_GRACE_SEC later, SIGKILL; the run then reports 124
  * (stopped by SIGTERM) or 137 (needed SIGKILL). Output still held open DRAIN_SEC after
- * the SIGKILL (a process that left the group) is abandoned. A process ended by a signal
- * outside the deadline reports 128 plus the signal number. Any spawn or
- * bash-resolution error returns code -1 (fail-closed for PreToolUse).
+ * the SIGKILL (a process that left the group) is abandoned. With owned-group
+ * cleanup, normal exit also retires remaining group members. Spawn, shell
+ * resolution, or uncertain cleanup returns code -1; strict cleanup also
+ * reports the observed hook exit and whether the deadline or forced cleanup
+ * occurred. Process-group cleanup does not cover descendants that leave the
+ * group.
  */
 export async function runEciHook(
 	script: string,
 	stdin: Record<string, unknown>,
 	id: EciIdentity,
 	timeoutSec: number,
-	strictCleanup = false,
+	cleanupPolicy: HookCleanupPolicy = "deadline-only",
 ): Promise<HookRun> {
+	const strictCleanup = cleanupPolicy === "owned-group";
 	if (!isAbsolute(script)) return { ok: false, code: -1, stdout: "", stderr: "ECI hook path is not absolute" };
 	const env: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
@@ -214,7 +225,15 @@ export async function runEciHook(
 	};
 	const result = (): HookRun => {
 		const code = cleanupUncertain ? -1 : killed ? KILL_EXIT : timedOut ? TIMEOUT_EXIT : (exitCode ?? -1);
-		return { ok: code === 0, code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(), ...(cleanupUncertain ? { cleanupUncertain: true } : {}) };
+		return {
+			ok: code === 0, code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(),
+			...(cleanupUncertain ? { cleanupUncertain: true } : {}),
+			...(strictCleanup ? {
+				deadlineExceeded: timedOut,
+				...(exitCode !== undefined ? { hookExitCode: exitCode } : {}),
+				...(killed && !timedOut ? { cleanupForced: true } : {}),
+			} : {}),
+		};
 	};
 	const retireGroup = (pid: number): void => {
 		if (retiring) return;
@@ -310,9 +329,11 @@ export function bashGateUnavailable(kind: string, code: number): PreToolVerdict 
 
 /** Accepts only a complete Bash gate decision; failures never expose hook output. */
 export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
-	if (run.cleanupUncertain) return bashGateUnavailable("cleanup", run.code);
+	if (run.cleanupUncertain || run.cleanupForced) return bashGateUnavailable("cleanup", run.hookExitCode ?? run.code);
 	if (run.code === -1) return bashGateUnavailable("spawn", run.code);
-	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return bashGateUnavailable("deadline", run.code);
+	if (run.deadlineExceeded === true || (run.deadlineExceeded === undefined && (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT))) {
+		return bashGateUnavailable("deadline", run.code);
+	}
 	if (!run.ok || run.code !== 0) return bashGateUnavailable("exit", run.code);
 	const out = run.stdout.trim();
 	if (out === "") return undefined;
