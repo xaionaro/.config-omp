@@ -216,6 +216,9 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		require.NoError(t, os.MkdirAll(repository, 0700))
 		require.NoError(t, exec.Command("git", "init", "-q", repository).Run())
 	}
+	script := filepath.Join(dependency, "check.sh")
+	sentinel := filepath.Join(home, "executed")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\ntouch '"+sentinel+"'\n"), 0700))
 	for _, current := range []struct {
 		command string
 		denied  bool
@@ -223,6 +226,7 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		{command: "git -C '" + primary + "' add -- file"},
 		{command: "git -C '" + dependency + "' add -- file"},
 		{command: "git -C '" + dependency + "' commit -m checkpoint"},
+		{command: "bash '" + script + "'"},
 		{command: "git -C '" + dependency + "' reset --hard", denied: true},
 	} {
 		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: primary}
@@ -237,6 +241,8 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 			require.Empty(t, output.String(), current.command)
 		}
 	}
+	_, err := os.Stat(sentinel)
+	require.ErrorIs(t, err, os.ErrNotExist, "callback must not run the dependency script")
 }
 
 // TestRunHookMarkerFreeLiveHookProtection checks concrete physical hook targets
