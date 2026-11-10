@@ -216,9 +216,22 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	// A main session's first write must work before omp persists its transcript.
 	transcript = filepath.Join(sessionsProject, "pending.jsonl")
 	sessionWrite := "touch " + filepath.Join(sessionsProject, "session-output")
+	if err := os.MkdirAll(filepath.Join(sessionsProject, "children"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range map[string]string{
+		"fork":             "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+		"conflicting-fork": "{\"type\":\"session\",\"parentSession\":\"parent\"}\n{\"type\":\"message\",\"parentSession\":\"parent\"}\n",
+		"children/child":   "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(sessionsProject, name+".jsonl"), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, testCase := range []struct {
 		name     string
 		kind     string
+		state    string
 		worker   bool
 		wantDeny bool
 	}{
@@ -227,8 +240,25 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 		{name: "old adapter", wantDeny: true},
 		{name: "invalid kind", kind: "Main", wantDeny: true},
 		{name: "environment worker", kind: "main", worker: true, wantDeny: true},
+		{name: "no-session main", kind: "main", state: "no-session"},
+		{name: "no-session child", kind: "sub", state: "no-session", wantDeny: true},
+		{name: "fork main", kind: "main", state: "fork"},
+		{name: "fork override", kind: "main", state: "fork", worker: true, wantDeny: true},
+		{name: "legacy fork", state: "fork", wantDeny: true},
+		{name: "advisor saved main", kind: "sub", state: "main", wantDeny: true},
+		{name: "host main child transcript", kind: "main", state: "children/child", wantDeny: true},
+		{name: "fork child", kind: "sub", state: "children/child", wantDeny: true},
+		{name: "conflicting fork", kind: "main", state: "conflicting-fork", wantDeny: true},
 	} {
 		agentKind = testCase.kind
+		switch testCase.state {
+		case "":
+			transcript = filepath.Join(sessionsProject, "pending.jsonl")
+		case "no-session":
+			transcript = ""
+		default:
+			transcript = filepath.Join(sessionsProject, testCase.state+".jsonl")
+		}
 		output := run(testCase.worker, sessionWrite, validator...)
 		if direct := run(testCase.worker, sessionWrite, published, "--hook"); output != direct {
 			t.Errorf("%s: validator output=%q, planner=%q", testCase.name, output, direct)
@@ -243,7 +273,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 			t.Errorf("%s: expected worker sessions denial, got %s", testCase.name, output)
 		}
 	}
-	if _, err := os.Lstat(transcript); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(filepath.Join(sessionsProject, "pending.jsonl")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("callback classification persisted pending transcript: %v", err)
 	}
 

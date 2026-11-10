@@ -601,45 +601,47 @@ test("subagent detection reads only the prefix of a large transcript", () => {
 	expect(identityFor(missing).isSubagent).toBe(true);
 });
 
-test("documented main identity admits an uncached missing transcript only", async () => {
+test("Bash main identity defers transcript conflicts to the Go classifier", async () => {
 	const transcript = join(dir, "pending.jsonl");
 	const ctx = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => transcript } };
-	const pending = identityFor(ctx, { allowPendingMain: true });
+	const pending = identityFor(ctx, { useHostAgentKind: true });
 	expect(pending.isSubagent).toBe(false);
 	expect(basePayload(pending, "PreToolUse").omp_agent_kind).toBe("main");
 	const run = await runEciHook(script("role.sh", 'printf "%s" "$ECI_HOOK_IS_SUBAGENT"\n'), {}, pending, 5);
 	expect(run.stdout).toBe("0");
 	writeFileSync(transcript, '{"type":"session","parentSession":"parent"}\n');
-	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(true);
-	expect(identityFor({ ...ctx, sessionManager: { getSessionFile: () => dir } }, { allowPendingMain: true }).isSubagent).toBe(true);
+	expect(identityFor(ctx, { useHostAgentKind: true }).isSubagent).toBe(false);
+	expect(identityFor({ ...ctx, sessionManager: { getSessionFile: () => dir } }, { useHostAgentKind: true }).isSubagent).toBe(false);
+	expect(identityFor(ctx).isSubagent).toBe(true);
 });
 
 test("missing invalid and throwing agent identities preserve fail-closed detection", () => {
 	const ctx = { cwd: dir, sessionManager: { getSessionFile: () => join(dir, "missing.jsonl") } };
 	for (const agent of [undefined, null, {}, { kind: "Main" }, { kind: 1 }, { get kind() { throw new Error("unavailable"); } }]) {
-		const identity = identityFor({ ...ctx, agent } as never, { allowPendingMain: true });
+		const identity = identityFor({ ...ctx, agent } as never, { useHostAgentKind: true });
 		expect(identity.isSubagent).toBe(true);
 		expect(basePayload(identity, "PreToolUse")).not.toHaveProperty("omp_agent_kind");
 	}
-	const identity = identityFor({ ...ctx, get agent() { throw new Error("unavailable"); } }, { allowPendingMain: true });
+	const identity = identityFor({ ...ctx, get agent() { throw new Error("unavailable"); } }, { useHostAgentKind: true });
 	expect(identity.isSubagent).toBe(true);
 	expect(basePayload(identity, "PreToolUse")).not.toHaveProperty("omp_agent_kind");
-	expect(identityFor({ ...ctx, agent: { kind: "sub" } } as never, { allowPendingMain: true }).isSubagent).toBe(true);
+	expect(identityFor({ ...ctx, agent: { kind: "sub" } } as never, { useHostAgentKind: true }).isSubagent).toBe(true);
 });
 
-test("main identity does not admit EACCES or cache unreadable transcripts", () => {
+test("shared identity does not cache unreadable transcripts while Bash uses host kind", () => {
 	if (process.getuid?.() === 0) return;
 	const transcript = join(dir, "unreadable.jsonl");
 	writeFileSync(transcript, '{"type":"session"}\n', { mode: 0o000 });
 	const ctx = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => transcript } };
 	try {
-		expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(true);
+		expect(identityFor(ctx).isSubagent).toBe(true);
+		expect(identityFor(ctx, { useHostAgentKind: true }).isSubagent).toBe(false);
 	} finally {
 		chmodSync(transcript, 0o600);
 	}
-	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(false);
+	expect(identityFor(ctx).isSubagent).toBe(false);
 	writeFileSync(transcript, '{"type":"session","parentSession":"parent"}\n');
-	expect(identityFor(ctx, { allowPendingMain: true }).isSubagent).toBe(false);
+	expect(identityFor(ctx).isSubagent).toBe(false);
 });
 
 test("existing resumed main advisor fork and child transcripts retain prefix classification", () => {
@@ -654,10 +656,13 @@ test("existing resumed main advisor fork and child transcripts retain prefix cla
 			const ctx = { cwd: dir, agent: { kind }, sessionManager: { getSessionFile: () => transcript } };
 			expect(identityFor(ctx).isSubagent).toBe(worker);
 			expect(basePayload(identityFor(ctx), "PreToolUse").omp_agent_kind).toBe(kind);
+			expect(identityFor(ctx, { useHostAgentKind: true }).isSubagent).toBe(kind === "sub");
 		}
 	}
 	const noSession = { cwd: dir, agent: { kind: "main" }, sessionManager: { getSessionFile: () => undefined } };
 	expect(identityFor(noSession).isSubagent).toBe(false);
+	expect(identityFor(noSession, { useHostAgentKind: true }).isSubagent).toBe(false);
+	expect(identityFor({ ...noSession, agent: { kind: "sub" } }, { useHostAgentKind: true }).isSubagent).toBe(true);
 });
 
 test("shared identity consumers retain missing-transcript fail-closed behavior", () => {

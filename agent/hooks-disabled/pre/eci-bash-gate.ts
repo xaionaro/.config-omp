@@ -12,7 +12,7 @@ export default function eciBashGate(pi: ExtensionAPI): void {
 			const input = event.input as { command?: unknown; cwd?: unknown };
 			const command = typeof input.command === "string" ? input.command : "";
 			const cwd = bashHostCwd(input.cwd, command, ctx.cwd);
-			const id = { ...identityFor(ctx, { allowPendingMain: true }), sessionId: ctx.sessionManager.getSessionId() };
+			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
 			const run = await runEciHook(scriptPath(SCRIPT),
 				{ ...basePayload(id, "PreToolUse"), ...(cwd === undefined ? { cwd: undefined, cwd_unknown: true } : { cwd }), tool_name: "Bash", tool_input: { command } },
 				id,

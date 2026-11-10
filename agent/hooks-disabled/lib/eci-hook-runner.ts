@@ -88,10 +88,10 @@ export function prefixMarksSubagent(prefix: Uint8Array): boolean {
 
 /**
  * Subagent detection from the bounded transcript prefix (prefixMarksSubagent).
- * Bash callers may opt into the documented-main ENOENT gap; other consumers
- * keep fail-closed reads. Read failures are never cached.
+ * Shared consumers retain fail-closed reads. Bash host identity bypasses this
+ * prefix classifier; Go validates its transcript independently.
  */
-function detectSubagent(transcriptPath: string | undefined, agentKind: EciIdentity["agentKind"]): boolean {
+function detectSubagent(transcriptPath: string | undefined): boolean {
 	if (!transcriptPath) return false;
 	const cached = subagentCache.get(transcriptPath);
 	if (cached !== undefined) return cached;
@@ -106,16 +106,16 @@ function detectSubagent(transcriptPath: string | undefined, agentKind: EciIdenti
 		} finally {
 			closeSync(fd);
 		}
-	} catch (error) {
-		return !(agentKind === "main" && isRecord(error) && error.code === "ENOENT");
+	} catch {
+		return true;
 	}
 	const found = prefixMarksSubagent(prefix.subarray(0, length));
 	subagentCache.set(transcriptPath, found);
 	return found;
 }
 
-/** Keeps shared transcript classification unchanged unless the Bash boundary opts into lazy persistence. */
-export function identityFor(ctx: EciSessionContext, options: { allowPendingMain?: boolean } = {}): EciIdentity {
+/** Bash uses documented host identity; other consumers retain transcript-only classification. */
+export function identityFor(ctx: EciSessionContext, options: { useHostAgentKind?: boolean } = {}): EciIdentity {
 	const transcriptPath = ctx.sessionManager.getSessionFile() ?? undefined;
 	let agentKind: EciIdentity["agentKind"];
 	try {
@@ -129,7 +129,7 @@ export function identityFor(ctx: EciSessionContext, options: { allowPendingMain?
 		transcriptPath,
 		cwd: ctx.cwd,
 		agentKind,
-		isSubagent: detectSubagent(transcriptPath, options.allowPendingMain ? agentKind : undefined),
+		isSubagent: options.useHostAgentKind && agentKind !== undefined ? agentKind === "sub" : detectSubagent(transcriptPath),
 	};
 }
 

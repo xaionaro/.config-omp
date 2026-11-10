@@ -119,13 +119,8 @@ func hookRequest(input HookInput) (Request, error) {
 	}
 	request.CommandPath, request.CommandPathSet = os.LookupEnv("PATH")
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
-	role, transcriptErr := hookTranscriptRole(input.TranscriptPath)
+	role, transcriptErr := hookTranscriptRole(input.TranscriptPath, input.OmpAgentKind)
 	request.Role = role
-	// Host identity fills only the lazy-file gap; saved transcripts remain authoritative.
-	if input.OmpAgentKind == ompAgentKindMain && errors.Is(transcriptErr, errHookTranscriptPending) {
-		request.Role = RoleCoordinator
-		transcriptErr = nil
-	}
 	if input.OmpAgentKind == ompAgentKindInvalid {
 		hookAdvisory("classify callback agent", errors.New("invalid omp_agent_kind: expected main or sub"))
 	}
@@ -201,6 +196,11 @@ var errHookTranscriptUnknown = errors.New("callback transcript is unknown")
 // Example: omp's first main callback can precede its transcript's first persistence.
 var errHookTranscriptPending = fmt.Errorf("%w: transcript is pending", errHookTranscriptUnknown)
 
+// errHookTranscriptFork marks a verified depth-two header with an otherwise unambiguous string parent.
+//
+// Example: only documented host main can distinguish a fork from legacy ambiguous parent evidence.
+var errHookTranscriptFork = fmt.Errorf("%w: transcript is a verified fork", errHookTranscriptUnknown)
+
 // hookTranscriptStatus verifies a callback transcript and classifies its prefix.
 //
 // Example: a symlinked transcript is unknown rather than main.
@@ -257,10 +257,12 @@ func hookTranscriptStatus(path string) (string, error) {
 	}
 	depth := strings.Count(relative, string(filepath.Separator)) + 1
 	switch {
-	case depth == 2 && facts.parentPresent:
-		return fail(errors.New("parentSession key at depth two"))
 	case depth == 2 && facts.sessionInit:
 		return fail(errors.New("session_init marker at depth two"))
+	case depth == 2 && facts.parentString && !facts.parentConflict:
+		return "", errHookTranscriptFork
+	case depth == 2 && facts.parentPresent:
+		return fail(errors.New("conflicting parentSession key at depth two"))
 	case depth == 2:
 		return "main", nil
 	case depth >= 3 && facts.parentString:
@@ -401,24 +403,28 @@ func hookDuplicateSignalKey(body []byte) bool {
 }
 
 // hookTranscriptFacts summarizes the classifier signals of one transcript.
+//
+// Example: a valid fork has a string header parent without conflicting parent records.
 type hookTranscriptFacts struct {
-	header        bool // a record has type session
-	parentString  bool // a session record declares a string parentSession
-	parentPresent bool // a record carries a parentSession key of any JSON value
-	sessionInit   bool // a record carries an omp session_init marker
+	header         bool // a record has type session
+	parentString   bool // a session record declares a string parentSession
+	parentPresent  bool // a record carries a parentSession key of any JSON value
+	parentConflict bool // a parentSession appears outside a header or is not a string
+	sessionInit    bool // a record carries an omp session_init marker
 }
 
 // merge adds the signals of one record to the transcript facts.
+//
+// Example: a later non-header parent signal keeps an earlier fork header ambiguous.
 func (facts *hookTranscriptFacts) merge(record hookTranscriptFacts) {
 	facts.header = facts.header || record.header
 	facts.parentString = facts.parentString || record.parentString
 	facts.parentPresent = facts.parentPresent || record.parentPresent
+	facts.parentConflict = facts.parentConflict || record.parentConflict
 	facts.sessionInit = facts.sessionInit || record.sessionInit
 }
 
-// hookTranscriptSignal reads the classifier signals of one record: a session
-// header, a string parentSession on a session header, any parentSession key, and
-// an omp session_init marker.
+// hookTranscriptSignal reads header, parent, conflicting-parent and session_init signals from one record.
 //
 // Example: {"type":"session","parentSession":5} is a header whose parentSession is present but not a string.
 func hookTranscriptSignal(value any) hookTranscriptFacts {
@@ -431,10 +437,11 @@ func hookTranscriptSignal(value any) hookTranscriptFacts {
 	parent, hasParent := object["parentSession"]
 	_, parentIsString := parent.(string)
 	return hookTranscriptFacts{
-		header:        recordType == "session",
-		parentString:  recordType == "session" && parentIsString,
-		parentPresent: hasParent,
-		sessionInit:   recordType == "session_init" || customType == "session_init",
+		header:         recordType == "session",
+		parentString:   recordType == "session" && parentIsString,
+		parentPresent:  hasParent,
+		parentConflict: hasParent && (recordType != "session" || !parentIsString),
+		sessionInit:    recordType == "session_init" || customType == "session_init",
 	}
 }
 
@@ -553,16 +560,29 @@ func hookNoSymlinkIntoRoot(path, base, resolved string) error {
 	return nil
 }
 
-// hookTranscriptRole maps a callback transcript to its planner role.
-// Unknown transcripts remain Workers and carry the classification error.
+// hookTranscriptRole resolves documented host identity against verified transcript evidence.
+// Absent or invalid identity retains legacy transcript-only classification.
 //
-// Example: an empty transcript path is unknown, so the callback runs as a worker.
-func hookTranscriptRole(path string) (Role, error) {
-	status, err := hookTranscriptStatus(path)
-	if status == "main" {
+// Example: host main can use no-session or a verified fork, but host sub always stays Worker.
+func hookTranscriptRole(
+	path string,
+	kind OmpAgentKind,
+) (Role, error) {
+	switch {
+	case kind == ompAgentKindSub:
+		return RoleWorker, nil
+	case kind == ompAgentKindMain && path == "":
 		return RoleCoordinator, nil
 	}
-	return RoleWorker, err
+	status, err := hookTranscriptStatus(path)
+	switch {
+	case status == "main":
+		return RoleCoordinator, nil
+	case kind == ompAgentKindMain && (errors.Is(err, errHookTranscriptPending) || errors.Is(err, errHookTranscriptFork)):
+		return RoleCoordinator, nil
+	default:
+		return RoleWorker, err
+	}
 }
 
 // recordHookActivity preserves coordinator activity and callback-session writes.

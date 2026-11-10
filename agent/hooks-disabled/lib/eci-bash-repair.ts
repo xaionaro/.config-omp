@@ -22,7 +22,7 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 		description: "If the gate is unavailable, compile eci-command-plan and, on Linux, eci-verexec from the current ~/.omp working-tree source, including uncommitted changes, and replace the shared ~/.omp/agent/eci/bin binaries and receipts for all sessions. Does not reset or edit source.",
 		parameters: pi.zod.object({}),
 		async execute(_callId, _params, signal, _onUpdate, ctx) {
-			const id = { ...identityFor(ctx, { allowPendingMain: true }), sessionId: ctx.sessionManager.getSessionId() };
+			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
 			const names = process.platform === "linux" ? ["eci-verexec", "eci-command-plan"] : ["eci-command-plan"];
 			const payload = { ...basePayload(id, "PreToolUse"), tool_name: "Bash", tool_input: { command: "true" } };
 			const probe = () => runEciHook(scriptPath("validate-bash.sh"), payload, id, BASH_GATE_DEADLINE_SEC, { cleanup: "owned-group", signal });

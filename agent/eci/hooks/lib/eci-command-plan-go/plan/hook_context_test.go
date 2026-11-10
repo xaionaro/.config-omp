@@ -182,7 +182,7 @@ func TestHookContextPendingIdentity(t *testing.T) {
 		{name: "invalid identity", path: filepath.Join(project, "pending.jsonl"), kind: "Main", want: RoleWorker},
 		{name: "override one", path: filepath.Join(project, "pending.jsonl"), kind: "main", workerOverride: "1", want: RoleWorker},
 		{name: "override true", path: filepath.Join(project, "pending.jsonl"), kind: "main", workerOverride: "true", want: RoleWorker},
-		{name: "no session", kind: "main", want: RoleWorker},
+		{name: "no session", kind: "main", want: RoleCoordinator},
 		{name: "depth one", path: filepath.Join(root, "pending.jsonl"), kind: "main", want: RoleWorker},
 		{name: "depth three", path: filepath.Join(project, "children", "pending.jsonl"), kind: "main", want: RoleWorker},
 		{name: "missing parent", path: filepath.Join(root, "absent", "pending.jsonl"), kind: "main", want: RoleWorker},
@@ -216,34 +216,82 @@ func TestHookContextPendingIdentity(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(project, "pending.jsonl"))
 }
 
-// TestHookContextIdentityPreservesExistingTranscript keeps the pending exception out of saved sessions.
+// TestHookContextHostIdentityMatrix checks host identity against saved, pending and conflicting transcript evidence.
 //
-// Example: an advisor on a saved main transcript retains its existing role; fork and child stay workers.
-func TestHookContextIdentityPreservesExistingTranscript(t *testing.T) {
+// Example: only host main admits a verified fork; host sub always remains Worker, including advisor calls.
+func TestHookContextHostIdentityMatrix(t *testing.T) {
 	_, cwd := contextFixture(t)
 	project := sessionsFixture(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(project, "children"), 0700))
-	for _, kind := range []string{"main", "sub", ""} {
-		for name, contents := range map[string]string{
-			"main":           "{\"type\":\"session\"}\n",
-			"fork":           "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
-			"children/child": "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
-			"malformed":      "not json\n",
-			"empty":          "",
-		} {
-			path := filepath.Join(project, name+".jsonl")
-			require.NoError(t, os.WriteFile(path, []byte(contents), 0600))
-			body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": path, "omp_agent_kind": kind})
-			require.NoError(t, err)
-			var input HookInput
-			require.NoError(t, json.Unmarshal(body, &input))
-			got, err := hookRequest(input)
-			require.NoError(t, err)
-			want := RoleWorker
-			if name == "main" {
-				want = RoleCoordinator
+	paths := map[string]string{
+		"pending":        filepath.Join(project, "pending.jsonl"),
+		"no-session":     "",
+		"missing-parent": filepath.Join(project, "absent", "pending.jsonl"),
+		"outside":        filepath.Join(t.TempDir(), "pending.jsonl"),
+		"relative":       "relative.jsonl",
+		"depth-one":      filepath.Join(filepath.Dir(project), "pending.jsonl"),
+		"directory":      project,
+		"nonclean":       project + "/absent/../pending.jsonl",
+	}
+	for name, contents := range map[string]string{
+		"main":                    "{\"type\":\"session\"}\n",
+		"fork":                    "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+		"fork-null":               "{\"type\":\"session\",\"parentSession\":null}\n",
+		"fork-number":             "{\"type\":\"session\",\"parentSession\":1}\n",
+		"nonheader-parent":        "{\"type\":\"session\"}\n{\"type\":\"message\",\"parentSession\":\"p\"}\n",
+		"fork-and-nonheader":      "{\"type\":\"session\",\"parentSession\":\"p\"}\n{\"type\":\"message\",\"parentSession\":\"p\"}\n",
+		"fork-and-invalid-header": "{\"type\":\"session\",\"parentSession\":\"p\"}\n{\"type\":\"session\",\"parentSession\":null}\n",
+		"fork-and-init":           "{\"type\":\"session\",\"parentSession\":\"p\"}\n{\"type\":\"session_init\"}\n",
+		"fork-and-custom-init":    "{\"type\":\"session\",\"parentSession\":\"p\"}\n{\"type\":\"custom\",\"customType\":\"session_init\"}\n",
+		"main-and-init":           "{\"type\":\"session\"}\n{\"type\":\"session_init\"}\n",
+		"duplicate-parent":        "{\"type\":\"session\",\"parentSession\":\"p\",\"parentSession\":null}\n",
+		"torn-header":             "{\"type\":\"session\"",
+		"children/child":          "{\"type\":\"session\",\"parentSession\":\"p\"}\n",
+		"children/nested/child":   "{\"type\":\"session\",\"parentSession\":\"p\"}\n",
+		"malformed":               "not json\n",
+		"empty":                   "",
+	} {
+		path := filepath.Join(project, name+".jsonl")
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+		require.NoError(t, os.WriteFile(path, []byte(contents), 0600))
+		paths[name] = path
+	}
+	paths["leaf-link"] = filepath.Join(project, "linked.jsonl")
+	require.NoError(t, os.Symlink(paths["main"], paths["leaf-link"]))
+	paths["dangling-link"] = filepath.Join(project, "dangling.jsonl")
+	require.NoError(t, os.Symlink(paths["pending"], paths["dangling-link"]))
+	linkedParent := filepath.Join(filepath.Dir(project), "linked-project")
+	require.NoError(t, os.Symlink(project, linkedParent))
+	paths["linked-parent"] = filepath.Join(linkedParent, "pending.jsonl")
+	if os.Geteuid() != 0 {
+		paths["unreadable"] = filepath.Join(project, "unreadable.jsonl")
+		require.NoError(t, os.WriteFile(paths["unreadable"], []byte("{\"type\":\"session\"}\n"), 0000))
+	}
+	for _, kind := range []string{"main", "sub", "", "Main"} {
+		for _, override := range []string{"", "1", "true"} {
+			t.Setenv("ECI_HOOK_IS_SUBAGENT", override)
+			for name, path := range paths {
+				payload := map[string]string{"cwd": cwd, "transcript_path": path}
+				if kind != "" {
+					payload["omp_agent_kind"] = kind
+				}
+				body, err := json.Marshal(payload)
+				require.NoError(t, err)
+				var input HookInput
+				require.NoError(t, json.Unmarshal(body, &input))
+				got, err := hookRequest(input)
+				require.NoError(t, err)
+				want := RoleWorker
+				switch {
+				case override != "" || kind == "sub":
+				case name == "main":
+					want = RoleCoordinator
+				case kind == "main" && (name == "fork" || name == "pending" || name == "no-session"):
+					want = RoleCoordinator
+				}
+				require.Equal(t, want, got.Role, "kind=%q override=%q transcript=%s", kind, override, name)
+				require.Equal(t, MarkerInactive, got.Marker)
 			}
-			require.Equal(t, want, got.Role, "%s/%s", kind, name)
 		}
 	}
 }
