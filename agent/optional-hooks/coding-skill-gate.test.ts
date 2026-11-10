@@ -278,6 +278,7 @@ test("accepts whole raw skill reads but not raw line selections", () => {
  const {call, result} = setup();
  const common = details("coding-common");
  result("read", {path: "skill://coding-common:1-2:raw"}, common);
+ result("read", {path: "skill://coding-common:raw:1-2"}, {...common, raw: true, displayContent: {...common.displayContent, text: "# coding-common"}});
  assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
  result("read", {path: "skill://coding-common:raw"}, {...common, raw: true, displayContent: {...common.displayContent, text: `${common.displayContent.text}\n`}});
  const go = details("coding-go");
@@ -292,5 +293,12 @@ test("accepts a complete raw canonical file and rejects a missing final newline"
  result("read", {path}, {...common, raw: true});
  assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
  result("read", {path}, {...common, raw: true, displayContent: {...common.displayContent, text: `${common.displayContent.text}\n`}});
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-go/);
+});
+
+test("does not credit host raw range output without truncation metadata", () => {
+ const {call, read, result} = setup();
+ read("skill://coding-common");
+ result("read", {path: "skill://coding-go:raw:1-2"}, {raw: true, totalLines: 152, displayContent: {startLine: 1, lineNumbers: [1, 2], text: "---\nname: coding-go"}});
  assert.match(call("write", {path: "a.go"})!.reason, /coding-go/);
 });

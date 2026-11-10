@@ -42,36 +42,51 @@ function verifiedReadSkill(input: Record<string, unknown>, result: { isError?: b
  return undefined;
 }
 
+// Scan one directory while sharing the traversal's entry budget.
+function scanGofmtDirectory(path: string, directories: string[], budget: { remaining: number }): string | undefined {
+	const directory = opendirSync(path);
+	try {
+		while (budget.remaining > 0) {
+			const entry = directory.readSync();
+			if (!entry) return undefined;
+			budget.remaining--;
+			const child = join(path, entry.name);
+			if (entry.isDirectory()) {
+				directories.push(child);
+				continue;
+			}
+			if (!entry.name.startsWith(".") && entry.name.endsWith(".go") && (entry.isFile() || entry.isSymbolicLink())) return child;
+		}
+	} finally {
+		directory.closeSync();
+	}
+	return undefined;
+}
+
 // Bound directory inspection; uncertainty alone is not evidence of a write.
-function gofmtTarget(operands: string[], cwd: string): string | undefined {
- const directories: string[] = [];
- for (const operand of operands) {
-  if (/[$`*?{}]/.test(operand)) continue;
-  const path = resolve(cwd, operand);
-  try {
-   if (lstatSync(path).isDirectory()) directories.push(path);
-   else if (path.endsWith(".go")) return path;
-  } catch (error) {
-   if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
-  }
- }
- let remaining = 4096;
- while (directories.length && remaining > 0) {
-  const path = directories.pop()!;
-  try {
-   const dir = opendirSync(path);
-   try {
-    for (let entry = dir.readSync(); entry && remaining-- > 0; entry = dir.readSync()) {
-     const child = join(path, entry.name);
-     if (entry.isDirectory()) directories.push(child);
-     else if (!entry.name.startsWith(".") && entry.name.endsWith(".go") && (entry.isFile() || entry.isSymbolicLink())) return child;
-    }
-   } finally { dir.closeSync(); }
-  } catch (error) {
-   if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
-  }
- }
- return undefined;
+function findGofmtTarget(operands: string[], cwd: string): string | undefined {
+	const directories: string[] = [];
+	for (const operand of operands) {
+		if (/[$`*?{}]/.test(operand)) continue;
+		const path = resolve(cwd, operand);
+		try {
+			if (lstatSync(path).isDirectory()) directories.push(path);
+			else if (path.endsWith(".go")) return path;
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
+		}
+	}
+	const budget = { remaining: 4096 };
+	while (directories.length && budget.remaining > 0) {
+		const path = directories.pop()!;
+		try {
+			const target = scanGofmtDirectory(path, directories, budget);
+			if (target) return target;
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
+		}
+	}
+	return undefined;
 }
 
 // Recognize literal shell words and redirections without interpreting expansions.
@@ -124,7 +139,7 @@ function literalShellWriteTargets(command: string, cwd: string): string[] {
     operands.push(arg);
    }
    if (writes) {
-    const target = gofmtTarget(operands, cwd);
+    const target = findGofmtTarget(operands, cwd);
     if (target) paths.push(target);
    }
   }
