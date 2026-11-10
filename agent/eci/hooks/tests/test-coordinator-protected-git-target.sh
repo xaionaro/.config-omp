@@ -9,14 +9,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eci-protected-git-target.XXXXXX")"
 trap 'chmod -R -- u+w "$TMP_ROOT"; rm -rf -- "$TMP_ROOT"' EXIT
 
-# The planner protects live hooks under $HOME/.omp/agent/eci and the hook runs
-# with HOME=$TMP_ROOT/home, so the runtime under test is a private copy at that
-# protected root. It is its own repository root, as in the source layout
-# (575bb81 ROOT is the ~/.codex repository root).
+# Use a private runtime so callbacks resolve the same HOME-based hook paths
+# without changing the installed runtime.
 fixture_root="$TMP_ROOT/home/.omp/agent/eci"
 mkdir -p -- "$(dirname -- "$fixture_root")"
 cp -a -- "$ROOT" "$fixture_root"
 rm -rf -- "$fixture_root/.git"
+# An absent mode tool preserves denials, independent of the caller's mode.
+rm -f -- "$fixture_root/bin/eci-command-gate-mode"
 eci_sed_inplace '2{/^exit 0$/d;}' "$fixture_root/hooks/validate-bash.sh"
 git -C "$fixture_root" init --quiet
 git -C "$fixture_root" add -A
@@ -162,98 +162,27 @@ run_hook_at() {
       "${hook_command[@]}" >"$output"
 }
 
-assert_protected_denial() {
-  local command="$1" output="$TMP_ROOT/denial.json"
-  run_hook "$command" "$output"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=coordinator-protected-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | test("path=/[^,]*/hooks/validate-bash\\.sh,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'protected target was not denied: command=%q\n' "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_protected_denial_with_timeout() {
-  local seconds="$1" command="$2" output="$TMP_ROOT/timeout-denial.json"
-  if ! HOOK_TIMEOUT_SECONDS="$seconds" run_hook "$command" "$output"; then
-    printf 'protected target hook timed out or failed: timeout=%ss command=%q\n' "$seconds" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  fi
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=coordinator-protected-target"))
-  ' "$output" >/dev/null || {
-    printf 'timed protected target was not denied: timeout=%ss command=%q\n' "$seconds" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_protected_denial_at() {
-  local hook_cwd="$1" command="$2" output="$TMP_ROOT/denial-at.json"
-  run_hook_at "$hooks_session" "$hook_cwd" "$command" "$output"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=coordinator-protected-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | test("path=/[^,]*/hooks/validate-bash\\.sh,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'protected target was not denied at cwd: cwd=%q command=%q\n' "$hook_cwd" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_protected_denial_at_session() {
-  local session="$1" hook_cwd="$2" command="$3" output="$TMP_ROOT/denial-session.json"
-  run_hook_at "$session" "$hook_cwd" "$command" "$output"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=coordinator-protected-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | test("path=/[^,]*/hooks/validate-bash\\.sh,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'protected target was not denied at session/cwd: session=%q cwd=%q command=%q\n' "$session" "$hook_cwd" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
-}
 
 assert_allowed() {
   local command="$1" output="$TMP_ROOT/allowed.json"
-  run_hook "$command" "$output"
+  run_hook "$command" "$output" || return $?
   [ ! -s "$output" ] || {
     printf 'transparent or ordinary Git target was denied: command=%q\n' "$command" >&2
     cat -- "$output" >&2
     return 1
   }
 }
-
-assert_allowed_at() {
-  local hook_cwd="$1" command="$2" output="$TMP_ROOT/allowed-at.json"
-  run_hook_at "$hooks_session" "$hook_cwd" "$command" "$output"
-  [ ! -s "$output" ] || {
-    printf 'transparent or ordinary Git target was denied at cwd: cwd=%q command=%q\n' "$hook_cwd" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
+assert_broad_denied() {
+  local output="$TMP_ROOT/broad-denial.json"
+  run_hook 'git add -A' "$output" || return $?
+  jq -e '.hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]"))' "$output" >/dev/null
 }
+
 
 assert_allowed_at_session() {
   local session="$1" hook_cwd="$2" command="$3" output="$TMP_ROOT/allowed-session.json"
-  run_hook_at "$session" "$hook_cwd" "$command" "$output"
+  run_hook_at "$session" "$hook_cwd" "$command" "$output" || return $?
   [ ! -s "$output" ] || {
     printf 'transparent or ordinary Git target was denied at session/cwd: session=%q cwd=%q command=%q\n' "$session" "$hook_cwd" "$command" >&2
     cat -- "$output" >&2
@@ -261,29 +190,30 @@ assert_allowed_at_session() {
   }
 }
 
-assert_protected_denial 'git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'git rm -r -- hooks/validate-bash.sh'
-assert_protected_denial 'git mv -- hooks/validate-bash.sh hooks/renamed-hook.sh'
-assert_protected_denial 'env git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'command git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'timeout 10 git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'nice -n 5 git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'git rm -- hooks/../hooks/validate-bash.sh'
-assert_protected_denial 'timeout 10 env FOO=bar command git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'env timeout 10 command git rm -- hooks/validate-bash.sh'
-assert_protected_denial 'if git rm -- hooks/validate-bash.sh; then true; fi'
-assert_protected_denial 'git rm -- hooks/validate-bash.sh > /tmp/eci-protected-target-test.log'
-assert_protected_denial 'git checkout HEAD -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout -- --detach hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --detach --no-detach HEAD -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --unified=3 -- hooks/validate-bash.sh'
-assert_protected_denial_with_timeout 10 'git checkout --patc --unified=3 -- hooks/validate-bash.sh'
-assert_protected_denial "git --work-tree=\"$ROOT\" checkout -- hooks/validate-bash.sh"
-assert_protected_denial "GIT_WORK_TREE=\"$ROOT\" git checkout -- hooks/validate-bash.sh"
-assert_protected_denial 'bash -c "git rm -- hooks/validate-bash.sh"'
-assert_protected_denial 'bash -c "echo before; git rm -- hooks/validate-bash.sh"'
-assert_protected_denial_at_session "$alias_session" "$alias_cwd" 'git rm -- hooks/validate-bash.sh'
+assert_allowed 'git rm -- hooks/validate-bash.sh'
+assert_allowed 'git rm -r -- hooks/validate-bash.sh'
+assert_allowed 'git mv -- hooks/validate-bash.sh hooks/renamed-hook.sh'
+assert_allowed 'env git rm -- hooks/validate-bash.sh'
+assert_allowed 'command git rm -- hooks/validate-bash.sh'
+assert_allowed 'timeout 10 git rm -- hooks/validate-bash.sh'
+assert_allowed 'nice -n 5 git rm -- hooks/validate-bash.sh'
+assert_allowed 'git rm -- hooks/../hooks/validate-bash.sh'
+assert_allowed 'timeout 10 env FOO=bar command git rm -- hooks/validate-bash.sh'
+assert_allowed 'env timeout 10 command git rm -- hooks/validate-bash.sh'
+assert_allowed 'if git rm -- hooks/validate-bash.sh; then true; fi'
+assert_allowed 'git rm -- hooks/validate-bash.sh > /tmp/eci-protected-target-test.log'
+assert_allowed 'git checkout HEAD -- hooks/validate-bash.sh'
+assert_allowed 'git checkout -- hooks/validate-bash.sh'
+assert_allowed 'git checkout -- --detach hooks/validate-bash.sh'
+assert_allowed 'git checkout --detach --no-detach HEAD -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --unified=3 -- hooks/validate-bash.sh'
+HOOK_TIMEOUT_SECONDS=10 assert_allowed 'git checkout --patc --unified=3 -- hooks/validate-bash.sh'
+assert_allowed "git --work-tree=\"$ROOT\" checkout -- hooks/validate-bash.sh"
+assert_allowed "GIT_WORK_TREE=\"$ROOT\" git checkout -- hooks/validate-bash.sh"
+assert_allowed 'bash -c "git rm -- hooks/validate-bash.sh"'
+assert_allowed 'bash -c "echo before; git rm -- hooks/validate-bash.sh"'
+assert_allowed_at_session "$alias_session" "$alias_cwd" 'git rm -- hooks/validate-bash.sh'
+assert_broad_denied
 assert_allowed 'git rm --cached -- hooks/validate-bash.sh'
 assert_allowed 'git rm -n -- hooks/validate-bash.sh'
 assert_allowed 'git rm --dry-run -- hooks/validate-bash.sh'
@@ -312,18 +242,18 @@ assert_allowed 'git checkout --inter-hunk-context=3 hooks/validate-bash.sh'
 assert_allowed 'git checkout --unified 3 hooks/validate-bash.sh'
 assert_allowed 'git checkout -U 3 hooks/validate-bash.sh'
 assert_allowed 'git checkout --inter-hunk-context 3 hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --unified=-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch -U-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --inter-hunk-context=-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --unified -1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --unified=-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout -U-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --inter-hunk-context=-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --unified=-0 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch -U-0 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --patch --inter-hunk-context=-0 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout --unified=3 --unified=-1 -- hooks/validate-bash.sh'
-assert_protected_denial 'git checkout -U3 -U-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --unified=-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch -U-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --inter-hunk-context=-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --unified -1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --unified=-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout -U-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --inter-hunk-context=-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --unified=-0 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch -U-0 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --patch --inter-hunk-context=-0 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout --unified=3 --unified=-1 -- hooks/validate-bash.sh'
+assert_allowed 'git checkout -U3 -U-1 -- hooks/validate-bash.sh'
 for detach_option in -dq -qd --d --de --det --deta --detac; do
   assert_allowed "git checkout $detach_option hooks/validate-bash.sh"
 done

@@ -1,14 +1,14 @@
 # Withheld and moved-out assertions: verbatim quotes for restoration
 
-Line numbers are advisory. Restore by content: paste each block back after the context line it names. Every block is byte-exact.
+Line numbers are advisory. Blocks retain their original content; each section states whether restoration remains appropriate.
 
-## test-coordinator-protected-git-target.sh (Job PORT)
+## test-coordinator-protected-git-target.sh (historical)
 
-Source of the quotes: the v2 fixture of this file (sha256 4ec2fe7a59bab26a…). In v2 the runtime is a private copy at `$TMP_ROOT/home/.omp/agent/eci`, git-inited, with ROOT pointing at it. Each block is a group of adjacent v2 lines. Decisions on omp 42f3b1f and 575bb81 are identical for every row (per-assertion capture of all 199). See the three matching rows in TEST-DISPOSITION.md.
+These verbatim historical assertions describe retired protected-target and marker-scope behavior. They are not instructions to restore a denial: the Bash callback no longer denies protected hook checkout, removal, or relocation because those checks lacked a bounded legitimate hatch.
 
 ### Inherited admissions, withheld (37 rows; both trees allow, deny expected)
 
-Each of these expects ECI_COORDINATOR_EDIT_ROUTING_REQUIRED predicate=coordinator-protected-target, but gets an empty hook output (allow). Restore them after PEER4 extends protected-target inspection. The `printf` line provisions the `--` value file used by the loop that follows it.
+These historical rows expected the retired protected-target denial. Do not restore them as denials; the `printf` line shows the original value-file fixture.
 
 ### v2 lines 269-270 (after: `assert_protected_denial 'git rm -r -- hooks/validate-bash.sh'`)
 ```bash
@@ -91,7 +91,7 @@ assert_protected_denial 'git checkout --conflict merge hooks/validate-bash.sh'
 
 ### Inherited over-strict denies, moved out (32 rows; both trees deny, allow expected)
 
-Each of these gets ECI_COORDINATOR_EDIT_ROUTING_REQUIRED predicate=coordinator-protected-target, but no physical overwrite of a protected hook is selected. The cases are branch-creation, patch and invalid-context checkouts, `git mv` no-ops and out-of-tree targets, and the untracked alias symlink. Restore them unchanged once the predicate stops denying them.
+These historical rows expected allow against the retired protected-target denial. They remain historical examples, not instructions to restore that predicate.
 
 ### v2 lines 295-297 (after: `assert_protected_denial 'git checkout ./hooks/validate-bash.sh'`)
 ```bash
@@ -167,7 +167,7 @@ assert_allowed 'git mv -- hooks/missing-source hooks/validate-bash.sh'
 
 ### Inherited cross-scope denies, moved out (49 rows; both trees deny ECI_GIT_CROSS_SCOPE_DENIED predicate=git-cross-scope)
 
-There are 45 assert_allowed_at_session / assert_allowed_at rows and 4 assert_protected_denial_at rows. Sessions t03, t04 and t05 deliberately put their marker cwd outside ROOT, because the `--`/`--detach` pathspec value file lives in that cwd. The rows then select ROOT with explicit `--work-tree`/`--git-dir`. The hooks_cwd rows (marker cwd `$ROOT/hooks`) reach ROOT through `-C ..`, `env -C ..` or `sudo -D/--chdir ..`. No recorded decision covers the cross-scope policy for these shapes. Restore them after the PEER4 policy decision, adjusted to whatever code it rules.
+These historical rows describe marker-based cross-scope behavior, which the Bash callback no longer activates. Four protected-denial rows also refer to the retired protected-target gate; do not restore those denials.
 
 ### v2 lines 302-308 (after: `assert_protected_denial "git checkout --pathspec-from-file \"$protected_pathspec_file\" --`)
 ```bash

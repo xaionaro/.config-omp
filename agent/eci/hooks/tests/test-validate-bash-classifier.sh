@@ -954,22 +954,6 @@ assert_git_whole_worktree_staging_denied() {
   }
 }
 
-assert_coordinator_protected_git_target_denied() {
-  local command="$1" runner="${2:-run_hook}" output
-  output="$("$runner" "$command")" || return $?
-  jq -e --arg ROOT "$ROOT" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_EDIT_ROUTING_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=coordinator-protected-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("path=" + $ROOT + "/hooks/validate-bash.sh,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("reason:")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'Coordinator protected Git target denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
 assert_stat_format_allowed() {
   local command="$1" runner="${2:-run_hook}" output
@@ -1749,7 +1733,7 @@ run_matrix_parallel coordinator assert_allowed coordinator-git-prep-dot \
 # ADDED: the explicit whole-worktree form both trees deny.
 run_matrix_parallel coordinator assert_git_whole_worktree_staging_denied coordinator-git-prep-unsafe-all \
   "git add -A"
-run_matrix_parallel coordinator assert_coordinator_protected_git_target_denied coordinator-protected-git-target \
+run_matrix_parallel coordinator assert_allowed coordinator-protected-git-target \
   "git rm -- hooks/validate-bash.sh" \
   "git rm -r -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh" \
@@ -1760,7 +1744,7 @@ run_matrix_parallel worker assert_allowed worker-git-staging-add \
   "git add README.md"
 run_subagent_matrix_parallel allowed worker-git-staging \
   "git restore --staged -- hooks/validate-bash.sh"
-run_matrix_parallel worker-root-owner assert_coordinator_protected_git_target_denied worker-git-prep \
+run_matrix_parallel worker-root-owner assert_allowed worker-git-prep \
   "git rm -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh"
 
@@ -2565,13 +2549,12 @@ run_subagent_matrix_parallel allowed worker-instruction-reads \
 run_subagent_matrix_parallel allowed worker-native-git \
   "git commit --amend -m checkpoint" \
   "git reset --hard HEAD"
-run_matrix_parallel worker-root-owner assert_diagnostic_denied worker-protected-git \
+run_matrix_parallel worker-root-owner assert_allowed worker-protected-git \
   "git checkout -- hooks/validate-bash.sh"
 run_subagent_matrix_parallel allowed worker-native-worktree-add \
   "git worktree add /tmp/eci-worker-tree HEAD"
-# Resolved read-only Git inspection is ordinary worker project work. Protected Git
-# mutations and executable-helper options are rejected by their own ownership
-# recognizers rather than by a read-command allowlist.
+# Read-only Git inspection and native path operations remain available to Workers;
+# concrete broad effects are checked independently.
 run_hook_matrix_parallel allowed coordinator-git-inspection \
   "git status --short" \
   "git status --short --branch" \
