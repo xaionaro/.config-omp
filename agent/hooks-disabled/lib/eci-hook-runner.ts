@@ -8,6 +8,7 @@ import { isAbsolute, join, resolve } from "node:path";
 /** Structural subset of omp's ExtensionContext used by the factories. */
 export interface EciSessionContext {
 	cwd: string;
+	agent?: { kind?: unknown };
 	sessionManager: { getSessionFile(): string | undefined };
 }
 
@@ -16,6 +17,7 @@ export interface EciIdentity {
 	transcriptPath?: string;
 	cwd: string;
 	isSubagent: boolean;
+	agentKind?: "main" | "sub";
 }
 
 export type HookStop = { kind: "exit"; code: number } | { kind: "deadline" } | { kind: "cancel" };
@@ -85,11 +87,11 @@ export function prefixMarksSubagent(prefix: Uint8Array): boolean {
 }
 
 /**
- * Subagent detection from the bounded transcript prefix (prefixMarksSubagent). A
- * transcript that cannot be read marks the call (fail-closed) and is not cached, so a
- * transient error does not pin the session.
+ * Subagent detection from the bounded transcript prefix (prefixMarksSubagent).
+ * Only documented main identity tolerates ENOENT while omp has not saved its
+ * transcript. Read failures are not cached, so they cannot pin a later callback.
  */
-function detectSubagent(transcriptPath: string | undefined): boolean {
+function detectSubagent(transcriptPath: string | undefined, agentKind: EciIdentity["agentKind"]): boolean {
 	if (!transcriptPath) return false;
 	const cached = subagentCache.get(transcriptPath);
 	if (cached !== undefined) return cached;
@@ -104,8 +106,8 @@ function detectSubagent(transcriptPath: string | undefined): boolean {
 		} finally {
 			closeSync(fd);
 		}
-	} catch {
-		return true;
+	} catch (error) {
+		return !(agentKind === "main" && isRecord(error) && error.code === "ENOENT");
 	}
 	const found = prefixMarksSubagent(prefix.subarray(0, length));
 	subagentCache.set(transcriptPath, found);
@@ -114,11 +116,19 @@ function detectSubagent(transcriptPath: string | undefined): boolean {
 
 export function identityFor(ctx: EciSessionContext): EciIdentity {
 	const transcriptPath = ctx.sessionManager.getSessionFile() ?? undefined;
+	let agentKind: EciIdentity["agentKind"];
+	try {
+		const kind = ctx.agent?.kind;
+		if (kind === "main" || kind === "sub") agentKind = kind;
+	} catch {
+		// Older or unavailable host identity retains transcript-only classification.
+	}
 	return {
 		sessionId: process.env.PI_SESSION_ID ?? "",
 		transcriptPath,
 		cwd: ctx.cwd,
-		isSubagent: detectSubagent(transcriptPath),
+		agentKind,
+		isSubagent: detectSubagent(transcriptPath, agentKind),
 	};
 }
 
@@ -127,6 +137,7 @@ export function basePayload(id: EciIdentity, hookEventName: string): Record<stri
 	return {
 		session_id: id.sessionId,
 		...(id.transcriptPath ? { transcript_path: id.transcriptPath } : {}),
+		...(id.agentKind ? { omp_agent_kind: id.agentKind } : {}),
 		cwd: id.cwd,
 		hook_event_name: hookEventName,
 	};

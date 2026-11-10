@@ -58,15 +58,15 @@ func fileSHA256(t *testing.T, path string) string {
 // TestProviderValidatorsUseCompiledJSONInterface runs the source omp validator
 // against the TestMain-provisioned planner, republished with its receipt in a
 // fixture home. The callback JSON on stdin reaches the compiled planner: the
-// active marker and the role change the verdict, the validator output is the
+// role changes the verdict, legacy markers do not, the validator output is the
 // planner's own --hook output, and an unverified planner fails closed. The
 // validator holds no command routing of its own (hooks/validate-bash.sh runs the
 // verified planner with --hook and passes its decision through); the Git fast-capability checks are
 // TestInstalledBinaryRejectsRepositoryDefaultGitArchiveFastCapability and
 // TestInstalledBinaryRejectsDirectPathGitStatusFastCapability.
 //
-// Example: an active coordinator's "rm -rf /" is denied with the planner's broad
-// destructive code; with no marker the same callback is admitted.
+// Example: broad deletion is denied without a marker, while only verified main
+// identity admits a sessions-root write before the transcript exists.
 func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	t.Parallel()
 
@@ -128,6 +128,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 		t.Fatalf("write main transcript: %v", err)
 	}
 	marker := filepath.Join(proofRoot, sessionID, "eci_active")
+	agentKind := ""
 
 	// run feeds one callback envelope to argv (the validator or the planner) and
 	// returns stdout; a non-zero exit fails the test.
@@ -137,6 +138,7 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 			"session_id":      sessionID,
 			"tool_name":       "Bash",
 			"transcript_path": transcript,
+			"omp_agent_kind":  agentKind,
 			"cwd":             fixtureRoot,
 			"tool_input":      map[string]string{"command": command},
 		})
@@ -178,8 +180,8 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 		return result.HookSpecificOutput.PermissionDecision, result.HookSpecificOutput.PermissionDecisionReason
 	}
 
-	if output := run(false, "rm -rf /", validator...); strings.TrimSpace(output) != "" {
-		t.Fatalf("inactive scope: validator output=%s, want admission", output)
+	if decision, reason := denial(run(false, "rm -rf /", validator...)); decision != "deny" || !strings.Contains(reason, string(CodeBroadDestructiveDenied)) {
+		t.Fatalf("inactive scope: expected broad destructive denial, got %q %q", decision, reason)
 	}
 	if err := os.WriteFile(marker, []byte("scope: validator interface\ncwd: "+fixtureRoot+"\nsession_id: "+sessionID+"\ncreated_utc: 2026-08-27T00:00:00Z\n"), 0o600); err != nil {
 		t.Fatalf("write active marker: %v", err)
@@ -192,8 +194,8 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 	}{
 		{name: "coordinator ordinary", command: "true"},
 		{name: "coordinator broad destructive", command: "rm -rf /", wantCode: CodeBroadDestructiveDenied},
-		{name: "worker broad live control", worker: true, command: "rm -rf /", wantCode: CodeControlOwnerRequired},
-		{name: "coordinator marker write", command: "touch " + marker, wantCode: CodePlanLiveControlDenied},
+		{name: "worker broad destructive", worker: true, command: "rm -rf /", wantCode: CodeBroadDestructiveDenied},
+		{name: "coordinator legacy marker write", command: "touch " + marker},
 	} {
 		output := run(testCase.worker, testCase.command, validator...)
 		if direct := run(testCase.worker, testCase.command, published, "--hook"); output != direct {
@@ -211,11 +213,52 @@ func TestProviderValidatorsUseCompiledJSONInterface(t *testing.T) {
 		}
 	}
 
+	// A main session's first write must work before omp persists its transcript.
+	transcript = filepath.Join(sessionsProject, "pending.jsonl")
+	sessionWrite := "touch " + filepath.Join(sessionsProject, "session-output")
+	for _, testCase := range []struct {
+		name     string
+		kind     string
+		worker   bool
+		wantDeny bool
+	}{
+		{name: "first main", kind: "main"},
+		{name: "first child", kind: "sub", wantDeny: true},
+		{name: "old adapter", wantDeny: true},
+		{name: "invalid kind", kind: "Main", wantDeny: true},
+		{name: "environment worker", kind: "main", worker: true, wantDeny: true},
+	} {
+		agentKind = testCase.kind
+		output := run(testCase.worker, sessionWrite, validator...)
+		if direct := run(testCase.worker, sessionWrite, published, "--hook"); output != direct {
+			t.Errorf("%s: validator output=%q, planner=%q", testCase.name, output, direct)
+		}
+		if !testCase.wantDeny {
+			if strings.TrimSpace(output) != "" {
+				t.Errorf("%s: expected admission, got %s", testCase.name, output)
+			}
+			continue
+		}
+		if decision, reason := denial(output); decision != "deny" || !strings.Contains(reason, "ECI_WORKER_SESSIONS_ROOT_DENIED") {
+			t.Errorf("%s: expected worker sessions denial, got %s", testCase.name, output)
+		}
+	}
+	if _, err := os.Lstat(transcript); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("callback classification persisted pending transcript: %v", err)
+	}
+
 	if err := os.Remove(receipt); err != nil {
 		t.Fatalf("remove planner receipt: %v", err)
 	}
-	if decision, _ := denial(run(false, "true", validator...)); decision != "deny" {
-		t.Fatalf("unverified planner: decision=%q, want deny", decision)
+	unverified := exec.Command(validator[0], validator[1:]...)
+	unverified.Env = []string{"HOME=" + home, "PATH=/usr/local/bin:/usr/bin:/bin", "TMPDIR=" + temporaryRoot}
+	unverified.Stdin = strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"true"}}`)
+	var stdout, stderr bytes.Buffer
+	unverified.Stdout, unverified.Stderr = &stdout, &stderr
+	err = unverified.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "ECI_HOOK_NATIVE_GATE_UNAVAILABLE") {
+		t.Fatalf("unverified planner: err=%v stdout=%q stderr=%q, want unavailable exit 2 without a verdict", err, stdout.String(), stderr.String())
 	}
 }
 

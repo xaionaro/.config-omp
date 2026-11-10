@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -155,6 +156,121 @@ func TestHookContextMainTranscriptIsCoordinator(t *testing.T) {
 	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd, TranscriptPath: mainTranscript})
 	require.NoError(t, err)
 	require.Equal(t, RoleCoordinator, got.Role)
+}
+
+// TestHookContextPendingIdentity limits the lazy-transcript exception to verified main callbacks.
+//
+// Example: a missing depth-two file with a real parent admits main, but never a child.
+func TestHookContextPendingIdentity(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	root := filepath.Dir(project)
+	require.NoError(t, os.MkdirAll(filepath.Join(project, "children"), 0700))
+	require.NoError(t, os.Symlink(project, filepath.Join(root, "linked")))
+	require.NoError(t, os.Symlink(filepath.Join(project, "absent"), filepath.Join(project, "dangling.jsonl")))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file-parent"), []byte("file"), 0600))
+	for _, testCase := range []struct {
+		name           string
+		path           string
+		kind           any
+		workerOverride string
+		want           Role
+	}{
+		{name: "pending main", path: filepath.Join(project, "pending.jsonl"), kind: "main", want: RoleCoordinator},
+		{name: "pending child identity", path: filepath.Join(project, "pending.jsonl"), kind: "sub", want: RoleWorker},
+		{name: "old adapter", path: filepath.Join(project, "pending.jsonl"), want: RoleWorker},
+		{name: "invalid identity", path: filepath.Join(project, "pending.jsonl"), kind: "Main", want: RoleWorker},
+		{name: "override one", path: filepath.Join(project, "pending.jsonl"), kind: "main", workerOverride: "1", want: RoleWorker},
+		{name: "override true", path: filepath.Join(project, "pending.jsonl"), kind: "main", workerOverride: "true", want: RoleWorker},
+		{name: "no session", kind: "main", want: RoleWorker},
+		{name: "depth one", path: filepath.Join(root, "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "depth three", path: filepath.Join(project, "children", "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "missing parent", path: filepath.Join(root, "absent", "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "symlink parent", path: filepath.Join(root, "linked", "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "dangling leaf", path: filepath.Join(project, "dangling.jsonl"), kind: "main", want: RoleWorker},
+		{name: "not directory", path: filepath.Join(root, "file-parent", "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "outside root", path: filepath.Join(t.TempDir(), "pending.jsonl"), kind: "main", want: RoleWorker},
+		{name: "parent traversal", path: project + "/../../outside/pending.jsonl", kind: "main", want: RoleWorker},
+	} {
+		// Each callback uses the wire decoder, keeping compatibility with older adapters.
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("ECI_HOOK_IS_SUBAGENT", testCase.workerOverride)
+			payload := map[string]any{"session_id": "owner", "cwd": cwd, "transcript_path": testCase.path}
+			if testCase.kind != nil {
+				payload["omp_agent_kind"] = testCase.kind
+			}
+			body, err := json.Marshal(payload)
+			require.NoError(t, err)
+			var input HookInput
+			require.NoError(t, json.Unmarshal(body, &input))
+			got, err := hookRequest(input)
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, got.Role)
+			require.Equal(t, MarkerInactive, got.Marker)
+		})
+	}
+	require.NoFileExists(t, filepath.Join(project, "pending.jsonl"))
+}
+
+// TestHookContextIdentityPreservesExistingTranscript keeps the pending exception out of saved sessions.
+//
+// Example: an advisor on a saved main transcript retains its existing role; fork and child stay workers.
+func TestHookContextIdentityPreservesExistingTranscript(t *testing.T) {
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	for _, kind := range []string{"main", "sub", ""} {
+		for name, contents := range map[string]string{
+			"main":      "{\"type\":\"session\"}\n",
+			"fork":      "{\"type\":\"session\",\"parentSession\":\"parent\"}\n",
+			"malformed": "not json\n",
+			"empty":     "",
+		} {
+			path := filepath.Join(project, name+".jsonl")
+			require.NoError(t, os.WriteFile(path, []byte(contents), 0600))
+			body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": path, "omp_agent_kind": kind})
+			require.NoError(t, err)
+			var input HookInput
+			require.NoError(t, json.Unmarshal(body, &input))
+			got, err := hookRequest(input)
+			require.NoError(t, err)
+			want := RoleWorker
+			if name == "main" {
+				want = RoleCoordinator
+			}
+			require.Equal(t, want, got.Role, "%s/%s", kind, name)
+		}
+	}
+}
+
+// TestHookContextPendingRejectsUnreadableParent distinguishes permission errors from lazy persistence.
+//
+// Example: EACCES beneath a real project directory never grants coordinator ownership.
+func TestHookContextPendingRejectsUnreadableParent(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions")
+	}
+	_, cwd := contextFixture(t)
+	project := sessionsFixture(t)
+	require.NoError(t, os.Chmod(project, 0000))
+	// Restore traversal before the temporary home is cleaned.
+	defer func() { require.NoError(t, os.Chmod(project, 0700)) }()
+	body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": filepath.Join(project, "pending.jsonl"), "omp_agent_kind": "main"})
+	require.NoError(t, err)
+	var input HookInput
+	require.NoError(t, json.Unmarshal(body, &input))
+	got, err := hookRequest(input)
+	require.NoError(t, err)
+	require.Equal(t, RoleWorker, got.Role)
+}
+
+// TestHookInputRejectsNonStringAgentKind keeps malformed wire identity out of the planner.
+//
+// Example: a numeric kind cannot be interpreted as a documented main identity.
+func TestHookInputRejectsNonStringAgentKind(t *testing.T) {
+	for _, value := range []string{"1", "true", "{}", "[]"} {
+		var input HookInput
+		require.Error(t, json.Unmarshal([]byte(`{"omp_agent_kind":`+value+`}`), &input))
+	}
 }
 
 // TestHookContextOversizedMainIsWorker keeps a depth-two transcript whose header exceeds the bounded prefix on the worker role; a long record after the header keeps main.

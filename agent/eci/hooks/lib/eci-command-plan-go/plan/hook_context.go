@@ -30,6 +30,7 @@ type HookInput struct {
 	CWD            string `json:"cwd"`
 	CWDUnknown     bool   `json:"cwd_unknown"`
 	TranscriptPath string `json:"transcript_path"`
+	OmpAgentKind   string `json:"omp_agent_kind"`
 	ToolName       string `json:"tool_name"`
 	ToolInput      struct {
 		Command string `json:"command"`
@@ -56,6 +57,14 @@ func hookRequest(input HookInput) (Request, error) {
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
 	role, transcriptErr := hookTranscriptRole(input.TranscriptPath)
 	request.Role = role
+	// Host identity fills only the lazy-file gap; saved transcripts remain authoritative.
+	if input.OmpAgentKind == "main" && errors.Is(transcriptErr, errHookTranscriptPending) {
+		request.Role = RoleCoordinator
+		transcriptErr = nil
+	}
+	if input.OmpAgentKind != "" && input.OmpAgentKind != "main" && input.OmpAgentKind != "sub" {
+		hookAdvisory("classify callback agent", fmt.Errorf("invalid omp_agent_kind %q", input.OmpAgentKind))
+	}
 	switch {
 	case transcriptErr == nil:
 	case errors.Is(transcriptErr, errHookTranscriptUnknown):
@@ -123,6 +132,11 @@ func hookProofRoot() (string, error) {
 // errHookTranscriptUnknown marks a callback transcript that fails closed to the worker role.
 var errHookTranscriptUnknown = errors.New("callback transcript is unknown")
 
+// errHookTranscriptPending marks a missing depth-two file with a verified real parent.
+//
+// Example: omp's first main callback can precede its transcript's first persistence.
+var errHookTranscriptPending = fmt.Errorf("%w: transcript is pending", errHookTranscriptUnknown)
+
 // hookTranscriptStatus verifies a callback transcript and classifies its prefix.
 //
 // Example: a symlinked transcript is unknown rather than main.
@@ -141,6 +155,11 @@ func hookTranscriptStatus(path string) (string, error) {
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if pendingErr := hookPendingTranscriptParent(path); pendingErr == nil {
+				return "", errHookTranscriptPending
+			}
+		}
 		return fail(err)
 	}
 	if !info.Mode().IsRegular() {
@@ -187,6 +206,42 @@ func hookTranscriptStatus(path string) (string, error) {
 	default:
 		return fail(fmt.Errorf("depth %d", depth))
 	}
+}
+
+// hookPendingTranscriptParent verifies the location of a not-yet-persisted main transcript.
+//
+// Example: sessions/project/main.jsonl may be absent, but project must already be a real directory.
+func hookPendingTranscriptParent(path string) error {
+	lexical, root, err := hookTranscriptRoots()
+	if err != nil {
+		return err
+	}
+	parent := filepath.Dir(path)
+	base, relative, err := hookTranscriptRelative(parent, lexical, root)
+	if err != nil {
+		return err
+	}
+	if strings.Count(relative, string(filepath.Separator)) != 0 {
+		return errors.New("pending transcript is not at depth two")
+	}
+	if err := hookNoSymlinkBelow(base, relative); err != nil {
+		return err
+	}
+	info, err := os.Lstat(parent)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("pending transcript parent is not a directory")
+	}
+	physical, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return err
+	}
+	if physical != filepath.Join(root, relative) {
+		return errors.New("pending transcript parent does not resolve to its sessions location")
+	}
+	return nil
 }
 
 // maxHookTranscriptPrefixLines bounds the records classified from the transcript prefix.
