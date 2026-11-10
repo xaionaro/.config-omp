@@ -5,9 +5,9 @@
 # through. Each lives in $HOME/.omp/agent/eci/bin with a <name>.sha256 receipt.
 # A name is rebuilt only when its binary or receipt is absent, or when the binary is a regular file that is not native
 # to this host and so can never run; this is the rule of pre-migration source 575bb81 (hooks/lib/eci-runtime-sync.sh:8,18-19).
-# Nothing is built over a symlink, a non-regular entry, or a leaf owned by another user. A present gate binary that the loader (lib/eci-native-binary.sh,
-# eci_runtime_verify) denies stops the run before anything is built, except in the Linux verifier bootstrap described at
-# eci_native_provision_locked; a stuck eci-worker-git or eci-verexec is reported and skipped.
+# Recorded foreign-pair conflicts and symlinked, non-regular, or foreign-owned leaves are not built over.
+# A present gate binary that the loader (lib/eci-native-binary.sh, eci_runtime_verify) denies stops the run before anything is built,
+# except in the Linux verifier bootstrap described at eci_native_provision_locked; a stuck eci-worker-git or eci-verexec is reported and skipped.
 # hooks/build-native-binaries.sh is the only builder. Hooks never build: they verify every use with the loader.
 # The warm path checks file type, receipt presence and host format only; full loader verification runs on the cold
 # path, under bin/.native-provision.lock. Every message goes to stderr.
@@ -28,13 +28,26 @@ eci_native_leaf_unresolved() {
   [ -L "$1" ] || { [ -e "$1" ] && { [ ! -f "$1" ] || [ ! -O "$1" ]; }; }
 }
 
+# A planner rollback records only an observed foreign pair in its retained transaction.
+eci_native_conflict_record() {
+  local record
+  for record in "$HOME/.omp/agent/eci/bin/.planner-importer.txn."*/"$1.conflict"; do
+    if [ -e "$record" ] || [ -L "$record" ]; then
+      eci_native_conflict=$record
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Sets eci_native_class for bin/$1:
-#   stuck   - the binary or its receipt is a symlink, non-regular, or owned by another user; never built over;
+#   stuck   - a recorded foreign pair, or a symlink, non-regular, or foreign-owned leaf; never built over;
 #   build   - the binary or receipt is absent, or the binary is regular but not native to this host;
 #   present - otherwise: regular binary, native, receipt present.
 eci_native_classify() {
   local path="$HOME/.omp/agent/eci/bin/$1"
   eci_native_class=stuck
+  if eci_native_conflict_record "$1"; then return 0; fi
   if eci_native_leaf_unresolved "$path" || eci_native_leaf_unresolved "$path.sha256"; then return 0; fi
   if [ ! -e "$path" ] || [ ! -e "$path.sha256" ] || ! eci_runtime_binary_is_native "$path"; then
     eci_native_class=build
@@ -65,6 +78,10 @@ eci_native_check() {
 
 eci_native_stuck_advisory() {
   local path
+  if eci_native_conflict_record "$1"; then
+    printf 'eci-active: retained planner conflict for %s; have its owner inspect and resolve the binary and receipt, then remove %s before retrying\n' "$1" "$eci_native_conflict" >&2
+    return
+  fi
   for path in "$HOME/.omp/agent/eci/bin/$1" "$HOME/.omp/agent/eci/bin/$1.sha256"; do
     if [ -e "$path" ] && [ ! -L "$path" ] && [ -f "$path" ] && [ ! -O "$path" ]; then
       printf 'eci-active: %s is owned by another user; ask its owner to resolve the conflict, then retry\n' "$path" >&2

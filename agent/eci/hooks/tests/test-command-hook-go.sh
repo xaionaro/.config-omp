@@ -130,6 +130,14 @@ provision first
 eci_runtime_binary_is_native "$binary"
 eci_runtime_binary_is_native "$importer"
 (cd -- "$runtime/bin" && eci_sha256 -c --quiet -- eci-command-plan.sha256 eci-safe-import.sha256 eci-verexec.sha256)
+# A verified loader denial carries its concrete reason without echoing the callback payload.
+mv -- "$binary" "$fixture/verified-planner"
+run_callback missing-verified 'echo ECI_PRIVATE_CALLBACK_SENTINEL' 2
+[ ! -s "$fixture/missing-verified.output" ]
+grep -F 'ECI native gate binary eci-command-plan is unavailable or unverified' "$fixture/missing-verified.stderr" >/dev/null
+grep -F '(is missing or a symlink)' "$fixture/missing-verified.stderr" >/dev/null
+! grep -F 'ECI_PRIVATE_CALLBACK_SENTINEL' "$fixture/missing-verified.stderr" >/dev/null
+mv -- "$fixture/verified-planner" "$binary"
 run_callback repaired-cat 'cat AGENTS.md'
 [ ! -s "$fixture/repaired-cat.output" ]
 "$binary" --hook <"$fixture/repaired-cat.input" >"$fixture/native.output"

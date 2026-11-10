@@ -411,6 +411,37 @@ wait "$locked_builder" || fail "builder failed after publication lock released"
 [ "$(digest_of "$bin/eci-command-plan")" != "$before_lock" ] || fail "builder did not publish after lock release"
 pass "builder waits for another publisher before changing the managed pair"
 
+# A retained foreign conflict blocks both normal provisioning and an already-waiting builder.
+printf f >>"$bin/eci-command-plan"
+rm "$bin/eci-command-plan.sha256"
+foreign_digest=$(digest_of "$bin/eci-command-plan")
+mkdir "$bin/.planner-importer.txn.foreign"
+mkfifo "$base/conflict-wait"
+exec 8>>"$bin/.planner-importer.publish.lock"
+eci_file_lock_acquire_fd 8 blocking || fail "cannot hold publication lock for conflict"
+"$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/conflict-builder.out" 2>"$base/conflict-wait" &
+locked_builder=$!
+IFS= read -r waiting_line <"$base/conflict-wait" || fail "conflict builder exited before waiting"
+[ "$waiting_line" = 'build-native-binaries: waiting for publication lock' ] || fail "unexpected conflict builder diagnostic: $waiting_line"
+: >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+eci_file_lock_release_fd 8 || fail "cannot release publication lock for conflict"
+if wait "$locked_builder"; then fail "waiting builder overwrote a recorded foreign pair"; fi
+[ "$(digest_of "$bin/eci-command-plan")" = "$foreign_digest" ] || fail "waiting builder changed the foreign binary"
+[ ! -e "$bin/eci-command-plan.sha256" ] || fail "waiting builder created a receipt over the foreign binary"
+run_provision conflict
+[ "$(rc_of conflict)" != 0 ] || fail "provisioning accepted a recorded foreign pair"
+expect_err conflict 'retained planner conflict for eci-command-plan'
+[ "$(digest_of "$bin/eci-command-plan")" = "$foreign_digest" ] || fail "provisioning changed the foreign binary"
+[ ! -e "$bin/eci-command-plan.sha256" ] || fail "provisioning created a receipt over the foreign binary"
+pass "recorded foreign pair blocks provisioning and an already-waiting builder"
+
+# A retained crash transaction without an observed conflict remains recoverable.
+rm "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+run_provision retained-crash
+[ "$(rc_of retained-crash)" = 0 ] || fail "nonconflicting retained transaction prevented crash recovery"
+[ -f "$bin/eci-command-plan.sha256" ] || fail "crash recovery did not recreate receipt"
+pass "retained transaction without a conflict record permits ordinary crash recovery"
+
 chmod 0700 "$bin"
 mv "$bin" "$base/physical-bin"
 ln -s "$base/physical-bin" "$bin"

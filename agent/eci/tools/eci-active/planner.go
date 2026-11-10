@@ -260,8 +260,8 @@ type plannerLeaf struct {
 //
 // Example: a receipt is removed before replacing its executable.
 type plannerTool struct {
-	binary  plannerLeaf
-	receipt plannerLeaf
+	Binary  plannerLeaf
+	Receipt plannerLeaf
 }
 
 // plannerLeafState describes path as absent, symlink, other, or regular:<mode>:<sha256>.
@@ -305,6 +305,25 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		return "", err
 	}
 	defer lock.Close()
+	entries, err := os.ReadDir(binDir)
+	if err != nil {
+		return "", fmt.Errorf("inspect retained planner transactions: %w", err)
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), plannerTxnPrefix) {
+			continue
+		}
+		for _, name := range plannerPairTools {
+			record := filepath.Join(binDir, entry.Name(), name+".conflict")
+			_, err := os.Lstat(record)
+			if err == nil {
+				return "", fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] retained conflict for %s; have its owner resolve the pair, then remove %s before retrying", name, record)
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				return "", fmt.Errorf("inspect retained conflict %s: %w", record, err)
+			}
+		}
+	}
 	// The first termination signal cancels the builds and is handed to publication. The handler exists before the
 	// transaction does, so an interrupt at any later point reaches the cleanup below.
 	signals := make(chan os.Signal, 1)
@@ -340,7 +359,7 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 	}
 	fmt.Fprintf(os.Stderr, "ECI build: original modules; GOCACHEPROG cleared; scratch=%s\n", txn)
 
-	tools := make([]*plannerTool, 0, len(plannerPairTools))
+	tools := make([]plannerTool, 0, len(plannerPairTools))
 	for _, name := range plannerPairTools {
 		built, err := plannerBuildTool(ctx, root, goTool, txn, name, goos, goarch)
 		if err != nil {
@@ -357,9 +376,9 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 		if err := writeFileAtomic(receipt, strings.NewReader(digest+"  "+name+"\n"), 0o644); err != nil {
 			return "", fmt.Errorf("[ECI_PLANNER_RECEIPT_FAILED] receipt of %s not staged: %v; no planner state was changed", name, err)
 		}
-		tools = append(tools, &plannerTool{
-			binary:  plannerLeaf{name: name, install: built},
-			receipt: plannerLeaf{name: name + ".sha256", install: receipt},
+		tools = append(tools, plannerTool{
+			Binary:  plannerLeaf{name: name, install: built},
+			Receipt: plannerLeaf{name: name + ".sha256", install: receipt},
 		})
 	}
 	if interruption := plannerInterrupted(interrupt, "the builds"); interruption != nil {
@@ -372,6 +391,37 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 	return filepath.Join(binDir, "eci-command-plan"), nil
 }
 
+// preparePlannerLeaf records and backs up a safe publication target.
+//
+// Example: a regular existing receipt is copied into the transaction.
+func preparePlannerLeaf(
+	binDir string,
+	txn string,
+	leaf *plannerLeaf,
+) error {
+	path := filepath.Join(binDir, leaf.name)
+	old, err := plannerLeafState(path)
+	if err != nil {
+		return fmt.Errorf("inspect planner target %s: %w", path, err)
+	}
+	leaf.old = old
+	switch {
+	case old == "absent":
+	case strings.HasPrefix(old, "regular:"):
+		leaf.backup = filepath.Join(txn, leaf.name+".backup")
+		if err := copyLeaf(path, leaf.backup); err != nil {
+			return fmt.Errorf("back up planner target %s: %w", path, err)
+		}
+	default:
+		return fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] pair target retained: %s (%s); no planner state was changed", path, old)
+	}
+	leaf.new, err = plannerLeafState(leaf.install)
+	if err != nil {
+		return fmt.Errorf("inspect staged planner target %s: %w", leaf.install, err)
+	}
+	return nil
+}
+
 // publishPlannerLeaves backs up every leaf and publishes each tool with its
 // receipt absent during binary replacement. Catchable failures restore the old
 // leaves; foreign changes retain the transaction for recovery.
@@ -380,26 +430,12 @@ func plannerApply(root, goTool, goos, goarch string) (string, error) {
 func publishPlannerLeaves(
 	binDir string,
 	txn string,
-	tools []*plannerTool,
+	tools []plannerTool,
 	interrupt <-chan os.Signal,
 ) (retained bool, err error) {
-	for _, tool := range tools {
-		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
-			path := filepath.Join(binDir, l.name)
-			if l.old, err = plannerLeafState(path); err != nil {
-				return false, err
-			}
-			switch {
-			case l.old == "absent":
-			case strings.HasPrefix(l.old, "regular:"):
-				l.backup = filepath.Join(txn, l.name+".backup")
-				if err := copyLeaf(path, l.backup); err != nil {
-					return false, err
-				}
-			default:
-				return false, fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] pair target retained: %s (%s); no planner state was changed", path, l.old)
-			}
-			if l.new, err = plannerLeafState(l.install); err != nil {
+	for i := range tools {
+		for _, leaf := range [2]*plannerLeaf{&tools[i].Binary, &tools[i].Receipt} {
+			if err := preparePlannerLeaf(binDir, txn, leaf); err != nil {
 				return false, err
 			}
 		}
@@ -414,9 +450,9 @@ func publishPlannerLeaves(
 			return false, nil
 		}
 	}
-	if !restorePlannerLeaves(binDir, txn, tools) {
+	if rollbackErr := restorePlannerLeaves(binDir, txn, tools); rollbackErr != nil {
 		fmt.Fprintf(os.Stderr, "ECI recovery transaction retained: %s\n", txn)
-		return true, failure
+		return true, errors.Join(failure, fmt.Errorf("planner rollback: %w", rollbackErr))
 	}
 	return false, failure
 }
@@ -433,11 +469,15 @@ func renamePlannerLeaf(
 	if err := plannerEvent("before-rename:"+leaf.name, path); err != nil {
 		return err
 	}
-	if state, err := plannerLeafState(path); err != nil || state != expected {
+	state, err := plannerLeafState(path)
+	if err != nil {
+		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] inspect %s: %w", path, err)
+	}
+	if state != expected {
 		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s changed during publication", path)
 	}
 	if err := os.Rename(leaf.install, path); err != nil {
-		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %v", err)
+		return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %w", err)
 	}
 	return plannerEvent("after-rename:"+leaf.name, path)
 }
@@ -448,36 +488,45 @@ func renamePlannerLeaf(
 // Example: a binary rename happens between receipt removal and receipt install.
 func renamePlannerLeaves(
 	binDir string,
-	tools []*plannerTool,
+	tools []plannerTool,
 ) error {
-	for _, tool := range tools {
-		receipt := &tool.receipt
+	for i := range tools {
+		tool := &tools[i]
+		receipt := &tool.Receipt
 		path := filepath.Join(binDir, receipt.name)
 		if receipt.old != "absent" {
 			if err := plannerEvent("before-remove-receipt:"+receipt.name, path); err != nil {
 				return err
 			}
-			if state, err := plannerLeafState(path); err != nil || state != receipt.old {
+			state, err := plannerLeafState(path)
+			if err != nil {
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] inspect %s: %w", path, err)
+			}
+			if state != receipt.old {
 				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s changed during publication", path)
 			}
 			if err := os.Remove(path); err != nil {
-				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %v", err)
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %w", err)
 			}
 			if err := plannerEvent("after-remove-receipt:"+receipt.name, path); err != nil {
 				return err
 			}
 		}
-		if err := renamePlannerLeaf(binDir, &tool.binary, tool.binary.old); err != nil {
+		if err := renamePlannerLeaf(binDir, &tool.Binary, tool.Binary.old); err != nil {
 			return err
 		}
 		if err := renamePlannerLeaf(binDir, receipt, "absent"); err != nil {
 			return err
 		}
 	}
-	for _, tool := range tools {
-		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
+	for i := range tools {
+		for _, l := range [2]*plannerLeaf{&tools[i].Binary, &tools[i].Receipt} {
 			path := filepath.Join(binDir, l.name)
-			if state, err := plannerLeafState(path); err != nil || state != l.new {
+			state, err := plannerLeafState(path)
+			if err != nil {
+				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] inspect %s: %w", path, err)
+			}
+			if state != l.new {
 				return fmt.Errorf("[ECI_PLANNER_PUBLISH_FAILED] %s does not match its staged state", path)
 			}
 		}
@@ -498,109 +547,129 @@ func restorePlannerLeaf(
 	if err := plannerEvent("before-restore:"+leaf.name, path); err != nil {
 		return err
 	}
-	if current, err := plannerLeafState(path); err != nil || current != state {
+	current, err := plannerLeafState(path)
+	if err != nil {
+		return fmt.Errorf("inspect recovery target %s: %w", path, err)
+	}
+	if current != state {
 		return fmt.Errorf("%s changed during recovery", path)
 	}
 	if leaf.old == "absent" {
 		if err := os.Remove(path); err != nil {
-			return err
+			return fmt.Errorf("remove recovery target %s: %w", path, err)
 		}
 	} else {
 		restore := filepath.Join(txn, leaf.name+".restore")
 		if err := copyLeaf(leaf.backup, restore); err != nil {
-			return err
+			return fmt.Errorf("copy recovery backup for %s: %w", path, err)
 		}
 		if err := os.Rename(restore, path); err != nil {
-			return err
+			return fmt.Errorf("restore recovery target %s: %w", path, err)
 		}
 	}
-	if current, err := plannerLeafState(path); err != nil || current != leaf.old {
+	current, err = plannerLeafState(path)
+	if err != nil {
+		return fmt.Errorf("inspect restored target %s: %w", path, err)
+	}
+	if current != leaf.old {
 		return fmt.Errorf("%s did not restore its previous state", path)
 	}
 	return plannerEvent("after-restore:"+leaf.name, path)
 }
 
-// restorePlannerLeaves removes a staged receipt before restoring its binary.
-// Foreign leaves remain untouched and incomplete rollback retains the transaction.
+// restorePlannerPair leaves both leaves alone if either is foreign.
+//
+// Example: an externally changed receipt prevents restoration of its binary.
+func restorePlannerPair(binDir, txn string, tool *plannerTool) error {
+	receipt := &tool.Receipt
+	binary := &tool.Binary
+	receiptPath := filepath.Join(binDir, receipt.name)
+	binaryPath := filepath.Join(binDir, binary.name)
+	receiptState, err := plannerLeafState(receiptPath)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", receiptPath, err)
+	}
+	binaryState, err := plannerLeafState(binaryPath)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", binaryPath, err)
+	}
+	if (receiptState != receipt.old && receiptState != receipt.new && receiptState != "absent") ||
+		(binaryState != binary.old && binaryState != binary.new) {
+		return fmt.Errorf("foreign planner pair %s=%s %s=%s", binaryPath, binaryState, receiptPath, receiptState)
+	}
+	if receiptState == receipt.new && receiptState != receipt.old {
+		if err := plannerEvent("before-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
+			return err
+		}
+		state, err := plannerLeafState(receiptPath)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", receiptPath, err)
+		}
+		if state != receiptState {
+			return fmt.Errorf("%s changed during recovery", receiptPath)
+		}
+		if err := os.Remove(receiptPath); err != nil {
+			return fmt.Errorf("remove staged receipt %s: %w", receiptPath, err)
+		}
+		receiptState = "absent"
+		if err := plannerEvent("after-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
+			return err
+		}
+	}
+	if binaryState != binary.old {
+		if err := restorePlannerLeaf(binDir, txn, binary, binaryState); err != nil {
+			return err
+		}
+	}
+	if receiptState == "absent" && receipt.old != "absent" {
+		if err := restorePlannerLeaf(binDir, txn, receipt, receiptState); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recordPlannerConflict records only a pair observed outside the transaction's states.
+//
+// Example: a changed binary and absent receipt stop automatic reprovisioning.
+func recordPlannerConflict(binDir, txn string, tool *plannerTool) error {
+	binary := &tool.Binary
+	receipt := &tool.Receipt
+	binaryPath := filepath.Join(binDir, binary.name)
+	receiptPath := filepath.Join(binDir, receipt.name)
+	binaryState, err := plannerLeafState(binaryPath)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", binaryPath, err)
+	}
+	receiptState, err := plannerLeafState(receiptPath)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", receiptPath, err)
+	}
+	if (binaryState == binary.old || binaryState == binary.new) &&
+		(receiptState == receipt.old || receiptState == receipt.new || receiptState == "absent") {
+		return nil
+	}
+	record := filepath.Join(txn, binary.name+".conflict")
+	if err := os.WriteFile(record, nil, 0o600); err != nil {
+		return fmt.Errorf("record foreign planner pair %s (automatic provision may overwrite it): %w", binaryPath, err)
+	}
+	return fmt.Errorf("foreign planner pair retained at %s and %s; resolve it before removing %s", binaryPath, receiptPath, txn)
+}
+
+// restorePlannerLeaves attempts rollback and records observed foreign pairs.
 //
 // Example: a failed binary restore leaves its receipt absent for reprovisioning.
-func restorePlannerLeaves(
-	binDir string,
-	txn string,
-	tools []*plannerTool,
-) bool {
-	ok := true
-	for _, tool := range tools {
-		receipt := &tool.receipt
-		receiptPath := filepath.Join(binDir, receipt.name)
-		receiptState, err := plannerLeafState(receiptPath)
-		if err != nil {
-			ok = false
-			continue
+func restorePlannerLeaves(binDir, txn string, tools []plannerTool) error {
+	var failures []error
+	for i := range tools {
+		if err := restorePlannerPair(binDir, txn, &tools[i]); err != nil {
+			failures = append(failures, err)
 		}
-		if receiptState == receipt.new && receiptState != receipt.old {
-			if err := plannerEvent("before-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
-				ok = false
-				continue
-			}
-			if state, err := plannerLeafState(receiptPath); err != nil || state != receiptState {
-				ok = false
-				continue
-			}
-			if err := os.Remove(receiptPath); err != nil {
-				ok = false
-				continue
-			}
-			receiptState = "absent"
-			if err := plannerEvent("after-remove-staged-receipt:"+receipt.name, receiptPath); err != nil {
-				ok = false
-				continue
-			}
-		}
-		if receiptState != receipt.old && receiptState != "absent" {
-			fmt.Fprintf(os.Stderr, "ECI recovery retained foreign state: %s=%s\n", receiptPath, receiptState)
-			ok = false
-		}
-
-		binary := &tool.binary
-		binaryPath := filepath.Join(binDir, binary.name)
-		binaryState, err := plannerLeafState(binaryPath)
-		if err != nil {
-			ok = false
-			continue
-		}
-		switch {
-		case binaryState == binary.old:
-		case binaryState == binary.new:
-			if err := restorePlannerLeaf(binDir, txn, binary, binaryState); err != nil {
-				ok = false
-			}
-		default:
-			fmt.Fprintf(os.Stderr, "ECI recovery retained foreign state: %s=%s\n", binaryPath, binaryState)
-			ok = false
-		}
-		binaryState, err = plannerLeafState(binaryPath)
-		if err != nil {
-			ok = false
-			continue
-		}
-		if receiptState == "absent" && receipt.old != "absent" && (binaryState != binary.new || binaryState == binary.old) {
-			if err := restorePlannerLeaf(binDir, txn, receipt, receiptState); err != nil {
-				ok = false
-			}
+		if err := recordPlannerConflict(binDir, txn, &tools[i]); err != nil {
+			failures = append(failures, err)
 		}
 	}
-	for _, tool := range tools {
-		for _, l := range [2]*plannerLeaf{&tool.binary, &tool.receipt} {
-			path := filepath.Join(binDir, l.name)
-			state, err := plannerLeafState(path)
-			if err != nil {
-				state = "unknown"
-			}
-			fmt.Fprintf(os.Stderr, "ECI recovery state: %s=%s\n", path, state)
-		}
-	}
-	return ok
+	return errors.Join(failures...)
 }
 
 // canonicalEciRoot requires the running binary to be the canonical ECI home under HOME. The planner sources

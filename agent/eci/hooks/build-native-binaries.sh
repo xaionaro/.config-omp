@@ -109,6 +109,12 @@ status=0
 for name in "${names[@]}"; do
   binary="$bin_dir/$name"
   receipt="$binary.sha256"
+  # Recheck under the shared lock: a planner may have recorded a conflict while we built.
+  if eci_native_conflict_record "$name"; then
+    eci_native_stuck_advisory "$name"
+    status=1
+    continue
+  fi
   if eci_native_leaf_unresolved "$binary" || eci_native_leaf_unresolved "$receipt"; then
     echo "build-native-binaries: refused $binary or $receipt: unresolved or foreign leaf" >&2
     status=1
