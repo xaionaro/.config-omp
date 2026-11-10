@@ -19,7 +19,7 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "eci_bash_gate_repair",
 		label: "Repair ECI Bash gate",
-		description: "If the gate is unavailable, compile eci-command-plan and, on Linux, eci-verexec from the current ~/.omp working-tree source, including uncommitted changes, and replace the shared ~/.omp/agent/eci/bin binaries and receipts for all sessions. Conflicted user-owned regular leaves and markers are preserved in a retained transaction; foreign or unresolved leaves are refused. Does not reset or edit source.",
+		description: "If the Bash gate is unavailable, selectively repair the planner and Linux verifier from the current ~/.omp working-tree source, including uncommitted changes. User-owned regular binaries and receipts replaced in the shared installation for all sessions are retained; unsafe or unknown failures are refused. Does not reset or edit source.",
 		parameters: pi.zod.object({}),
 		async execute(_callId, _params, signal, _onUpdate, ctx) {
 			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
@@ -44,7 +44,7 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 			if (signal?.aborted) {
 				return { isError: true, content: [{ type: "text", text: "Repair cancelled before rebuilding." }], details: {} };
 			}
-			const build = await runEciHook(scriptPath("build-native-binaries.sh"), {}, id, 600, { cleanup: "owned-group", args: ["--preserve-conflict", ...names], signal });
+			const build = await runEciHook(scriptPath("build-native-binaries.sh"), {}, id, 600, { cleanup: "owned-group", args: ["--gate-repair"], signal });
 			const output = `${build.stdout}${build.stderr}`.slice(-8192);
 			const summary = `source status: ${source}\n${output}`;
 			if (build.outcome.kind === "cancelled-before-start" || (build.outcome.kind === "ran" && build.outcome.stop.kind === "cancel")) {

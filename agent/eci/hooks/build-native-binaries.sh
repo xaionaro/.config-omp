@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the native ECI binaries into $HOME/.omp/agent/eci/bin and write their receipts.
-# Usage: build-native-binaries.sh [--preserve-conflict] [NAME...]. With no NAME it builds every binary this host lists below.
-# Each NAME must be one of those, at most once. The repair option retains conflicted leaves and records before publication.
+# Usage: build-native-binaries.sh [--preserve-conflict] [NAME...] or --gate-repair.
+# The fixed gate repair builds only unavailable planner/verifier pairs and retains their previous leaves.
 # Each binary <name> gets <name>.sha256 containing one sha256sum-format line: "<sha256-hex>  <name>".
 # eci-command-plan, eci-safe-import and eci-hook-helper are gate binaries; lib/eci-native-binary.sh runs them only after verifying their receipts. eci-safe-import has no launcher caller in this tree.
 # eci-worker-git is built with a receipt but not launcher-wired: the typed Worker Git route is unavailable during active ECI, so Workers use native Git, and the receipt is not verified at runtime.
@@ -21,6 +21,16 @@ die() {
   exit 1
 }
 source "$hook_dir/lib/eci-native-provision.sh"
+gate_repair=false
+if [ "${1-}" = --gate-repair ]; then
+  [ "$#" -eq 1 ] || die '--gate-repair accepts no names'
+  shift
+  gate_repair=true
+  if eci_runtime_verify eci-command-plan; then
+    echo 'build-native-binaries: Bash gate binaries are already verified'
+    exit 0
+  fi
+fi
 preserve_conflict=false
 if [ "${1-}" = --preserve-conflict ]; then
   preserve_conflict=true
@@ -41,6 +51,46 @@ retain_conflicted_pair() {
     txn="${record%/*}"
     mv -- "$record" "$retained/${txn##*/}.retired" || return 1
   done
+}
+
+# Classify only failures for which the verifier establishes a bounded repair.
+gate_repair_target() {
+  local reason="$ECI_RUNTIME_DENY_REASON" target detail binary receipt
+  case "$reason" in
+    "ECI native gate binary eci-command-plan is unavailable or unverified ("*) target=eci-command-plan ;;
+    "ECI native gate binary eci-verexec is unavailable or unverified ("*)
+      [ "$eci_runtime_platform" = Linux ] || return 1
+      target=eci-verexec ;;
+    *) return 1 ;;
+  esac
+  detail="${reason#*\(}"
+  detail="${detail%%\)*}"
+  binary="$HOME/.omp/agent/eci/bin/$target"
+  receipt="$binary.sha256"
+  eci_native_leaf_unresolved "$binary" && return 1
+  eci_native_leaf_unresolved "$receipt" && return 1
+  for leaf in "$binary" "$receipt"; do
+    if [ -e "$leaf" ]; then
+      [ -n "$(find "$leaf" -prune -type f -links 1 ! -perm -022 -print)" ] || return 1
+    fi
+  done
+  if [ -e "$binary" ]; then [ -x "$binary" ] || return 1; fi
+  case "$detail" in
+    'is missing or a symlink') [ ! -e "$binary" ] && [ ! -L "$binary" ] || return 1 ;;
+    'is not an ELF binary for this host'|'is not a Mach-O executable for this host'|'has no sha256 receipt'|'has a malformed sha256 receipt'|'sha256 does not match its receipt') ;;
+    *) return 1 ;;
+  esac
+  gate_target="$target"
+}
+
+# A staged Linux verifier proves the existing bin chain before its missing self-check.
+gate_missing_verifier_chain() {
+  local reason
+  reason="$("$stage/eci-verexec" --check --deny-fd 3 eci-command-plan 3>&1 >/dev/null)" && return 1
+  case "$reason" in
+    'ECI native gate binary eci-verexec is unavailable or unverified (is missing or a symlink); '*) return 0 ;;
+    *) printf '%s\n' "$reason" >&2; return 1 ;;
+  esac
 }
 
 # Select a PATH executable; a shell function or a relative PATH entry cannot build.
@@ -88,19 +138,31 @@ if [ "$#" -gt 0 ]; then
   done
   names=("$@")
 fi
+if [ "$gate_repair" = true ]; then
+  gate_repair_target || die "unsafe or unsupported gate failure: $ECI_RUNTIME_DENY_REASON"
+  names=("$gate_target")
+  echo 'build-native-binaries: fixed gate repair uses current working-tree source and changes shared binaries for all sessions' >&2
+  GIT_OPTIONAL_LOCKS=0 git -C "$hook_dir/lib" status -suall -- eci-command-plan-go eci-verexec-go >&2 || echo 'build-native-binaries: source status unknown' >&2
+fi
 
 bin_dir="$HOME/.omp/agent/eci/bin"
-if [ ! -d "$bin_dir" ]; then
-  [ ! -L "$bin_dir" ] || die "unresolved bin directory $bin_dir"
-  mkdir -p -- "$bin_dir"
-  chmod -- 0755 "$bin_dir"
+if [ "$gate_repair" = true ]; then
+  [ -d "$bin_dir" ] || die "gate bin directory unavailable: $bin_dir"
+  stage="$(mktemp -d "${TMPDIR:-/tmp}/.eci-gate-repair.XXXXXX")" || die 'cannot create repair stage'
+else
+  if [ ! -d "$bin_dir" ]; then
+    [ ! -L "$bin_dir" ] || die "unresolved bin directory $bin_dir"
+    mkdir -p -- "$bin_dir"
+    chmod -- 0755 "$bin_dir"
+  fi
+  stage=''
 fi
+trap '[ -z "$stage" ] || rm -rf -- "$stage"' EXIT
 bin_dir="$(cd -P -- "$bin_dir" && pwd -P)" || die 'cannot resolve bin directory'
 [ -O "$bin_dir" ] || die "bin directory not owned by current user: $bin_dir"
 lock="$bin_dir/.planner-importer.publish.lock"
 eci_native_leaf_unresolved "$lock" && die "publication lock is not a user-owned regular file: $lock"
-stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"
-trap 'rm -rf -- "$stage"' EXIT
+if [ "$gate_repair" != true ]; then stage="$(mktemp -d -- "$bin_dir/.build.XXXXXX")"; fi
 
 # Each build targets the host and clears caller tuning and target overrides. GOPROXY is inherited:
 # a fresh module cache downloads through the caller's proxy, and go.sum with GOSUMDB verifies every
@@ -119,12 +181,47 @@ for name in "${names[@]}"; do
   digest="$("${sha256_command[@]}" -- "$stage/$name")"
   printf '%s  %s\n' "${digest%% *}" "$name" >"$stage/$name.sha256"
 done
+if [ "$gate_repair" = true ] && [ "$gate_target" = eci-verexec ] && [ ! -e "$bin_dir/eci-verexec" ]; then
+  gate_missing_verifier_chain || die 'cannot establish trusted bin chain for missing verifier'
+fi
 
 # Cooperate with planner maintenance and runtime synchronization on the same lock.
 exec 6>>"$lock"
 if ! eci_file_lock_acquire_fd 6 nonblocking 2>/dev/null; then
   echo "build-native-binaries: waiting for publication lock" >&2
   eci_file_lock_acquire_fd 6 blocking || die "cannot acquire publication lock $lock"
+fi
+if [ "$gate_repair" = true ]; then
+  if eci_runtime_verify eci-command-plan; then
+    eci_file_lock_release_fd 6 || exit 1
+    echo 'build-native-binaries: Bash gate binaries are already verified'
+    exit 0
+  fi
+  gate_repair_target || die "unsafe or unsupported gate failure: $ECI_RUNTIME_DENY_REASON"
+  [ "$gate_target" = "${names[0]}" ] || die 'gate failure changed while building; retry'
+  if [ "$gate_target" = eci-verexec ] && [ ! -e "$bin_dir/eci-verexec" ]; then gate_missing_verifier_chain || die 'untrusted bin chain'; fi
+  binary="$bin_dir/$gate_target"
+  receipt="$binary.sha256"
+  retain_conflicted_pair "$gate_target" "$binary" "$receipt" || die "could not retain $gate_target; retry repair"
+  # Copy the staged pair onto the publication filesystem before the existing rename order.
+  publish="$(mktemp -d -- "$bin_dir/.build.XXXXXX")" || die 'cannot create publication stage'
+  cp -- "$stage/$gate_target" "$stage/$gate_target.sha256" "$publish/" || die 'cannot stage gate repair'
+  mv -- "$publish/$gate_target" "$binary"
+  mv -- "$publish/$gate_target.sha256" "$receipt"
+  rmdir -- "$publish"
+  eci_file_lock_release_fd 6 || exit 1
+  if eci_runtime_verify eci-command-plan; then
+    echo 'build-native-binaries: Bash gate binaries verified'
+    exit 0
+  fi
+  if [ "$gate_target" = eci-verexec ]; then
+    gate_repair_target || die "gate verification failed: $ECI_RUNTIME_DENY_REASON"
+    [ "$gate_target" = eci-command-plan ] || die "verifier repair failed: $ECI_RUNTIME_DENY_REASON"
+    rm -rf -- "$stage"
+    trap - EXIT
+    exec "$BASH" "$hook_dir/build-native-binaries.sh" --gate-repair
+  fi
+  die "gate verification failed: $ECI_RUNTIME_DENY_REASON"
 fi
 status=0
 for name in "${names[@]}"; do

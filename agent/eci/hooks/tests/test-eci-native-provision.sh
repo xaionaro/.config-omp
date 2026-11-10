@@ -525,7 +525,77 @@ run_provision retained-crash
 [ "$(rc_of retained-crash)" = 0 ] || fail "nonconflicting retained transaction prevented crash recovery"
 [ "$(built_names | tr ' ' '\n' | grep -c '^eci-command-plan$')" -ge 1 ] || fail "crash recovery did not rebuild planner"
 [ -f "$bin/eci-command-plan.sha256" ] || fail "crash recovery did not recreate receipt"
+[ "$(cat "$bin/.planner-importer.txn.foreign/original")" = 'original backup' ] || fail "crash recovery changed retained backup"
 pass "retained transaction without a conflict record permits ordinary crash recovery"
+
+# Fixed gate repair changes only damaged managed pairs and retains their contents.
+: >"$build_log"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-healthy.out" 2>"$base/out/gate-healthy.err" || fail "healthy gate repair failed"
+[ "$(builds)" = 0 ] || fail "healthy gate repair built binaries"
+printf 'damaged planner' >>"$bin/eci-command-plan"
+cp -p "$bin/eci-command-plan" "$base/damaged-planner"
+cp -p "$bin/eci-command-plan.sha256" "$base/damaged-receipt"
+: >"$build_log"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-damaged.out" 2>"$base/out/gate-damaged.err" || fail "damaged planner repair failed"
+[ "$(built_names)" = eci-command-plan ] || fail "gate repair rebuilt unrelated binaries"
+eci_runtime_verify eci-command-plan || fail "gate repair did not verify"
+found=0
+for retained in "$bin"/.planner-importer.txn.*/eci-command-plan; do
+  if cmp -s "$retained" "$base/damaged-planner"; then
+    cmp -s "${retained%/*}/eci-command-plan.sha256" "$base/damaged-receipt" || fail "gate repair lost damaged receipt"
+    found=1
+  fi
+done
+[ "$found" = 1 ] || fail "gate repair did not retain damaged planner"
+: >"$bin/eci-command-plan.sha256"
+: >"$build_log"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-malformed.out" 2>"$base/out/gate-malformed.err" || fail "malformed receipt repair failed"
+[ "$(built_names)" = eci-command-plan ] && eci_runtime_verify eci-command-plan || fail "malformed receipt not repaired"
+rm "$bin/eci-command-plan"
+: >"$build_log"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-missing.out" 2>"$base/out/gate-missing.err" || fail "missing planner repair failed"
+[ "$(built_names)" = eci-command-plan ] && eci_runtime_verify eci-command-plan || fail "missing planner not repaired"
+printf 'interrupted repair' >>"$bin/eci-command-plan"
+: >"$bin/.planner-importer.txn.foreign/eci-command-plan.conflict"
+cat >"$base/fakebin/mv" <<'EOF'
+#!/bin/sh
+case "$*" in *eci-command-plan.sha256*".planner-importer.txn."*) exit 1 ;; esac
+exec /bin/mv "$@"
+EOF
+chmod 0755 "$base/fakebin/mv"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-interrupted.out" 2>"$base/out/gate-interrupted.err"; then fail "interrupted gate repair succeeded"; fi
+[ -f "$bin/.planner-importer.txn.foreign/eci-command-plan.conflict" ] || fail "interrupted gate repair retired marker"
+rm "$base/fakebin/mv"
+"$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-retry.out" 2>"$base/out/gate-retry.err" || fail "interrupted gate repair retry failed"
+eci_runtime_verify eci-command-plan || fail "gate did not verify after retry"
+chmod 0775 "$bin/eci-command-plan"
+: >"$build_log"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-unsafe.out" 2>"$base/out/gate-unsafe.err"; then fail "unsafe mode accepted"; fi
+[ "$(builds)" = 0 ] && [ -n "$(find "$bin/eci-command-plan" -prune -perm 775 -print)" ] || fail "unsafe planner changed"
+chmod 0755 "$bin/eci-command-plan"
+chmod 0644 "$bin/eci-command-plan"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-noexec.out" 2>"$base/out/gate-noexec.err"; then fail "nonexecutable planner accepted"; fi
+[ "$(builds)" = 0 ] || fail "nonexecutable planner was rebuilt"
+chmod 0755 "$bin/eci-command-plan"
+mv "$bin/eci-command-plan" "$base/planner-link-target"
+ln -s "$base/planner-link-target" "$bin/eci-command-plan"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-link.out" 2>"$base/out/gate-link.err"; then fail "symlink planner accepted"; fi
+[ -L "$bin/eci-command-plan" ] && [ "$(builds)" = 0 ] || fail "symlink planner changed"
+rm "$bin/eci-command-plan"
+mv "$base/planner-link-target" "$bin/eci-command-plan"
+if [ "$host_os" = Linux ]; then
+  rm "$bin/eci-verexec"
+  : >"$build_log"
+  chmod 0775 "$bin"
+  if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-chain.out" 2>"$base/out/gate-chain.err"; then fail "untrusted chain accepted"; fi
+  [ ! -e "$bin/eci-verexec" ] || fail "untrusted chain received verifier"
+  chmod 0700 "$bin"
+  : >"$build_log"
+  "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-verifier.out" 2>"$base/out/gate-verifier.err" || fail "missing verifier repair failed"
+  [ "$(built_names)" = eci-verexec ] || fail "missing verifier rebuilt unrelated binary"
+  eci_runtime_verify eci-command-plan || fail "gate did not verify after verifier repair"
+fi
+pass "gate repair retains damaged pairs, skips healthy binaries and refuses unsafe modes"
 
 chmod 0700 "$bin"
 mv "$bin" "$base/physical-bin"

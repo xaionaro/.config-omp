@@ -295,7 +295,7 @@ func copyLeaf(src, dst string) error {
 
 // checkPlannerConflictRecords refuses retained conflicts in one transaction.
 //
-// Example: a recorded planner conflict requires its owner's resolution.
+// Example: a recorded conflict names the bounded retention route and preserves the transaction.
 func checkPlannerConflictRecords(
 	binDir string,
 	txnName string,
@@ -683,7 +683,7 @@ func recordPlannerConflict(
 	if err := os.WriteFile(record, nil, 0o600); err != nil {
 		return fmt.Errorf("record foreign planner pair %s (automatic provision may overwrite it): %w", binaryPath, err)
 	}
-	return fmt.Errorf("foreign planner pair retained at %s and %s; resolve it before removing %s", binaryPath, receiptPath, txn)
+	return fmt.Errorf("[ECI_PLANNER_PUBLISH_UNSAFE] foreign planner pair retained at %s and %s; if Bash works, run bash \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" --preserve-conflict %s; otherwise see the retained planner conflict gate catalog entry. Do not remove %s or overwrite unresolved leaves", binaryPath, receiptPath, binary.name, txn)
 }
 
 // restorePlannerLeaves attempts rollback and records observed foreign pairs.

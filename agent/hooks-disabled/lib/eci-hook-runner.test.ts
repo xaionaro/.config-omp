@@ -139,8 +139,7 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 		expect(JSON.stringify(decision)).not.toContain("secret");
 		const verdict = bashPreToolVerdict(run);
 		expect(verdict?.block).toBe(true);
-		expect(verdict?.reason).toContain("If eci_bash_gate_repair is available");
-		expect(verdict?.reason).toContain(": eci-bash-gate-repair");
+		expect(verdict?.reason).not.toContain(": eci-bash-gate-repair");
 		expect(verdict?.reason).not.toContain("secret");
 	}
 	expect(bashGateDecision({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })).toEqual({ kind: "deny", reason: "bounded route" });
@@ -157,7 +156,7 @@ test("Bash factory exceptions block with conditional repair guidance without exp
 	const event = { toolName: "bash", get input(): never { throw new Error("sensitive-value"); } };
 	const verdict = await handler!(event, {});
 	expect(verdict).toMatchObject({ block: true });
-	expect(JSON.stringify(verdict)).toContain("If eci_bash_gate_repair is available");
+	expect(JSON.stringify(verdict)).not.toContain("eci_bash_gate_repair");
 	expect(JSON.stringify(verdict)).not.toContain("sensitive-value");
 });
 
@@ -242,14 +241,12 @@ test("Bash callback uses the session manager identity without inventing a transc
 	}
 });
 
-test("Bash conflict recovery rewrites only the exact unavailable request", async () => {
+test("Bash recovery rewrites only exact requests with a native gate denial", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
 	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; }, zod: { object: () => ({}) }, registerTool: () => {} } as never);
 	const savedHome = process.env.HOME;
 	const home = join(dir, "home 'quoted'");
 	const hooks = join(home, ".omp/agent/eci/hooks");
-	const bin = join(home, ".omp/agent/eci/bin");
-	const txn = join(bin, ".planner-importer.txn.test");
 	const script = join(hooks, "validate-bash.sh");
 	mkdirSync(hooks, { recursive: true });
 	const ctx = { cwd: dir, sessionManager: { getSessionId: () => "s", getSessionFile: () => undefined } };
@@ -258,24 +255,26 @@ test("Bash conflict recovery rewrites only the exact unavailable request", async
 		process.env.HOME = home;
 		writeFileSync(script, "exit 2\n");
 		expect(await call(": eci-bash-gate-repair")).toMatchObject({ block: true });
-		mkdirSync(txn, { recursive: true });
-		writeFileSync(join(txn, "eci-command-plan.conflict"), "");
-		for (const command of [": eci-bash-gate-repair; echo extra", ": eci-bash-gate-repair\ntrue", ":  eci-bash-gate-repair", "true"]) {
-			expect(await call(command)).toMatchObject({ block: true });
+		for (const name of process.platform === "linux" ? ["eci-command-plan", "eci-verexec"] : ["eci-command-plan"]) {
+			writeFileSync(script, `printf '%s\\n' '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary ${name} is unavailable or unverified (has no sha256 receipt); provision it' >&2\nexit 2\n`);
+			for (const command of [": eci-bash-gate-repair; echo extra", ": eci-bash-gate-repair\ntrue", ":  eci-bash-gate-repair", "true"]) {
+				expect(await call(command)).toMatchObject({ block: true });
+			}
+			const result = await call("  : eci-bash-gate-repair  ") as { input: Record<string, unknown> };
+			expect(Object.keys(result.input).sort()).toEqual(["command", "cwd", "timeout"]);
+			expect(result.input.cwd).toBe(hooks);
+			expect(result.input.timeout).toBe(600);
+			const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+			const bash = resolveHookBash();
+			if (!("bash" in bash)) throw new Error(bash.error);
+			expect(result.input.command).toBe(`HOME=${quote(home)} ${quote(bash.bash)} ${quote(join(hooks, "build-native-binaries.sh"))} --gate-repair`);
 		}
-		const result = await call("  : eci-bash-gate-repair  ") as { input: Record<string, unknown> };
-		expect(Object.keys(result.input).sort()).toEqual(["command", "cwd", "timeout"]);
-		expect(result.input.cwd).toBe(hooks);
-		expect(result.input.timeout).toBe(600);
-		const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
-		const bash = resolveHookBash();
-		if (!("bash" in bash)) throw new Error(bash.error);
-		const names = process.platform === "linux" ? "eci-verexec eci-command-plan" : "eci-command-plan";
-		expect(result.input.command).toBe(`HOME=${quote(home)} ${quote(bash.bash)} ${quote(join(hooks, "build-native-binaries.sh"))} --preserve-conflict ${names}`);
 		writeFileSync(script, `printf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"denied"}}'\n`);
 		expect(await call(": eci-bash-gate-repair")).toEqual({ block: true, reason: "denied" });
 		writeFileSync(script, "exit 0\n");
 		expect(await call(": eci-bash-gate-repair")).toBeUndefined();
+		writeFileSync(script, `echo malformed; echo '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable or unverified (has no sha256 receipt); provision it' >&2; exit 2\n`);
+		expect(await call(": eci-bash-gate-repair")).toMatchObject({ block: true });
 	} finally {
 		if (savedHome === undefined) delete process.env.HOME;
 		else process.env.HOME = savedHome;
