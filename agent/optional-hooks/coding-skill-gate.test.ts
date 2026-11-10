@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, test } from "bun:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import gate from "./coding-skill-gate.ts";
@@ -259,4 +259,38 @@ test("does not gate gofmt on directories without Go files", () => {
  const directory = join(agentDir, "empty-project");
  mkdirSync(directory);
  assert.equal(call("bash", {command: `gofmt -w '${directory}'`}), undefined);
+});
+
+test("gofmt finds Go files in hidden directories and Go symlinks", () => {
+ const {call} = setup();
+ const directory = join(agentDir, "nested-project");
+ const hidden = join(directory, ".generated");
+ mkdirSync(hidden, {recursive: true});
+ writeFileSync(join(hidden, "main.go"), "package main\n");
+ assert.match(call("bash", {command: `gofmt -w '${directory}'`})!.reason, /coding-go/);
+ const links = join(agentDir, "link-project");
+ mkdirSync(links);
+ symlinkSync(join(hidden, "main.go"), join(links, "linked.go"));
+ assert.match(call("bash", {command: `gofmt -w '${links}'`})!.reason, /coding-go/);
+});
+
+test("accepts whole raw skill reads but not raw line selections", () => {
+ const {call, result} = setup();
+ const common = details("coding-common");
+ result("read", {path: "skill://coding-common:1-2:raw"}, common);
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
+ result("read", {path: "skill://coding-common:raw"}, {...common, raw: true, displayContent: {...common.displayContent, text: `${common.displayContent.text}\n`}});
+ const go = details("coding-go");
+ result("read", {path: "skill://coding-go:raw"}, {...go, raw: true, displayContent: {...go.displayContent, text: `${go.displayContent.text}\n`}});
+ assert.equal(call("write", {path: "a.go"}), undefined);
+});
+
+test("accepts a complete raw canonical file and rejects a missing final newline", () => {
+ const {call, result} = setup();
+ const path = join(agentDir, "skills", "coding-common", "SKILL.md") + ":raw";
+ const common = details("coding-common");
+ result("read", {path}, {...common, raw: true});
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
+ result("read", {path}, {...common, raw: true, displayContent: {...common.displayContent, text: `${common.displayContent.text}\n`}});
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-go/);
 });

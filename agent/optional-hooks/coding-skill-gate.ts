@@ -1,7 +1,7 @@
 // Disabled until deliberately installed under hooks/. Successful reads are scoped
 // to the current agent and reconstructed from its active transcript branch.
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import { existsSync, opendirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -18,20 +18,23 @@ function languageForExistingSkills(path: string): string | undefined {
  return ["common", name].every(skill => existsSync(join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills", `coding-${skill}`, "SKILL.md"))) ? name : undefined;
 }
 
-function readSkill(input: Record<string, unknown>, result: { isError?: boolean; details?: unknown }, cwd: string): string | undefined {
+function verifiedReadSkill(input: Record<string, unknown>, result: { isError?: boolean; details?: unknown }, cwd: string): string | undefined {
  if (result.isError || typeof input.path !== "string") return undefined;
- const details = result.details as { summary?: unknown; truncation?: unknown; meta?: { truncation?: unknown; limits?: unknown }; displayContent?: { text?: string; startLine?: number; lineNumbers?: (number | null)[] } } | undefined;
+ const details = result.details as { raw?: boolean; summary?: unknown; truncation?: unknown; meta?: { truncation?: unknown; limits?: unknown }; displayContent?: { text?: string; startLine?: number; lineNumbers?: (number | null)[] } } | undefined;
  if (details?.summary || details?.truncation || details?.meta?.truncation || details?.meta?.limits || details?.displayContent?.startLine !== 1) return undefined;
  const display = details.displayContent;
  if (display.lineNumbers?.some((number, index) => number !== index + 1)) return undefined;
- const uri = /^skill:\/\/(coding-(?:common|go|python))(?:\/SKILL\.md)?$/.exec(input.path);
- if (!uri && /:\d|:raw|[?;]/.test(input.path)) return undefined;
+ const raw = input.path.endsWith(":raw");
+ const readPath = raw ? input.path.slice(0, -4) : input.path;
+ if (raw !== (details.raw === true)) return undefined;
+ const uri = /^skill:\/\/(coding-(?:common|go|python))(?:\/SKILL\.md)?$/.exec(readPath);
+ if (!uri && /:\d|:raw|[?;]/.test(readPath)) return undefined;
  for (const name of ["common", "go", "python"]) {
   const canonical = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "skills", `coding-${name}`, "SKILL.md");
   try {
-   if (uri ? uri[1] !== `coding-${name}` : realpathSync(resolve(cwd, input.path)) !== realpathSync(canonical)) continue;
-   const text = readFileSync(canonical, "utf8").replace(/\r\n/g, "\n").replace(/\n$/, "");
-   if (display.text === text) return `coding-${name}`;
+   if (uri ? uri[1] !== `coding-${name}` : realpathSync(resolve(cwd, readPath)) !== realpathSync(canonical)) continue;
+   const text = readFileSync(canonical, "utf8").replace(/\r\n/g, "\n");
+   if (display.text?.replace(/\r\n/g, "\n") === (raw ? text : text.replace(/\n$/, ""))) return `coding-${name}`;
   } catch (error) {
    if (!(error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR"))) throw error;
   }
@@ -46,7 +49,7 @@ function gofmtTarget(operands: string[], cwd: string): string | undefined {
   if (/[$`*?{}]/.test(operand)) continue;
   const path = resolve(cwd, operand);
   try {
-   if (statSync(path).isDirectory()) directories.push(path);
+   if (lstatSync(path).isDirectory()) directories.push(path);
    else if (path.endsWith(".go")) return path;
   } catch (error) {
    if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(String(error.code)))) throw error;
@@ -59,10 +62,9 @@ function gofmtTarget(operands: string[], cwd: string): string | undefined {
    const dir = opendirSync(path);
    try {
     for (let entry = dir.readSync(); entry && remaining-- > 0; entry = dir.readSync()) {
-     if (entry.name.startsWith(".")) continue;
      const child = join(path, entry.name);
      if (entry.isDirectory()) directories.push(child);
-     else if (entry.isFile() && entry.name.endsWith(".go")) return child;
+     else if (!entry.name.startsWith(".") && entry.name.endsWith(".go") && (entry.isFile() || entry.isSymbolicLink())) return child;
     }
    } finally { dir.closeSync(); }
   } catch (error) {
@@ -73,7 +75,7 @@ function gofmtTarget(operands: string[], cwd: string): string | undefined {
 }
 
 // Recognize literal shell words and redirections without interpreting expansions.
-function shellWrites(command: string, cwd: string): string[] {
+function literalShellWriteTargets(command: string, cwd: string): string[] {
  // Heredoc bodies are data, not shell commands.
  let delimiter: string | undefined;
  command = command.split("\n").map(line => {
@@ -141,7 +143,7 @@ function shellWrites(command: string, cwd: string): string[] {
 }
 
 // Ignore apparent calls occurring inside strings or comments.
-function evalWrites(code: string): string[] {
+function literalEvalWriteTargets(code: string): string[] {
  const paths: string[] = [];
  let quote = "", escaped = false, comment = false;
  for (let i = 0; i < code.length; i++) {
@@ -171,7 +173,7 @@ function evalWrites(code: string): string[] {
  return paths;
 }
 
-function pathsFor(tool: string, input: Record<string, unknown>, cwd: string): string[] {
+function writeTargetsFor(tool: string, input: Record<string, unknown>, cwd: string): string[] {
  if (tool === "write") return typeof input.path === "string" ? [input.path] : [];
  if (tool === "edit" || tool === "apply_patch") {
   const paths = typeof input.path === "string" ? [input.path] : [];
@@ -187,8 +189,8 @@ function pathsFor(tool: string, input: Record<string, unknown>, cwd: string): st
   }
   return paths;
  }
- if (tool === "bash" && typeof input.command === "string") return shellWrites(input.command, typeof input.cwd === "string" ? resolve(cwd, input.cwd) : cwd);
- if (tool === "eval" && typeof input.code === "string") return evalWrites(input.code);
+ if (tool === "bash" && typeof input.command === "string") return literalShellWriteTargets(input.command, typeof input.cwd === "string" ? resolve(cwd, input.cwd) : cwd);
+ if (tool === "eval" && typeof input.code === "string") return literalEvalWriteTargets(input.code);
  return [];
 }
 
@@ -218,7 +220,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
    }
    if (message.role !== "toolResult" || message.toolName !== "read") continue;
    const input = calls.get(message.toolCallId);
-   const skill = input && readSkill(input, message, ctx.cwd);
+   const skill = input && verifiedReadSkill(input, message, ctx.cwd);
    if (skill) seen.add(skill);
   }
   return seen;
@@ -231,7 +233,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  pi.on("tool_result", (event, ctx) => {
   const id = agentKey(ctx);
   if (event.toolName === "read") {
-   const skill = readSkill(event.input as Record<string, unknown>, event, ctx.cwd);
+   const skill = verifiedReadSkill(event.input as Record<string, unknown>, event, ctx.cwd);
    if (skill) hydrateReads(ctx).add(skill);
   }
   if (event.toolName === "ast_edit" && !event.isError && event.details && typeof event.details === "object" && "files" in event.details && Array.isArray(event.details.files)) {
@@ -242,7 +244,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  });
  pi.on("tool_call", (event, ctx) => {
   const input = event.input as Record<string, unknown>;
-  const paths = event.toolName === "write" && input.path === "xd://resolve" ? [...pending.get(agentKey(ctx)) ?? []] : pathsFor(event.toolName, input, ctx.cwd);
+  const paths = event.toolName === "write" && input.path === "xd://resolve" ? [...pending.get(agentKey(ctx)) ?? []] : writeTargetsFor(event.toolName, input, ctx.cwd);
   for (const path of paths) {
    const lang = languageForExistingSkills(path);
    if (!lang) continue;
