@@ -31,6 +31,19 @@ function script(name: string, body: string): string {
 	return path;
 }
 
+/** Verifies that a recorded child PID is absent, not merely unsignalable. */
+function expectProcessGone(pidFile: string): void {
+	const pid = Number(readFileSync(pidFile, "utf8").trim());
+	expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+	let failure: unknown;
+	try {
+		process.kill(pid, 0);
+	} catch (err) {
+		failure = err;
+	}
+	expect(failure).toMatchObject({ code: "ESRCH" });
+}
+
 /** A PATH directory holding only bash and cat, so no `timeout` is reachable. */
 function pathWithoutTimeout(): string {
 	const bin = join(dir, "bin");
@@ -164,14 +177,14 @@ test("the deadline retires the hook's child within the cleanup bound", async () 
 	expect(run.code).toBe(124);
 	expect(run.stdout).toBe("");
 	expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
-	expect(() => process.kill(Number(readFileSync(pidFile, "utf8").trim()), 0)).toThrow();
+	expectProcessGone(pidFile);
 }, 15000);
 
 test("a redirected TERM-resistant child cannot outlive the cleanup", async () => {
 	const pidFile = join(dir, "stubborn-child.pid");
 	const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1);
 	expect(run.code).toBe(137);
-	expect(() => process.kill(Number(readFileSync(pidFile, "utf8").trim()), 0)).toThrow();
+	expectProcessGone(pidFile);
 }, 15000);
 
 test("a hook that ignores SIGTERM is killed after the grace period and reports 137", async () => {
