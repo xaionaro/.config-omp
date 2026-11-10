@@ -1,9 +1,9 @@
-// omp PreToolUse gate for `edit` and `write` → pretooluse-edit-dispatch.sh (timeout 75s).
-// `edit` targets include hashline patch headers and move destinations; `write` targets
-// are `path`/`paths`. Each distinct target gets one dispatcher run with `tool_input.file_path`.
-// With no target, one run gets the input unchanged.
+// omp PreToolUse gate for `edit` and `write` → pretooluse-edit-dispatch.sh.
+// Edit targets use the host hashline inspector, including move destinations.
+// Write targets are path/paths. Each distinct target gets one dispatcher run.
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { basePayload, identityFor, preToolVerdict, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
+import { editInspect } from "@oh-my-pi/pi-natives";
+import { BASH_GATE_DEADLINE_SEC, basePayload, identityFor, preToolVerdict, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
 
 const SCRIPT = "pretooluse-edit-dispatch.sh";
 
@@ -16,28 +16,11 @@ function targetPaths(input: Record<string, unknown>): string[] {
 	return [...new Set(paths)];
 }
 
-const PATCH_HEADER = /^\[(.+)#[0-9A-Za-z]{4}\]\s*$/;
-const MOVE_TARGET = /^MV (.+)$/;
-
-function unquotePath(path: string): string {
-	if (path.length >= 2 && (path[0] === '"' || path[0] === "'") && path.at(-1) === path[0]) {
-		return path.slice(1, -1);
-	}
-	return path;
-}
-
-/** Distinct hashline patch source and move destination paths, in order. */
+/** Inspect with the host parser rather than maintaining a separate grammar. */
 function editTargetPaths(input: Record<string, unknown>): string[] {
-	if (typeof input.input !== "string") return [];
-	const paths: string[] = [];
-	for (const line of input.input.split("\n")) {
-		const match = PATCH_HEADER.exec(line.trimEnd());
-		if (match) paths.push(match[1]);
-		else {
-			const move = MOVE_TARGET.exec(line);
-			if (move) paths.push(unquotePath(move[1]));
-		}
-	}
+	const inspection = editInspect("hashline", JSON.stringify(input));
+	const paths = [...inspection.paths];
+	for (const op of inspection.fileOps) if (op.kind === "move" && op.to !== undefined) paths.push(op.to);
 	return [...new Set(paths)];
 }
 
@@ -45,17 +28,34 @@ export default function eciEditGate(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event, ctx) => {
 		try {
 			if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
+			const deadline = performance.now() + BASH_GATE_DEADLINE_SEC * 1000;
 			const input = event.input as Record<string, unknown>;
 			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
 			const toolName = event.toolName === "edit" ? "Edit" : "Write";
-			const paths = event.toolName === "edit" ? editTargetPaths(input) : targetPaths(input);
+			let paths: string[];
+			if (event.toolName === "edit") {
+				try {
+					paths = editTargetPaths(input);
+				} catch (err) {
+					return { block: true, reason: `ECI edit target inspection failed: ${String(err)}. Correct the patch and retry, or read the exact file and use Write for the intended content; Write remains subject to the same target checks.` };
+				}
+				if (paths.length === 0) return { block: true, reason: "ECI edit target inspection found no targets. Correct the patch and retry, or read the exact file and use Write for the intended content; Write remains subject to the same target checks." };
+			} else {
+				paths = targetPaths(input);
+			}
 			const toolInputs = paths.length > 0 ? paths.map((filePath) => ({ ...input, file_path: filePath })) : [input];
 			for (const toolInput of toolInputs) {
+				const remaining = (deadline - performance.now()) / 1000;
+				if (remaining <= 0) return { block: true, reason: "ECI edit target checks timed out; retry the same operation, or split it into smaller edits within the same session." };
 				const run = await runEciHook(scriptPath(SCRIPT),
 					{ ...basePayload(id, "PreToolUse"), tool_name: toolName, tool_input: toolInput },
 					id,
-					75,
+					remaining,
+					{ cleanup: "owned-group" },
 				);
+				if (run.outcome.kind === "ran" && run.outcome.stop.kind === "deadline") {
+					return { block: true, reason: "ECI edit target checks timed out; retry the same operation, or split it into smaller edits within the same session." };
+				}
 				const verdict = preToolVerdict(run, "pretooluse-edit-dispatch");
 				if (verdict) return verdict;
 			}

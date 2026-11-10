@@ -8,10 +8,9 @@ TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-edit-dispatch-json.XXXXX
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 dispatch_root="$TMP_ROOT/hooks"
-mkdir -p "$dispatch_root/lib"
+mkdir -p "$dispatch_root"
+cp -a -- "$ROOT/hooks/lib" "$dispatch_root/lib"
 cp -- "$ROOT/hooks/pretooluse-edit-dispatch.sh" "$dispatch_root/pretooluse-edit-dispatch.sh"
-ln -s -- "$ROOT/hooks/lib/eci-tmp.sh" "$dispatch_root/lib/eci-tmp.sh"
-ln -s -- "$ROOT/hooks/lib/eci-diagnostic.sh" "$dispatch_root/lib/eci-diagnostic.sh"
 
 # Exercise the private dispatcher with a line-2 bypass removed if present,
 # and preserve the source bytes.
@@ -27,6 +26,12 @@ cat >"$dispatch_root/validate-edit-write.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${FAKE_DISPATCH_MODE:-allow}" in
+  fields)
+    mapfile -d '' -t fields <"${ECI_EDIT_DISPATCH_FIELDS:?}"
+    [ "${#fields[@]}" -eq 8 ] && [ "${fields[3]}" = notes.txt ] &&
+      [ "${fields[6]}" = yes ] && [ "${fields[7]}" = ok ] || exit 17
+    printf '%s\n' ok >"${FIELDS_CHECK_RESULT:?}"
+    ;;
   allow) exit 0 ;;
   allow-envelope)
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"advisory allow"}}'
@@ -66,7 +71,7 @@ run_case() {
   output="$TMP_ROOT/$mode.out"
   error="$TMP_ROOT/$mode.err"
   set +e
-  FAKE_DISPATCH_MODE="$mode" ENABLE_SECURITY_REMINDER=0 \
+  FAKE_DISPATCH_MODE="$mode" FIELDS_CHECK_RESULT="$TMP_ROOT/fields-ok" ENABLE_SECURITY_REMINDER=0 \
     bash "$dispatch_root/pretooluse-edit-dispatch.sh" <"$input" >"$output" 2>"$error"
   status=$?
   set -e
@@ -125,6 +130,8 @@ run_home_authority_case missing -u HOME
 run_home_authority_case relative HOME=relative
 
 run_case allow empty
+run_case fields empty
+[ -f "$TMP_ROOT/fields-ok" ] || { printf '%s\n' 'dispatcher fields were not validated' >&2; exit 1; }
 run_case allow-envelope empty
 run_case deny envelope
 run_case malformed empty

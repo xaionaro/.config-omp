@@ -86,9 +86,9 @@ trap '_eci_gate_error_trap "$LINENO" "$?" "$BASH_COMMAND"' ERR
 # every value, and every decision built from it, is the same either way.
 parsed_fields=()
 # pretooluse-edit-dispatch.sh may already have read these fields with the same
-# identity check (eci_edit_dispatch_fields_load, field 8); otherwise this gate
+# identity check (eci_edit_dispatch_fields_load, field 6); otherwise this gate
 # reads them itself.
-if eci_edit_dispatch_fields_load "$input" && [ "${eci_edit_dispatch_fields[8]}" = yes ]; then
+if eci_edit_dispatch_fields_load "$input" && [ "${eci_edit_dispatch_fields[6]}" = yes ]; then
   parsed_fields=("${eci_edit_dispatch_fields[@]:0:4}" ok)
 else
   mapfile -d '' -t parsed_fields < <(printf '%s' "$input" | jq -nj '[inputs]

@@ -52,8 +52,8 @@ eci_strip_trailing_newlines() {
 # pretooluse-edit-dispatch.sh parses the callback stdin once and names a file of
 # NUL-separated fields in ECI_EDIT_DISPATCH_FIELDS for an Edit-family tool:
 # tool_name, session_id, cwd, the edit target, transcript present (yes/no),
-# transcript_path, the edit text, edit text usable (yes/no), eci-active-gate
-# identity usable (yes/no), then "ok".  Values are the raw jq strings; callers
+# transcript_path, eci-active-gate identity usable (yes/no), then "ok".
+# Values are the raw jq strings; callers
 # drop trailing newlines where a $(jq -r ...) read would.
 # eci_edit_dispatch_fields_load STDIN loads them into eci_edit_dispatch_fields
 # and returns 0 only for a complete record tied to this callback: the file and
@@ -74,7 +74,7 @@ eci_edit_dispatch_fields_load() {
   { stdin_copy="$(<"$dir/input.json")"; } 2>/dev/null || return 1
   [ "$stdin_copy" = "$1" ] || return 1
   mapfile -d '' -t eci_edit_dispatch_fields <"$file" 2>/dev/null || eci_edit_dispatch_fields=()
-  if [ "${#eci_edit_dispatch_fields[@]}" -eq 10 ] && [ "${eci_edit_dispatch_fields[9]}" = ok ]; then
+  if [ "${#eci_edit_dispatch_fields[@]}" -eq 8 ] && [ "${eci_edit_dispatch_fields[7]}" = ok ]; then
     case "${eci_edit_dispatch_fields[0]}" in
       Edit|Write|MultiEdit|NotebookEdit) return 0 ;;
     esac
