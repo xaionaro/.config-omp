@@ -603,3 +603,64 @@ func TestHookContextAssignmentReadonly(t *testing.T) {
 	require.False(t, !hookReadonlyCommand(ShellCommandRecord{Argv: []string{"KEY=value", "cat", "ordinary"}}), "assignment-prefixed read marked mutable")
 	require.False(t, hookReadonlyCommand(ShellCommandRecord{Argv: []string{"KEY=value", "git", "add", "ordinary"}}), "assignment-prefixed mutation marked readonly")
 }
+
+// TestHookUnknownCWDDoesNotUseProcessDirectory checks the explicit unknown envelope.
+//
+// Example: a virtual cwd cannot create a baseline for the planner's process cwd.
+func TestHookUnknownCWDDoesNotUseProcessDirectory(t *testing.T) {
+	root, repo := contextFixture(t)
+	output, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput()
+	require.NoErrorf(t, err, "%s", output)
+	t.Chdir(repo)
+	request, err := hookRequest(HookInput{SessionID: "child", CWDUnknown: true})
+	require.NoError(t, err)
+	require.Empty(t, request.CWD)
+	request.HookMode = true
+	request.CollectShellCommands = true
+	request.Command = "touch relative-file"
+	result := Classify(request)
+	require.NotNil(t, result.ShellAnalysis)
+	require.NotEmpty(t, result.ShellAnalysis.Commands)
+	require.False(t, result.ShellAnalysis.Commands[0].CWDKnown)
+	require.NoError(t, recordHookActivity(request, Result{ShellAnalysis: &ShellAnalysis{OutputWrites: true}}))
+	_, err = os.Stat(filepath.Join(root, "touched-repos"))
+	require.True(t, os.IsNotExist(err), "unknown cwd recorded a repository: %v", err)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "existing-tool"), []byte("#!/bin/sh\n"), 0700))
+	require.Empty(t, resolveExecutable("./existing-tool", ""))
+}
+
+// TestHookActivityUnknownSegmentPreservesAbsoluteTargets checks per-segment cwd.
+//
+// Example: an absolute git -C still records its repository when the cwd is unknown.
+func TestHookActivityUnknownSegmentPreservesAbsoluteTargets(t *testing.T) {
+	root, repo := contextFixture(t)
+	output, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput()
+	require.NoErrorf(t, err, "%s", output)
+	request := Request{Role: RoleWorker, ActiveSession: "child", CWD: repo}
+	analysis := &ShellAnalysis{Commands: []ShellCommandRecord{{Argv: []string{"touch", "relative"}}}}
+	require.NoError(t, recordHookActivity(request, Result{ShellAnalysis: analysis}))
+	_, err = os.Stat(filepath.Join(root, "touched-repos"))
+	require.True(t, os.IsNotExist(err), "unknown segment inherited callback repo: %v", err)
+	analysis.Commands[0].Argv = []string{"git", "-C", repo, "add", "file"}
+	require.NoError(t, recordHookActivity(request, Result{ShellAnalysis: analysis}))
+	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "child"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+}
+
+// TestHookActivityRelativeWorkerRepositoryUsesSegmentCWD checks scoped relative paths.
+//
+// Example: --repo dependency is relative to the known command directory.
+func TestHookActivityRelativeWorkerRepositoryUsesSegmentCWD(t *testing.T) {
+	root, cwd := contextFixture(t)
+	repo := filepath.Join(cwd, "dependency")
+	require.NoError(t, os.Mkdir(repo, 0700))
+	output, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput()
+	require.NoErrorf(t, err, "%s", output)
+	request := Request{Role: RoleWorker, ActiveSession: "child", CWD: cwd}
+	analysis := &ShellAnalysis{Commands: []ShellCommandRecord{{Argv: []string{"eci-worker-git", "--repo", "dependency", "stage"}, CWD: cwd, CWDKnown: true}}}
+	require.NoError(t, recordHookActivity(request, Result{ShellAnalysis: analysis}))
+	entries, err := os.ReadDir(filepath.Join(root, "touched-repos", "sessions", "child"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+}

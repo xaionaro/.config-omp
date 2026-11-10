@@ -2,8 +2,8 @@
 // hook factories. Not discovered as a factory (lives outside pre/ and post/).
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readSync } from "node:fs";
-import { constants as osConstants, userInfo } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { constants as osConstants, homedir, userInfo } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 
 /** Structural subset of omp's ExtensionContext used by the factories. */
 export interface EciSessionContext {
@@ -18,16 +18,16 @@ export interface EciIdentity {
 	isSubagent: boolean;
 }
 
+export type HookStop = { kind: "exit"; code: number } | { kind: "deadline" } | { kind: "cancel" };
+export type HookOutcome =
+	| { kind: "cancelled-before-start" }
+	| { kind: "spawn-error"; message: string }
+	| { kind: "ran"; stop: HookStop; cleanup: "graceful" | "forced" | "unconfirmed" };
+
 export interface HookRun {
-	ok: boolean;
-	code: number;
+	outcome: HookOutcome;
 	stdout: string;
 	stderr: string;
-	cleanupUncertain?: boolean;
-	/** Observed hook exit, independent of a strict cleanup outcome. */
-	hookExitCode?: number;
-	deadlineExceeded?: boolean;
-	cleanupForced?: boolean;
 }
 
 export const eciHooksDir = (): string => {
@@ -132,6 +132,27 @@ export function basePayload(id: EciIdentity, hookEventName: string): Record<stri
 	};
 }
 
+const HOST_PATH_SPACE = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/;
+
+/** Returns omp 18.18.6's Bash cwd only for spellings resolved exactly here.
+ * Recheck host resolution when upgrading omp; undefined means unknown.
+ */
+export function bashHostCwd(requested: unknown, command: string, sessionCwd: string, env = process.env): string | undefined {
+	if (requested === undefined || requested === "") {
+		const word = /^cd[ \t]+([^\n]*?)[ \t]*(?:&&|;)/.exec(command)?.[1];
+		if (word !== undefined && (word.includes(":") || /^['"]?@/.test(word) || HOST_PATH_SPACE.test(word) || !!env.CDPATH)) return undefined;
+		return sessionCwd;
+	}
+	if (typeof requested !== "string" || /[:\\]/.test(requested) || requested.startsWith("@") || HOST_PATH_SPACE.test(requested)) return undefined;
+	let path = requested;
+	if (path === "~") path = homedir();
+	else if (path.startsWith("~/")) path = homedir() + path.slice(1);
+	else if (path.startsWith("~")) return undefined;
+	if (/^\/+$/.test(path)) return sessionCwd;
+	if (!isAbsolute(path)) return resolve(sessionCwd, path);
+	return path.split("/").includes("..") ? undefined : resolve(path);
+}
+
 /** Seconds between group SIGTERM and a SIGKILL if the group remains. */
 export const KILL_GRACE_SEC = 5;
 /** Seconds after SIGKILL before abandoning held output and checking cleanup. */
@@ -169,47 +190,42 @@ function signalGroup(pid: number, signal: NodeJS.Signals | 0): "present" | "abse
 export type HookCleanupPolicy = "deadline-only" | "owned-group";
 
 /**
- * Spawns the hook script as `bash script` in its own process group, with the JSON
- * payload on stdin and a deadline enforced here, so no external `timeout` is needed.
- * Like coreutils timeout, the deadline sends SIGTERM to the whole group and, when any
- * member is still alive KILL_GRACE_SEC later, SIGKILL; the run then reports 124
- * (stopped by SIGTERM) or 137 (needed SIGKILL). Output still held open DRAIN_SEC after
- * the SIGKILL (a process that left the group) is abandoned. With owned-group
- * cleanup, normal exit also retires remaining group members. Spawn, shell
- * resolution, or uncertain cleanup returns code -1; strict cleanup also
- * reports the observed hook exit and whether the deadline or forced cleanup
- * occurred. Process-group cleanup does not cover descendants that leave the
- * group.
+ * Runs the hook in its own process group. A deadline retires that group under
+ * either policy; owned-group also retires members after an ordinary exit.
+ * Unconfirmed cleanup takes precedence over deadline and exit outcomes. Group
+ * cleanup cannot cover descendants that leave the group. Omp may stop waiting
+ * before this runner finishes; the deadline and cleanup then continue.
  */
 export async function runEciHook(
 	script: string,
 	stdin: Record<string, unknown>,
 	id: EciIdentity,
 	timeoutSec: number,
-	cleanupPolicy: HookCleanupPolicy = "deadline-only",
+	options: { cleanup?: HookCleanupPolicy; signal?: AbortSignal; args?: readonly string[] } = {},
 ): Promise<HookRun> {
-	const strictCleanup = cleanupPolicy === "owned-group";
-	if (!isAbsolute(script)) return { ok: false, code: -1, stdout: "", stderr: "ECI hook path is not absolute" };
+	if (options.signal?.aborted) return { outcome: { kind: "cancelled-before-start" }, stdout: "", stderr: "" };
+	const retireOnExit = options.cleanup === "owned-group";
+	if (!isAbsolute(script)) return { outcome: { kind: "spawn-error", message: "ECI hook path is not absolute" }, stdout: "", stderr: "" };
 	const env: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
 	env.ECI_SESSION_ID = id.sessionId;
 	env.ECI_THREAD_ID = id.sessionId;
 	env.ECI_HOOK_IS_SUBAGENT = id.isSubagent ? "1" : "0";
 	const resolved = resolveHookBash(env);
-	if ("error" in resolved) return { ok: false, code: -1, stdout: "", stderr: resolved.error };
+	if ("error" in resolved) return { outcome: { kind: "spawn-error", message: resolved.error }, stdout: "", stderr: "" };
 	const { promise, resolve } = Promise.withResolvers<HookRun>();
 	const stdout: Buffer[] = [];
 	const stderr: Buffer[] = [];
 	const timers: Timer[] = [];
-	let timedOut = false;
+	let stop: HookStop | undefined;
 	let killed = false;
 	let closed = false;
-	let cleanupUncertain = false;
+	let cleanupUnconfirmed = false;
 	let finished = false;
 	let retiring = false;
 	let deadlineTimer: Timer | undefined;
 	let exitCode: number | undefined;
-	const child = spawn(resolved.bash, [script], {
+	const child = spawn(resolved.bash, [script, ...(options.args ?? [])], {
 		cwd: existsSync(id.cwd) ? id.cwd : undefined,
 		env,
 		stdio: ["pipe", "pipe", "pipe"],
@@ -218,58 +234,63 @@ export async function runEciHook(
 	const finish = (run: HookRun): void => {
 		if (finished) return;
 		finished = true;
+		options.signal?.removeEventListener("abort", onAbort);
 		for (const timer of timers) clearTimeout(timer);
 		child.stdout?.destroy();
 		child.stderr?.destroy();
 		resolve(run);
 	};
 	const result = (): HookRun => {
-		const code = cleanupUncertain ? -1 : killed ? KILL_EXIT : timedOut ? TIMEOUT_EXIT : (exitCode ?? -1);
-		return {
-			ok: code === 0, code, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(),
-			...(cleanupUncertain ? { cleanupUncertain: true } : {}),
-			...(strictCleanup ? {
-				deadlineExceeded: timedOut,
-				...(exitCode !== undefined ? { hookExitCode: exitCode } : {}),
-				...(killed && !timedOut ? { cleanupForced: true } : {}),
-			} : {}),
-		};
+		const outcome: HookOutcome = { kind: "ran", stop: stop ?? { kind: "exit", code: -1 }, cleanup: cleanupUnconfirmed ? "unconfirmed" : killed ? "forced" : "graceful" };
+		return { outcome, stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() };
 	};
 	const retireGroup = (pid: number): void => {
 		if (retiring) return;
 		retiring = true;
-		if (signalGroup(pid, "SIGTERM") === "unknown" && strictCleanup) cleanupUncertain = true;
+		if (signalGroup(pid, "SIGTERM") === "unknown") cleanupUnconfirmed = true;
 		timers.push(setTimeout(() => {
 			const group = signalGroup(pid, 0);
-			if (group === "present" || (group === "unknown" && strictCleanup)) {
-				if (group === "unknown") cleanupUncertain = true;
+			if (group !== "absent") {
+				if (group === "unknown") cleanupUnconfirmed = true;
 				killed = true;
-				if (signalGroup(pid, "SIGKILL") === "unknown" && strictCleanup) cleanupUncertain = true;
+				if (signalGroup(pid, "SIGKILL") === "unknown") cleanupUnconfirmed = true;
 			}
 			if (closed && !killed) {
 				finish(result());
 				return;
 			}
 			timers.push(setTimeout(() => {
-				if (strictCleanup && signalGroup(pid, 0) !== "absent") cleanupUncertain = true;
+				if (signalGroup(pid, 0) !== "absent") cleanupUnconfirmed = true;
 				finish(result());
 			}, DRAIN_SEC * 1000));
 		}, KILL_GRACE_SEC * 1000));
 	};
-	child.on("error", err => finish({ ok: false, code: -1, stdout: "", stderr: String(err) }));
+	child.on("error", err => finish({ outcome: { kind: "spawn-error", message: String(err) }, stdout: "", stderr: "" }));
 	child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
 	child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
 	child.on("exit", (code, signal) => {
 		exitCode = code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : -1);
+		stop ??= { kind: "exit", code: exitCode };
 	});
 	child.on("close", () => {
 		if (finished) return;
 		closed = true;
 		clearTimeout(deadlineTimer);
-		if ((timedOut || strictCleanup) && child.pid !== undefined) {
+		// Bun emits error then close without exit for a failed spawn.
+		if (exitCode === undefined) {
+			finish({ outcome: { kind: "spawn-error", message: "hook process did not start" }, stdout: "", stderr: "" });
+			return;
+		}
+		if (retiring) {
+			const group = child.pid === undefined ? "unknown" : signalGroup(child.pid, 0);
+			if (group === "unknown") cleanupUnconfirmed = true;
+			if (group === "absent") finish(result());
+			return;
+		}
+		if ((stop?.kind !== "exit" || retireOnExit) && child.pid !== undefined) {
 			const group = signalGroup(child.pid, 0);
-			if (group === "unknown" && strictCleanup) cleanupUncertain = true;
-			if (group === "present" || (group === "unknown" && strictCleanup)) {
+			if (group === "unknown") cleanupUnconfirmed = true;
+			if (group !== "absent") {
 				retireGroup(child.pid);
 				return;
 			}
@@ -279,9 +300,15 @@ export async function runEciHook(
 	child.stdin?.on("error", () => {});
 	child.stdin?.end(JSON.stringify(stdin));
 	const pid = child.pid;
+	const onAbort = (): void => {
+		if (finished || pid === undefined) return;
+		stop ??= { kind: "cancel" };
+		retireGroup(pid);
+	};
 	if (pid !== undefined) {
+		options.signal?.addEventListener("abort", onAbort, { once: true });
 		deadlineTimer = setTimeout(() => {
-			timedOut = true;
+			stop ??= { kind: "deadline" };
 			retireGroup(pid);
 		}, timeoutSec * 1000);
 		timers.push(deadlineTimer);
@@ -301,9 +328,17 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 		block: true,
 		reason: `ECI hook ${label} ${why}; blocking (fail-closed).`,
 	});
-	if (run.code === -1) return fail(`could not run (${run.stderr.trim()})`);
-	if (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT) return fail("timed out");
-	if (!run.ok) return fail(`exited ${run.code}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
+	const outcome = run.outcome;
+	if (outcome.kind === "spawn-error") return fail(`could not run (${outcome.message.trim()})`);
+	if (outcome.kind === "cancelled-before-start") return fail("was cancelled");
+	const { stop, cleanup } = outcome;
+	if (stop.kind === "deadline") return fail("timed out");
+	if (stop.kind === "cancel") return fail("was cancelled");
+	if (cleanup === "unconfirmed") return fail(`exited ${stop.code} without confirmed process cleanup`);
+	if (cleanup === "forced") return fail(`exited ${stop.code} and needed forced process cleanup`);
+	// Preserve the Edit gate's historical coreutils timeout status handling.
+	if (stop.code === TIMEOUT_EXIT || stop.code === KILL_EXIT) return fail("timed out");
+	if (stop.code !== 0) return fail(`exited ${stop.code}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
 	const out = run.stdout.trim();
 	if (out === "") return undefined;
 	let parsed: unknown;
@@ -323,39 +358,43 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 }
 
 /** Blocks an unchecked Bash call without exposing callback data. */
-export function bashGateUnavailable(kind: string, code: number): PreToolVerdict {
-	return { block: true, reason: `ECI Bash gate unavailable (${kind}, exit ${code}); the call is blocked. Repair the gate outside the blocked Bash tool, then retry; if it remains unavailable, continue non-Bash work and report it.` };
+export function bashGateUnavailable(detail: string): PreToolVerdict {
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. Repair the gate outside the blocked Bash tool, then retry; if it remains unavailable, continue non-Bash work and report it.` };
 }
 
 /** Accepts only a complete Bash gate decision; failures never expose hook output. */
 export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
-	if (run.cleanupUncertain || run.cleanupForced) return bashGateUnavailable("cleanup", run.hookExitCode ?? run.code);
-	if (run.code === -1) return bashGateUnavailable("spawn", run.code);
-	if (run.deadlineExceeded === true || (run.deadlineExceeded === undefined && (run.code === TIMEOUT_EXIT || run.code === KILL_EXIT))) {
-		return bashGateUnavailable("deadline", run.code);
-	}
-	if (!run.ok || run.code !== 0) return bashGateUnavailable("exit", run.code);
+	// A resisting or unconfirmed group means a complete decision cannot be trusted.
+	const outcome = run.outcome;
+	if (outcome.kind === "spawn-error") return bashGateUnavailable("spawn");
+	if (outcome.kind === "cancelled-before-start") return bashGateUnavailable("cancelled before start");
+	const { stop, cleanup } = outcome;
+	const stopped = stop.kind === "exit" ? `exit ${stop.code}` : stop.kind;
+	if (cleanup === "unconfirmed") return bashGateUnavailable(`unconfirmed cleanup after ${stopped}`);
+	if (cleanup === "forced") return bashGateUnavailable(`forced cleanup after ${stopped}`);
+	if (stop.kind !== "exit") return bashGateUnavailable(stop.kind);
+	if (stop.code !== 0) return bashGateUnavailable(`exit ${stop.code}`);
 	const out = run.stdout.trim();
 	if (out === "") return undefined;
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(out);
 	} catch {
-		return bashGateUnavailable("invalid-json", run.code);
+		return bashGateUnavailable("invalid-json");
 	}
 	const hso = isRecord(parsed) && isRecord(parsed.hookSpecificOutput) ? parsed.hookSpecificOutput : undefined;
-	if (hso?.hookEventName !== "PreToolUse") return bashGateUnavailable("invalid-output", run.code);
+	if (hso?.hookEventName !== "PreToolUse") return bashGateUnavailable("invalid-output");
 	if (hso.permissionDecision === "allow") return undefined;
-	if (hso.permissionDecision !== "deny") return bashGateUnavailable("invalid-decision", run.code);
+	if (hso.permissionDecision !== "deny") return bashGateUnavailable("invalid-decision");
 	if (typeof hso.permissionDecisionReason !== "string" || hso.permissionDecisionReason.trim() === "") {
-		return bashGateUnavailable("invalid-denial", run.code);
+		return bashGateUnavailable("invalid-denial");
 	}
 	return { block: true, reason: hso.permissionDecisionReason };
 }
 
 /** Advisory translation (SessionStart / UserPromptSubmit). Never throws; failures yield undefined. */
 export function advisoryContext(run: HookRun, hookEventName: string): string | undefined {
-	if (!run.ok) return undefined;
+	if (run.outcome.kind !== "ran" || run.outcome.stop.kind !== "exit" || run.outcome.stop.code !== 0 || run.outcome.cleanup !== "graceful") return undefined;
 	const out = run.stdout.trim();
 	if (out === "") return undefined;
 	let parsed: unknown;

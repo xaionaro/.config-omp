@@ -1,14 +1,17 @@
 // Runs with: BUN_BE_BUN=1 omp test agent/hooks-disabled/lib/eci-hook-runner.test.ts
 // (omp is a Bun build; no separate bun is needed). Not a hook factory: lib/ is not discovered.
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, watch, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { on } from "node:events";
 import { join } from "node:path";
-import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
+import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, bashHostCwd, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
 import eciBashGate from "../pre/eci-bash-gate";
 
 const id = { sessionId: "s", cwd: "/", isSubagent: false };
 const savedPath = process.env.PATH;
+const exited = (code: number) => ({ kind: "ran" as const, stop: { kind: "exit" as const, code }, cleanup: "graceful" as const });
+const deadline = (cleanup: "graceful" | "forced" | "unconfirmed") => ({ kind: "ran" as const, stop: { kind: "deadline" as const }, cleanup });
 const savedBash = process.env.ECI_BASH;
 let dir = "";
 
@@ -62,15 +65,13 @@ test("runs hooks when no timeout binary is on PATH", async () => {
 	delete process.env.ECI_BASH;
 	expect(Bun.which("timeout", { PATH: process.env.PATH })).toBeNull();
 	const run = await runEciHook(echo, { k: "v" }, id, 10);
-	expect(run.code).toBe(0);
-	expect(run.ok).toBe(true);
+	expect(run.outcome).toEqual(exited(0));
 	expect(JSON.parse(run.stdout)).toEqual({ k: "v" });
 });
 
 test("passes the script exit code through", async () => {
 	const run = await runEciHook(script("exit3.sh", "exit 3\n"), {}, id, 10);
-	expect(run.code).toBe(3);
-	expect(run.ok).toBe(false);
+	expect(run.outcome).toEqual(exited(3));
 });
 
 test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empty stdout allows", async () => {
@@ -84,20 +85,22 @@ test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empt
 test("Bash failures block with fixed diagnostics without exposing hook data", () => {
 	const denial = (reason: unknown) => JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 	for (const run of [
-		{ ok: false, code: -1, stdout: "", stderr: "secret" },
-		{ ok: false, code: 124, stdout: "", stderr: "secret" },
-		{ ok: false, code: 2, stdout: "", stderr: "secret" },
-		{ ok: true, code: 0, stdout: "secret", stderr: "" },
-		{ ok: true, code: 0, stdout: "{}", stderr: "" },
-		...([undefined, 42, "", "  "].map(reason => ({ ok: true, code: 0, stdout: denial(reason), stderr: "" }))),
+		{ outcome: { kind: "spawn-error" as const, message: "secret" }, stdout: "", stderr: "" },
+		{ outcome: deadline("graceful"), stdout: "", stderr: "secret" },
+		{ outcome: exited(2), stdout: "", stderr: "secret" },
+		{ outcome: { kind: "ran" as const, stop: { kind: "exit" as const, code: 0 }, cleanup: "forced" as const }, stdout: "", stderr: "secret" },
+		{ outcome: deadline("unconfirmed"), stdout: "", stderr: "secret" },
+		{ outcome: exited(0), stdout: "secret", stderr: "" },
+		{ outcome: exited(0), stdout: "{}", stderr: "" },
+		...([undefined, 42, "", "  "].map(reason => ({ outcome: exited(0), stdout: denial(reason), stderr: "" }))),
 	]) {
 		const verdict = bashPreToolVerdict(run);
 		expect(verdict?.block).toBe(true);
 		expect(verdict?.reason).toContain("outside the blocked Bash tool");
 		expect(verdict?.reason).not.toContain("secret");
 	}
-	expect(bashPreToolVerdict({ ok: true, code: 0, stdout: denial("bounded route"), stderr: "" })?.reason).toBe("bounded route");
-	expect(bashPreToolVerdict({ ok: true, code: 0, stdout: "", stderr: "" })).toBeUndefined();
+	expect(bashPreToolVerdict({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })?.reason).toBe("bounded route");
+	expect(bashPreToolVerdict({ outcome: exited(0), stdout: "", stderr: "" })).toBeUndefined();
 	expect(BASH_GATE_DEADLINE_SEC + KILL_GRACE_SEC + DRAIN_SEC).toBeLessThan(30);
 });
 
@@ -112,13 +115,35 @@ test("Bash factory exceptions block with external repair guidance without exposi
 	expect(JSON.stringify(verdict)).not.toContain("sensitive-value");
 });
 
+test("Bash cwd only claims host spellings it can resolve exactly", () => {
+	const session = "/session/base";
+	const noCDPath = { CDPATH: "" };
+	for (const [requested, expected] of [
+		[undefined, session], ["", session], ["/", session], ["//", session],
+		["~", homedir()], ["~/a", join(homedir(), "a")],
+		["sub", "/session/base/sub"], ["../x", "/session/x"],
+		["/tmp/", "/tmp"], ["/a/./b", "/a/b"],
+	] as const) {
+		expect(bashHostCwd(requested, "pwd", session, noCDPath)).toBe(expected);
+	}
+	for (const requested of [
+		"/a/../b", ":/t", "@/t", "file:///t", "local://x", "local:/x",
+		"/p/local://x", "https://e", "C:\\x", "a\u00a0b", "~user", 42,
+	]) {
+		expect(bashHostCwd(requested, "pwd", session, noCDPath)).toBeUndefined();
+	}
+	expect(bashHostCwd(undefined, "cd /abs && pwd", session, noCDPath)).toBe(session);
+	expect(bashHostCwd(undefined, "cd @/x && pwd", session, noCDPath)).toBeUndefined();
+	expect(bashHostCwd(undefined, "cd sub/child && pwd", session, { CDPATH: "/other" })).toBeUndefined();
+});
+
 test("Bash callback uses the session manager identity without inventing a transcript", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
 	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; } } as never);
 	const savedHome = process.env.HOME;
 	const hooks = join(dir, ".omp", "agent", "eci", "hooks");
 	mkdirSync(hooks, { recursive: true });
-	writeFileSync(join(hooks, "validate-bash.sh"), `cat > '${join(dir, "callback.json")}'\n`);
+	writeFileSync(join(hooks, "validate-bash.sh"), `pwd > '${join(dir, "hook-pwd")}'\ncat > '${join(dir, "callback.json")}'\n`);
 	try {
 		process.env.HOME = dir;
 		const verdict = await handler!({ toolName: "bash", input: { command: "true" } }, {
@@ -139,7 +164,9 @@ test("Bash callback uses the session manager identity without inventing a transc
 			});
 			expect(next).toBeUndefined();
 			const callback = await Bun.file(join(dir, "callback.json")).json();
-			expect(callback.cwd).toBe(requested.startsWith("local://") ? requested : dependency);
+			expect(callback.cwd).toBe(requested.startsWith("local://") ? undefined : dependency);
+			expect(callback.cwd_unknown).toBe(requested.startsWith("local://") ? true : undefined);
+			expect(readFileSync(join(dir, "hook-pwd"), "utf8").trim()).toBe(dir);
 			expect(callback.tool_input.command).toBe(command);
 		}
 		expect(payload.transcript_path).toBeUndefined();
@@ -161,13 +188,13 @@ test("Bash wrapper blocks when its verifier or planner is unavailable without a 
 		for (const withVerifier of [false, true]) {
 			if (withVerifier) writeFileSync(join(hooks, "lib", "eci-native-binary.sh"), readFileSync(join(source, "lib", "eci-native-binary.sh")));
 			const run = await runEciHook(join(hooks, "validate-bash.sh"), { tool_name: "Bash", tool_input: { command: "true" } }, id, 5);
-			expect(run.code).toBe(2);
+			expect(run.outcome).toEqual(exited(2));
 			expect(run.stdout).toBe("");
 			expect(run.stderr).toContain("ECI_HOOK_NATIVE_GATE_UNAVAILABLE");
 		}
 		writeFileSync(join(hooks, "lib", "eci-native-binary.sh"), "eci_runtime_verexec() { printf 'partial output'; return 2; }\n");
 		const failedPlanner = await runEciHook(join(hooks, "validate-bash.sh"), {}, id, 5);
-		expect(failedPlanner.code).toBe(2);
+		expect(failedPlanner.outcome).toEqual(exited(2));
 		expect(failedPlanner.stdout).toBe("");
 		expect(failedPlanner.stderr.trim().split("\n")).toHaveLength(1);
 	} finally {
@@ -176,10 +203,10 @@ test("Bash wrapper blocks when its verifier or planner is unavailable without a 
 	}
 });
 
-test("a deadline stops the hook with SIGTERM and reports 124", async () => {
+test("a deadline stops the hook with SIGTERM", async () => {
 	const started = Date.now();
 	const run = await runEciHook(script("sleep.sh", "exec sleep 30\n"), {}, id, 1);
-	expect(run.code).toBe(124);
+	expect(run.outcome).toEqual(deadline("graceful"));
 	expect(Date.now() - started).toBeLessThan(5000);
 	expect(preToolVerdict(run, "t")).toEqual({ block: true, reason: "ECI hook t timed out; blocking (fail-closed)." });
 });
@@ -188,22 +215,19 @@ for (const policy of ["deadline-only", "owned-group"] as const) {
 	test(`${policy}: deadline retires the hook's child within the cleanup bound`, async () => {
 		const pidFile = join(dir, "child.pid");
 		const started = Date.now();
-		const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, policy);
-		expect(run.code).toBe(124);
-		expect(run.ok).toBe(false);
+		const run = await runEciHook(script("child.sh", `sleep 30 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, { cleanup: policy });
+		expect(run.outcome).toEqual(deadline("graceful"));
 		expect(run.stdout).toBe("");
 		expect(preToolVerdict(run, "edit-consumer")?.block).toBe(true);
 		expect(bashPreToolVerdict(run)?.reason).toContain("deadline");
-		expect(run.deadlineExceeded).toBe(policy === "owned-group" ? true : undefined);
 		expect(Date.now() - started).toBeLessThan((1 + KILL_GRACE_SEC + DRAIN_SEC + 2) * 1000);
 		expectProcessGone(pidFile);
 	}, 15000);
 
 	test(`${policy}: redirected TERM-resistant child cannot outlive cleanup`, async () => {
 		const pidFile = join(dir, "stubborn-child.pid");
-		const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, policy);
-		expect(run.code).toBe(137);
-		expect(run.ok).toBe(false);
+		const run = await runEciHook(script("redirected.sh", `bash -c 'trap "" TERM; exec sleep 30' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwait\n`), {}, id, 1, { cleanup: policy });
+		expect(run.outcome).toEqual(deadline("forced"));
 		expect(preToolVerdict(run, "edit-consumer")?.block).toBe(true);
 		expectProcessGone(pidFile);
 	}, 15000);
@@ -211,11 +235,8 @@ for (const policy of ["deadline-only", "owned-group"] as const) {
 
 test("normal hook exit retires a redirected child in its process group", async () => {
 	const pidFile = join(dir, "normal-child.pid");
-	const run = await runEciHook(script("normal-child.sh", `sleep 30 </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nexit 0\n`), {}, id, 10, "owned-group");
-	expect(run.code).toBe(0);
-	expect(run.ok).toBe(true);
-	expect(run.hookExitCode).toBe(0);
-	expect(run.deadlineExceeded).toBe(false);
+	const run = await runEciHook(script("normal-child.sh", `sleep 30 </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nexit 0\n`), {}, id, 10, { cleanup: "owned-group" });
+	expect(run.outcome).toEqual(exited(0));
 	expect(bashPreToolVerdict(run)).toBeUndefined();
 	expectProcessGone(pidFile);
 }, 15000);
@@ -223,28 +244,25 @@ test("normal hook exit retires a redirected child in its process group", async (
 test("normal-exit forced cleanup reports cleanup and preserves the hook exit", async () => {
 	const pidFile = join(dir, "forced-child.pid");
 	const readyFile = join(dir, "forced-child.ready");
-	const run = await runEciHook(script("forced-child.sh", `bash -c 'trap "" TERM; echo ready > "$1"; exec sleep 30' _ '${readyFile}' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwhile [ ! -f '${readyFile}' ]; do sleep 0.01; done\nexit 0\n`), {}, id, 10, "owned-group");
-	expect(run.code).toBe(137);
-	expect(run.hookExitCode).toBe(0);
-	expect(run.deadlineExceeded).toBe(false);
-	expect(run.cleanupForced).toBe(true);
-	expect(bashPreToolVerdict(run)?.reason).toContain("cleanup, exit 0");
+	const run = await runEciHook(script("forced-child.sh", `bash -c 'trap "" TERM; echo ready > "$1"; exec sleep 30' _ '${readyFile}' </dev/null >/dev/null 2>&1 &\necho $! > '${pidFile}'\nwhile [ ! -f '${readyFile}' ]; do sleep 0.01; done\nexit 0\n`), {}, id, 10, { cleanup: "owned-group" });
+	expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "exit", code: 0 }, cleanup: "forced" });
+	expect(bashPreToolVerdict(run)?.reason).toContain("forced cleanup after exit 0");
 	expectProcessGone(pidFile);
 }, 15000);
 
 for (const code of [124, 137]) {
 	test(`ordinary hook exit ${code} is not a deadline`, async () => {
-		const run = await runEciHook(script(`exit-${code}.sh`, `exit ${code}\n`), {}, id, 5, "owned-group");
-		expect(run.hookExitCode).toBe(code);
-		expect(run.deadlineExceeded).toBe(false);
-		expect(bashPreToolVerdict(run)?.reason).toContain(`exit, exit ${code}`);
+		const run = await runEciHook(script(`exit-${code}.sh`, `exit ${code}\n`), {}, id, 5, { cleanup: "owned-group" });
+		expect(run.outcome).toEqual(exited(code));
+		expect(bashPreToolVerdict(run)?.reason).toContain(`exit ${code}`);
+		expect(preToolVerdict(run, "edit")?.reason).toContain("timed out");
 	});
 }
 
-test("a hook that ignores SIGTERM is killed after the grace period and reports 137", async () => {
+test("a hook that ignores SIGTERM is killed after the grace period", async () => {
 	const stubborn = script("stubborn.sh", "trap '' TERM\nwhile :; do sleep 1; done\n");
 	const run = await runEciHook(stubborn, {}, id, 1);
-	expect(run.code).toBe(137);
+	expect(run.outcome).toEqual(deadline("forced"));
 	expect(preToolVerdict(run, "t")?.block).toBe(true);
 }, 15000);
 
@@ -255,11 +273,28 @@ test("unknown process-group probe errors remain an explicit cleanup failure", as
 		return originalKill(pid, signal);
 	}) as typeof process.kill;
 	try {
-		const run = await runEciHook(script("probe-error.sh", "exec sleep 30\n"), {}, id, 1, "owned-group");
-		expect(run.cleanupUncertain).toBe(true);
-		expect(run.ok).toBe(false);
+		const run = await runEciHook(script("probe-error.sh", "exec sleep 30\n"), {}, id, 1, { cleanup: "owned-group" });
+		expect(run.outcome).toEqual(deadline("unconfirmed"));
 		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
 		expect(bashPreToolVerdict(run)?.reason).not.toContain("private diagnostic");
+	} finally {
+		process.kill = originalKill;
+	}
+}, 15000);
+
+test("deadline-only cleanup reports unknown group probes without hiding the Edit timeout", async () => {
+	const originalKill = process.kill;
+	let attemptedKill = false;
+	process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+		if (pid < 0 && signal === 0) throw Object.assign(new Error("private diagnostic"), { code: "EPERM" });
+		if (pid < 0 && signal === "SIGKILL") attemptedKill = true;
+		return originalKill(pid, signal);
+	}) as typeof process.kill;
+	try {
+		const run = await runEciHook(script("probe-default.sh", "exec sleep 30\n"), {}, id, 1);
+		expect(run.outcome).toEqual(deadline("unconfirmed"));
+		expect(attemptedKill).toBe(true);
+		expect(preToolVerdict(run, "edit")?.reason).toContain("timed out");
 	} finally {
 		process.kill = originalKill;
 	}
@@ -280,11 +315,9 @@ for (const failedSignal of ["SIGTERM", "SIGKILL"] as const) {
 			return true;
 		}) as typeof process.kill;
 		try {
-			const run = await runEciHook(script("signal-error.sh", "exit 0\n"), {}, id, 5, "owned-group");
-			expect(run.cleanupUncertain).toBe(true);
-			expect(run.ok).toBe(false);
-			expect(run.hookExitCode).toBe(0);
-			expect(bashPreToolVerdict(run)?.reason).toContain("cleanup, exit 0");
+			const run = await runEciHook(script("signal-error.sh", "exit 0\n"), {}, id, 5, { cleanup: "owned-group" });
+			expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "exit", code: 0 }, cleanup: "unconfirmed" });
+			expect(bashPreToolVerdict(run)?.reason).toContain("unconfirmed cleanup after exit 0");
 			expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
 			expect(bashPreToolVerdict(run)?.reason).not.toContain("private diagnostic");
 		} finally {
@@ -300,9 +333,8 @@ test("a group still present after forced cleanup is not reported as settled", as
 		return originalKill(pid, signal);
 	}) as typeof process.kill;
 	try {
-		const run = await runEciHook(script("unsettled.sh", "exit 0\n"), {}, id, 5, "owned-group");
-		expect(run.cleanupUncertain).toBe(true);
-		expect(run.ok).toBe(false);
+		const run = await runEciHook(script("unsettled.sh", "exit 0\n"), {}, id, 5, { cleanup: "owned-group" });
+		expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "exit", code: 0 }, cleanup: "unconfirmed" });
 		expect(bashPreToolVerdict(run)?.reason).toContain("cleanup");
 	} finally {
 		process.kill = originalKill;
@@ -314,12 +346,44 @@ test("other hook consumers retain normal-exit behavior", async () => {
 	process.kill = (() => { throw new Error("unexpected group probe"); }) as typeof process.kill;
 	try {
 		const run = await runEciHook(script("other-hook.sh", "exit 0\n"), {}, id, 5);
-		expect(run.ok).toBe(true);
-		expect(run.cleanupUncertain).toBeUndefined();
+		expect(run.outcome).toEqual(exited(0));
 	} finally {
 		process.kill = originalKill;
 	}
 });
+
+test("pre-aborted runs never spawn", async () => {
+	const controller = new AbortController();
+	controller.abort();
+	const marker = join(dir, "must-not-exist");
+	const run = await runEciHook(script("pre-abort.sh", `touch '${marker}'\n`), {}, id, 5, { signal: controller.signal });
+	expect(run.outcome).toEqual({ kind: "cancelled-before-start" });
+	expect(await Bun.file(marker).exists()).toBe(false);
+});
+
+test("fixed script arguments pass through verbatim", async () => {
+	const run = await runEciHook(script("arguments.sh", `printf '%s\\n' "$@"\n`), {}, id, 5, { args: ["one value", "--literal"] });
+	expect(run.outcome).toEqual(exited(0));
+	expect(run.stdout).toBe("one value\n--literal\n");
+});
+
+test("cancellation retires a running hook group before returning", async () => {
+	const controller = new AbortController();
+	const pidFile = join(dir, "cancel-child.pid");
+	const hook = script("cancel.sh", `sleep 30 &\necho $! > '${pidFile}.tmp'\nmv '${pidFile}.tmp' '${pidFile}'\nwait\n`);
+	const watcher = watch(dir);
+	const changes = on(watcher, "change");
+	try {
+		const runPromise = runEciHook(hook, {}, id, 20, { cleanup: "owned-group", signal: controller.signal });
+		while (!(await Bun.file(pidFile).exists())) await changes.next();
+		controller.abort();
+		const run = await runPromise;
+		expect(run.outcome).toEqual({ kind: "ran", stop: { kind: "cancel" }, cleanup: "graceful" });
+		expectProcessGone(pidFile);
+	} finally {
+		watcher.close();
+	}
+}, 15000);
 
 test("ECI_BASH selects the shell", async () => {
 	const marker = join(dir, "marker");
@@ -327,7 +391,7 @@ test("ECI_BASH selects the shell", async () => {
 	const wrapper = script("mybash", `#!${realBash}\n: > ${marker}\nexec ${realBash} "$@"\n`);
 	process.env.ECI_BASH = wrapper;
 	const run = await runEciHook(script("ok.sh", "exit 0\n"), {}, id, 10);
-	expect(run.code).toBe(0);
+	expect(run.outcome).toEqual(exited(0));
 	expect(await Bun.file(marker).exists()).toBe(true);
 });
 
@@ -380,6 +444,18 @@ test("an unusable ECI_BASH or a PATH without bash fails closed", async () => {
 	expect(resolveHookBash({ PATH: dir })).toEqual({ error: "bash not found on PATH" });
 	process.env.ECI_BASH = "relative-bash";
 	const run = await runEciHook(script("ok2.sh", "exit 0\n"), {}, id, 10);
-	expect(run.code).toBe(-1);
+	expect(run.outcome).toEqual({ kind: "spawn-error", message: "ECI_BASH is not an absolute path: relative-bash" });
 	expect(preToolVerdict(run, "t")?.block).toBe(true);
+});
+
+test("a non-executable ECI_BASH is a spawn error, not a hook exit", async () => {
+	const shell = join(dir, "not-executable");
+	writeFileSync(shell, "#!/bin/sh\n", { mode: 0o600 });
+	process.env.ECI_BASH = shell;
+	const run = await runEciHook(script("unused.sh", "exit 0\n"), {}, id, 5);
+	expect(run.outcome.kind).toBe("spawn-error");
+	expect(run.stdout).toBe("");
+	expect(run.stderr).toBe("");
+	expect(preToolVerdict(run, "edit")?.reason).toContain("could not run");
+	expect(bashPreToolVerdict(run)?.reason).not.toContain(shell);
 });

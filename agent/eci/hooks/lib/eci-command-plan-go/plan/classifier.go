@@ -4532,11 +4532,17 @@ func workerLifecycleIdentityDiagnostic(
 	return diagnostic
 }
 
+// resolveExecutable resolves a command without substituting the process cwd.
+//
+// Example: ./tool with an unknown cwd cannot identify an executable.
 func resolveExecutable(value, cwd string) string {
 	if filepath.IsAbs(value) {
 		return filepath.Clean(value)
 	}
 	if strings.ContainsRune(value, filepath.Separator) {
+		if !filepath.IsAbs(cwd) {
+			return ""
+		}
 		return filepath.Clean(filepath.Join(cwd, value))
 	}
 	resolved, err := exec.LookPath(value)

@@ -75,7 +75,7 @@ func RunHook(
 }
 
 // hookIdentityMalformed reports an envelope whose identity fields cannot name a scope.
-// Absent cwd remains valid because the callback resolves it from the process.
+// Absent cwd resolves from the process unless cwd_unknown was explicitly set.
 //
 // Example: session_id [] or an empty tool_name is malformed, while cwd "" is not.
 func hookIdentityMalformed(envelope HookInput) bool {

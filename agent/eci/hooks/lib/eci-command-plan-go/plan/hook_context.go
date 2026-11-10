@@ -28,6 +28,7 @@ const (
 type HookInput struct {
 	SessionID      string `json:"session_id"`
 	CWD            string `json:"cwd"`
+	CWDUnknown     bool   `json:"cwd_unknown"`
 	TranscriptPath string `json:"transcript_path"`
 	ToolName       string `json:"tool_name"`
 	ToolInput      struct {
@@ -41,7 +42,10 @@ type HookInput struct {
 func hookRequest(input HookInput) (Request, error) {
 	request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: input.CWD, Command: input.ToolInput.Command, Marker: MarkerInactive, ActiveSession: input.SessionID}
 	request.HookSessionID = input.SessionID
-	if request.CWD == "" {
+	switch {
+	case input.CWDUnknown:
+		request.CWD = ""
+	case request.CWD == "":
 		cwd, err := os.Getwd()
 		if err != nil {
 			return request, err
@@ -502,6 +506,8 @@ func recordHookActivity(
 		touched := request
 		if command.CWDKnown {
 			touched.CWD = command.CWD
+		} else {
+			touched.CWD = ""
 		}
 		if name == "git" {
 			for index := 1; index+1 < len(argv); index++ {
@@ -520,7 +526,14 @@ func recordHookActivity(
 		if name == "eci-worker-git" {
 			for index := 1; index+1 < len(argv); index++ {
 				if argv[index] == "--repo" {
-					touched.CWD = argv[index+1]
+					directory := argv[index+1]
+					if filepath.IsAbs(directory) {
+						touched.CWD = directory
+					} else if filepath.IsAbs(touched.CWD) {
+						touched.CWD = filepath.Join(touched.CWD, directory)
+					} else {
+						touched.CWD = ""
+					}
 					break
 				}
 			}
@@ -641,6 +654,9 @@ func hookStateDirectory(
 //
 // Example: first mutation captures HEAD and status once; later writes retain that baseline.
 func hookTouchedRepository(request Request) error {
+	if !filepath.IsAbs(request.CWD) {
+		return nil
+	}
 	output, err := hookGitOutput(request.CWD, "rev-parse", "--show-toplevel")
 	var exitError *exec.ExitError
 	if errors.As(err, &exitError) {
