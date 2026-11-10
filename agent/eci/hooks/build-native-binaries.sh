@@ -67,14 +67,20 @@ gate_repair_target() {
   detail="${detail%%\)*}"
   binary="$HOME/.omp/agent/eci/bin/$target"
   receipt="$binary.sha256"
-  eci_native_leaf_unresolved "$binary" && return 1
-  eci_native_leaf_unresolved "$receipt" && return 1
-  for leaf in "$binary" "$receipt"; do
-    if [ -e "$leaf" ]; then
-      [ -n "$(find "$leaf" -prune -type f -links 1 ! -perm -020 ! -perm -002 -print)" ] || return 1
+  if eci_native_leaf_unresolved "$binary"; then
+    echo "build-native-binaries: refused unresolved or foreign binary: $binary" >&2
+    return 1
+  fi
+  if eci_native_leaf_unresolved "$receipt"; then
+    echo "build-native-binaries: refused unresolved or foreign receipt: $receipt" >&2
+    return 1
+  fi
+  if [ -e "$binary" ]; then
+    if [ -z "$(find "$binary" -prune -type f -links 1 ! -perm -020 ! -perm -002 -print)" ] || [ ! -x "$binary" ]; then
+      echo "build-native-binaries: refused unsafe binary mode or links: $binary" >&2
+      return 1
     fi
-  done
-  if [ -e "$binary" ]; then [ -x "$binary" ] || return 1; fi
+  fi
   case "$detail" in
     'is missing or a symlink') [ ! -e "$binary" ] && [ ! -L "$binary" ] || return 1 ;;
     'is not an ELF binary for this host'|'is not a Mach-O executable for this host'|'has no sha256 receipt'|'has a malformed sha256 receipt'|'sha256 does not match its receipt') ;;
@@ -186,12 +192,11 @@ for name in "${names[@]}"; do
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
     || { if [ "$gate_repair" = true ]; then die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\" --gate-repair"; else die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""; fi; }
   chmod -- 0755 "$stage/$name"
-  if ! eci_runtime_binary_is_native "$stage/$name"; then
-    if [ "$gate_repair" = true ]; then
-      die "staged $name is not executable or native for $host_os/$host_arch; choose an executable TMPDIR and retry --gate-repair"
-    fi
-    die "$name: built $host_os/$host_arch binary is not native for this host"
+  if [ "$gate_repair" = true ] && [ ! -x "$stage/$name" ]; then
+    die "staged $name is not executable; choose an executable TMPDIR and retry --gate-repair"
   fi
+  eci_runtime_binary_is_native "$stage/$name" \
+    || die "$name: built $host_os/$host_arch binary is not native for this host"
   digest="$("${sha256_command[@]}" -- "$stage/$name")"
   printf '%s  %s\n' "${digest%% *}" "$name" >"$stage/$name.sha256"
 done

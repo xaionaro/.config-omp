@@ -545,6 +545,10 @@ if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-
 grep -Fq 'choose an executable TMPDIR' "$base/out/gate-planner-stage.err" || fail "staged planner failure did not name TMPDIR"
 [ "$(digest_of "$bin/eci-command-plan")" = "$(digest_of "$base/damaged-planner")" ] || fail "staged planner failure changed installed binary"
 rm "$base/fakebin/chmod"
+printf 'not a native binary\n' >"$base/not-native"
+if FAKE_GO_FIXTURE="$base/not-native" "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-not-native.out" 2>"$base/out/gate-not-native.err"; then fail "non-native staged planner accepted"; fi
+grep -Fq 'binary is not native for this host' "$base/out/gate-not-native.err" || fail "non-native stage lacks architecture diagnostic"
+if grep -Fq 'choose an executable TMPDIR' "$base/out/gate-not-native.err"; then fail "non-native stage incorrectly blamed TMPDIR"; fi
 : >"$build_log"
 "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-damaged.out" 2>"$base/out/gate-damaged.err" || fail "damaged planner repair failed"
 [ "$(built_names)" = eci-command-plan ] || fail "gate repair rebuilt unrelated binaries"
@@ -557,18 +561,46 @@ for retained in "$bin"/.planner-importer.txn.*/eci-command-plan; do
   fi
 done
 [ "$found" = 1 ] || fail "gate repair did not retain damaged planner"
-: >"$bin/eci-command-plan.sha256"
-chmod 0664 "$bin/eci-command-plan.sha256"
-before_receipt=$(digest_of "$bin/eci-command-plan.sha256")
+chmod 0775 "$bin/eci-command-plan"
+before_binary=$(digest_of "$bin/eci-command-plan")
 : >"$build_log"
 mkdir "$base/no-go-bin"
 ln -s "$(command -v dirname)" "$base/no-go-bin/dirname"
 ln -s "$(command -v find)" "$base/no-go-bin/find"
 if PATH="$base/no-go-bin" "$BASH" -c 'command -v go >/dev/null'; then fail "no-go fixture unexpectedly finds Go"; fi
-if PATH="$base/no-go-bin" "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-writable-receipt.out" 2>"$base/out/gate-writable-receipt.err"; then fail "group-writable receipt accepted"; fi
-grep -Fq 'unsafe or unsupported gate failure' "$base/out/gate-writable-receipt.err" || fail "unsafe failure masked by Go prerequisite"
-[ "$(builds)" = 0 ] && [ "$(digest_of "$bin/eci-command-plan.sha256")" = "$before_receipt" ] && [ -n "$(find "$bin/eci-command-plan.sha256" -prune -perm 664 -print)" ] || fail "unsafe receipt changed"
-chmod 0644 "$bin/eci-command-plan.sha256"
+if PATH="$base/no-go-bin" "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-writable-binary.out" 2>"$base/out/gate-writable-binary.err"; then fail "group-writable binary accepted"; fi
+grep -Fq 'unsafe or unsupported gate failure' "$base/out/gate-writable-binary.err" || fail "unsafe failure masked by Go prerequisite"
+[ "$(builds)" = 0 ] && [ "$(digest_of "$bin/eci-command-plan")" = "$before_binary" ] || fail "unsafe binary changed"
+chmod 0755 "$bin/eci-command-plan"
+rm "$bin/eci-command-plan.sha256"
+(umask 0002; printf '%064d  eci-command-plan\n' 0 >"$bin/eci-command-plan.sha256")
+[ -n "$(find "$bin/eci-command-plan.sha256" -prune -perm 664 -print)" ] || fail "umask fixture is not 0664"
+cp -p "$bin/eci-command-plan" "$base/group-planner"
+cp -p "$bin/eci-command-plan.sha256" "$base/group-receipt"
+(umask 0002; "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-group-receipt.out" 2>"$base/out/gate-group-receipt.err") || fail "group-writable receipt repair failed"
+eci_runtime_verify eci-command-plan || fail "group-writable receipt repair not verified"
+found=0
+for retained in "$bin"/.planner-importer.txn.*/eci-command-plan; do
+  if cmp -s "$retained" "$base/group-planner" && cmp -s "${retained%/*}/eci-command-plan.sha256" "$base/group-receipt"; then
+    [ -n "$(find "${retained%/*}" -prune -perm 700 -print)" ] && [ -n "$(find "${retained%/*}/eci-command-plan.sha256" -prune -perm 664 -print)" ] || fail "retained receipt or directory mode changed"
+    found=1
+  fi
+done
+[ "$found" = 1 ] || fail "group-writable receipt pair not retained"
+rm "$bin/eci-command-plan.sha256"
+ln -s "$base/group-receipt" "$bin/eci-command-plan.sha256"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-receipt-link.out" 2>"$base/out/gate-receipt-link.err"; then fail "symlink receipt accepted"; fi
+[ -L "$bin/eci-command-plan.sha256" ] || fail "symlink receipt changed"
+rm "$bin/eci-command-plan.sha256"
+: >"$bin/eci-command-plan.sha256"
+if [ "$(id -u)" = 0 ]; then
+  chown 1 "$bin/eci-command-plan.sha256"
+  if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-foreign-receipt.out" 2>"$base/out/gate-foreign-receipt.err"; then fail "foreign receipt accepted"; fi
+  [ ! -O "$bin/eci-command-plan.sha256" ] || fail "foreign receipt changed"
+  chown 0 "$bin/eci-command-plan.sha256"
+else
+  skip "gate repair foreign receipt test requires chown capability"
+fi
 export FAKE_GO_FAIL=1
 if "$BASH" "$eci/hooks/build-native-binaries.sh" --gate-repair >"$base/out/gate-go-fail.out" 2>"$base/out/gate-go-fail.err"; then fail "failed Go build succeeded"; fi
 unset FAKE_GO_FAIL

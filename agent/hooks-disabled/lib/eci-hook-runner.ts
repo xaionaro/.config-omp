@@ -394,6 +394,9 @@ const nativeOtherReasons = [
 	"cannot be stat'ed", "is not a regular file", "is not owned by the current user", "has an unreadable mode",
 	"is group- or other-writable", "is not executable", "is not an allowed artifact name", "cannot be hashed",
 	"cannot be copied for execution", "cannot be made executable", "private verification directory cannot be created",
+	"host CPU type is not supported", "temporary directory is missing",
+	"temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit",
+	"private copy directory cannot be created",
 ];
 
 /** Extracts only fixed native denial data, never the untrusted diagnostic suffix. */
