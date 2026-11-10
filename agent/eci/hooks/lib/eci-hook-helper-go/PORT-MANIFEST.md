@@ -15,6 +15,10 @@ the planner pair (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`) via
 
 Not ported (no live caller): `first-record`, `transcript-first-record`.
 
+Native-only mode (no Python predecessor): `edit-gate <bash> <dispatcher>` runs
+`hooks/pretooluse-edit-dispatch.sh` once per target of the omp edit adapter's
+request, through the `hooks/eci-edit-gate.sh` launcher.
+
 Known divergences from the Python implementation:
 - NaN/Infinity JSON literals are rejected (Python accepted them).
 - A lone surrogate in `transcript_path` exits 2 (Python exited 1).

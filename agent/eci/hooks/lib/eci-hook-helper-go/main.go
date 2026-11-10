@@ -1,5 +1,5 @@
-// Command eci-hook-helper provides the bounded hook-input readers and the
-// opt-in security reminder used by the ECI hook scripts.
+// Command eci-hook-helper provides the bounded hook-input readers, the
+// opt-in security reminder, and the omp edit gate used by the ECI hook scripts.
 //
 // Modes (argv must match exactly; anything else exits 2):
 //
@@ -13,6 +13,8 @@
 //	cleanup-route <command> <allow-private> cleanup route check
 //	environment-command <command>           environment command classification
 //	approval-commit-command <command>       approval commit command check
+//	edit-gate <bash> <dispatcher>           run the edit dispatcher once per
+//	                                        target of the omp edit request on stdin
 package main
 
 import (
@@ -57,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runEnvironmentCommand(args[1:], stdin, stdout, stderr)
 	case len(args) >= 1 && args[0] == "approval-commit-command":
 		return runApprovalCommitCommand(args[1:], stdin, stdout, stderr)
+	case len(args) >= 1 && args[0] == "edit-gate":
+		return runEditGate(args[1:], stdin, stdout, stderr)
 	}
 	return statusRejected
 }

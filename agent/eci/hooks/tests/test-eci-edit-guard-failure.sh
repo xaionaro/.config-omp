@@ -59,4 +59,23 @@ run_case precedence "$tmp/proof/other/ordinary.txt" 2 1 precedence
 mkdir -p "$tmp/proof/fixture"
 printf 'session_id: fixture\ncwd: %s\n' "$tmp/repo" >"$tmp/proof/fixture/eci_active"
 run_case marker "$tmp/repo/file.txt" 1 0 deny
+# A dispatcher failure denies under a marker, because Codex and Claude Code run
+# the edit after a hook exit other than 2; without a marker it keeps its status.
+awk '{print; if (!injected && index($0, "trap '\''_dispatch_err_trap") == 1) {print "false"; injected=1}} END {if (!injected) exit 2}' \
+  "$hooks/pretooluse-edit-dispatch.sh" >"$hooks/pretooluse-edit-dispatch-injected.sh"
+run_injected_dispatcher() {
+  local status=0
+  jq -cn --arg cwd "$tmp/repo" '{tool_name:"Write",session_id:"fixture",cwd:$cwd,tool_input:{file_path:"file.txt"}}' |
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$hooks/pretooluse-edit-dispatch-injected.sh" >"$tmp/injected.out" 2>"$tmp/injected.err" || status=$?
+  printf '%s\n' "$status"
+}
+[ "$(run_injected_dispatcher)" = 0 ] &&
+  jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_HOOK_FAIL_CLOSED]"))' "$tmp/injected.out" >/dev/null &&
+  grep -Fq 'pretooluse-edit-dispatch failed at line' "$tmp/injected.err" || {
+  printf '%s\n' 'dispatcher failure under a marker did not deny' >&2; cat "$tmp/injected.out" "$tmp/injected.err" >&2; exit 1
+}
+rm -- "$tmp/proof/fixture/eci_active"
+[ "$(run_injected_dispatcher)" = 1 ] && [ ! -s "$tmp/injected.out" ] && grep -Fq 'pretooluse-edit-dispatch failed at line' "$tmp/injected.err" || {
+  printf '%s\n' 'marker-free dispatcher failure did not keep its status' >&2; cat "$tmp/injected.out" "$tmp/injected.err" >&2; exit 1
+}
 printf '%s\n' 'edit guard failure assertions: PASS'

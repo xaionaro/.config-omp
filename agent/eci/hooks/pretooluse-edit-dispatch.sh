@@ -12,17 +12,26 @@ dispatch_write_deny() {
   printf '%s\n' "$1" || { printf '%s\n' 'pretooluse-edit-dispatch: could not write the deny decision to stdout; the edit is blocked' >&2 || true; exit 2; }
 }
 # Child-health failures are advisory: malformed output or stderr from a child
-# never turns an edit into a denial by itself.  Every denial in this dispatch
-# depends on the ECI marker check, so the proof-state lib must load and define
-# it first; if it cannot, the gate cannot decide and denies.
+# never turns an edit into a denial by itself.  Failure denials depend on the
+# ECI marker check or on the protected-target classifier, both from the
+# proof-state lib, so the lib must load and define the marker check first; if
+# it cannot, the gate cannot decide and denies.
 if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
   dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
   exit 0
 fi
-# Report dispatcher failures directly; Bash remains available for repair.
+# Report dispatcher failures on stderr.  omp blocks any non-zero exit, but
+# Codex and Claude Code run the edit after a hook exit other than 2, so with
+# an active or unknown marker the failure denies explicitly; a deny that cannot
+# be written exits 2.  With no marker the failing status is kept.  A subshell
+# failure exits with its own status so no deny JSON is captured into a value.
 _dispatch_err_trap() {
   local status="$1" line="$2" cmd="$3"
   printf 'pretooluse-edit-dispatch failed at line %s (exit %s): %s; inspect the dispatcher and retry via Bash if necessary\n' "$line" "$status" "$cmd" >&2 || true
+  if [ "$BASHPID" = "$$" ] && eci_marker_active_or_unknown; then
+    dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_FAIL_CLOSED] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: the dispatcher failed while an active or unknown marker exists, so the edit cannot be classified; inspect the dispatcher using Bash, repair it, and retry"}}'
+    exit 0
+  fi
   exit "$status"
 }
 trap '_dispatch_err_trap "$?" "$LINENO" "$BASH_COMMAND"' ERR
@@ -143,9 +152,11 @@ done
 
 # A child may offer a concrete denial.  Its stderr and malformed output are
 # advisory and never classify the edit by themselves.  A non-zero gate exit
-# means the edit could not be classified: it is denied only while an ECI marker
-# is active or unknown (ECI_EDIT_GATE_FAILED below); with no marker the source
-# behavior holds.  Another healthy child may still identify a real target.
+# means the edit could not be classified (ECI_EDIT_GATE_FAILED below): it is
+# denied while an ECI marker is active or unknown, or when the target is a
+# concrete session, control or approval target; an ordinary target stays
+# editable with a warning.  Another healthy child may still identify a real
+# target, and its denial takes precedence.
 dispatch_max_output_bytes=65536
 dispatch_candidate_is_valid() {
   local path="$1" bytes
@@ -198,11 +209,7 @@ dispatch_protected_target() {
   eci_hook_roots_load || return 2
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    case "$path" in
-      "~") path="$HOME" ;;
-      "~/"*) path="$HOME/${path#"~/"}" ;;
-    esac
-    case "$path" in /*) ;; *) path="${cwd:-$PWD}/$path" ;; esac
+    path="$(eci_hook_path_absolute "${cwd:-$PWD}" "$path")"
     lexical="$(eci_realpath_lexical "$path" 2>/dev/null || true)"
     resolved="$(eci_realpath_canonical "$path" 2>/dev/null || true)"
     if [ -z "$lexical" ] || [ -z "$resolved" ]; then unknown=1; fi
