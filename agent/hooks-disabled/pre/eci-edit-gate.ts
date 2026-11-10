@@ -8,7 +8,7 @@ import { basePayload, identityFor, preToolVerdict, runEciHook, scriptPath } from
 const SCRIPT = "pretooluse-edit-dispatch.sh";
 // The host gives handlers 30 seconds; reserve seven seconds for child cleanup.
 const EDIT_GATE_DEADLINE_SEC = 20;
-const TIMEOUT_REASON = "ECI edit target checks timed out; retry the same operation, or split it into smaller edits within the same session.";
+const TIMEOUT_REASON = "ECI edit target checks timed out. Retry in the same session or split multi-target edits. If a single target still times out, use Bash to inspect $HOME/.omp/agent/eci/hooks/pretooluse-edit-dispatch.sh and its child guards, run a minimal callback through bash -x to identify the hang, repair the cause within your owned scope, then retry.";
 const INSPECTION_RECOVERY = "Correct the patch and retry, or read the exact file and use Write for the intended content; Write remains subject to the same target checks.";
 const FAILED_GUARD = /^ECI_EDIT_GATE_FAILED_ALLOWED (validate-edit-write\.sh|eci-active-gate\.sh|validate-apply-patch\.sh)$/;
 

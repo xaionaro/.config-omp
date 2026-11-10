@@ -125,6 +125,9 @@ test("blocks a dispatcher that exceeds the remaining budget", async () => {
   const verdict = await handler({ toolName: "write", input: { path: "file", content: "text" } }, ctx) as { block: boolean; reason: string };
   expect(verdict.block).toBe(true);
   expect(verdict.reason).toContain("timed out");
+  expect(verdict.reason).toContain("Bash");
+  expect(verdict.reason).toContain("pretooluse-edit-dispatch.sh");
+  expect(verdict.reason).toContain("repair");
  } finally {
   clock.mockRestore();
   if (home === undefined) delete process.env.HOME; else process.env.HOME = home;
