@@ -203,6 +203,37 @@ func TestRunHookMarkerFreeBroadRoot(t *testing.T) {
 	}
 }
 
+// TestRunHookWorkerRemovalDiagnostics preserves distinct concrete target denials.
+//
+// Example: root removal reports the broad effect; session removal reports its target.
+func TestRunHookWorkerRemovalDiagnostics(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ECI_PROOF_ROOT", filepath.Join(home, "proof"))
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", "true")
+	sessions := filepath.Join(home, ".omp", "agent", "sessions")
+	for _, current := range []struct {
+		command string
+		code    DiagnosticCode
+	}{
+		{"rm -rf /", CodeBroadDestructiveDenied},
+		{"rm -rf '" + sessions + "'", hookCodeWorkerSessionsRootDenied},
+		{"rm -rf '" + filepath.Join(home, "owned") + "'", ""},
+	} {
+		input := HookInput{SessionID: "worker", CWD: home, ToolName: "Bash"}
+		input.ToolInput.Command = current.command
+		callback, err := json.Marshal(input)
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.Zero(t, RunHook(bytes.NewReader(callback), &output))
+		if current.code == "" {
+			require.Empty(t, output.String(), current.command)
+			continue
+		}
+		require.Contains(t, output.String(), string(current.code), current.command)
+	}
+}
+
 // TestRunHookMarkerFreeMultipleRepositories keeps bounded native Git requests
 // available without treating a retired marker as repository authorization.
 //

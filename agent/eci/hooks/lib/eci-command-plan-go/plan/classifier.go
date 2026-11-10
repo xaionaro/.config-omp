@@ -3770,11 +3770,6 @@ func inspectSegment(
 	}
 	argv := unwrapped.argv
 	name := filepath.Base(argv[0].value)
-	if request.HookMode {
-		if diagnostic := inspectHookSessionsWriter(request, argv, segmentIndex); diagnostic != nil {
-			return DecisionDeny, diagnostic
-		}
-	}
 	if request.HookMode && name == "git" {
 		// Native Git owns its option grammar. The callback checks named mutation
 		// families after gathering every compound and nested command effect.
@@ -3939,6 +3934,11 @@ func inspectSegment(
 	}
 	if diagnostic := inspectBroadDestruction(argv, segmentIndex); diagnostic != nil {
 		return DecisionDeny, diagnostic
+	}
+	if request.HookMode {
+		if diagnostic := inspectHookSessionsWriter(request, argv, segmentIndex); diagnostic != nil {
+			return DecisionDeny, diagnostic
+		}
 	}
 	if !request.HookMode && request.Marker == MarkerActive && request.Role == RoleCoordinator && name == "find" {
 		// Check each parsed segment before a compound plan can reach later
