@@ -263,36 +263,52 @@ func TestHookContextHostIdentityMatrix(t *testing.T) {
 	linkedParent := filepath.Join(filepath.Dir(project), "linked-project")
 	require.NoError(t, os.Symlink(project, linkedParent))
 	paths["linked-parent"] = filepath.Join(linkedParent, "pending.jsonl")
+	paths["fork-through-symlink-parent"] = filepath.Dir(project) + "/linked-project/../project/fork.jsonl"
+	paths["main-through-symlink-parent"] = filepath.Dir(project) + "/linked-project/../project/main.jsonl"
 	if os.Geteuid() != 0 {
 		paths["unreadable"] = filepath.Join(project, "unreadable.jsonl")
 		require.NoError(t, os.WriteFile(paths["unreadable"], []byte("{\"type\":\"session\"}\n"), 0000))
 	}
 	for _, kind := range []string{"main", "sub", "", "Main"} {
 		for _, override := range []string{"", "1", "true"} {
-			t.Setenv("ECI_HOOK_IS_SUBAGENT", override)
-			for name, path := range paths {
-				payload := map[string]string{"cwd": cwd, "transcript_path": path}
-				if kind != "" {
-					payload["omp_agent_kind"] = kind
-				}
-				body, err := json.Marshal(payload)
-				require.NoError(t, err)
-				var input HookInput
-				require.NoError(t, json.Unmarshal(body, &input))
-				got, err := hookRequest(input)
-				require.NoError(t, err)
-				want := RoleWorker
-				switch {
-				case override != "" || kind == "sub":
-				case name == "main":
-					want = RoleCoordinator
-				case kind == "main" && (name == "fork" || name == "pending" || name == "no-session"):
-					want = RoleCoordinator
-				}
-				require.Equal(t, want, got.Role, "kind=%q override=%q transcript=%s", kind, override, name)
-				require.Equal(t, MarkerInactive, got.Marker)
-			}
+			assertHookHostIdentityPaths(t, cwd, kind, override, paths)
 		}
+	}
+}
+
+// assertHookHostIdentityPaths checks every transcript state for one host identity and environment override.
+//
+// Example: a main identity without an override admits fork but rejects conflicting child evidence.
+func assertHookHostIdentityPaths(
+	t *testing.T,
+	cwd string,
+	kind string,
+	override string,
+	paths map[string]string,
+) {
+	t.Helper()
+	t.Setenv("ECI_HOOK_IS_SUBAGENT", override)
+	for name, path := range paths {
+		payload := map[string]string{"cwd": cwd, "transcript_path": path}
+		if kind != "" {
+			payload["omp_agent_kind"] = kind
+		}
+		body, err := json.Marshal(payload)
+		require.NoError(t, err)
+		var input HookInput
+		require.NoError(t, json.Unmarshal(body, &input))
+		got, err := hookRequest(input)
+		require.NoError(t, err)
+		want := RoleWorker
+		switch {
+		case override != "" || kind == "sub":
+		case name == "main" || name == "main-through-symlink-parent":
+			want = RoleCoordinator
+		case kind == "main" && (name == "fork" || name == "pending" || name == "no-session"):
+			want = RoleCoordinator
+		}
+		require.Equal(t, want, got.Role, "kind=%q override=%q transcript=%s", kind, override, name)
+		require.Equal(t, MarkerInactive, got.Marker)
 	}
 }
 
@@ -352,18 +368,22 @@ func TestHookInputAgentKindWireRoundTrip(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestHookContextPendingSessionsAliases preserves the configured sessions store and HOME aliases.
+// TestHookContextPendingAndForkSessionsAliases preserves the configured sessions store and HOME aliases.
 //
-// Example: a pending main file beneath the configured sessions symlink is coordinator, but a linked project is not.
-func TestHookContextPendingSessionsAliases(t *testing.T) {
+// Example: pending and forked main files beneath the configured sessions symlink are coordinator, but a linked project is not.
+func TestHookContextPendingAndForkSessionsAliases(t *testing.T) {
 	_, cwd := contextFixture(t)
 	project, alias := sessionsLinkFixture(t)
 	root := filepath.Join(os.Getenv("HOME"), ".omp", "agent", "sessions")
 	require.NoError(t, os.Symlink(project, filepath.Join(filepath.Dir(project), "linked")))
+	require.NoError(t, os.WriteFile(filepath.Join(project, "fork.jsonl"), []byte("{\"type\":\"session\",\"parentSession\":\"parent\"}\n"), 0600))
 	for _, path := range []string{
 		filepath.Join(project, "pending.jsonl"),
 		filepath.Join(root, "project", "pending.jsonl"),
 		filepath.Join(alias, ".omp", "agent", "sessions", "project", "pending.jsonl"),
+		filepath.Join(project, "fork.jsonl"),
+		filepath.Join(root, "project", "fork.jsonl"),
+		filepath.Join(alias, ".omp", "agent", "sessions", "project", "fork.jsonl"),
 	} {
 		body, err := json.Marshal(map[string]string{"cwd": cwd, "transcript_path": path, "omp_agent_kind": "main"})
 		require.NoError(t, err)

@@ -24,7 +24,7 @@ const (
 
 // OmpAgentKind represents the host's documented identity independently of transcript state.
 //
-// Example: main identity can fill the verified pending-transcript gap without changing saved sessions.
+// Example: host main admits verified forks and no-session callbacks, while host sub always remains Worker.
 type OmpAgentKind int
 
 const (
@@ -260,6 +260,9 @@ func hookTranscriptStatus(path string) (string, error) {
 	case depth == 2 && facts.sessionInit:
 		return fail(errors.New("session_init marker at depth two"))
 	case depth == 2 && facts.parentString && !facts.parentConflict:
+		if filepath.Clean(path) != path {
+			return fail(errors.New("fork transcript path is not clean"))
+		}
 		return "", errHookTranscriptFork
 	case depth == 2 && facts.parentPresent:
 		return fail(errors.New("conflicting parentSession key at depth two"))
