@@ -272,6 +272,7 @@ func provisionTestHome(root string) error {
 		"PATH":      pathWithoutRoots(os.Getenv("PATH"), realRoots),
 		"HOME":      home,
 		"TMPDIR":    temporary,
+		"GOTMPDIR":  temporary,
 		testRootEnv: root,
 	} {
 		if err := os.Setenv(name, value); err != nil {
@@ -286,6 +287,18 @@ func provisionTestHome(root string) error {
 	}
 	testPlannerBinary = filepath.Join(eci, "bin", "eci-command-plan")
 	return nil
+}
+
+// TestProvisionedTemporaryDirectory stays within the private test root.
+//
+// Example: a caller-provided GOTMPDIR cannot put fixture homes outside the root.
+func TestProvisionedTemporaryDirectory(t *testing.T) {
+	root := os.Getenv(testRootEnv)
+	directory := t.TempDir()
+	relative, err := filepath.Rel(root, directory)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		t.Fatalf("temporary directory %q is outside root %q: %v", directory, root, err)
+	}
 }
 
 // pinGoEnvironment fixes Go's HOME-derived settings to what `go env` reports under the account

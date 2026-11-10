@@ -565,18 +565,19 @@ func TestRunHookLargeCallback(t *testing.T) {
 		command  string
 		trailing string
 		denied   bool
+		status   int
 	}{
-		{command, "", false},
-		{command + "; rm -rf /", "", true},
-		{command + "; rm -rf /", "{}", false},
-		{command + "; rm -rf /", "{", false},
+		{command, "", false, 0},
+		{command + "; rm -rf /", "", true, 0},
+		{command + "; rm -rf /", "{}", false, 2},
+		{command + "; rm -rf /", "{", false, 2},
 	} {
 		input := HookInput{SessionID: "large", CWD: home, ToolName: "Bash"}
 		input.ToolInput.Command = test.command
 		callback, err := json.Marshal(input)
 		require.NoError(t, err)
 		var output bytes.Buffer
-		require.Zero(t, RunHook(strings.NewReader(string(callback)+test.trailing), &output, io.Discard))
+		require.Equal(t, test.status, RunHook(strings.NewReader(string(callback)+test.trailing), &output, io.Discard), "trailing=%q", test.trailing)
 		require.Equal(t, test.denied, output.Len() != 0, "trailing=%q", test.trailing)
 	}
 	var plannerOutput bytes.Buffer

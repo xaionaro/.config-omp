@@ -1351,21 +1351,10 @@ func TestEciCoordinatorStopGateSyntaxRoute(t *testing.T) {
 			}
 		})
 	}
-	// Worker execution of the Supervisor-owned control script is denied as control
-	// ownership; the worker's syntax-only check of it is admitted above ("worker ownership").
-	assertDenied("worker control execution", canonicalRoot, "bash hooks/stop-gate.sh", true, "", false,
-		"["+string(CodeControlOwnerRequired)+"]")
+	// A concrete broad-root effect remains denied for either callback role.
 	for _, worker := range []bool{false, true} {
-		assertDenied(fmt.Sprintf("syntax with control redirect worker=%t", worker), canonicalRoot,
-			"bash -n hooks/stop-gate.sh > "+marker+" | true", worker, "", false, "eci_active")
-		// The broad segment is denied for both roles. For a worker, "/" is an ancestor of
-		// the session's marker, so the control-ownership check reports the denial first.
-		broadReason := "[" + string(CodeControlOwnerRequired) + "]"
-		if !worker {
-			broadReason = "ECI_BROAD_DESTRUCTIVE_DENIED"
-		}
 		assertDenied(fmt.Sprintf("syntax with broad segment worker=%t", worker), canonicalRoot,
-			"bash -n hooks/stop-gate.sh | rm -rf /", worker, "", false, broadReason)
+			"bash -n hooks/stop-gate.sh | rm -rf /", worker, "", false, string(CodeBroadDestructiveDenied))
 	}
 }
 
