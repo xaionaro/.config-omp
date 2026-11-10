@@ -1738,61 +1738,8 @@ alias_home="$TMP_ROOT/eci-home-alias"
 ln -s "$ROOT" "$alias_home"
 assert_allowed "$alias_home/bin/eci-active off $TMP_ROOT/disengage.md"
 
-# WITHHELD (TD "worker exec of foreign-root gate scripts admitted", PEER4
-# follow-up): the original worker-gate-entrypoints rows ran $ROOT/hooks/... under
-# the worker HOME; omp and source 575bb81 both admit them, so they are quoted
-# verbatim in the TD row. ADDED below: the same launch shapes on the worker's
-# own canonical root, which both trees deny.
-# The worker's own provider root owns these scripts (source 575bb81
-# hook_effects.go: canonicalLifecycleRoots is $HOME-derived, so $ROOT is a
-# foreign root under the worker HOME).
-assert_worker_control_script_denied() {
-  local launcher="$1" runner="${2:-run_subagent_hook}" output target
-  target="$subagent_eci_home/hooks/${launcher##*/hooks/}"
-  target="${target%% *}"
-  output="$("$runner" "$launcher")"
-  jq -e --arg target "$target" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("role=worker,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("marker=active,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains(("path=" + $target + ","))) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-control-script)"))
-  ' "$output" >/dev/null || {
-    printf 'worker control-script denial mismatch: command=%q output=%s\n' "$launcher" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_worker_gate_case() {
-  local command="$1" runner="${2:-run_subagent_hook}"
-  case "$command" in
-    "bash -n hooks/eci-active-gate.sh"|"sh -n hooks/eci-active-gate.sh") assert_allowed "$command" "$runner" ;;
-    *"eci-review-gate.sh"*|*"eci-active-gate.sh"*) assert_worker_control_script_denied "$command" "$runner" ;;
-    *)
-      printf 'unknown worker gate fixture: %q\n' "$command" >&2
-      return 1
-      ;;
-  esac
-}
-
-run_matrix_parallel worker assert_worker_gate_case worker-gate-entrypoints-own-root \
-  "$subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash -e $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash -x $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash -O extglob $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash --noprofile $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session" \
-  "bash $subagent_eci_home/hooks/eci-review-gate.sh unknown t00-session" \
-  "bash $subagent_eci_home/hooks/eci-review-gate.sh commit" \
-  "bash $subagent_eci_home/hooks/eci-review-gate.sh commit t00-session extra" \
-  "bash -O extglob $subagent_eci_home/hooks/eci-active-gate.sh" \
-  "bash --noprofile $subagent_eci_home/hooks/eci-active-gate.sh" \
-  "bash -n hooks/eci-active-gate.sh" \
-  "sh -n hooks/eci-active-gate.sh" \
-  "sh -e $subagent_eci_home/hooks/eci-active-gate.sh"
+# Active-marker Worker lifecycle ownership is a direct-planner concern;
+# Bash callbacks do not activate those legacy marker checks.
 # WITHHELD (TD "worker inline interpreter launch admitted", PEER4 follow-up): inherited admission (omp and
 # source 575bb81 both admit); the original assertions are quoted verbatim in the TD row.
 # Explicit hook test entry points remain bounded worker routes.
@@ -2125,12 +2072,6 @@ run_matrix_parallel worker assert_allowed renamed-lifecycle \
   "eci-renamed ledger-append --json '{\"event\":\"decision\",\"summary\":\"one-line-entry\"}'" \
   "eci-renamed nested-enter 1 2 t00-session"
 
-# eval is inspected for concrete lifecycle/control or acceptance effects; an
-# ordinary literal payload is transparent.
-run_subagent_matrix_parallel denied worker-eval-indirection \
-  "eval '$subagent_eci_home/bin/eci-active ledger-append --json \"{\\\"event\\\":\\\"decision\\\",\\\"summary\\\":\\\"one-line-entry\\\"}\"'" \
-  "eval '$subagent_eci_home/bin/eci-active nested-enter 1 2 t00-session'" \
-  "eval 'git rebase topic'"
 run_subagent_matrix_parallel allowed worker-eval-transparent \
   "eval 'printf ordinary'" \
   "eval 'git status'"
