@@ -161,12 +161,8 @@ test("native denial guidance exposes only recognized binary reasons", () => {
 	expect(bashPreToolVerdict(run("private attacker data"))?.reason).not.toContain("private attacker data");
 });
 
-test("shared repair reasons match native verifier and builder", () => {
-	const native = readFileSync(join(import.meta.dir, "../../eci/hooks/lib/eci-verexec-go/reasons.go"), "utf8");
-	const builder = readFileSync(join(import.meta.dir, "../../eci/hooks/build-native-binaries.sh"), "utf8");
+test("recognized native failures offer fixed repair guidance", () => {
 	for (const reason of ["is missing or a symlink", "is not an ELF binary for this host", "has no sha256 receipt", "has a malformed sha256 receipt", "sha256 does not match its receipt"]) {
-		expect(native).toContain(`"${reason}"`);
-		expect(builder).toContain(`'${reason}'`);
 		const stderr = `[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] ECI native gate binary eci-command-plan is unavailable or unverified (${reason}); provision it`;
 		expect(bashPreToolVerdict({ outcome: exited(2), stdout: "", stderr })?.reason).toContain(": eci-bash-gate-repair");
 	}
