@@ -1,6 +1,6 @@
-// Disabled until deliberately installed under hooks/. Tracks successful canonical skill reads
-// in the current process; a resumed or reloaded session is asked to read again.
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+// Disabled until deliberately installed under hooks/. Successful reads are scoped
+// to the current agent and reconstructed from its active transcript branch.
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -104,14 +104,45 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
  function key(ctx: { sessionManager: { getSessionId(): string }; agent?: { id: string } }): string {
   return JSON.stringify([ctx.sessionManager.getSessionId(), ctx.agent?.id ?? "main"]);
  }
+ function seenFor(ctx: ExtensionContext): Set<string> {
+  const id = key(ctx);
+  const existing = reads.get(id);
+  if (existing) return existing;
+  const seen = new Set<string>();
+  // The advisor shares its parent's runner; its reads are not in that branch.
+  if (ctx.agent?.id !== "advisor") {
+   const calls = new Map<string, string>();
+   for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type !== "message") continue;
+    const message = entry.message;
+    if (message.role === "assistant") {
+     for (const part of message.content) {
+      if (part.type !== "toolCall" || part.name !== "read" || typeof part.arguments.path !== "string") continue;
+      const match = /^skill:\/\/(coding-(?:common|[a-z0-9-]+))$/.exec(part.arguments.path);
+      if (match) calls.set(part.id, match[1]);
+     }
+    } else if (message.role === "toolResult" && message.toolName === "read" && !message.isError) {
+     const skill = calls.get(message.toolCallId);
+     if (skill) seen.add(skill);
+    }
+   }
+  }
+  reads.set(id, seen);
+  return seen;
+ }
+ const reset = (_event: unknown, ctx: ExtensionContext) => {
+  reads.delete(key(ctx));
+  pending.delete(key(ctx));
+ };
+ pi.on("session_tree", reset);
+ pi.on("session_branch", reset);
+ pi.on("session_switch", reset);
  pi.on("tool_result", (event, ctx) => {
   const id = key(ctx);
   if (event.toolName === "read" && !event.isError && typeof event.input.path === "string") {
    const match = /^skill:\/\/(coding-(?:common|[a-z0-9-]+))$/.exec(event.input.path);
    if (match) {
-    const seen = reads.get(id) ?? new Set<string>();
-    seen.add(match[1]);
-    reads.set(id, seen);
+    seenFor(ctx).add(match[1]);
    }
   }
   if (event.toolName === "ast_edit" && !event.isError && event.details && typeof event.details === "object" && "files" in event.details && Array.isArray(event.details.files)) {
@@ -125,7 +156,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
   for (const path of paths) {
    const lang = language(path);
    if (!lang) continue;
-   const seen = reads.get(id);
+   const seen = seenFor(ctx);
    const missing = ["coding-common", `coding-${lang}`].filter(skill => !seen?.has(skill));
    if (missing.length) return { block: true, reason: `Coding skill gate: writing ${path} requires reading ${missing.map(skill => `skill://${skill}`).join(" and ")} in this agent first; read those skills, then retry. If the hook is unavailable or incorrect, ask the user to temporarily disable this disabled-by-default hook.` };
   }

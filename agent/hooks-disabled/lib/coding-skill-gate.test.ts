@@ -4,17 +4,20 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import gate from "../pre/coding-skill-gate.ts";
 
 type Event = { toolName: string; input: Record<string, unknown>; isError?: boolean; details?: unknown; content?: { type: string; text: string }[] };
-type Context = { cwd: string; agent: { id: string; kind: string }; sessionManager: { getSessionId(): string } };
+type Context = { cwd: string; agent: { id: string; kind: string }; sessionManager: { getSessionId(): string; getBranch(): unknown[] } };
 type Verdict = { block: boolean; reason: string } | undefined;
 function setup() {
  const handlers: Record<string, (event: Event, ctx: Context) => Verdict> = {};
  // This fixture supplies only event registration.
  gate({ on(name: string, handler: (event: Event, ctx: Context) => Verdict) { handlers[name] = handler; } } as unknown as ExtensionAPI);
- const ctx = (session = "one", id = "Main") => ({ cwd: "/tmp", agent: { id, kind: "main" }, sessionManager: { getSessionId: () => session } });
+ let branch: unknown[] = [];
+ const ctx = (session = "one", id = "Main") => ({ cwd: "/tmp", agent: { id, kind: "main" }, sessionManager: { getSessionId: () => session, getBranch: () => branch } });
+ const setBranch = (value: unknown[]) => { branch = value; };
+ const tree = (c = ctx()) => handlers.session_tree({toolName: "", input: {}}, c);
  const call = (toolName: string, input: Record<string, unknown>, c = ctx()) => handlers.tool_call({ toolName, input }, c);
  const read = (path: string, c = ctx(), isError = false) => handlers.tool_result({ toolName: "read", input: { path }, isError, content: [{type: "text", text: "skill"}] }, c);
  const result = (toolName: string, input: Record<string, unknown>, details: unknown, c = ctx(), isError = false) => handlers.tool_result({ toolName, input, details, isError }, c);
- return { call, read, result, ctx };
+ return { call, read, result, ctx, setBranch, tree };
 }
 
 test("requires both successful skill reads per agent and session", () => {
@@ -32,6 +35,28 @@ test("requires both successful skill reads per agent and session", () => {
  assert.match(call("write", {path: "b.go"}, ctx("one", "advisor"))!.reason, /coding-common/);
  assert.match(call("write", {path: "b.py"})!.reason, /coding-python/);
  assert.equal(call("write", {path: "a.txt"}), undefined);
+});
+
+test("restores paired successful reads from the current branch and resets after navigation", () => {
+ const { call, setBranch, tree } = setup();
+ setBranch([
+  { type: "message", message: { role: "assistant", content: [
+   { type: "toolCall", id: "c", name: "read", arguments: {path: "skill://coding-common"} },
+   { type: "toolCall", id: "g", name: "read", arguments: {path: "skill://coding-go"} },
+  ] } },
+  { type: "message", message: { role: "toolResult", toolCallId: "c", toolName: "read", isError: false } },
+  { type: "message", message: { role: "toolResult", toolCallId: "g", toolName: "read", isError: false } },
+ ]);
+ assert.equal(call("write", {path: "a.go"}), undefined);
+ setBranch([]);
+ tree();
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
+ setBranch([
+  { type: "message", message: { role: "assistant", content: [{type: "toolCall", id: "c", name: "read", arguments: {path: "skill://coding-common"}}] } },
+  { type: "message", message: { role: "toolResult", toolCallId: "c", toolName: "read", isError: true } },
+ ]);
+ tree();
+ assert.match(call("write", {path: "a.go"})!.reason, /coding-common/);
 });
 
 test("recognizes patch, shell, eval and pending structural edits", () => {
