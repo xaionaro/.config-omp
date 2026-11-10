@@ -62,9 +62,24 @@ test("passes the script exit code through", async () => {
 test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empty stdout allows", async () => {
 	const failed = await runEciHook(script("die.sh", "echo boom >&2\nexit 1\n"), {}, id, 10);
 	expect(failed.stdout).toBe("");
-	expect(preToolVerdict(failed, "validate-bash")).toEqual({ block: true, reason: "ECI hook validate-bash exited 1: boom; blocking (fail-closed)." });
+	expect(preToolVerdict(failed, "validate-bash")).toEqual({ block: true, reason: "ECI hook validate-bash exited 1: boom; blocking (fail-closed). Inspect the hook stderr and $HOME/.omp/agent/eci/hooks/validate-bash.sh, repair the reported runtime or output failure, then retry the same command." });
 	const quiet = await runEciHook(script("quiet.sh", "exit 0\n"), {}, id, 10);
 	expect(preToolVerdict(quiet, "validate-bash")).toBeUndefined();
+});
+
+test("Bash hook transport failures explain how to diagnose and retry without changing other hooks", () => {
+	for (const run of [
+		{ ok: false, code: 124, stdout: "", stderr: "" },
+		{ ok: true, code: 0, stdout: "not json", stderr: "" },
+		{ ok: true, code: 0, stdout: "{}", stderr: "" },
+	]) {
+		const verdict = preToolVerdict(run, "validate-bash");
+		expect(verdict?.block).toBe(true);
+		expect(verdict?.reason).toContain("validate-bash");
+		expect(verdict?.reason).toContain("Inspect");
+		expect(verdict?.reason).toContain("retry");
+		expect(preToolVerdict(run, "pretooluse-edit-dispatch")?.reason).not.toContain("validate-bash");
+	}
 });
 
 test("a deadline stops the hook with SIGTERM and reports 124", async () => {
@@ -124,7 +139,7 @@ function caseContent(c: PrefixCase): string {
 }
 
 test("the prefix rule matches the Go classifier on the shared cases", async () => {
-	const table = join(import.meta.dir, "../../eci/hooks/lib/eci-command-plan-go/testdata/transcript-prefix-cases.json");
+	const table = join(import.meta.dir, "../../eci/hooks/lib/eci-command-plan-go/plan/testdata/transcript-prefix-cases.json");
 	const { cases } = (await Bun.file(table).json()) as { cases: PrefixCase[] };
 	expect(cases.length).toBeGreaterThan(10);
 	for (const c of cases) {
