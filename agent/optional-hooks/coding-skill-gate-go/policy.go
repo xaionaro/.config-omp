@@ -248,7 +248,7 @@ func verifiedSkill(
 	if raw && strings.HasSuffix(text, "\n") {
 		total++
 	}
-	if !ok || !textOK || !totalOK || raw != asBool(details["raw"]) || float64(len(numbers)) != total || len(strings.Split(text, "\n")) != len(numbers) {
+	if !ok || !textOK || !totalOK || raw != asBool(details["raw"]) || float64(len(numbers)) != total || strings.Count(text, "\n")+1 != len(numbers) {
 		return skillUnknown
 	}
 	for i, number := range numbers {
