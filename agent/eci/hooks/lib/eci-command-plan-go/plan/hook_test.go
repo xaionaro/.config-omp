@@ -617,19 +617,19 @@ func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
 	}
 }
 
-// TestHookMalformedIdentityAdvisory verifies stale markers do not deny malformed input.
+// TestHookMalformedIdentityBlocks verifies malformed callback JSON fails closed.
 //
-// Example: session_id [] stays advisory with or without a legacy marker.
-func TestHookMalformedIdentityAdvisory(t *testing.T) {
+// Example: session_id [] blocks with or without a legacy marker.
+func TestHookMalformedIdentityBlocks(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("ECI_PROOF_ROOT", root)
 	malformed := `{"session_id":[],"tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"true"}}`
 	var output bytes.Buffer
-	require.Zero(t, RunHook(strings.NewReader(malformed), &output, io.Discard))
+	require.Equal(t, 2, RunHook(strings.NewReader(malformed), &output, io.Discard))
 	require.Empty(t, output.String())
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "scratch-owner"), 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "scratch-owner", "eci_active"), []byte("scope: x\ncwd: /tmp\nsession_id: scratch-owner\n"), 0600))
 	output.Reset()
-	require.Zero(t, RunHook(strings.NewReader(malformed), &output, io.Discard))
+	require.Equal(t, 2, RunHook(strings.NewReader(malformed), &output, io.Discard))
 	require.Empty(t, output.String())
 }

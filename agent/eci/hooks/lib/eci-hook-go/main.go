@@ -47,7 +47,7 @@ func bashGate(stdin io.Reader, stdout, stderr io.Writer) (code int) {
 			code = deny(stdout, stderr, "validate-bash", fmt.Sprintf("%seci-hook bash-gate failed internally (%v); rebuild it with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry", reasonNativeGateUnavailable, recovered))
 		}
 	}()
-	return plan.RunHook(stdin, stdout)
+	return plan.RunHook(stdin, stdout, stderr)
 }
 
 // deny writes one PreToolUse denial; an unwritable denial exits 2 so the call stays blocked.
