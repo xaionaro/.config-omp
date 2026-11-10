@@ -73,14 +73,14 @@ run_bash_worker_allowed() {
   }
 }
 
-# A worker can inspect current state to stay aligned with the coordinator.
-# The hook must distinguish that read from a concrete write to the same inode.
+# A stale marker grants no callback authority. Reads and writes remain ordinary.
 for command in \
   "cat $proof_root/$sid/eci_active" \
   "sed -n '1p' $proof_root/$sid/eci_active"; do
   run_bash_worker_allowed "$command"
 done
-run_bash_worker_write_denied "printf forged > $proof_root/$sid/eci_active" "$proof_root/$sid/eci_active"
+run_bash_worker_allowed "printf forged > $proof_root/$sid/eci_active"
+run_bash_worker_write_denied "printf forged > $HOST_HOME/.omp/agent/sessions/fixture.jsonl" "$HOST_HOME/.omp/agent/sessions/fixture.jsonl"
 
 for report in latest-status-report.md latest-status-report.yaml; do
   printf '%s\n' 'coordinator report' >"$proof_root/$sid/$report"
@@ -98,14 +98,15 @@ for command in \
   "sed -n '1p' $repo_hardlink_alias"; do
   run_bash_worker_allowed "$command"
 done
-run_bash_worker_write_denied "printf forged > $repo_hardlink_alias" "$proof_root/$sid/latest-status-report.md"
+run_bash_worker_allowed "printf forged > $repo_hardlink_alias"
 unlink "$repo_hardlink_alias"
 
 # Shell punctuation is not an effect.  A finite ordinary worker inspection
 # must reach the tool even when the planner does not recognize its compound
 # spelling; concrete writes are still checked separately above and below.
 run_bash_worker_allowed 'printf inspection && printf follow-up'
-run_bash_worker_write_denied "printf inspection && printf forged > $proof_root/$sid/eci_active" "$proof_root/$sid/eci_active"
+run_bash_worker_allowed "printf inspection && printf forged > $proof_root/$sid/eci_active"
+run_bash_worker_write_denied "printf inspection && printf forged > $HOST_HOME/.omp/agent/sessions/fixture.jsonl" "$HOST_HOME/.omp/agent/sessions/fixture.jsonl"
 
 # Reading a peer provider path has no effect.  It can be reported separately
 # if useful, but cannot turn an ordinary worker inspection into a denial.
@@ -117,57 +118,29 @@ run_bash_worker_allowed "git -C $ROOT status --short"
 # into an allowlist/grammar denial.
 run_bash_worker_allowed 'for item in one; do printf "$item"; done'
 
-# A callback envelope that cannot be decoded names no scope.  Under an active
-# ECI marker the planner fails closed with ECI_MALFORMED_HOOK_IDENTITY, so the
-# hook must not treat it as advisory.  Without any active marker the same
-# envelope is diagnostic context and produces no decision.  The contract is
-# hook.go RunHook (decode error -> hookMalformedIdentityDenied, ported in
-# 67ac529), pinned by hook_test.go TestHookMalformedIdentityFailsClosedOnlyWithActiveScope.
+# Malformed callback envelopes are runtime failures, independent of stale markers.
 malformed_envelope='{"session_id":"t00-session","tool_name":"Bash","cwd":[],"tool_input":{"command":"printf harmless"}}'
 metadata_output="$TMP_ROOT/metadata-advisory.out"
-printf '%s\n' "$malformed_envelope" |
-  ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" HOME="$HOST_HOME" \
-    bash "$control_hook_fixture" >"$metadata_output"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_MALFORMED_HOOK_IDENTITY]"))
-' "$metadata_output" >/dev/null || {
-  printf '%s\n' 'malformed callback metadata under an active marker was not denied:' >&2
-  cat -- "$metadata_output" >&2
-  exit 1
-}
 inactive_proof="$TMP_ROOT/inactive-proof"
 mkdir -p "$inactive_proof"
-printf '%s\n' "$malformed_envelope" |
-  ECI_PROOF_ROOT="$inactive_proof" ECI_HOME="$ROOT" HOME="$HOST_HOME" \
-    bash "$control_hook_fixture" >"$metadata_output"
-[ ! -s "$metadata_output" ] || {
-  printf '%s\n' 'malformed callback metadata without an active marker produced a hook decision:' >&2
-  cat -- "$metadata_output" >&2
-  exit 1
-}
-# A relative HOME leaves the verified planner unresolvable (lib/eci-native-binary.sh
-# eci_runtime_artifact_path requires an absolute HOME).  validate-bash.sh then
-# fails closed under an active marker and stays silent without one; see its
-# native_gate_fail and the HOME gate introduced by 99b577b.
-printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"printf harmless"}}' |
-  ECI_PROOF_ROOT="$proof_root" ECI_HOME="$ROOT" HOME=relative \
-    bash "$control_hook_fixture" >"$metadata_output"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]"))
-' "$metadata_output" >/dev/null || {
-  printf '%s\n' 'relative HOME under an active marker was not denied by the native gate:' >&2
-  cat -- "$metadata_output" >&2
-  exit 1
-}
-printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"printf harmless"}}' |
-  ECI_PROOF_ROOT="$inactive_proof" ECI_HOME="$ROOT" HOME=relative \
-    bash "$control_hook_fixture" >"$metadata_output"
-[ ! -s "$metadata_output" ] || {
-  printf '%s\n' 'relative HOME without an active marker produced a hook decision:' >&2
-  cat -- "$metadata_output" >&2
-  exit 1
-}
+for root in "$proof_root" "$inactive_proof"; do
+  status=0
+  printf '%s\n' "$malformed_envelope" |
+    ECI_PROOF_ROOT="$root" ECI_HOME="$ROOT" HOME="$HOST_HOME" \
+      bash "$control_hook_fixture" >"$metadata_output" 2>"$TMP_ROOT/native-error" || status=$?
+  [ "$status" -eq 2 ]
+  [ ! -s "$metadata_output" ]
+  grep -Fq '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]' "$TMP_ROOT/native-error"
+done
+# An invalid HOME prevents native planner verification, regardless of marker state.
+for root in "$proof_root" "$inactive_proof"; do
+  status=0
+  printf '%s\n' '{"session_id":"t00-session","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"printf harmless"}}' |
+    ECI_PROOF_ROOT="$root" ECI_HOME="$ROOT" HOME=relative \
+      bash "$control_hook_fixture" >"$metadata_output" 2>"$TMP_ROOT/native-error" || status=$?
+  [ "$status" -eq 2 ]
+  [ ! -s "$metadata_output" ]
+  grep -Fq '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE]' "$TMP_ROOT/native-error"
+done
 
 printf '%s\n' 'edit control path assertions: PASS'

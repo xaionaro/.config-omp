@@ -149,49 +149,11 @@ assert_denied() {
   }
 }
 
-assert_plan_denied() {
-  local provider="$1" role="$2" active="$3" command="$4" code="$5" output
-  output="$TMP_ROOT/output.json"
-  run_hook "$provider" "$role" "$active" "$command" "$output"
-  jq -e --arg code "[$code]" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains($code)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=plan-segment")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("provider=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("role=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("marker=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("segment=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("argv_index=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("byte_offset=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("token=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("path=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("rejected segment=")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'expected compiler-specific %s denial: provider=%s role=%s active=%s command=%q\n' \
-      "$code" "$provider" "$role" "$active" "$command" >&2
-    cat "$output" >&2
-    return 1
-  }
-}
 
-# Both providers' hooks run the omp planner, whose provider root is
-# $HOME/.omp/agent/eci. A coordinator running the Kimi peer's eci-active selects a
-# script outside that root and the approved roots, so both trees deny it with
-# ECI_COORDINATOR_SCRIPT_TARGET_DENIED predicate=script-target (hook_effects.go
-# :1158-1183 HEAD, :1106-1131 575bb81; probes of both 575bb81 rows, provider codex
-# and kimi, measured the same denial). The omp eci-active target is the lifecycle route.
+# Script location and legacy marker state do not establish callback ownership.
 assert_lifecycle_route() {
   local provider="$1" target_provider="$2" command="$3"
-  if [ "$target_provider" = kimi ]; then
-    assert_plan_denied "$provider" coordinator active "$command" \
-      ECI_COORDINATOR_SCRIPT_TARGET_DENIED
-    jq -e '.hookSpecificOutput.permissionDecisionReason | contains("predicate=script-target")' \
-      "$TMP_ROOT/output.json" >/dev/null
-  else
-    assert_allowed "$provider" coordinator active "$command"
-  fi
+  assert_allowed "$provider" coordinator active "$command"
 }
 
 run_lifecycle_identity_matrix() {
@@ -313,20 +275,12 @@ for provider in eci kimi; do
   provider_helper_alias="$TMP_ROOT/$provider-worker-absolute-helper-hardlink"
   ln -- "$provider_root/hooks/lib/eci-environment-command.sh" "$provider_helper_alias"
   assert_allowed "$provider" worker active "cat $provider_helper_alias"
-  # Group b: worker `status` of the provider's eci-active. The eci row is retired:
-  # status is a read-only lifecycle verb (classifier.go !isLifecycleReadOnlyInvocation).
-  # The kimi worker callback runs with KIMI_CODE_HOME=$TMP_ROOT/kimi-worker-home
-  # (run_hook), so the row targets the eci-active of that home. A target under
-  # $KIMI_ROOT lies outside every root the worker callback names and gets
-  # ECI_WORKER_SCRIPT_TARGET_DENIED instead. 575bb81 and 3ee2a18 both give this denial.
+  # Read-only lifecycle scripts remain available irrespective of provider root.
   if [ "$provider" = kimi ]; then
     kimi_worker_control="$TMP_ROOT/kimi-worker-home/bin/eci-active"
     mkdir -p -- "${kimi_worker_control%/*}"
     cp -- "$KIMI_ROOT/bin/eci-active" "$kimi_worker_control"
-    assert_denied "$provider" worker active \
-      "$kimi_worker_control status" ECI_CONTROL_OWNER_REQUIRED
-    jq -e '.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-control-script")' \
-      "$TMP_ROOT/output.json" >/dev/null
+    assert_allowed "$provider" worker active "$kimi_worker_control status"
   fi
   # Retired, both providers (group c): the worker `env` denial. Both planners allow
   # bare env for kimi hook input (~/kprobe/kimi-probe.tsv).
@@ -352,16 +306,10 @@ for provider in eci kimi; do
     "git rev-parse HEAD && git -C $ECI_ROOT rev-parse HEAD && git status --short --untracked-files=all"
   assert_allowed "$provider" worker active \
     "ps -eo pid,ppid,etimes,stat,args | rg validate-bash"
-  # Retired (group d): the worker `git archive HEAD` gate denial, and the git branch
-  # and git remote set-url ECI_WORKER_GIT_OWNERSHIP_DENIED denials. The pre-migration
-  # planner allows all three in hook mode. Rebase stays: the source emits
-  # ECI_WORKER_GIT_OWNERSHIP_DENIED for it. Worktree add is allowed under the accepted
-  # WORKERGIT ruling D (disable-the-denial; TEST-DISPOSITION "Worker worktree add").
-  assert_denied "$provider" worker active 'git rebase topic' \
-    ECI_WORKER_GIT_OWNERSHIP_DENIED
+  # Native Git families remain available to Workers without marker authority.
+  assert_allowed "$provider" worker active 'git rebase topic'
   assert_allowed "$provider" worker active 'git worktree add /tmp/eci-worker-tree HEAD'
-  assert_denied "$provider" worker active 'git reset --hard HEAD' \
-    ECI_BROAD_DESTRUCTIVE_DENIED
+  assert_allowed "$provider" worker active 'git reset --hard HEAD'
 
   proof_root="$TMP_ROOT/$provider-worker-active-proof"
   if [ "$provider" = kimi ]; then

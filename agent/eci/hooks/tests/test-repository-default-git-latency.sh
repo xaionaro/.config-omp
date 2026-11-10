@@ -118,6 +118,13 @@ assert_denied() {
   }
   printf 'provider=%s negative=%q result=deny\n' "$provider" "$command"
 }
+assert_allowed() {
+  local provider="$1" cwd="$2" session="$3" command="$4"
+  local input="$TMP_ROOT/$provider-positive.json" output="$TMP_ROOT/$provider-positive.out"
+  make_input "$session" "$cwd" "$command" "$input"
+  run_validator "$provider" "$input" "$output" "$TMP_ROOT/$provider-positive.err" "$TMP_ROOT/$provider-positive.time"
+  [ ! -s "$output" ] || fail "$provider unexpectedly denied: $command"
+}
 
 make_input "$ECI_SESSION" "$ECI_ROOT" 'git status --short' "$ECI_INPUT"
 make_input "$KIMI_SESSION" "$KIMI_ROOT" 'git status --short' "$KIMI_INPUT"
@@ -135,20 +142,14 @@ measure_provider kimi "$KIMI_COMPOUND_INPUT" compound-read-only
 
 for provider in eci kimi; do
   if [ "$provider" = eci ]; then
-    root="$ECI_ROOT"; session="$ECI_SESSION"; proof="$ECI_PROOF_ROOT"
-    context_code=ECI_GIT_EXECUTION_CONTEXT_DENIED
+    assert_allowed eci "$ECI_ROOT" "$ECI_SESSION" 'git commit -m benchmark-checkpoint'
+    assert_allowed eci "$ECI_ROOT" "$ECI_SESSION" 'git status --short && git commit -m benchmark-checkpoint'
+    assert_allowed eci "$ECI_ROOT" "$ECI_SESSION" "git -C $FOREIGN_REPO status --short"
+    assert_allowed eci "$ECI_ROOT" "$ECI_SESSION" '/tmp/eci-escape.sh'
   else
-    root="$KIMI_ROOT"; session="$KIMI_SESSION"; proof="$KIMI_PROOF_ROOT"
-    context_code=ECI_COMMAND_NOT_ALLOWLISTED
+    assert_denied kimi "$KIMI_ROOT" "$KIMI_SESSION" "$KIMI_PROOF_ROOT" "git -C $FOREIGN_REPO status --short" ECI_COMMAND_NOT_ALLOWLISTED
+    assert_denied kimi "$KIMI_ROOT" "$KIMI_SESSION" "$KIMI_PROOF_ROOT" '/tmp/eci-escape.sh' ECI_TMPDIR_SYSTEM_ROOT
   fi
-  # Producer checkpoint ownership is asserted for the canonical ECI hook.
-  # Both providers retain their independent scope checks below.
-  if [ "$provider" = eci ]; then
-    assert_denied "$provider" "$root" "$session" "$proof" 'git commit -m benchmark-forbidden' ECI_GIT_COMMIT_PRODUCER_REQUIRED
-    assert_denied "$provider" "$root" "$session" "$proof" 'git status --short && git commit -m benchmark-forbidden' ECI_GIT_COMMIT_PRODUCER_REQUIRED
-  fi
-  assert_denied "$provider" "$root" "$session" "$proof" "git -C $FOREIGN_REPO status --short" "$context_code"
-  assert_denied "$provider" "$root" "$session" "$proof" '/tmp/eci-escape.sh' ECI_TMPDIR_SYSTEM_ROOT
 done
 
-printf 'repository-default-git latency: PASS providers=2 scenarios=3 samples_per_provider=%d negatives_eci=4 negatives_kimi=2\n' "$SAMPLES"
+printf 'repository-default-git latency: PASS providers=2 scenarios=3 samples_per_provider=%d eci_allowed=4 negatives_kimi=2\n' "$SAMPLES"

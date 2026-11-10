@@ -69,10 +69,10 @@ func subagentDirectory(t *testing.T, project string) string {
 	return dir
 }
 
-// TestHookContextParentPrefix classifies a child despite a large history tail.
+// TestHookContextChildIgnoresParentMarker classifies a child despite a large history tail.
 //
 // Example: a child header selects Worker without inheriting its parent's marker.
-func TestHookContextParentPrefix(t *testing.T) {
+func TestHookContextChildIgnoresParentMarker(t *testing.T) {
 	root, cwd := contextFixture(t)
 	sessions := sessionsFixture(t)
 	contextMarker(t, root, "parent", cwd)
@@ -109,10 +109,10 @@ func TestHookContextOversizedFirstRecordTail(t *testing.T) {
 	require.Falsef(t, got.Role != RoleWorker || got.ActiveSession == "parent" || got.Marker == MarkerActive, "context=%+v", got)
 }
 
-// TestHookContextUnresolvableParentIsWorker needs no parent transcript lookup.
+// TestHookContextChildNeedsNoParentLookup needs no parent transcript lookup.
 //
 // Example: a child remains a Worker when its declared parent is absent or external.
-func TestHookContextUnresolvableParentIsWorker(t *testing.T) {
+func TestHookContextChildNeedsNoParentLookup(t *testing.T) {
 	root, cwd := contextFixture(t)
 	sessions := sessionsFixture(t)
 	contextMarker(t, root, "parent", cwd)
@@ -454,10 +454,10 @@ func TestHookContextRelativeTranscriptIsWorker(t *testing.T) {
 	require.Equal(t, RoleWorker, got.Role)
 }
 
-// TestHookContextMarkerAliasAndInvalid ignores both valid and invalid legacy records.
+// TestHookContextIgnoresLegacyMarkerRecords ignores both valid and invalid legacy records.
 //
 // Example: neither session_owner nor a broken marker activates callback scope.
-func TestHookContextMarkerAliasAndInvalid(t *testing.T) {
+func TestHookContextIgnoresLegacyMarkerRecords(t *testing.T) {
 	root, cwd := contextFixture(t)
 	contextMarker(t, root, "session_owner", cwd)
 	got, err := hookRequest(HookInput{SessionID: "owner", CWD: cwd})
@@ -504,10 +504,10 @@ func TestHookContextExplicitWorkerAndActivity(t *testing.T) {
 	require.Falsef(t, !strings.Contains(string(data), "kind: shell\n"), "activity=%q", data)
 }
 
-// TestHookContextDependencyAndRootAlias ignores legacy dependency records.
+// TestHookContextIgnoresLegacyDependencyRecord ignores legacy dependency records.
 //
 // Example: a proof-root symlink and dependency record grant no callback roots.
-func TestHookContextDependencyAndRootAlias(t *testing.T) {
+func TestHookContextIgnoresLegacyDependencyRecord(t *testing.T) {
 	root, cwd := contextFixture(t)
 	contextMarker(t, root, "owner", cwd)
 	alias := filepath.Join(t.TempDir(), "proof")
@@ -551,10 +551,10 @@ func TestHookContextTouchedBaseline(t *testing.T) {
 	}
 }
 
-// TestHookContextDirectOwnerBeyondPeerCap ignores markers regardless of count.
+// TestHookContextIgnoresManyMarkers ignores markers regardless of count.
 //
 // Example: a sorted-late callback session remains inactive among many markers.
-func TestHookContextDirectOwnerBeyondPeerCap(t *testing.T) {
+func TestHookContextIgnoresManyMarkers(t *testing.T) {
 	root, cwd := contextFixture(t)
 	for index := 0; index < 65; index++ {
 		contextMarker(t, root, fmt.Sprintf("aaa-%02d", index), cwd)

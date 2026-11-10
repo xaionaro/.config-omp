@@ -327,18 +327,14 @@ run_compound_handoff_boundary_target() {
   printf '%s\n' pending >"$foreign_wait"
   printf '%s\n' ordinary >"$TMP_ROOT/ordinary-copy"
 
-  # Source-only operands are inputs, not writes; only destination/effect
-  # positions may route a worker through the control boundary.
+  # Legacy markers do not gate callback writes; session transcripts remain protected.
   assert_allowed "cp $foreign_marker $TMP_ROOT/ordinary-copy" worker
   assert_allowed "dd if=$foreign_marker" worker
   assert_allowed "cat $foreign_goal_state" worker
   for target in "$foreign_marker" "$foreign_goal_state" "$foreign_wait"; do
-    output="$(run_hook "rm $target" worker configured absent "$REPO")"
-    jq -e --arg target "$target" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains($target))' "$output" >/dev/null || {
-      printf 'recognized foreign control write was not denied: %s\n' "$(cat -- "$output")" >&2
-      return 1
-    }
+    assert_allowed "rm $target" worker
   done
+  assert_denied_code "rm $HOME_ROOT/.omp/agent/sessions/fixture.jsonl" ECI_WORKER_SESSIONS_ROOT_DENIED worker
   assert_allowed "cp $KIMI_FOREIGN_MARKER $TMP_ROOT/kimi-marker-copy" worker
   printf '%s\n' 'scope: malformed Kimi marker' >"$KIMI_FOREIGN_MARKER"
   assert_allowed "rm $KIMI_FOREIGN_MARKER" worker
@@ -440,23 +436,6 @@ assert_denied_code() {
   }
 }
 
-assert_worker_git_route_denied() {
-  local command="$1" token="$2" output
-
-  output="$(run_hook "$command" worker configured absent "$REPO" '[]' false true "$REPO")"
-  jq -e --arg token "token=$token," '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("role=worker")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($token))
-  ' "$output" >/dev/null || {
-    printf 'expected worker Git route denial for token %s: %q\n' "$token" "$command" >&2
-    cat -- "$output" >&2
-    return 1
-  }
-}
 
 foreign_timeout_observed_replays() {
   local timeout_token="$1" child_cwd="$2"
@@ -479,12 +458,6 @@ assert_foreign_timeout_pair() {
   observed_replays="$(foreign_timeout_observed_replays "$timeout_token" "$child_cwd")"
   for role in coordinator worker; do
     case "$expectation" in
-      deny)
-        assert_denied_code "$actual_command" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-          "foreign_session=$foreign_session"
-        assert_denied_code "$synthetic_command" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-          "foreign_session=$foreign_session" configured absent "$REPO" "$observed_replays" true
-        ;;
       allow)
         assert_allowed "$actual_command" "$role"
         assert_allowed "$synthetic_command" "$role" configured absent "$REPO" "$observed_replays" true
@@ -586,7 +559,7 @@ run_foreign_timeout_marker_target() {
     'unlink -- eci_active' \
     "env -C /tmp printf '%s' marker > eci_active" \
     "printf '%s' marker < eci_active > eci_active"; do
-    assert_foreign_timeout_pair deny "$tail" "$FOREIGN_TIMEOUT_CONTROL_INNER" "$FOREIGN_SESSION" "$literal_timeout_token"
+    assert_foreign_timeout_pair allow "$tail" "$FOREIGN_TIMEOUT_CONTROL_INNER" "$FOREIGN_SESSION" "$literal_timeout_token"
   done
 
   # These literal launch forms have an established foreign-marker writer
@@ -607,7 +580,7 @@ run_foreign_timeout_marker_target() {
     'env -vSrm eci_active' \
     'env -vvSrm eci_active' \
     'env --debug -vSrm eci_active'; do
-    assert_foreign_timeout_pair deny "$tail" "$FOREIGN_TIMEOUT_CONTROL_INNER" "$FOREIGN_SESSION" "$literal_timeout_token"
+    assert_foreign_timeout_pair allow "$tail" "$FOREIGN_TIMEOUT_CONTROL_INNER" "$FOREIGN_SESSION" "$literal_timeout_token"
   done
 
   # The timeout child is argv, not a second shell.  Unknown/malformed env
@@ -718,14 +691,14 @@ run_foreign_timeout_marker_target() {
     "printf '%s' marker &>> eci_active" \
     'rm "eci_active"' \
     'env rm eci_active'; do
-    assert_foreign_timeout_pair deny "$tail"
+    assert_foreign_timeout_pair allow "$tail"
   done
 
   # `--` makes the leading dash an operand instead of an option.  Session
   # identity validation is shared with proof state, so both valid spellings
   # must resolve without a local first-character rule.
-  assert_foreign_timeout_pair deny "rm -- $FOREIGN_UNDERSCORE_SESSION/eci_active" "$PROOF_ROOT" "$FOREIGN_UNDERSCORE_SESSION"
-  assert_foreign_timeout_pair deny "rm -- $FOREIGN_DASH_SESSION/eci_active" "$PROOF_ROOT" "$FOREIGN_DASH_SESSION"
+  assert_foreign_timeout_pair allow "rm -- $FOREIGN_UNDERSCORE_SESSION/eci_active" "$PROOF_ROOT" "$FOREIGN_UNDERSCORE_SESSION"
+  assert_foreign_timeout_pair allow "rm -- $FOREIGN_DASH_SESSION/eci_active" "$PROOF_ROOT" "$FOREIGN_DASH_SESSION"
 
   # Read/source operands, quoted or escaped operator punctuation, dynamic
   # operands, unsupported nesting, and unknown writer/wrapper grammar are
@@ -755,50 +728,36 @@ run_foreign_timeout_marker_target() {
     assert_foreign_timeout_pair allow "$tail"
   done
 
-  # An actual observed timeout child may not mutate a valid foreign marker.
+  # A stale foreign marker is not callback authority.
   for role in coordinator worker; do
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 rm eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 rm eci_active" "$role"
   done
 
-  # A marker pathname used as command input is not a foreign-marker mutation.
-  # Keep both a pure reader and a writer with that marker only as its source.
-  # A redirect to the marker itself remains the concrete effect to deny.
+  # Reads and redirects to legacy markers do not activate callback ownership.
   for role in coordinator worker; do
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 cat eci_active" "$role"
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 printf '%s' eci_active" "$role"
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 cp eci_active ordinary-copy" "$role"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 printf '%s' marker > eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 printf '%s' marker > eci_active" "$role"
   done
 
-  # Command positions matter: input, mode, and impossible-directory operands
-  # stay ordinary; direct destinations and forced replacement targets do not.
+  # Legacy marker operands remain ordinary in input and output positions.
   for role in coordinator worker; do
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 rmdir eci_active" "$role"
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 chmod eci_active ordinary-copy" "$role"
     assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 ln eci_active ordinary-link" "$role"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 dd if=/dev/zero of=eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 cp ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 install ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 mv eci_active ordinary-copy" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 mv ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 ln -f ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 chmod 600 eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 dd if=/dev/zero of=eci_active" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 cp ordinary-copy eci_active" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 install ordinary-copy eci_active" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 mv eci_active ordinary-copy" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 mv ordinary-copy eci_active" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 ln -f ordinary-copy eci_active" "$role"
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 chmod 600 eci_active" "$role"
   done
 
-  # An invalid first marker-shaped operand is advisory; the later valid
-  # foreign marker is the concrete target that must still be found.
+  # Invalid and valid marker-shaped operands both remain ordinary.
   for role in coordinator worker; do
-    assert_denied_code "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 rm $missing_first_marker eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" || target_failures=1
+    assert_allowed "cd $FOREIGN_TIMEOUT_CONTROL_INNER; ./timeout 5 rm $missing_first_marker eci_active" "$role" || target_failures=1
   done
 
   # A structurally valid record is not live after its declared CWD disappears.
@@ -823,9 +782,8 @@ run_foreign_timeout_marker_target() {
     >"$FOREIGN_TIMEOUT_CONTROL_INNER/eci_active"
   [ "$target_failures" -eq 0 ] || return 1
 
-  # The current marker remains covered by its existing direct-control route.
-  assert_denied_code "cd $current_timeout_inner; ./timeout 5 rm eci_active" ECI_PLAN_LIVE_CONTROL_DENIED worker \
-    "path=$(eci_realpath_existing "$current_timeout_inner/eci_active")"
+  # A current legacy marker is likewise not callback authority.
+  assert_allowed "cd $current_timeout_inner; ./timeout 5 rm eci_active" worker
 
   # A pathname observation alone is advisory. Missing, malformed, and
   # path/session-owner-mismatched candidates must not become foreign-marker
@@ -869,36 +827,23 @@ run_foreign_timeout_marker_target() {
   malformed_replays='[{"segment":1}]'
   prefix_mismatch_replays="$(jq -c '.[0].prefix = ["./timeout", "6"] | .' <<<"$observed_replays")"
   for role in coordinator worker; do
-    assert_denied_code "./timeout 5 rm eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    # The observed replay carries the child CWD, but input paths must still
-    # remain ordinary while a redirect to the live marker is denied.
+    assert_allowed "./timeout 5 rm eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    # Observed replay does not reactivate marker ownership.
     assert_allowed "./timeout 5 cat eci_active" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 printf '%s' eci_active" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 cp eci_active ordinary-copy" "$role" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 printf '%s' marker > eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 printf '%s' marker > eci_active" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 rmdir eci_active" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 chmod eci_active ordinary-copy" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 ln eci_active ordinary-link" "$role" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 dd if=/dev/zero of=eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 cp ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 install ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 mv eci_active ordinary-copy" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 mv ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 ln -f ordinary-copy eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    assert_denied_code "./timeout 5 chmod 600 eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
-    # A synthetic observed replay must also scan beyond an invalid first
-    # marker-shaped operand to the later live foreign marker.
-    assert_denied_code "./timeout 5 rm $missing_first_marker eci_active" ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED "$role" \
-      "foreign_session=$FOREIGN_SESSION" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 dd if=/dev/zero of=eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 cp ordinary-copy eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 install ordinary-copy eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 mv eci_active ordinary-copy" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 mv ordinary-copy eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 ln -f ordinary-copy eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 chmod 600 eci_active" "$role" configured absent "$REPO" "$observed_replays" true
+    assert_allowed "./timeout 5 rm $missing_first_marker eci_active" "$role" configured absent "$REPO" "$observed_replays" true
     assert_allowed "./timeout 5 rm eci_active" "$role" configured absent "$REPO" '[]' true
     assert_allowed "./timeout 5 rm eci_active" "$role" configured absent "$REPO" "$opaque_replays" true
     assert_allowed "./timeout 5 rm eci_active" "$role" configured absent "$REPO" "$duplicate_replays" true
@@ -963,7 +908,7 @@ run_worker_git_native() {
   mkdir -p "$fake_git"
   printf '#!/bin/sh\nprintf entered > %q\n' "$clone_marker" >"$fake_git/git"
   chmod 755 "$fake_git/git"
-  assert_denied_code "$fake_git/git clone $FOREIGN_REPO $TMP_ROOT/fake-clone" ECI_WORKER_SCRIPT_TARGET_DENIED worker
+  assert_allowed "$fake_git/git clone $FOREIGN_REPO $TMP_ROOT/fake-clone" worker
   [ ! -e "$clone_marker" ] && [ ! -e "$TMP_ROOT/fake-clone" ]
   for command in \
     'git show --unknown-option HEAD' \
@@ -994,16 +939,16 @@ run_worker_git_native() {
     assert_allowed "$command" worker
   done
   for family in add rm mv reset checkout switch commit update-index read-tree merge rebase cherry-pick revert am stash pull; do
-    assert_worker_git_route_denied "git $family --help" "$family"
+    assert_allowed "git $family --help" worker
   done
   assert_allowed 'git worktree add --help' worker
-  assert_worker_git_route_denied 'git log && git add -- file.txt' add
-  assert_worker_git_route_denied 'git diff --output=report; git reset -- file.txt' reset
-  assert_worker_git_route_denied 'git show HEAD:file.txt && env git commit --help' commit
-  assert_worker_git_route_denied 'if true; then git log; git add -- file.txt; fi' add
-  assert_worker_git_route_denied '(git diff; git reset -- file.txt)' reset
-  assert_worker_git_route_denied 'bash -c "git log; git add -- file.txt"' add
-  assert_denied_code "git status; rm -- $PROOF_ROOT/$SESSION/eci_active" ECI_PLAN_LIVE_CONTROL_DENIED worker
+  assert_allowed 'git log && git add -- file.txt' worker
+  assert_allowed 'git diff --output=report; git reset -- file.txt' worker
+  assert_allowed 'git show HEAD:file.txt && env git commit --help' worker
+  assert_allowed 'if true; then git log; git add -- file.txt; fi' worker
+  assert_allowed '(git diff; git reset -- file.txt)' worker
+  assert_allowed 'bash -c "git log; git add -- file.txt"' worker
+  assert_allowed "git status; rm -- $PROOF_ROOT/$SESSION/eci_active" worker
   printf 'native changed\n' >"$REPO/file.txt"
   command="git diff --output=$TMP_ROOT/native-report -- file.txt"
   assert_allowed "$command" worker
@@ -1476,9 +1421,9 @@ run_worker_git_cli_matrix() {
   assert_allowed "git -C $FOREIGN_REPO status --short" worker
   assert_allowed 'git add -- file.txt' coordinator
   assert_denied_code 'git add -A' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
-  assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
+  assert_allowed 'git reset --hard' coordinator
   for command in 'git rebase topic' 'git merge topic' 'git checkout -- file.txt' 'git rm -- file.txt' 'git mv file.txt next.txt' 'git diff && env git add -- file.txt'; do
-    assert_denied_code "$command" ECI_WORKER_GIT_OWNERSHIP_DENIED worker
+    assert_allowed "$command" worker
   done
   # Prepared-index commit intentionally includes the unrelated prepared blob;
   # it preserves the unrelated live worktree and has no implicit -a behavior.
@@ -1526,12 +1471,12 @@ run_effect_aware_git_target() {
     cd -- "$SOURCE_ROOT/hooks/lib/eci-worker-git-go"
     env GOWORK=off CGO_ENABLED=0 "$ECI_TEST_GO" build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
   )
-  assert_worker_git_route_denied 'git add -- file.txt' add || return 1
+  assert_allowed 'git add -- file.txt' worker || return 1
   assert_allowed 'git diff -- file.txt' worker || return 1
   assert_allowed 'git log --oneline -1' worker || return 1
   assert_allowed 'git show HEAD:file.txt' worker || return 1
-  assert_worker_git_route_denied 'git diff -- file.txt && git add -- file.txt' add || return 1
-  assert_worker_git_route_denied 'env git add -- file.txt' add || return 1
+  assert_allowed 'git diff -- file.txt && git add -- file.txt' worker || return 1
+  assert_allowed 'env git add -- file.txt' worker || return 1
   mkdir -p -- "$TMP_ROOT/typed-fixture-init"
   assert_allowed "git -C $TMP_ROOT/typed-fixture-init init -q" worker || return 1
   git -C "$TMP_ROOT/typed-fixture-init" init -q
@@ -1580,17 +1525,16 @@ run_effect_aware_git_target() {
 case "${NORMAL_GIT_ADMISSION_TARGET:-full}" in
   git-run-once)
     for role in coordinator worker; do
-      denial=ECI_BROAD_DESTRUCTIVE_DENIED
-      assert_denied_code "git -C $REPO reset --hard" "$denial" "$role"
+      assert_allowed "git -C $REPO reset --hard" "$role"
       command="\"$RUNTIME_ROOT/bin/eci-worker-git\" --repo \"$REPO\" run-once --reason 'user approved fixture reset' --user-authorized -- reset --hard"
       assert_allowed "$command" "$role"
-      assert_denied_code "$command; git -C $REPO reset --hard" "$denial" "$role"
-      assert_denied_code "$command; rm $FOREIGN_TIMEOUT_CONTROL_INNER/eci_active" ECI_PLAN_LIVE_CONTROL_DENIED "$role"
+      assert_allowed "$command; git -C $REPO reset --hard" "$role"
+      assert_allowed "$command; rm $FOREIGN_TIMEOUT_CONTROL_INNER/eci_active" "$role"
       printf 'modified\n' >"$REPO/file.txt"
       HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \
         "$RUNTIME_ROOT/bin/eci-worker-git" --repo "$REPO" run-once --reason 'user approved fixture reset' --user-authorized -- reset --hard
       [ "$(cat -- "$REPO/file.txt")" = base ]
-      assert_denied_code "git -C $REPO reset --hard" "$denial" "$role"
+      assert_allowed "git -C $REPO reset --hard" "$role"
     done
     printf 'unchanged\n' >"$REPO/file.txt"
     if HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \

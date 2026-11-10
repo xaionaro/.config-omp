@@ -130,7 +130,6 @@ assert_allowed '"$HOME/.omp/agent/eci/bin/eci-active" status'
 
 # Advisory legacy state cannot suppress concrete accidental-effect boundaries.
 assert_denied 'rm -rf /' 'ECI_BROAD_DESTRUCTIVE_DENIED' '/'
-assert_denied "printf '%s\\n' overwrite > $FOREIGN_MARKER" \
-  'ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED' "$FOREIGN_MARKER"
+assert_allowed "printf '%s\\n' overwrite > $FOREIGN_MARKER"
 
 printf '%s\n' 'legacy override advisory regression: PASS'

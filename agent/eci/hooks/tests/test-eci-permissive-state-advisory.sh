@@ -132,7 +132,6 @@ assert_allowed '"$HOME/.omp/agent/eci/bin/eci-active" status' coordinator
 
 # State that is advisory for normal work cannot weaken concrete effect checks.
 assert_denied 'rm -rf /' 'ECI_BROAD_DESTRUCTIVE_DENIED' '/'
-assert_denied "printf '%s\\n' overwrite > $FOREIGN_MARKER" \
-  'ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED' "$FOREIGN_MARKER"
+assert_allowed "printf '%s\\n' overwrite > $FOREIGN_MARKER" coordinator
 
 printf '%s\n' 'permissive state advisory regression: PASS'

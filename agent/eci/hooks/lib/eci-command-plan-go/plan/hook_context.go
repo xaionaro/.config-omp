@@ -52,8 +52,12 @@ func hookRequest(input HookInput) (Request, error) {
 	request.CDPath, request.CDPathSet = os.LookupEnv("CDPATH")
 	role, transcriptErr := hookTranscriptRole(input.TranscriptPath)
 	request.Role = role
-	if transcriptErr != nil {
+	switch {
+	case transcriptErr == nil:
+	case errors.Is(transcriptErr, errHookTranscriptUnknown):
 		hookAdvisory("classify callback transcript", transcriptErr)
+	default:
+		return request, transcriptErr
 	}
 	if os.Getenv("ECI_HOOK_IS_SUBAGENT") == "1" || os.Getenv("ECI_HOOK_IS_SUBAGENT") == "true" {
 		request.Role = RoleWorker
@@ -115,21 +119,15 @@ func hookProofRoot() (string, error) {
 // errHookTranscriptUnknown marks a callback transcript that fails closed to the worker role.
 var errHookTranscriptUnknown = errors.New("callback transcript is unknown")
 
-// hookTranscriptStatus classifies a verified callback transcript.
+// hookTranscriptStatus verifies a callback transcript and classifies its prefix.
 //
-// Example: a depth-two transcript with a null parentSession is unknown, not main.
+// Example: a symlinked transcript is unknown rather than main.
 func hookTranscriptStatus(path string) (string, error) {
-	status, _, err := hookTranscriptVerified(path)
-	return status, err
-}
-
-// hookTranscriptVerified checks the transcript location and classifies its prefix,
-// returning the status and the session header.
-//
-// Example: a symlinked transcript is unknown with a nil header.
-func hookTranscriptVerified(path string) (string, map[string]any, error) {
-	fail := func(err error) (string, map[string]any, error) {
-		return "", nil, fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
+	// fail marks an unverifiable transcript without inventing an owner.
+	//
+	// Example: a missing transcript is classified as unknown.
+	fail := func(err error) (string, error) {
+		return "", fmt.Errorf("%w: %w", errHookTranscriptUnknown, err)
 	}
 	if path == "" {
 		return fail(errors.New("empty transcript path"))
@@ -166,7 +164,7 @@ func hookTranscriptVerified(path string) (string, map[string]any, error) {
 	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 		return fail(errors.New("transcript is missing or empty"))
 	}
-	facts, header, err := hookTranscriptPrefix(physical)
+	facts, err := hookTranscriptPrefix(physical)
 	if err != nil {
 		return fail(err)
 	}
@@ -177,9 +175,9 @@ func hookTranscriptVerified(path string) (string, map[string]any, error) {
 	case depth == 2 && facts.sessionInit:
 		return fail(errors.New("session_init marker at depth two"))
 	case depth == 2:
-		return "main", header, nil
+		return "main", nil
 	case depth >= 3 && facts.parentString:
-		return "subagent", header, nil
+		return "subagent", nil
 	case depth >= 3:
 		return fail(errors.New("depth three or more without string parentSession"))
 	default:
@@ -199,23 +197,22 @@ const hookTitleSlotBytes = 256
 // A final segment without a newline (a torn append, or a line cut by the bound) is
 // not a record. It fails when a record is not JSON or repeats a signal key, except a
 // torn line-zero title slot, and when no session header is among the records. It
-// returns the facts of the records and the first session header.
+// returns the facts of the records.
 //
 // Example: a header on line seventeen lies past the prefix, so the transcript fails.
-func hookTranscriptPrefix(path string) (hookTranscriptFacts, map[string]any, error) {
+func hookTranscriptPrefix(path string) (hookTranscriptFacts, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return hookTranscriptFacts{}, nil, err
+		return hookTranscriptFacts{}, err
 	}
 	defer file.Close()
 	buffer := make([]byte, maxHookTranscriptPrefixBytes)
 	n, err := io.ReadFull(file, buffer)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return hookTranscriptFacts{}, nil, err
+		return hookTranscriptFacts{}, err
 	}
 	prefix := buffer[:n]
 	var facts hookTranscriptFacts
-	var header map[string]any
 	for index := range maxHookTranscriptPrefixLines {
 		end := bytes.IndexByte(prefix, '\n')
 		if end < 0 {
@@ -228,21 +225,18 @@ func hookTranscriptPrefix(path string) (hookTranscriptFacts, map[string]any, err
 			if index == 0 && end+1 == hookTitleSlotBytes {
 				continue
 			}
-			return hookTranscriptFacts{}, nil, errors.New("transcript line is not JSON")
+			return hookTranscriptFacts{}, errors.New("transcript line is not JSON")
 		}
 		if hookDuplicateSignalKey(body) {
-			return hookTranscriptFacts{}, nil, errors.New("transcript record repeats a signal key")
+			return hookTranscriptFacts{}, errors.New("transcript record repeats a signal key")
 		}
 		record := hookTranscriptSignal(value)
-		if record.header && header == nil {
-			header = value.(map[string]any)
-		}
 		facts.merge(record)
 	}
-	if header == nil {
-		return hookTranscriptFacts{}, nil, errors.New("no session header in the bounded prefix")
+	if !facts.header {
+		return hookTranscriptFacts{}, errors.New("no session header in the bounded prefix")
 	}
-	return facts, header, nil
+	return facts, nil
 }
 
 // hookDuplicateSignalKey reports whether a top-level JSON object repeats type,
@@ -433,7 +427,7 @@ func hookNoSymlinkIntoRoot(path, base, resolved string) error {
 	return nil
 }
 
-// hookTranscriptRole maps a verified callback transcript to its planner role.
+// hookTranscriptRole maps a callback transcript to its planner role.
 // Unknown transcripts remain Workers and carry the classification error.
 //
 // Example: an empty transcript path is unknown, so the callback runs as a worker.

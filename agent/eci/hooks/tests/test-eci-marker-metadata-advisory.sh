@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-# Regression for R11 marker observations.  A malformed, stale, duplicate, or
-# unsafe marker scan is diagnostic context for ordinary work.  The hook must
-# still stop a concrete mutation of another session's marker.
+# Legacy marker records are advisory for callback ownership. Concrete broad
+# effects still select their independent gate in enforcing mode.
 
 set -Eeuo pipefail
 
@@ -12,6 +11,11 @@ TMP_PARENT="${ECI_TMPDIR:-${TMPDIR:-${HOME:?}/tmp}}"
 mkdir -p -- "$TMP_PARENT"
 TMP_ROOT="$(mktemp -d "$TMP_PARENT/eci-marker-metadata-advisory.XXXXXX")"
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
+export XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_STATE_HOME="$TMP_ROOT/state"
+mkdir -p -- "$XDG_CONFIG_HOME/eci" "$XDG_STATE_HOME"
+chmod 700 "$XDG_CONFIG_HOME" "$XDG_CONFIG_HOME/eci"
+printf '%s\n' enforcing >"$XDG_CONFIG_HOME/eci/command-gate-mode"
+chmod 600 "$XDG_CONFIG_HOME/eci/command-gate-mode"
 
 SESSION_ID='t00-marker-metadata'
 INPUT="$TMP_ROOT/input.json"
@@ -48,7 +52,7 @@ run_hook() {
     --arg session_id "$SESSION_ID" \
     --arg cwd "$ROOT" \
     --arg command "$command" \
-    '{session_id:$session_id,cwd:$cwd,tool_input:{command:$command}}' \
+    '{session_id:$session_id,tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' \
     >"$INPUT"
 
   set +e
@@ -61,11 +65,6 @@ run_hook() {
   [ "$hook_status" -eq 0 ] || {
     printf 'private marker-metadata hook exited nonzero: status=%s command=%s\n' \
       "$hook_status" "$command" >&2
-    cat -- "$ERROR_OUTPUT" >&2
-    exit 1
-  }
-  [ ! -s "$ERROR_OUTPUT" ] || {
-    printf 'private marker-metadata hook wrote stderr for command=%s\n' "$command" >&2
     cat -- "$ERROR_OUTPUT" >&2
     exit 1
   }
@@ -82,19 +81,18 @@ assert_allowed() {
   }
 }
 
-assert_foreign_marker_mutation_denied() {
+assert_foreign_marker_mutation_allowed() {
   local proof_root="$1" foreign_marker="$2"
 
   run_hook "$proof_root" "printf '%s\\n' accidental-overwrite > $foreign_marker"
-  jq -e --arg foreign_marker "$foreign_marker" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("ECI_CROSS_SESSION_ACTIVE_MARKER_DENIED")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($foreign_marker))
-  ' "$OUTPUT" >/dev/null || {
-    printf 'foreign active-marker mutation was not concretely denied:\n' >&2
+  [ ! -s "$OUTPUT" ] || {
+    printf 'stale foreign marker unexpectedly gated a write:\n' >&2
     cat -- "$OUTPUT" >&2
     exit 1
   }
+  run_hook "$proof_root" 'rm -rf /'
+  jq -e '.hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("ECI_BROAD_DESTRUCTIVE_DENIED"))' "$OUTPUT" >/dev/null
 }
 
 # A direct current-session marker plus its accepted session_-alias used to be
@@ -127,13 +125,12 @@ unsafe_proof="$TMP_ROOT/unsafe-proof"
 printf '%s\n' 'not a proof directory' >"$unsafe_proof"
 assert_allowed "$unsafe_proof" 'unsafe scan observation'
 
-# Concrete cross-session marker mutation remains blocked when the current
-# session has a resolved marker.
+# A stale foreign marker does not create callback ownership.
 foreign_proof="$TMP_ROOT/foreign-proof"
 foreign_marker="$foreign_proof/foreign-session/eci_active"
 write_marker "$foreign_proof/$SESSION_ID/eci_active" "$ROOT" "$SESSION_ID"
 write_marker "$foreign_marker" "$ROOT" 'foreign-session'
-assert_foreign_marker_mutation_denied "$foreign_proof" "$foreign_marker"
+assert_foreign_marker_mutation_allowed "$foreign_proof" "$foreign_marker"
 
 # Marker readers keep the same owner/session/CWD semantics after a hardlink,
 # while unrelated state readers retain their default single-link contract.

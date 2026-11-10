@@ -417,53 +417,6 @@ func TestHookCleanupTargets(t *testing.T) {
 	}
 }
 
-// TestHookUnderstandingSnapshotPublication ignores retired marker ownership.
-//
-// Example: owned and foreign snapshot paths remain ordinary callback writes.
-func TestHookUnderstandingSnapshotPublication(t *testing.T) {
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
-	current := filepath.Join(root, "owner", "eci_active")
-	foreign := filepath.Join(root, "other", "eci_active")
-	for _, marker := range []string{current, foreign} {
-		requireHookDirectory(t, filepath.Dir(marker))
-		requireHookFile(t, marker, "scope: fixture\ncwd: "+root+"\nsession_id: "+filepath.Base(filepath.Dir(marker))+"\n")
-		requireHookFile(t, filepath.Join(filepath.Dir(marker), "project-understanding.yaml"), "schema: project-understanding/v1\nsections: {}\nrecords: {}\n")
-	}
-	canonical := filepath.Join(filepath.Dir(current), "project-understanding.yaml")
-	foreignCanonical := filepath.Join(filepath.Dir(foreign), "project-understanding.yaml")
-	temporary := filepath.Join(filepath.Dir(current), ".understanding-snapshot.ABCDEF")
-	requireHookFile(t, temporary, "schema: project-understanding/v1\nsections: {}\nrecords: {}\n")
-	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive,
-		ActiveSession: "owner", CWD: root, CWDKnown: true, CollectShellCommands: true}
-	for _, command := range []string{"touch " + canonical, "cp " + canonical + " " + temporary, "mv " + temporary + " " + canonical} {
-		request.Command = command
-		require.Nil(t, hookTestDiagnostic(request), command)
-	}
-	request.Command = "touch " + foreignCanonical
-	require.Nil(t, hookTestDiagnostic(request), "stale marker must not protect a foreign snapshot")
-	for _, extension := range []string{"md", "json", "yml"} {
-		for _, marker := range []string{current, foreign} {
-			ordinary := filepath.Join(filepath.Dir(marker), "project-understanding."+extension)
-			requireHookFile(t, ordinary, "ordinary\n")
-			request.Command = "touch " + ordinary
-			require.Nil(t, hookTestDiagnostic(request), request.Command)
-		}
-	}
-	for _, target := range []string{foreignCanonical, current} {
-		for _, link := range []struct {
-			name string
-			call func(string, string) error
-		}{{"symlink", os.Symlink}, {"hardlink", os.Link}} {
-			require.NoError(t, os.Remove(temporary))
-			require.NoError(t, link.call(target, temporary))
-			request.Command = "touch " + temporary
-			diagnostic := hookTestDiagnostic(request)
-			require.Nil(t, diagnostic, "%s alias to %s", link.name, target)
-		}
-	}
-}
-
 // TestHookMakeMemoryCap pins which make launches lack a finite memory cap.
 //
 // Example: systemd-run without MemoryMax is denied while MemoryMax=1G passes.

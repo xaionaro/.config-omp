@@ -71,9 +71,9 @@ func TestHookTranscriptPrefixLargeMainReadsPrefix(t *testing.T) {
 	require.LessOrEqual(t, read, int64(maxClassifyReadBytes))
 }
 
-// TestHookTranscriptPrefixLargeSubagentReadsPrefix keeps a large child a worker that inherits its large parent while reading only bounded prefixes.
+// TestHookTranscriptPrefixLargeSubagentReadsPrefix classifies a child from bounded input.
 //
-// Example: an 8 MiB child naming an 8 MiB parent inherits the parent marker after reading under 1 MiB.
+// Example: an 8 MiB child remains a Worker without reading its parent's history.
 func TestHookTranscriptPrefixLargeSubagentReadsPrefix(t *testing.T) {
 	root, cwd := contextFixture(t)
 	sessions := sessionsFixture(t)

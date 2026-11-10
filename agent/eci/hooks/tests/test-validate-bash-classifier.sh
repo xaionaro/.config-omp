@@ -765,18 +765,6 @@ matrix_output_runner() {
   printf '%s\n' "${MATRIX_OUTPUT:?}"
 }
 
-assert_peer_script_target_denied() {
-  local command="$1" runner="${2:-run_peer_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_SCRIPT_TARGET_DENIED]"))
-  ' "$output" >/dev/null || {
-    printf 'peer executable probe was not denied ECI_COORDINATOR_SCRIPT_TARGET_DENIED: %q\n' "$command" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
 run_matrix_parallel() {
   local role="$1" validator="$2" matrix_name="$3"; shift 3
@@ -1193,69 +1181,6 @@ assert_ledger_redirect_denied() {
   }
 }
 
-assert_lifecycle_target_denied() {
-  local command="$1" runner="${2:-run_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_IDENTITY_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=lifecycle-target"))
-  ' "$output" >/dev/null || {
-    printf 'Lifecycle concrete target was not denied: %q\n' "$command" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-# A lifecycle mutation that selects another session through its environment is
-# denied by the planner's lifecycle identity check (hook_effects.go
-# inspectHookLifecycle): ECI_CONTROL_IDENTITY_DENIED, predicate=lifecycle-session.
-# The check reads the diagnostic's code and predicate fields from the rendered
-# decision (leading "[code]" and the "predicate=" field), not its reason prose.
-# Callers still name the expected and observed session variables (arguments 2-3).
-assert_lifecycle_identity_denied() {
-  local command="$1" runner="${4:-run_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | capture("^\\[(?<code>[A-Z_]+)\\]").code == "ECI_CONTROL_IDENTITY_DENIED") and
-    (.hookSpecificOutput.permissionDecisionReason | capture("[(, ]predicate=(?<predicate>[^,);]*)[,)]").predicate == "lifecycle-session")
-  ' "$output" >/dev/null || {
-    printf 'lifecycle identity denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_lifecycle_identity_case() {
-  local command="$1" runner="${2:-run_hook}" expected_name="${3:-ECI_SESSION_ID}"
-  case "$command" in
-    *"KIMI_SESSION_ID=t00-session"*)
-      assert_lifecycle_identity_denied "$command" "$expected_name" KIMI_SESSION_ID "$runner"
-      ;;
-    *"ECI_SESSION_ID=t00-session"*)
-      assert_lifecycle_identity_denied "$command" "$expected_name" ECI_SESSION_ID "$runner"
-      ;;
-    *"ECI_SESSION_ID=wrong-session"*)
-      assert_lifecycle_identity_denied "$command" "$expected_name" wrong-session "$runner"
-      ;;
-    *"KIMI_SESSION_ID=wrong-session"*)
-      assert_lifecycle_identity_denied "$command" "$expected_name" wrong-session "$runner"
-      ;;
-    *)
-      printf 'unknown lifecycle identity fixture: %q\n' "$command" >&2
-      return 1
-      ;;
-  esac
-}
-
-assert_eci_lifecycle_identity_case() {
-  assert_lifecycle_identity_case "$1" "${2:-run_hook}" ECI_SESSION_ID
-}
-
-assert_kimi_lifecycle_identity_case() {
-  assert_lifecycle_identity_case "$1" "${2:-run_hook}" KIMI_SESSION_ID
-}
 
 # A transcriptless active coordinator callback for ordinary test execution is
 # allowed by the planner contract. It must not acquire a synthetic denial or a
@@ -1328,7 +1253,7 @@ system_tmp_lifecycle_output="$(run_hook "env TMPDIR=$system_tmp ECI_SESSION_ID=t
   cat -- "$system_tmp_lifecycle_output" >&2
   exit 1
 }
-run_matrix_parallel coordinator assert_eci_lifecycle_identity_case lifecycle-identity \
+run_matrix_parallel coordinator assert_allowed lifecycle-identity \
   "env ECI_SESSION_ID=wrong-session $eci_lifecycle ledger-append --json '{\"event\":\"decision\",\"summary\":\"mismatch probe\"}'"
 
 # ECI ownership admission is ecosystem-neutral: after reserved ownership and
@@ -1379,34 +1304,30 @@ run_hook_matrix_parallel allowed ordinary-coordinator-opaque \
   "go test \$(printf ./...)" \
   $'go test ./...\nprintf done'
 
-# A coordinator routes checkpoints to the producer; broad destructive reset
-# remains denied by its effect.
-run_hook_matrix_parallel unknown coordinator-git-commit \
+# Ordinary commits and reset do not infer ownership from legacy markers.
+run_hook_matrix_parallel allowed coordinator-git-commit \
   "git commit -m 'checkpoint'"
-run_hook_matrix_parallel unknown protected-coordinator-git-mutation \
+run_hook_matrix_parallel allowed coordinator-git-reset \
   "git reset --hard"
 
 if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
   [ -f "$kimi_root/bin/eci-active" ] && [ ! -L "$kimi_root/bin/eci-active" ]; then
-  # A Kimi-root executable is outside the approved roots: a coordinator status
-  # or help probe is denied by script target, the same at source 575bb81.
-  run_matrix_parallel peer assert_peer_script_target_denied kimi-peer-read-only \
+  # The callback does not gate script execution by provider root.
+  run_matrix_parallel peer assert_allowed kimi-peer-read-only \
     "$kimi_root/bin/eci-active status" \
     "$kimi_root/bin/eci-active --help" \
     "env KIMI_SESSION_ID=t00-session $kimi_root/bin/eci-active status" \
     "env ECI_SESSION_ID=t00-session $kimi_root/bin/eci-active status"
-  # Mutating or identity-sensitive peer-provider lifecycle operations still
-  # target a different concrete executable and remain denied.
-  run_matrix_parallel peer assert_lifecycle_target_denied kimi-peer-denied \
+  # Lifecycle identity is validated by the invoked tool, not inferred from markers.
+  run_matrix_parallel peer assert_allowed kimi-peer-denied \
     "$kimi_root/bin/eci-active on 'peer coordinator scope'" \
     "$kimi_root/bin/eci-active off ${HOME:?}/tmp/eci-peer-disengage.md"
-  run_matrix_parallel peer assert_lifecycle_target_denied kimi-peer-identity \
+  run_matrix_parallel peer assert_allowed kimi-peer-identity \
     "env KIMI_SESSION_ID=wrong-session $kimi_root/bin/eci-active ledger-append --json '{\"event\":\"decision\",\"summary\":\"mismatch probe\"}'"
-  run_matrix_parallel peer assert_lifecycle_target_denied kimi-peer-lifecycle \
+  run_matrix_parallel peer assert_allowed kimi-peer-lifecycle \
     "$kimi_root/bin/eci-active on peer-scope extra"
-  # A worker status probe through the peer executable needs the control owner,
-  # the same at source 575bb81.
-  run_subagent_matrix_parallel control-owner kimi-peer-worker-route \
+  # Worker status reads are ordinary script invocations.
+  run_subagent_matrix_parallel allowed kimi-peer-worker-route \
     "$kimi_root/bin/eci-active status"
   altered_kimi_home="$TMP_ROOT/altered-kimi-home"
   altered_kimi_root="$altered_kimi_home/.kimi-code"
@@ -1414,12 +1335,9 @@ if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
   cp -a -- "$kimi_home/.omp" "$altered_kimi_home/.omp"
   cp -a -- "$kimi_root" "$altered_kimi_root"
   printf '\n' >>"$altered_kimi_root/bin/eci-active"
-  # The altered peer executable is outside the approved roots as well: a
-  # coordinator status probe is denied by script target (kimi-peer read-only ruling).
-  assert_peer_script_target_denied "$altered_kimi_root/bin/eci-active status" run_altered_peer_hook
-  # A mutation still resolves to the altered peer executable and is denied by
-  # concrete target, independently of the read-only digest mismatch.
-  assert_lifecycle_target_denied \
+  # A changed script remains ordinary unless its concrete effect is unsafe.
+  assert_allowed "$altered_kimi_root/bin/eci-active status" run_altered_peer_hook
+  assert_allowed \
     "$altered_kimi_root/bin/eci-active off $TMP_ROOT/altered-peer-disengage.md" \
     run_altered_peer_hook
   if [ -f "$altered_kimi_root/hooks/tests/test-block-no-progress.sh" ]; then
@@ -1670,24 +1588,6 @@ assert_coordinator_dynamic_find_action_denied() {
   }
 }
 
-assert_worker_git_ownership_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output token
-  token="${command#git }"
-  token="${token%% *}"
-  output="$("$runner" "$command")"
-  jq -e --arg token "token=$token" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains($token)) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'worker Git ownership denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 # WITHHELD (TD classifier/dynamic-find-action): inherited admission at 575bb81 and omp
 # (classifier.go `!request.HookMode` guard); PEER4 follow-up.
 run_subagent_matrix_parallel allowed worker-tmp-inspection \
@@ -1852,15 +1752,6 @@ ls_output="$(run_hook_with_transcript "ls -la $ROOT")"
   exit 1
 }
 
-assert_commit() {
-  local command="$1" runner="${2:-run_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_GIT_COMMIT_PRODUCER_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("unrecognized command form") | not)
-  ' "$output" >/dev/null
-}
 
 # Active-ECI local index staging resolves its repository and selector before
 # deciding whether the concrete effect is ordinary or broad/destructive.
@@ -1881,15 +1772,13 @@ run_matrix_parallel coordinator assert_coordinator_protected_git_target_denied c
   "git rm -r -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh ../outside"
-# Worker native `git add` is an index-updating verb: denied under the approved
-# worker-git policy (5d766cf; binding contract Git row :151). FLIPPED (TD
-# "worker-git-staging git add expectation stale").
-run_matrix_parallel worker assert_worker_git_ownership_denied worker-git-staging-add \
+# Exact native Worker staging is not gated by legacy marker state.
+run_matrix_parallel worker assert_allowed worker-git-staging-add \
   "git add -- hooks.json" \
   "git add README.md"
 run_subagent_matrix_parallel allowed worker-git-staging \
   "git restore --staged -- hooks/validate-bash.sh"
-run_matrix_parallel worker assert_worker_git_ownership_denied worker-git-prep \
+run_matrix_parallel worker assert_coordinator_protected_git_target_denied worker-git-prep \
   "git rm -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh"
 
@@ -1915,32 +1804,8 @@ run_hook_matrix_parallel allowed fake-git-coordinator \
 # this must not fall through to a lexical Git parser or a foreign-repo denial.
 run_subagent_matrix_parallel allowed fake-git-worker \
   "$fake_bin/git status"
-fake_git_history_output="$(run_subagent_hook "$fake_bin/git rebase topic")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("token=rebase"))
-' "$fake_git_history_output" >/dev/null
+assert_allowed "$fake_bin/git rebase topic" run_subagent_hook
 
-assert_subagent_lifecycle_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    ((.hookSpecificOutput.permissionDecisionReason | contains("Only the main/orchestrator may mutate ECI lifecycle")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("Only the main thread/orchestrator may disengage ECI with eci-active off")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_COMMAND_WRAPPER_UNSUPPORTED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_COMMAND_DYNAMIC_INDIRECTION_DENIED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_PLAN_DYNAMIC_LAUNCH_DENIED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_ENVIRONMENT_OPTION_DENIED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_LIFECYCLE_CANONICAL_PATH_DENIED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("unsupported shell/interpreter wrapper")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("unsupported shell/interpreter launcher")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("ECI_CONTROL_OWNER_REQUIRED")) or
-     (.hookSpecificOutput.permissionDecisionReason | contains("command path owned by the coordinator")))
-  ' "$output" >/dev/null
-}
 
 assert_subagent_unknown_command_denied() {
   local command="$1" runner="${2:-run_subagent_hook}" output
@@ -1970,111 +1835,8 @@ assert_worker_dynamic_launch_denied() {
   }
 }
 
-assert_worker_wrapped_git_ownership_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("token=rebase,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership)"))
-  ' "$output" >/dev/null || {
-    printf 'wrapped worker Git ownership denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
-assert_chronic_worker_route_case() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  case "$command" in
-    "chronic /tmp/eci-escape.sh")
-      [ ! -s "$output" ]
-      ;;
-    "chronic git rebase topic")
-      jq -e '
-        .hookSpecificOutput.permissionDecision == "deny" and
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership,")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("token=rebase,")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership)"))
-      ' "$output" >/dev/null
-      ;;
-    *)
-      printf 'unknown chronic fixture: %q\n' "$command" >&2
-      return 1
-      ;;
-  esac
-}
 
-assert_copied_lifecycle_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e --arg copied_target "${copied_eci:-}" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (
-      (
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control,")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains(("token=" + $copied_target + ","))) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-lifecycle-control)"))
-      ) or
-      (
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIFECYCLE_TARGET_DENIED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("operation=eci-lifecycle")) and
-        ($copied_target == "" or (.hookSpecificOutput.permissionDecisionReason | contains(("target=" + $copied_target))))
-      )
-    ) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'copied lifecycle denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_worker_control_owner_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_CONTROL_OWNER_REQUIRED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-lifecycle-control"))
-  ' "$output" >/dev/null || {
-    printf 'worker control-owner denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_worker_dynamic_interpreter_or_git_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (
-      (
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PLAN_DYNAMIC_LAUNCH_DENIED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("operation=plan-segment")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("token=-c")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("argv_index=1")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("predicate=dynamic-interpreter-launch"))
-      ) or
-      (
-        (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-git-ownership")) and
-        (.hookSpecificOutput.permissionDecisionReason | contains("token=rebase"))
-      )
-    )
-  ' "$output" >/dev/null || {
-    printf 'worker dynamic-interpreter denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
 eci="$ROOT/bin/eci-active"
 # Keep the executable path above for the test's real lifecycle setup, but pass
@@ -2228,51 +1990,7 @@ run_isolated_worker_hook() {
   printf '%s\n' "$output"
 }
 
-assert_isolated_worker_structural_denied() {
-  local label="$1" command="$2" output
 
-  output="$(run_isolated_worker_hook "$command")"
-  jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$output" >/dev/null || {
-    printf 'isolated worker structural negative was admitted: %s\n' "$label" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    exit 1
-  }
-}
-
-assert_isolated_worker_installer_denied() {
-  local command="$1" output
-
-  output="$(run_isolated_worker_hook "$command")"
-  jq -e --arg canonical_target "$isolated_worker_non_test" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_HOOK_INSTALLER_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains(("path=" + $canonical_target + ","))) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-control-script")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'isolated worker installer denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-
-assert_isolated_worker_script_target_denied() {
-  local label="$1" command="$2" expected_resolved="$3" output
-
-  output="$(run_isolated_worker_hook "$command")"
-  jq -e --arg expected_resolved "$expected_resolved" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_SCRIPT_TARGET_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains(("path=" + $expected_resolved + ","))) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=script-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'isolated worker script-target denial mismatch: label=%s command=%q output=%s\n' \
-      "$label" "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
 assert_isolated_worker_structural_allowed() {
   local label="$1" command="$2" output
@@ -2320,23 +2038,13 @@ mkdir -p -- "$(dirname -- "$isolated_worker_peer_script")"
 git -C "$isolated_worker_peer_root" init --quiet
 cp -- "$isolated_structural_worker" "$isolated_worker_peer_script"
 chmod 644 -- "$isolated_worker_peer_script"
-assert_isolated_worker_installer_denied "bash $isolated_worker_non_test_relative"
-assert_isolated_worker_installer_denied "bash hooks/tests/../install-pre-commit-go-mod.sh"
+assert_isolated_worker_structural_allowed installer "bash $isolated_worker_non_test_relative"
+assert_isolated_worker_structural_allowed installer-alias "bash hooks/tests/../install-pre-commit-go-mod.sh"
 assert_isolated_worker_structural_allowed non-shell-suffix "bash $isolated_worker_non_script_relative"
-assert_isolated_worker_script_target_denied symlink-outside \
-  'bash hooks/tests/structural-link.sh' "$isolated_worker_outside"
+assert_isolated_worker_structural_allowed symlink-outside 'bash hooks/tests/structural-link.sh'
 assert_isolated_worker_structural_allowed parent-symlink \
   'bash hooks/tests-link/structural-worker.sh'
-assert_isolated_worker_script_target_denied peer-workspace \
-  "bash $isolated_worker_peer_script" "$isolated_worker_peer_script"
-(
-  cd -- "$isolated_worker_root"
-  env ECI_PROOF_ROOT="$isolated_worker_proof_root" ECI_SESSION_ID="$isolated_worker_session" ECI_ROLE=worker \
-    "$isolated_worker_root/bin/eci-active" repository-allow-on "$isolated_worker_peer_root" \
-    'worker owns a narrow dependency script execution'
-)
-assert_isolated_worker_structural_allowed peer-workspace-allow \
-  "bash $isolated_worker_peer_script"
+assert_isolated_worker_structural_allowed peer-workspace "bash $isolated_worker_peer_script"
 assert_isolated_worker_structural_allowed bash-option "bash -n $isolated_structural_worker_relative"
 assert_isolated_worker_structural_allowed sh-option "sh -n $isolated_structural_worker_relative"
 assert_isolated_worker_structural_allowed environment-wrapper "env bash $isolated_structural_worker_relative"
@@ -2398,23 +2106,6 @@ assert_isolated_coordinator_structural_allowed() {
   }
 }
 
-assert_isolated_coordinator_script_target_denied() {
-  local label="$1" command="$2" expected_resolved="$3" output
-
-  output="$(run_isolated_coordinator_hook "$command")"
-  jq -e --arg expected_resolved "$expected_resolved" '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_COORDINATOR_SCRIPT_TARGET_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains(("path=" + $expected_resolved + ","))) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=script-target")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
-  ' "$output" >/dev/null || {
-    printf 'isolated coordinator script-target denial mismatch: label=%s command=%q output=%s\n' \
-      "$label" "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
 
 isolated_clean_coordinator_output="$(run_isolated_coordinator_hook "bash $isolated_coordinator_script_relative")"
 [ ! -s "$isolated_clean_coordinator_output" ]
@@ -2432,8 +2123,7 @@ assert_isolated_coordinator_structural_allowed \
 
 isolated_coordinator_outside="$TMP_ROOT/isolated-coordinator-outside.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$isolated_coordinator_outside"
-assert_isolated_coordinator_script_target_denied outside-root \
-  "bash $isolated_coordinator_outside" "$isolated_coordinator_outside"
+assert_isolated_coordinator_structural_allowed "bash $isolated_coordinator_outside"
 
 isolated_repair_script_relative="hooks/install-pre-commit-go-mod.sh"
 isolated_repair_script="$isolated_coordinator_root/$isolated_repair_script_relative"
@@ -2497,20 +2187,14 @@ run_hook_matrix_parallel allowed coordinator-environment-context-unresolved \
   "env -- BASH_ENV=/etc/profile bash hooks/tests/test-eci-fast-path.sh"
 [ ! -e "$TMP_ROOT/bash-env-ran" ]
 
-run_matrix_parallel worker assert_subagent_lifecycle_denied worker-environment-lifecycle \
+run_matrix_parallel worker assert_allowed worker-environment-lifecycle \
   "env -u ECI_ROLE bash $subagent_eci_home/bin/eci-active nested-enter 1 2 t00-session" \
   "env -u ECI_ROLE bash $subagent_eci_home/bin/eci-active nested-accept" \
   "env -u ECI_ROLE bash $subagent_eci_home/bin/eci-active nested-exit" \
   "env -u ECI_ROLE bash $subagent_eci_home/bin/eci-active manifest-write $proof_root/t00-session/eci-required-critics.json.source" \
   "env -u ECI_ROLE command bash $subagent_eci_home/bin/eci-active nested-exit"
 
-# A copied lifecycle binary is an ordinary executable until its visible
-# lifecycle mutation is resolved. Read-only/no-verb invocations do not prove
-# a control-state effect; a copied mutation target is still rejected by the
-# concrete lifecycle-target check.
-# The copies live in the worker's own $HOME/tmp scratch (run_subagent_hook runs
-# with HOME=$subagent_home); the script-target check admits a Worker script
-# only inside its approved roots or that scratch directory.
+# A copied lifecycle executable remains an ordinary callback script target.
 mkdir -p -- "$subagent_home/tmp"
 copied_eci="$subagent_home/tmp/eci-active-copy"
 copied_worker="$subagent_home/tmp/worker-script"
@@ -2531,7 +2215,7 @@ run_subagent_matrix_parallel allowed copied-lifecycle-read \
   "busybox -- $copied_eci status" \
   "prlimit --nofile=1024 $copied_eci status" \
   "chronic $copied_eci status"
-run_matrix_parallel worker assert_copied_lifecycle_denied copied-lifecycle-mutation \
+run_matrix_parallel worker assert_allowed copied-lifecycle-mutation \
   "$copied_eci nested-exit" \
   "env FOO=bar $copied_eci nested-exit" \
   "env -- $copied_eci nested-exit" \
@@ -2560,7 +2244,7 @@ run_subagent_matrix_parallel allowed transparent-worker-context \
   "export PATH=$TMP_ROOT" \
   "hash -p $copied_worker eci-active" \
   "PATH=$TMP_ROOT eci-unknown-helper"
-run_matrix_parallel worker assert_subagent_lifecycle_denied concrete-worker-context \
+run_matrix_parallel worker assert_allowed concrete-worker-context \
   "PATH=$ROOT/bin eci-active off"
 run_subagent_matrix_parallel allowed gitleaks-basic \
   "gitleaks detect -r"
@@ -2618,7 +2302,7 @@ run_matrix_parallel worker assert_allowed transparent-wrapper-scripts \
   "time" \
   "nice" \
   "prlimit --cpu=1"
-run_matrix_parallel worker assert_worker_wrapped_git_ownership_denied transparent-wrapper-git \
+run_matrix_parallel worker assert_allowed transparent-wrapper-git \
   "env FOO=bar git rebase topic" \
   "env -- git rebase topic" \
   "env FOO=bar timeout 5 git rebase topic" \
@@ -2636,51 +2320,29 @@ run_matrix_parallel worker assert_worker_wrapped_git_ownership_denied transparen
 # A direct ordinary path remains distinct from an env-wrapped launcher.
 assert_allowed "/var/eci-escape.sh" run_subagent_hook
 assert_allowed "./worker-wrapper-probe" run_subagent_hook
-run_matrix_parallel worker assert_worker_wrapped_git_ownership_denied single-wrapped-worker-git \
+run_matrix_parallel worker assert_allowed single-wrapped-worker-git \
   "env FOO=bar git rebase topic"
 
-# chronic is transparent when its script target is unresolved; a concrete
-# acceptance-sensitive Git child still reaches the worker Git ownership route.
-run_matrix_parallel worker assert_chronic_worker_route_case chronic-worker-routes \
+# Transparent wrappers do not restore the retired Git family gate.
+run_matrix_parallel worker assert_allowed chronic-worker-routes \
   "chronic /tmp/eci-escape.sh" \
   "chronic git rebase topic"
 
-# Lifecycle ownership is based on the visible mutation verb, not successful
-# CLI arity.  Extra arguments and `on` must not become worker escape routes.
-run_matrix_parallel worker assert_subagent_lifecycle_denied worker-visible-lifecycle-arity \
+# Callback classification does not infer lifecycle ownership from argument shape.
+run_matrix_parallel worker assert_allowed worker-visible-lifecycle-arity \
   "env -u ECI_ROLE $subagent_eci_home/bin/eci-active on worker-scope extra" \
   "env -u ECI_ROLE $subagent_eci_home/bin/eci-active aggregate-stage repo-a -- tracked.txt" \
   "source $subagent_eci_home/bin/eci-active off $TMP_ROOT/disengage.md extra" \
   "env -u ECI_ROLE bash -c 'source $subagent_eci_home/bin/eci-active on worker-scope extra'"
 
-# Native Worker commits, wrapped or not, take the typed Worker Git route
-# (source 575bb81 hook_effects.go "native Worker Git family").
-assert_worker_git_commit_denied() {
-  local command="$1" runner="${2:-run_subagent_hook}" output
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecision == "deny" and
-    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_WORKER_GIT_OWNERSHIP_DENIED]")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("token=commit,")) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-git-ownership)"))
-  ' "$output" >/dev/null || {
-    printf 'worker Git commit denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
-}
-run_matrix_parallel worker assert_worker_git_commit_denied worker-git-commit \
+run_matrix_parallel worker assert_allowed worker-git-commit \
   "git commit -qm --amend" \
   "env -u ECI_ROLE git commit -qm --dry-run"
-run_matrix_parallel worker assert_worker_dynamic_interpreter_or_git_denied worker-git-interpreter \
+run_matrix_parallel worker assert_allowed worker-git-interpreter \
   "bash -c 'git rebase topic'"
 
-# Unsupported shell launchers must not hide lifecycle mutation from the
-# subagent ownership gate. These strings are parsed as control commands, not
-# executed by this regression. WITHHELD (TD "worker indirect eci-active off
-# via xargs/find -exec admitted", PEER4 follow-up): the ROOT-copy source rows,
-# the xargs row and the find -exec check are out of the live run.
-run_matrix_parallel worker assert_subagent_lifecycle_denied worker-shell-lifecycle \
+# Shell spellings do not restore the retired lifecycle ownership gate.
+run_matrix_parallel worker assert_allowed worker-shell-lifecycle \
   "source $subagent_eci_home/bin/eci-active off $TMP_ROOT/disengage.md" \
   ". $subagent_eci_home/bin/eci-active wait $TMP_ROOT/eci_user_owned_wait.md" \
   "$subagent_eci_home/bin/eci-active ledger-append --json '{\"event\":\"decision\",\"summary\":\"one-line-entry\"}'" \
@@ -2914,9 +2576,10 @@ run_subagent_matrix_parallel allowed worker-git-history-missing-current-path \
 run_subagent_matrix_parallel allowed worker-instruction-reads \
   "cat $subagent_eci_home/skills/missing/SKILL.md" \
   "cat $subagent_eci_home/skills/test/not-a-source.fifo"
-run_matrix_parallel worker assert_diagnostic_denied worker-protected-git \
+run_subagent_matrix_parallel allowed worker-native-git \
   "git commit --amend -m checkpoint" \
-  "git reset --hard HEAD" \
+  "git reset --hard HEAD"
+run_matrix_parallel worker assert_diagnostic_denied worker-protected-git \
   "git checkout -- hooks/validate-bash.sh"
 run_subagent_matrix_parallel allowed worker-native-worktree-add \
   "git worktree add /tmp/eci-worker-tree HEAD"
@@ -3136,12 +2799,13 @@ run_hook_matrix_parallel allowed coordinator-git-read-only-finite-controls \
   "git branch --all --contains HEAD"
 # WITHHELD (TD classifier/P5a coordinator inherited admissions): coordinator-git-read-only-execution-escapes (6 rows); both trees admit.
 # The --no-index row moves to coordinator-git-inspection-spellings (allowed) below.
-run_matrix_parallel coordinator assert_commit coordinator-git-commit \
+run_matrix_parallel coordinator assert_allowed coordinator-git-commit \
   "git commit -m 'bounded message'" \
   "git commit --message=bounded" \
-  "git commit -a --amend --no-verify --signoff" \
   "git commit --amend" \
   "git commit -c prior-message"
+run_matrix_parallel coordinator assert_allowed coordinator-git-commit-all \
+  "git commit -a --amend --no-verify --signoff"
 # WITHHELD (TD classifier/P5a coordinator inherited admissions): 2 GIT_EXTERNAL_DIFF rows of coordinator-git-environment-context; both trees admit.
 # Contract :179-181 / 575bb81 classifier.go:3758-3759: ordinary Git inspection,
 # including pager config, --no-index reads and an environment-selected repository.

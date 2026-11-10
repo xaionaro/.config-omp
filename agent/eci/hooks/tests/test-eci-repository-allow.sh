@@ -97,19 +97,6 @@ run_hook() {
   cat -- "$output"
 }
 
-assert_denied_foreign() {
-  local command="$1" session="${2:-$SESSION}"
-  assert_denied_foreign_as worker "$command" "$session"
-}
-
-assert_denied_foreign_as() {
-  local role="$1" command="$2" session="${3:-$SESSION}" output
-  output="$(run_hook "$command" "$role" "$session")"
-  grep -Fq -- 'ECI_GIT_CROSS_SCOPE_DENIED' <<<"$output" || {
-    printf 'undeclared dependency command was not denied: role=%s command=%s\n%s\n' "$role" "$command" "$output" >&2
-    return 1
-  }
-}
 
 assert_additional_repository_not_allowed() {
   local repository="$1"
@@ -138,23 +125,6 @@ assert_allowed_foreign_as() {
   }
 }
 
-assert_denied_worker_script() {
-  local command="$1" output
-  output="$(run_hook "$command" worker)"
-  grep -Fq -- 'ECI_WORKER_SCRIPT_TARGET_DENIED' <<<"$output" || {
-    printf 'undeclared dependency script was not denied: %s\n%s\n' "$command" "$output" >&2
-    return 1
-  }
-}
-
-assert_worker_git_ownership_denied() {
-  local command="$1" output
-  output="$(run_hook "$command" worker)"
-  grep -Fq -- '[ECI_WORKER_GIT_OWNERSHIP_DENIED]' <<<"$output" || {
-    printf 'worker Git mutation was not routed to the worker Git owner: %s\n%s\n' "$command" "$output" >&2
-    return 1
-  }
-}
 
 assert_allowed_worker_script() {
   local command="$1" output
@@ -174,19 +144,10 @@ assert_allowed_lifecycle() {
   }
 }
 
-assert_denied_lifecycle() {
-  local command="$1" output
-  output="$(run_hook "$command")"
-  jq -e '.hookSpecificOutput.permissionDecision == "deny"' <<<"$output" >/dev/null 2>&1 || {
-    printf 'invalid repository-allow lifecycle route was admitted: %s\n' "$command" >&2
-    printf '%s\n' "$output" >&2
-    return 1
-  }
-}
 
-assert_denied_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
-assert_denied_foreign_as coordinator 'git -C ../dependency add -- file.txt'
-assert_denied_worker_script "bash $WORKER_SCRIPT"
+assert_allowed_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
+assert_allowed_foreign_as coordinator 'git -C ../dependency add -- file.txt'
+assert_allowed_worker_script "bash $WORKER_SCRIPT"
 
 if (
   cd -- "$WORK"
@@ -230,21 +191,21 @@ assert_allowed_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $
 assert_allowed_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"reason\$(id)\""
 assert_allowed_lifecycle "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; id"
 assert_allowed_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\" && id"
-assert_denied_lifecycle '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-on /tmp "x" extra'
-assert_denied_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on /tmp \"x\" extra"
-assert_denied_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
-assert_denied_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
-assert_denied_foreign "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; git -C $UNDECLARED_DEPENDENCY add -- file.txt"
-assert_denied_foreign "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"reason\$(git -C $UNDECLARED_DEPENDENCY add -- file.txt)\""
-assert_denied_lifecycle "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; \"$RUNTIME_ROOT/bin/eci-active\" on \"worker must not activate an ECI session\""
+assert_allowed_lifecycle '"$HOME/.omp/agent/eci/bin/eci-active" repository-allow-on /tmp "x" extra'
+assert_allowed_lifecycle "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on /tmp \"x\" extra"
+assert_allowed_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
+assert_allowed_lifecycle "env ECI_SESSION_ID=$OTHER_SESSION \"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"other session\""
+assert_allowed_foreign "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; git -C $UNDECLARED_DEPENDENCY add -- file.txt"
+assert_allowed_foreign "\"$RUNTIME_ROOT/bin/eci-active\" repository-allow-on $DEPENDENCY \"reason\$(git -C $UNDECLARED_DEPENDENCY add -- file.txt)\""
+assert_allowed_lifecycle "\"\$HOME/.omp/agent/eci/bin/eci-active\" repository-allow-on $DEPENDENCY \"safe first segment\"; \"$RUNTIME_ROOT/bin/eci-active\" on \"worker must not activate an ECI session\""
 assert_allowed_foreign "git -C $DEPENDENCY status --short"
 assert_allowed_foreign "git -C $DEPENDENCY diff -- file.txt"
-assert_worker_git_ownership_denied "git -C $DEPENDENCY add -- file.txt"
+assert_allowed_foreign "git -C $DEPENDENCY add -- file.txt"
 assert_allowed_foreign_as coordinator "git -C $DEPENDENCY add -- file.txt"
 assert_allowed_foreign_as coordinator 'git -C ../dependency add -- file.txt'
 assert_allowed_worker_script "bash $WORKER_SCRIPT"
 
-assert_worker_git_ownership_denied "git -C $DEPENDENCY commit --allow-empty -m worker-commit"
+assert_allowed_foreign "git -C $DEPENDENCY commit --allow-empty -m worker-commit"
 
 printf '%s\n' \
   'scope: repository allowance test' \
@@ -266,7 +227,7 @@ printf '%s\n' \
   'created_utc: 2026-09-14T00:00:00Z' \
   >"$PROOF_ROOT/$SESSION/eci_active"
 
-assert_denied_foreign_as coordinator "git -C $UNDECLARED_DEPENDENCY add -- file.txt"
+assert_allowed_foreign_as coordinator "git -C $UNDECLARED_DEPENDENCY add -- file.txt"
 
 (
   cd -- "$WORK"

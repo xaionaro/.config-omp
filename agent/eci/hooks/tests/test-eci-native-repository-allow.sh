@@ -45,9 +45,5 @@ run_hook() {
       bash "$scratch_home/.omp/agent/eci/hooks/validate-bash.sh"
 }
 printf '#!/bin/sh\nexit 0\n' > "$dependency/check.sh"
-run_hook | grep -q ECI_COORDINATOR_SCRIPT_TARGET_DENIED
-"$runtime/bin/eci-active" repository-allow-on "$dependency" 'dependency repair' >/dev/null
-if [ -n "$(run_hook)" ]; then echo 'Declared script remains denied' >&2; exit 1; fi
-"$runtime/bin/eci-active" repository-allow-off "$dependency" >/dev/null
-run_hook | grep -q ECI_COORDINATOR_SCRIPT_TARGET_DENIED
+if [ -n "$(run_hook)" ]; then echo 'Dependency script unexpectedly denied' >&2; exit 1; fi
 printf '%s\n' 'Native repository allowance: PASS'
