@@ -5,7 +5,7 @@
 # through. Each lives in $HOME/.omp/agent/eci/bin with a <name>.sha256 receipt.
 # A name is rebuilt only when its binary or receipt is absent, or when the binary is a regular file that is not native
 # to this host and so can never run; this is the rule of pre-migration source 575bb81 (hooks/lib/eci-runtime-sync.sh:8,18-19).
-# Nothing is built over a symlink or a non-regular entry. A present gate binary that the loader (lib/eci-native-binary.sh,
+# Nothing is built over a symlink, a non-regular entry, or a leaf owned by another user. A present gate binary that the loader (lib/eci-native-binary.sh,
 # eci_runtime_verify) denies stops the run before anything is built, except in the Linux verifier bootstrap described at
 # eci_native_provision_locked; a stuck eci-worker-git or eci-verexec is reported and skipped.
 # hooks/build-native-binaries.sh is the only builder. Hooks never build: they verify every use with the loader.
@@ -29,7 +29,7 @@ eci_native_leaf_unresolved() {
 }
 
 # Sets eci_native_class for bin/$1:
-#   stuck   - the binary or its receipt is a symlink or a non-regular entry; never built over;
+#   stuck   - the binary or its receipt is a symlink, non-regular, or owned by another user; never built over;
 #   build   - the binary or receipt is absent, or the binary is regular but not native to this host;
 #   present - otherwise: regular binary, native, receipt present.
 eci_native_classify() {
@@ -64,7 +64,14 @@ eci_native_check() {
 }
 
 eci_native_stuck_advisory() {
-  printf 'eci-active: %s or its receipt is a symlink or not a regular file; not rebuilt\n' "$HOME/.omp/agent/eci/bin/$1" >&2
+  local path
+  for path in "$HOME/.omp/agent/eci/bin/$1" "$HOME/.omp/agent/eci/bin/$1.sha256"; do
+    if [ -e "$path" ] && [ ! -L "$path" ] && [ -f "$path" ] && [ ! -O "$path" ]; then
+      printf 'eci-active: %s is owned by another user; ask its owner to resolve the conflict, then retry\n' "$path" >&2
+    elif eci_native_leaf_unresolved "$path"; then
+      printf 'eci-active: %s or its receipt is a symlink or not a regular file; not rebuilt (conflict: %s)\n' "$HOME/.omp/agent/eci/bin/$1" "$path" >&2
+    fi
+  done
 }
 
 # Under the lock: decide again, stop on a denied or stuck gate binary, build the rest, then check what was built.
@@ -93,6 +100,7 @@ eci_native_provision_locked() {
             continue
           fi
           eci_native_check "$name" || true
+          eci_native_stuck_advisory "$name"
           return 1
         fi
         eci_native_stuck_advisory "$name"
@@ -115,6 +123,12 @@ eci_native_provision_locked() {
   "$BASH" "$eci_native_provision_lib/../build-native-binaries.sh" $build >&2 || return $?
   printf 'eci-active: built native ECI tools in %ss\n' "$((SECONDS - start))" >&2
   for name in $build $deferred; do
+    eci_native_classify "$name"
+    if [ "$eci_native_class" = stuck ]; then
+      eci_native_stuck_advisory "$name"
+      rc=1
+      continue
+    fi
     eci_native_check "$name" || rc=1
   done
   return "$rc"

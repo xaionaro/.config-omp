@@ -360,6 +360,40 @@ rm "$base/fakebin/mv"
 run_provision interrupted-recovery
 [ "$(rc_of interrupted-recovery)" = 0 ] || fail "failed publication was not recovered"
 pass "failed binary rename removes the receipt and next provisioning repairs the pair"
+# A foreign-owned but readable receipt must not silently stop a cold run.
+if [ "$(id -u)" = 0 ]; then
+  chown 1 "$bin/eci-command-plan.sha256"
+  before_receipt=$(digest_of "$bin/eci-command-plan.sha256")
+  rm "$bin/eci-safe-import"
+  run_provision foreign-receipt
+  [ "$(rc_of foreign-receipt)" != 0 ] || fail "foreign receipt accepted"
+  expect_err foreign-receipt "$bin/eci-command-plan.sha256"
+  expect_err foreign-receipt 'owned by another user'
+  [ "$(digest_of "$bin/eci-command-plan.sha256")" = "$before_receipt" ] || fail "foreign receipt changed"
+  chown 0 "$bin/eci-command-plan.sha256"
+  run_provision foreign-recovery
+  [ "$(rc_of foreign-recovery)" = 0 ] || fail "foreign receipt recovery failed"
+  pass "foreign receipt is retained and its owner conflict is reported"
+else
+  skip "foreign receipt ownership test requires chown capability"
+fi
+
+printf z >>"$bin/eci-command-plan"
+cat >"$base/fakebin/mv" <<'EOF'
+#!/bin/sh
+case "$*" in *eci-command-plan.sha256*) kill -KILL "$PPID"; exit 1 ;; esac
+exec /bin/mv "$@"
+EOF
+chmod 0755 "$base/fakebin/mv"
+if "$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/killed.out" 2>"$base/out/killed.err"; then
+  fail "killed publisher unexpectedly succeeded"
+fi
+[ ! -e "$bin/eci-command-plan.sha256" ] || fail "killed publisher left a receipt"
+rm "$base/fakebin/mv"
+run_provision killed-recovery
+[ "$(rc_of killed-recovery)" = 0 ] || fail "killed publisher was not recovered"
+pass "SIGKILL between binary and receipt publication remains recoverable"
+
 
 printf y >>"$bin/eci-command-plan"
 before_lock=$(digest_of "$bin/eci-command-plan")
@@ -376,5 +410,14 @@ eci_file_lock_release_fd 8 || fail "cannot release publication lock"
 wait "$locked_builder" || fail "builder failed after publication lock released"
 [ "$(digest_of "$bin/eci-command-plan")" != "$before_lock" ] || fail "builder did not publish after lock release"
 pass "builder waits for another publisher before changing the managed pair"
+
+chmod 0700 "$bin"
+mv "$bin" "$base/physical-bin"
+ln -s "$base/physical-bin" "$bin"
+printf s >>"$bin/eci-command-plan"
+"$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/symlink-bin.out" 2>"$base/out/symlink-bin.err" || fail "resolved bin deployment failed"
+[ -L "$bin" ] && [ -n "$(find "$base/physical-bin" -prune -perm 700 -print)" ] || fail "resolved bin link or mode changed"
+[ "$(digest_of "$bin/eci-command-plan")" = "$(digest_of "$base/fixture")" ] || fail "resolved bin did not receive the repaired binary"
+pass "resolved bin deployment preserves its link and existing directory mode"
 
 printf 'eci-native-provision: %s checks passed (host %s, bash %s)\n' "$checks" "$host_os" "$BASH_VERSION"
