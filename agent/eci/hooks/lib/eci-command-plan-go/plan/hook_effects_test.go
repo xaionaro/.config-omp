@@ -183,6 +183,32 @@ func TestHookScratchRootBoundaries(t *testing.T) {
 	}
 }
 
+// TestHookMarkerFreeConcreteGitEffects preserves broad Git safeguards without
+// inferring ECI lifecycle state from a retired marker.
+//
+// Example: a whole-index add is denied while an exact-path add remains native.
+func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
+	root := t.TempDir()
+	for _, current := range []struct {
+		command string
+		denied  bool
+	}{
+		{command: "git add -A", denied: true},
+		{command: "git reset --hard", denied: true},
+		{command: "git add -- owned.txt"},
+		{command: "git status"},
+	} {
+		request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: root, CWDKnown: true, Command: current.command, CollectShellCommands: true}
+		diagnostic := inspectHookEffects(request, Classify(request))
+		if current.denied {
+			require.NotNil(t, diagnostic, current.command)
+			require.Equal(t, CodeBroadDestructiveDenied, diagnostic.Code, current.command)
+		} else {
+			require.Nil(t, diagnostic, current.command)
+		}
+	}
+}
+
 // TestHookWorkerGitFamilies verifies native defaults and complete nested routing.
 //
 // Example: git diff stays native while a later git add uses the typed CLI.

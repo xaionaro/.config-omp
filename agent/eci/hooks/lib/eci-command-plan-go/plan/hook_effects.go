@@ -65,15 +65,23 @@ func inspectHookEffects(
 		if diagnostic := inspectHookMakeMemoryCap(record); diagnostic != nil {
 			return diagnostic
 		}
-		if request.Marker != MarkerActive {
-			continue
-		}
 		argv := make([]token, len(record.Argv))
 		for index, value := range record.Argv {
 			argv[index] = token{value: value, offset: index}
 		}
 		child := hookCommandChild(record, argv)
 		if len(child) == 0 {
+			continue
+		}
+		if request.Marker != MarkerActive {
+			if hookArgumentKnown(record, child[0].offset) {
+				if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
+					return diagnostic
+				}
+				if diagnostic := inspectHookCleanup(record, child); diagnostic != nil {
+					return diagnostic
+				}
+			}
 			continue
 		}
 		if !hookArgumentKnown(record, child[0].offset) {
@@ -555,6 +563,18 @@ func inspectHookGit(
 		}
 	}
 	if argv[verbIndex].value == "worktree" && verbIndex+1 < len(argv) && !hookArgumentKnown(record, argv[verbIndex+1].offset) {
+		return nil
+	}
+	if request.Marker != MarkerActive {
+		directory := hookGitDirectory(record, argv, verbIndex)
+		if diagnostic := inspectHookGitBroad(record, argv, verbIndex, directory); diagnostic != nil {
+			return diagnostic
+		}
+		if hookGitCoordinatorMutation(argv, verbIndex) {
+			if repository := hookGitRepository(record, argv, verbIndex); repository != "" {
+				return inspectHookGitProtectedTarget(record, argv, verbIndex, repository)
+			}
+		}
 		return nil
 	}
 	family := hookGitFamily(argv, verbIndex)
