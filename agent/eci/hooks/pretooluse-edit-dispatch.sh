@@ -35,16 +35,25 @@ _dispatch_err_trap() {
   exit "$status"
 }
 trap '_dispatch_err_trap "$?" "$LINENO" "$BASH_COMMAND"' ERR
-tmp_parent="${TMPDIR:-${ECI_TMPDIR:-/tmp}}"
-if ! tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)"; then
+# Scratch space falls back from TMPDIR to ECI_TMPDIR to /tmp, and the gate
+# children inherit the parent that worked, so one unusable TMPDIR cannot skip
+# every target check.
+tmp_dir=""
+for tmp_parent in "${TMPDIR:-}" "${ECI_TMPDIR:-}" /tmp; do
+  [ -n "$tmp_parent" ] || continue
+  tmp_dir="$(mktemp -d -- "${tmp_parent%/}/eci-edit-dispatch.XXXXXX" 2>/dev/null)" && break
+  tmp_dir=""
+done
+if [ -z "$tmp_dir" ]; then
   if eci_marker_active_or_unknown; then
-    deny_json="$(jq -cn --arg reason "[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under $tmp_parent; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
+    deny_json="$(jq -cn --arg reason "[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed under TMPDIR, ECI_TMPDIR and /tmp; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry" \
       '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null)" ||
       deny_json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_TEMP_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: scratch directory creation failed; set TMPDIR or ECI_TMPDIR to a writable absolute directory and retry"}}'
     dispatch_write_deny "$deny_json"
   fi
   exit 0
 fi
+export TMPDIR="$tmp_parent"
 trap 'rm -rf -- "$tmp_dir"' EXIT HUP INT TERM
 
 input_file="$tmp_dir/input.json"

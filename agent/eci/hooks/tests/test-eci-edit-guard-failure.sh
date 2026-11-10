@@ -22,6 +22,17 @@ for guard in validate-edit-write eci-active-gate; do
     exit 1
   }
 done
+# An unusable TMPDIR falls back to ECI_TMPDIR, then /tmp; the real guards still
+# run, so a foreign-session target stays denied without a marker.
+for fallback in "$tmp" ""; do
+  out="$(jq -cn --arg cwd "$tmp/repo" --arg path "$HOME/.agent/context/sessions/other/ordinary.txt" \
+      '{tool_name:"Write",session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x"}}' |
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp/missing-tmp" ECI_TMPDIR="$fallback" ENABLE_SECURITY_REMINDER=0 \
+      bash "$hooks/pretooluse-edit-dispatch.sh" 2>"$tmp/tmp-fallback.err")"
+  printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null || {
+    printf 'unusable TMPDIR (ECI_TMPDIR=%s) skipped the target guards\n' "$fallback" >&2; printf '%s\n' "$out" >&2; cat "$tmp/tmp-fallback.err" >&2; exit 1
+  }
+done
 cat >"$hooks/validate-edit-write.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 case "${FAIL_VALIDATOR:-0}" in
