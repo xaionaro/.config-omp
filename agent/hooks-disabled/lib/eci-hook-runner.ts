@@ -366,34 +366,49 @@ export function bashGateUnavailable(detail: string): PreToolVerdict {
 	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked. If eci_bash_gate_repair is available (top-level or xd://eci_bash_gate_repair), call it, then retry; if unavailable here or the gate stays unavailable, continue non-Bash work and report it to the parent.` };
 }
 
-/** Accepts only a complete Bash gate decision; failures never expose hook output. */
-export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
+export type BashGateDecision =
+	| { kind: "allow" }
+	| { kind: "deny"; reason: string }
+	| { kind: "unavailable"; detail: string };
+
+/** Parses a complete decision without appending repair advice or exposing hook output on failure. */
+export function bashGateDecision(run: HookRun): BashGateDecision {
 	// A resisting or unconfirmed group means a complete decision cannot be trusted.
 	const outcome = run.outcome;
-	if (outcome.kind === "spawn-error") return bashGateUnavailable("spawn");
-	if (outcome.kind === "cancelled-before-start") return bashGateUnavailable("cancelled before start");
+	if (outcome.kind === "spawn-error") return { kind: "unavailable", detail: "spawn" };
+	if (outcome.kind === "cancelled-before-start") return { kind: "unavailable", detail: "cancelled before start" };
 	const { stop, cleanup } = outcome;
 	const stopped = stop.kind === "exit" ? `exit ${stop.code}` : stop.kind;
-	if (cleanup === "unconfirmed") return bashGateUnavailable(`unconfirmed cleanup after ${stopped}`);
-	if (cleanup === "forced") return bashGateUnavailable(`forced cleanup after ${stopped}`);
-	if (stop.kind !== "exit") return bashGateUnavailable(stop.kind);
-	if (stop.code !== 0) return bashGateUnavailable(`exit ${stop.code}`);
+	if (cleanup === "unconfirmed") return { kind: "unavailable", detail: `unconfirmed cleanup after ${stopped}` };
+	if (cleanup === "forced") return { kind: "unavailable", detail: `forced cleanup after ${stopped}` };
+	if (stop.kind !== "exit") return { kind: "unavailable", detail: stop.kind };
+	if (stop.code !== 0) return { kind: "unavailable", detail: `exit ${stop.code}` };
 	const out = run.stdout.trim();
-	if (out === "") return undefined;
+	if (out === "") return { kind: "allow" };
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(out);
 	} catch {
-		return bashGateUnavailable("invalid-json");
+		return { kind: "unavailable", detail: "invalid-json" };
 	}
 	const hso = isRecord(parsed) && isRecord(parsed.hookSpecificOutput) ? parsed.hookSpecificOutput : undefined;
-	if (hso?.hookEventName !== "PreToolUse") return bashGateUnavailable("invalid-output");
-	if (hso.permissionDecision === "allow") return undefined;
-	if (hso.permissionDecision !== "deny") return bashGateUnavailable("invalid-decision");
+	if (hso?.hookEventName !== "PreToolUse") return { kind: "unavailable", detail: "invalid-output" };
+	if (hso.permissionDecision === "allow") return { kind: "allow" };
+	if (hso.permissionDecision !== "deny") return { kind: "unavailable", detail: "invalid-decision" };
 	if (typeof hso.permissionDecisionReason !== "string" || hso.permissionDecisionReason.trim() === "") {
-		return bashGateUnavailable("invalid-denial");
+		return { kind: "unavailable", detail: "invalid-denial" };
 	}
-	return { block: true, reason: hso.permissionDecisionReason };
+	return { kind: "deny", reason: hso.permissionDecisionReason };
+}
+
+/** Maps unavailable decisions to the Bash gate's conditional repair guidance. */
+export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
+	const decision = bashGateDecision(run);
+	switch (decision.kind) {
+		case "allow": return undefined;
+		case "deny": return { block: true, reason: decision.reason };
+		case "unavailable": return bashGateUnavailable(decision.detail);
+	}
 }
 
 /** Advisory translation (SessionStart / UserPromptSubmit). Never throws; failures yield undefined. */

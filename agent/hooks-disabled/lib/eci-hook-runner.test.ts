@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { homedir } from "node:os";
 import { on } from "node:events";
 import { join } from "node:path";
-import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, advisoryContext, bashHostCwd, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
+import { BASH_GATE_DEADLINE_SEC, DRAIN_SEC, KILL_GRACE_SEC, advisoryContext, bashGateDecision, bashHostCwd, bashPreToolVerdict, identityFor, preToolVerdict, prefixMarksSubagent, resolveHookBash, runEciHook } from "./eci-hook-runner";
 import eciBashGate from "../pre/eci-bash-gate";
 import eciSessionStart from "../post/eci-session-start";
 
@@ -133,12 +133,18 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 		{ outcome: exited(0), stdout: "{}", stderr: "" },
 		...([undefined, 42, "", "  "].map(reason => ({ outcome: exited(0), stdout: denial(reason), stderr: "" }))),
 	]) {
+		const decision = bashGateDecision(run);
+		expect(decision.kind).toBe("unavailable");
+		expect(JSON.stringify(decision)).not.toContain("eci_bash_gate_repair");
+		expect(JSON.stringify(decision)).not.toContain("secret");
 		const verdict = bashPreToolVerdict(run);
 		expect(verdict?.block).toBe(true);
 		expect(verdict?.reason).toContain("If eci_bash_gate_repair is available");
 		expect(verdict?.reason).toContain("if unavailable here");
 		expect(verdict?.reason).not.toContain("secret");
 	}
+	expect(bashGateDecision({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })).toEqual({ kind: "deny", reason: "bounded route" });
+	expect(bashGateDecision({ outcome: exited(0), stdout: "", stderr: "" })).toEqual({ kind: "allow" });
 	expect(bashPreToolVerdict({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })?.reason).toBe("bounded route");
 	expect(bashPreToolVerdict({ outcome: exited(0), stdout: "", stderr: "" })).toBeUndefined();
 	expect(BASH_GATE_DEADLINE_SEC + KILL_GRACE_SEC + DRAIN_SEC).toBeLessThan(30);
