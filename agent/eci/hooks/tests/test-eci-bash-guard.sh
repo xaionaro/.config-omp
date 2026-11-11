@@ -16,12 +16,16 @@ code=ECI_HOOK_BASH_TOO_OLD
 out="$(bash -c '. "$1/hooks/lib/eci-bash-guard.sh" PreToolUse; printf continued' _ "$ROOT")"
 [ "$out" = continued ] || fail "guard is not a no-op under bash $BASH_VERSION: $out"
 
-# Each entry point the omp adapters run (agent/hooks-disabled) sources the guard first.
+# Each adapter entry point sources the guard before loading hook dependencies.
 entries='validate-bash.sh:PreToolUse pretooluse-edit-dispatch.sh:PreToolUse eci-edit-gate.sh:PreToolUse session-snapshot.sh:SessionStart prompt-task-reminder.sh:UserPromptSubmit eci-post-compact-refresh.sh:PostCompact'
 for entry in $entries; do
   script="${entry%%:*}" event="${entry#*:}"
   guard_line="$(grep -n 'lib/eci-bash-guard.sh' "$ROOT/hooks/$script" | head -n 1)" || fail "$script does not source the guard"
-  [ "${guard_line%%:*}" -le 3 ] || fail "$script sources the guard at line ${guard_line%%:*}, after other code"
+  case "$script" in
+    validate-bash.sh) max_guard_line=15 ;; # Resolves its directory and installs its failure trap first.
+    *) max_guard_line=3 ;;
+  esac
+  [ "${guard_line%%:*}" -le "$max_guard_line" ] || fail "$script sources the guard at line ${guard_line%%:*}, after other code"
   case "$guard_line" in *" $event "*) ;; *) fail "$script passes the wrong event: $guard_line" ;; esac
 done
 
