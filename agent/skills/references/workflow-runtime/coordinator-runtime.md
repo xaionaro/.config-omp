@@ -12,7 +12,7 @@ Use this module as the ECI Supervisor or the owning outer-workflow Coordinator/L
 - Keep prompts and handoffs as readable coordination records. They may support review, but no proof-directory artifact, hash, receipt, ledger prefix, or serialized field list is a prerequisite for normal spawn, followup, exploration, implementation, or verification.
 - Spawning a subagent creates a role; `write agent://<id>` messages a live agent and starts a new turn when the reusable role is idle; `write proc://<id>/kill` cancels exact active work only. Never shell-launch agents or close terminal agents.
 - Name reusable ordinary producers by stable semantic role. Every blind critic and every special role uses a fresh `task` spawn with a unique `name`. A `write agent://<id>` message never upgrades an ordinary role to special.
-- Keep at most one outstanding `wait` per undelivered expected completion. A timeout is non-terminal: do not poll, retry, or infer a crash. Use `read proc://` only for roster maintenance or documented crash recovery.
+- While only Workers or owners run and nothing is actionable, end the turn (park); completions and `write agent://<id>` auto-deliver and revive. A `wait` that only returns "Still Running" is polling: never re-issue it, and never block with `sleep`. Under an active goal, first set a todo item `blocked` naming what it waits on, and unblock it on revival. Silence is non-terminal: do not retry or infer a crash. Use `read proc://` only for roster maintenance or documented crash recovery.
 - Include scoped verification and recovery duties in every subagent prompt.
 
 ## Role and model admission
