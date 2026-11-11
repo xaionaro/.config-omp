@@ -953,6 +953,22 @@ assert_git_whole_worktree_staging_denied() {
     return 1
   }
 }
+# Removing or relocating a live Bash-gate file blocks every later Bash call; the
+# denial names the in-place, index-only and acknowledged routes.
+assert_live_gate_removal_denied() {
+  local command="$1" runner="${2:-run_hook}" output
+  output="$("$runner" "$command")"
+  jq -e '
+    .hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIVE_BASH_GATE_REMOVAL_DENIED]")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains("predicate=live-bash-gate-removal")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains("ECI_LIVE_HOOK_REMOVAL=1"))
+  ' "$output" >/dev/null || {
+    printf 'live Bash-gate removal denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
+    [ ! -e "$output" ] || cat -- "$output" >&2
+    return 1
+  }
+}
 
 
 assert_stat_format_allowed() {
@@ -1587,18 +1603,22 @@ run_matrix_parallel coordinator assert_allowed coordinator-git-prep-dot \
 # ADDED: the explicit whole-worktree form both trees deny.
 run_matrix_parallel coordinator assert_git_whole_worktree_staging_denied coordinator-git-prep-unsafe-all \
   "git add -A"
-run_matrix_parallel coordinator assert_allowed coordinator-protected-git-target \
+run_matrix_parallel coordinator assert_live_gate_removal_denied coordinator-protected-git-target \
   "git rm -- hooks/validate-bash.sh" \
   "git rm -r -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh ../outside"
+run_matrix_parallel coordinator assert_allowed coordinator-protected-git-target-hatch \
+  "ECI_LIVE_HOOK_REMOVAL=1 git rm -- hooks/validate-bash.sh" \
+  "git rm --cached -- hooks/validate-bash.sh" \
+  "git checkout -- hooks/validate-bash.sh"
 # Exact native Worker staging is not gated by legacy marker state.
 run_matrix_parallel worker assert_allowed worker-git-staging-add \
   "git add -- hooks.json" \
   "git add README.md"
 run_subagent_matrix_parallel allowed worker-git-staging \
   "git restore --staged -- hooks/validate-bash.sh"
-run_matrix_parallel worker-root-owner assert_allowed worker-git-prep \
+run_matrix_parallel worker-root-owner assert_live_gate_removal_denied worker-git-prep \
   "git rm -- hooks/validate-bash.sh" \
   "git mv -- hooks/validate-bash.sh hooks/validate-bash.sh"
 

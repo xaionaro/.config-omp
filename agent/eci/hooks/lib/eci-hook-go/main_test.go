@@ -25,14 +25,15 @@ func TestBashGateDeniesUnknownProofRoot(t *testing.T) {
 	}
 }
 
-// TestBashGateMalformedCallbackBlocks reports the planner failure to the caller.
+// TestBashGateMalformedCallbackBlocks reports the planner failure and its repair step.
 //
-// Example: malformed input exits two with a diagnostic and no decision JSON.
+// Example: malformed input exits two with a repair diagnostic and no decision JSON.
 func TestBashGateMalformedCallbackBlocks(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"bash-gate"}, strings.NewReader("{"), &stdout, &stderr)
-	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "decode callback failed") {
+	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "decode callback failed") ||
+		!strings.Contains(stderr.String(), "repair: send exactly one JSON object") {
 		t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }

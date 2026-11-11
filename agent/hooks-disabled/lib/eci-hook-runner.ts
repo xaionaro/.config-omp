@@ -377,10 +377,12 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	return fail("returned unsupported permissionDecision");
 }
 
-/** Blocks an unchecked Bash call without exposing callback data. */
+/** Blocks an unchecked Bash call without exposing callback data; names the same-actor repair. */
 export function bashGateUnavailable(detail: string, repairable = false): PreToolVerdict {
-	const repair = repairable ? " If eci_bash_gate_repair is available, call it; otherwise send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair. It uses current working-tree source and may replace shared gate binaries; approvals still apply." : "";
-	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${repair} Continue non-Bash work and report the failure.` };
+	const repair = repairable
+		? " If eci_bash_gate_repair is available, call it; otherwise send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair. It uses current working-tree source and may replace shared gate binaries; approvals still apply."
+		: " Repair: a deadline or cleanup failure may be transient, so retry once; otherwise Read $HOME/.omp/agent/eci/hooks/validate-bash.sh, hooks/lib/eci-bash-guard.sh and hooks/lib/eci-native-binary.sh (or, for an adapter failure, $HOME/.omp/agent/hooks/pre/eci-bash-gate.ts), restore or fix the broken file with Edit or Write, and retry (restart the session after an adapter fix).";
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${repair} If Bash stays blocked, continue non-Bash work and report the failure.` };
 }
 
 const nativeRepairReasons = [

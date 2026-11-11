@@ -354,54 +354,94 @@ func hookTestDiagnostic(request Request) *Diagnostic {
 	return inspectHookEffects(request, result)
 }
 
-// TestHookCleanupTargets leaves legitimate hook removal and ordinary cleanup native.
+// TestHookCleanupTargets denies removal of live Bash-gate files while retaining ordinary cleanup.
 //
-// Example: removing a live hook is not denied by a gate without a bounded hatch.
+// Example: deleting a generated cache leaf is harmless; deleting the live validate-bash.sh is not.
 func TestHookCleanupTargets(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	provider := filepath.Join(home, ".omp", "agent", "eci")
 	hook := filepath.Join(provider, "hooks", "validate-bash.sh")
-	requireHookDirectory(t, filepath.Dir(hook))
-	requireHookFile(t, hook, "#!/bin/sh\nexit 0\n")
+	guard := filepath.Join(provider, "hooks", "lib", "eci-bash-guard.sh")
+	other := filepath.Join(provider, "hooks", "eci-review-gate.sh")
+	clone := filepath.Join(home, "tmp", "omp-clone", "agent", "eci", "hooks", "validate-bash.sh")
+	adapter := filepath.Join(home, ".omp", "agent", "hooks", "pre", "eci-bash-gate.ts")
+	for _, file := range []string{hook, guard, other, clone, adapter} {
+		requireHookDirectory(t, filepath.Dir(file))
+		requireHookFile(t, file, "#!/bin/sh\nexit 0\n")
+	}
 	alias := filepath.Join(provider, "owned-hook-alias")
 	require.NoError(t, os.Symlink(hook, alias))
 	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, CWD: provider, CollectShellCommands: true, ApprovedRoots: []string{provider}}
-	for _, command := range []string{"rm -f generated.cache", "rm -rf bin/__pycache__", "rm -rf missing-directory", "rm -f " + alias} {
+	for _, command := range []string{
+		"rm -f generated.cache", "rm -rf bin/__pycache__", "rm -rf missing-directory", "rm -f " + alias,
+		"rm -f " + other, "rm -f " + clone, "rm -rf " + filepath.Dir(filepath.Dir(clone)),
+		"cd " + filepath.Dir(filepath.Dir(clone)) + " && rm -f hooks/validate-bash.sh",
+		"mv " + filepath.Join(provider, "new-hook") + " " + hook,
+		hookLiveRemovalAcknowledgment + " rm -f " + hook,
+		"env " + hookLiveRemovalAcknowledgment + " mv " + hook + " " + filepath.Join(provider, "saved-hook"),
+		// Disabling the omp Bash adapter is the user's bridge and stays native.
+		"mkdir -p " + filepath.Join(home, ".omp", "agent", "hooks-disabled", "pre") + " && mv " + adapter + " " + filepath.Join(home, ".omp", "agent", "hooks-disabled", "pre") + "/",
+	} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
-			require.Falsef(t, diagnostic != nil, "narrow cleanup denied: %+v", diagnostic)
+			require.Falsef(t, diagnostic != nil, "ordinary or acknowledged cleanup denied: %s: %+v", command, diagnostic)
 		}
 	}
-	for _, command := range []string{"rm -f " + hook, "rm -rf " + provider, "mv " + hook + " " + filepath.Join(provider, "saved-hook")} {
+	for _, command := range []string{
+		"rm -f " + hook, "rm -f -- " + guard, "rm -rf " + provider, "unlink " + hook, "shred -u " + alias,
+		"mv " + hook + " " + filepath.Join(provider, "saved-hook"),
+		"mv -t " + provider + " " + hook,
+		"rm -f hooks/validate-bash.sh",
+	} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
-			require.Nilf(t, diagnostic, "hook removal denied: %s", command)
+			require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeLiveBashGateRemoval, "live Bash-gate removal allowed: %s: %+v", command, diagnostic)
+			for _, hatch := range []string{"Edit or Write", "git rm --cached", "separate clone or worktree", hookLiveRemovalAcknowledgment} {
+				require.Contains(t, diagnostic.Remediation, hatch, command)
+			}
 		}
 	}
 }
 
-// TestHookGitRemovalRemainsNative preserves broad Git protection independently.
+// TestHookGitLiveGateRemoval denies physical Git removal of live Bash-gate files only.
 //
-// Example: git rm and checkout of a hook are allowed while broad add is denied.
-func TestHookGitRemovalRemainsNative(t *testing.T) {
+// Example: git rm of the live hook is denied; git rm --cached, checkout and other repositories are not.
+func TestHookGitLiveGateRemoval(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	repo := filepath.Join(home, ".omp")
-	hook := filepath.Join(repo, "agent", "eci", "hooks", "validate-bash.sh")
-	requireHookDirectory(t, filepath.Dir(hook))
-	requireHookFile(t, hook, "hook")
-	output, err := hookGitOutput(context.Background(), repo, "init")
-	require.NoErrorf(t, err, "%s", output)
+	dependency := filepath.Join(home, "dependency")
+	for _, file := range []string{
+		filepath.Join(repo, "agent", "eci", "hooks", "validate-bash.sh"),
+		filepath.Join(dependency, "agent", "eci", "hooks", "validate-bash.sh"),
+	} {
+		requireHookDirectory(t, filepath.Dir(file))
+		requireHookFile(t, file, "hook")
+	}
+	for _, directory := range []string{repo, dependency} {
+		output, err := hookGitOutput(context.Background(), directory, "init")
+		require.NoErrorf(t, err, "%s", output)
+	}
 	for _, tc := range []struct {
 		command string
 		denied  bool
 	}{
-		{"git rm agent/eci/hooks/validate-bash.sh", false},
-		{"git mv agent/eci/hooks/validate-bash.sh saved", false},
+		{"git rm agent/eci/hooks/validate-bash.sh", true},
+		{"git rm -r -- agent/eci/hooks", true},
+		{"git mv agent/eci/hooks/validate-bash.sh saved", true},
+		{"git -C agent/eci mv hooks/validate-bash.sh saved", true},
+		{"git rm --cached agent/eci/hooks/validate-bash.sh", false},
+		{"git rm -n agent/eci/hooks/validate-bash.sh", false},
+		{"git mv saved agent/eci/hooks/validate-bash.sh", false},
 		{"git checkout -- agent/eci/hooks/validate-bash.sh", false},
+		{"git restore -- agent/eci/hooks/validate-bash.sh", false},
+		{hookLiveRemovalAcknowledgment + " git rm agent/eci/hooks/validate-bash.sh", false},
+		{"git -C '" + dependency + "' rm agent/eci/hooks/validate-bash.sh", false},
+		{"git -C '" + dependency + "' mv agent/eci/hooks/validate-bash.sh saved", false},
+		{"git -C '" + dependency + "' checkout -- agent/eci/hooks/validate-bash.sh", false},
 		{"git add -A", true},
 	} {
 		t.Run(tc.command,

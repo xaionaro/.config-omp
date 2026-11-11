@@ -44,7 +44,7 @@ func bashGate(stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			code = deny(stdout, stderr, "validate-bash", fmt.Sprintf("%seci-hook bash-gate failed internally (%v); rebuild it with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry", reasonNativeGateUnavailable, recovered))
+			code = deny(stdout, stderr, "validate-bash", fmt.Sprintf("%seci-hook bash-gate failed internally (%v); fix the failing planner code under \"$HOME/.omp/agent/eci/hooks/lib/eci-command-plan-go\", rebuild with `go build -o eci-hook .` in \"$HOME/.omp/agent/eci/hooks/lib/eci-hook-go\", and retry", reasonNativeGateUnavailable, recovered))
 		}
 	}()
 	return plan.RunHook(stdin, stdout, stderr)

@@ -88,13 +88,36 @@ assert_broad_denied() {
   jq -e '.hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]"))' "$output" >/dev/null
 }
+# Removing or relocating a live Bash-gate file blocks every later Bash call, so it
+# is denied with the in-place, index-only, separate-checkout and acknowledged routes.
+assert_live_gate_denied() {
+  local command="$1" output="$TMP_ROOT/live-gate-denial.json"
+  run_hook "$command" "$output" || return $?
+  jq -e '.hookSpecificOutput.permissionDecision == "deny" and
+    (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_LIVE_BASH_GATE_REMOVAL_DENIED]") and contains("ECI_LIVE_HOOK_REMOVAL=1"))' "$output" >/dev/null || {
+    printf 'live Bash-gate removal was not denied with its hatch: command=%q\n' "$command" >&2
+    cat -- "$output" >&2
+    return 1
+  }
+}
 
-
-
-assert_allowed 'git rm -- hooks/validate-bash.sh'
-assert_allowed 'git mv -- hooks/validate-bash.sh hooks/renamed-hook.sh'
+assert_live_gate_denied 'git rm -- hooks/validate-bash.sh'
+assert_live_gate_denied 'git mv -- hooks/validate-bash.sh hooks/renamed-hook.sh'
+assert_live_gate_denied 'rm hooks/validate-bash.sh'
+assert_live_gate_denied 'mv hooks/lib/eci-native-binary.sh saved.sh'
+assert_allowed 'ECI_LIVE_HOOK_REMOVAL=1 git rm -- hooks/validate-bash.sh'
+assert_allowed 'git rm --cached -- hooks/validate-bash.sh'
 assert_allowed 'git checkout -- hooks/validate-bash.sh'
-assert_allowed 'rm hooks/validate-bash.sh'
+assert_allowed 'rm hooks/eci-review-gate.sh'
+# The same layout in another repository is ordinary multi-repo work.
+other_repo="$TMP_ROOT/other-repo"
+mkdir -p -- "$other_repo/hooks"
+printf '#!/bin/sh\n' >"$other_repo/hooks/validate-bash.sh"
+git -C "$other_repo" init --quiet
+assert_allowed "git -C '$other_repo' rm -- hooks/validate-bash.sh"
+assert_allowed "git -C '$other_repo' mv -- hooks/validate-bash.sh hooks/renamed.sh"
+assert_allowed "git -C '$other_repo' checkout -- hooks/validate-bash.sh"
+assert_allowed "rm '$other_repo/hooks/validate-bash.sh'"
 assert_broad_denied
 
 printf '%s\n' 'coordinator protected Git target contract: PASS'

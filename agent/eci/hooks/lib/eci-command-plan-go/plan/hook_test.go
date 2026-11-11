@@ -278,6 +278,11 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		{command: "git -C '" + dependency + "' commit -m checkpoint"},
 		{command: "bash '" + script + "'"},
 		{command: "git -C '" + dependency + "' reset --hard"},
+		{command: "git -C '" + dependency + "' checkout -- check.sh"},
+		{command: "git -C '" + dependency + "' rm -- check.sh"},
+		{command: "git -C '" + dependency + "' mv check.sh renamed.sh"},
+		{command: "rm -f '" + script + "'"},
+		{command: "mv '" + script + "' '" + filepath.Join(dependency, "moved.sh") + "'"},
 	} {
 		input := HookInput{SessionID: "marker-free", ToolName: "Bash", CWD: primary}
 		input.ToolInput.Command = current.command
@@ -295,9 +300,9 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist, "callback must not run the dependency script")
 }
 
-// TestRunHookMarkerFreeLiveHookOperations leaves hatchless path operations native.
+// TestRunHookMarkerFreeLiveHookOperations denies only live Bash-gate removal or relocation.
 //
-// Example: removing or checking out a live hook is not denied by this callback.
+// Example: removing a live hook is denied; checking it out or unstaging it is not.
 func TestRunHookMarkerFreeLiveHookOperations(t *testing.T) {
 	home := t.TempDir()
 	provider := filepath.Join(home, ".omp", "agent", "eci")
@@ -312,10 +317,11 @@ func TestRunHookMarkerFreeLiveHookOperations(t *testing.T) {
 		command string
 		denied  bool
 	}{
-		{command: "rm '" + hook + "'"},
+		{command: "rm '" + hook + "'", denied: true},
+		{command: "git rm -- hooks/validate-bash.sh", denied: true},
+		{command: "git mv hooks/validate-bash.sh saved", denied: true},
+		{command: "ECI_LIVE_HOOK_REMOVAL=1 git mv hooks/validate-bash.sh saved"},
 		{command: "git checkout -- hooks/validate-bash.sh"},
-		{command: "git rm -- hooks/validate-bash.sh"},
-		{command: "git mv hooks/validate-bash.sh saved"},
 		{command: "git rm --cached -- hooks/validate-bash.sh"},
 		{command: "cat '" + hook + "'"},
 		{command: "git add -A", denied: true},

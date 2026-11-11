@@ -141,6 +141,8 @@ test("Bash failures block with fixed diagnostics without exposing hook data", ()
 		expect(verdict?.block).toBe(true);
 		expect(verdict?.reason).not.toContain(": eci-bash-gate-repair");
 		expect(verdict?.reason).not.toContain("secret");
+		expect(verdict?.reason).toContain("Repair: ");
+		expect(verdict?.reason).toContain("validate-bash.sh");
 	}
 	expect(bashGateDecision({ outcome: exited(0), stdout: denial("bounded route"), stderr: "" })).toEqual({ kind: "deny", reason: "bounded route" });
 	expect(bashGateDecision({ outcome: exited(0), stdout: "", stderr: "" })).toEqual({ kind: "allow" });

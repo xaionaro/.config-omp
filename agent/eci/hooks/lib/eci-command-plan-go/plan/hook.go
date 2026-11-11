@@ -23,11 +23,11 @@ func RunHook(
 	decoder := json.NewDecoder(input)
 	var envelope HookInput
 	if err := decoder.Decode(&envelope); err != nil {
-		return hookUnavailable(diagnostics, "decode callback")
+		return hookUnavailable(diagnostics, "decode callback", hookCallbackRepair)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return hookUnavailable(diagnostics, "decode trailing callback")
+		return hookUnavailable(diagnostics, "decode trailing callback", hookCallbackRepair)
 	}
 	if envelope.ToolName != "" && envelope.ToolName != "Bash" {
 		return 0
@@ -54,7 +54,7 @@ func RunHook(
 		}{HookSpecificOutput: result.HookSpecificOutput}
 		encoded, err := json.Marshal(denial)
 		if err != nil {
-			return hookUnavailable(diagnostics, "encode callback denial")
+			return hookUnavailable(diagnostics, "encode callback denial", "retry the call; if it fails again, rebuild the planner with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" eci-command-plan and retry")
 		}
 		encoded, err = finalizeHookDenial(request, encoded)
 		if err != nil {
@@ -64,8 +64,7 @@ func RunHook(
 			return 0
 		}
 		if _, err := fmt.Fprintln(output, string(encoded)); err != nil {
-			hookAdvisory("write callback denial", err)
-			return 2
+			return hookUnavailable(diagnostics, "write callback denial", "run the hook with stdout connected to a pipe or file the caller reads, then retry")
 		}
 		return 0
 	}
@@ -119,16 +118,21 @@ func finalizeHookDenial(
 	return finalized, nil
 }
 
-// hookUnavailable reports a callback that could not reach a decision.
+// hookCallbackRepair names the same-actor repair for a callback the planner cannot decode.
+//
+// Example: a truncated JSON envelope from a provider adapter.
+const hookCallbackRepair = "send exactly one JSON object with tool_name and tool_input.command on stdin; on omp repair the adapter that builds it ($HOME/.omp/agent/hooks/pre/eci-bash-gate.ts and $HOME/.omp/agent/hooks/lib/eci-hook-runner.ts) with Edit, restart the session and retry"
+
+// hookUnavailable reports a callback that could not reach a decision, with its repair step.
 //
 // Example: malformed input blocks the tool call instead of silently allowing it.
 func hookUnavailable(
 	diagnostics io.Writer,
 	operation string,
+	repair string,
 ) int {
-	if _, err := fmt.Fprintf(diagnostics, "command hook: %s failed; could not decide; the tool call is blocked\n", operation); err != nil {
-		return 2
-	}
+	// The call is blocked by the exit status even when the diagnostic is unwritable.
+	_, _ = fmt.Fprintf(diagnostics, "command hook: %s failed; could not decide; the tool call is blocked; repair: %s\n", operation, repair)
 	return 2
 }
 

@@ -16,7 +16,7 @@ const hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROO
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
 //
-// Example: a whole-index Git add returns a diagnostic.
+// Example: a whole-index Git add or removal of the live validate-bash.sh returns a diagnostic.
 func inspectHookEffects(
 	request Request,
 	result Result,
@@ -44,6 +44,9 @@ func inspectHookEffects(
 			continue
 		}
 		if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
+			return diagnostic
+		}
+		if diagnostic := inspectHookLiveGateRemoval(record, argv, child); diagnostic != nil {
 			return diagnostic
 		}
 		childRequest := request
@@ -751,4 +754,151 @@ func hookSessionsOperandDiagnostic(
 		segmentIndex, argvIndex, argument, "use the owned task path outside the omp sessions root; session transcripts belong to the omp runtime", "worker-sessions-root")
 	diagnostic.Path = resolved
 	return diagnostic
+}
+
+// hookCodeLiveBashGateRemoval identifies removal or relocation of a file the Bash gate runs.
+//
+// Example: rm hooks/validate-bash.sh in the live provider root selects this gate.
+const hookCodeLiveBashGateRemoval DiagnosticCode = "ECI_LIVE_BASH_GATE_REMOVAL_DENIED"
+
+// hookLiveRemovalAcknowledgment is the prefix assignment that admits one intended removal.
+//
+// Example: ECI_LIVE_HOOK_REMOVAL=1 git rm hooks/validate-bash.sh.
+const hookLiveRemovalAcknowledgment = "ECI_LIVE_HOOK_REMOVAL=1"
+
+// liveBashGateRelativePaths lists provider files every Bash callback executes.
+// Removing one blocks every later Bash call, including the shell repair route,
+// so the same actor could not restore it with Bash. Other hook files stay ordinary targets.
+//
+// Example: hooks/lib/eci-bash-guard.sh is sourced by hooks/validate-bash.sh.
+var liveBashGateRelativePaths = [...]string{
+	"hooks/validate-bash.sh",
+	"hooks/lib/eci-bash-guard.sh",
+	"hooks/lib/eci-native-binary.sh",
+}
+
+// inspectHookLiveGateRemoval protects existing live Bash-gate files from removal or relocation.
+// Only rm, rmdir, unlink, shred, srm, mv sources and physical git rm/mv sources are checked.
+// Git checkout and restore stay native: they rewrite a tracked hook with tracked content, so
+// the gate keeps running; discarding uncommitted edits follows ordinary preservation practice.
+// Paths outside the live provider roots, including clones and other repositories, are unaffected.
+//
+// Example: rm hooks/validate-bash.sh is denied; ECI_LIVE_HOOK_REMOVAL=1 rm hooks/validate-bash.sh is not.
+func inspectHookLiveGateRemoval(
+	record ShellCommandRecord,
+	argv []token,
+	child []token,
+) *Diagnostic {
+	name, base, targets := hookRemovalTargets(record, child)
+	if len(targets) == 0 {
+		return nil
+	}
+	for _, prefix := range argv[:child[0].offset] {
+		if prefix.value == hookLiveRemovalAcknowledgment && hookArgumentKnown(record, prefix.offset) {
+			return nil
+		}
+	}
+	for _, argument := range targets {
+		lexical := argument.value
+		if !filepath.IsAbs(lexical) {
+			if base == "" {
+				continue
+			}
+			lexical = filepath.Join(base, lexical)
+		}
+		target := resolvePathIdentity(filepath.Clean(lexical))
+		if name != "shred" && name != "srm" {
+			// Entry operations remove a symlink itself, not its referent.
+			entry, err := resolvePathEntryWithMissingSuffix(filepath.Clean(lexical))
+			if err != nil {
+				continue
+			}
+			target = entry
+		}
+		for _, root := range protectedHookModeRoots() {
+			for _, relative := range liveBashGateRelativePaths {
+				hook := filepath.Join(root, relative)
+				if !pathWithin(hook, target) {
+					continue
+				}
+				if info, err := os.Stat(hook); err != nil || !info.Mode().IsRegular() {
+					// An absent hook cannot be locked out further.
+					continue
+				}
+				diagnostic := diagnosticForToken(hookCodeLiveBashGateRemoval,
+					name+" removes or relocates live Bash-gate file "+hook+" through "+target+"; afterwards every Bash call is blocked, including the shell repair route",
+					record.Segment, argument.offset, argument,
+					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; make structural removals in a separate clone or worktree; to remove or relocate it here intentionally, prefix this command with "+hookLiveRemovalAcknowledgment+" and restore the file with Write before the next Bash call",
+					"live-bash-gate-removal")
+				diagnostic.Path = target
+				return diagnostic
+			}
+		}
+	}
+	return nil
+}
+
+// hookRemovalTargets returns the command name, relative-path base and removed or moved-away operands.
+// Destinations are excluded because replacing a hook keeps the gate present.
+// Index-only and preview Git forms return no targets.
+//
+// Example: git -C repo mv a b returns git, repo and [a].
+func hookRemovalTargets(
+	record ShellCommandRecord,
+	child []token,
+) (string, string, []token) {
+	name := filepath.Base(child[0].value)
+	base := ""
+	if record.CWDKnown {
+		base = record.CWD
+	}
+	arguments := child[1:]
+	moves := name == "mv"
+	switch name {
+	case "rm", "rmdir", "unlink", "shred", "srm", "mv":
+	case "git":
+		verbIndex := gitSubcommandIndex(child)
+		if verbIndex >= len(child) || !hookArgumentKnown(record, child[verbIndex].offset) {
+			return name, "", nil
+		}
+		if verb := child[verbIndex].value; verb != "rm" && verb != "mv" {
+			return name, "", nil
+		}
+		base = hookGitDirectory(record, child, verbIndex)
+		arguments = child[verbIndex+1:]
+		moves = child[verbIndex].value == "mv"
+	default:
+		return name, "", nil
+	}
+	operands := make([]token, 0, len(arguments))
+	targetDirectory := false
+	options := true
+	for index := 0; index < len(arguments); index++ {
+		argument := arguments[index]
+		if !hookArgumentKnown(record, argument.offset) {
+			continue
+		}
+		value := argument.value
+		if options && value == "--" {
+			options = false
+			continue
+		}
+		if options && strings.HasPrefix(value, "-") && value != "-" {
+			switch {
+			case name == "git" && (value == "--cached" || value == "-n" || value == "--dry-run"):
+				return name, "", nil
+			case name == "mv" && (value == "-t" || value == "--target-directory"):
+				targetDirectory = true
+				index++
+			case name == "mv" && (strings.HasPrefix(value, "--target-directory=") || strings.HasPrefix(value, "-t") && !strings.HasPrefix(value, "--")):
+				targetDirectory = true
+			}
+			continue
+		}
+		operands = append(operands, argument)
+	}
+	if moves && !targetDirectory && len(operands) > 0 {
+		operands = operands[:len(operands)-1]
+	}
+	return name, base, operands
 }
