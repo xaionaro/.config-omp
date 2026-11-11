@@ -378,7 +378,7 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 }
 
 const fixedRepairStep = " If eci_bash_gate_repair is available, call it; otherwise send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair. It uses current working-tree source and may replace shared gate binaries; approvals still apply.";
-const sourceRepairStep = " Repair: a deadline or cleanup failure may be transient, so retry once; otherwise Read $HOME/.omp/agent/eci/hooks/validate-bash.sh, hooks/lib/eci-bash-guard.sh and hooks/lib/eci-native-binary.sh (or, for an adapter failure, $HOME/.omp/agent/hooks/pre/eci-bash-gate.ts), restore or fix the broken file with Edit or Write, and retry (restart the session after an adapter fix).";
+const sourceRepairStep = " Repair: a deadline or cleanup failure may be transient, so retry once; otherwise Read $HOME/.omp/agent/eci/hooks/validate-bash.sh, hooks/lib/eci-bash-guard.sh and hooks/lib/eci-native-binary.sh (or, for an adapter failure, $HOME/.omp/agent/hooks-disabled/pre/eci-bash-gate.ts, which $HOME/.omp/agent/extensions/eci-bash-gate.ts loads), restore or fix the broken file with Edit or Write, and retry (restart the session after an adapter fix).";
 const ownershipRepairStep = " Repair: rebuilding does not fix this. Make $HOME/.omp/agent/eci/bin, its parent directories and its binaries owned by you or root and not group/other-writable, or set TMPDIR to a private directory you own, then retry; an ownership change may need the user.";
 
 /** Same-actor step for a recognized native denial that the fixed rebuild cannot repair. */

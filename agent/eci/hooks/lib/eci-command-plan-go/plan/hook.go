@@ -121,7 +121,7 @@ func finalizeHookDenial(
 // hookCallbackRepair names the same-actor repair for a callback the planner cannot decode.
 //
 // Example: a truncated JSON envelope from a provider adapter.
-const hookCallbackRepair = "send exactly one JSON object with tool_name and tool_input.command on stdin; on omp repair the adapter that builds it ($HOME/.omp/agent/hooks/pre/eci-bash-gate.ts and $HOME/.omp/agent/hooks/lib/eci-hook-runner.ts) with Edit, restart the session and retry"
+const hookCallbackRepair = "send exactly one JSON object with tool_name and tool_input.command on stdin; on omp repair the adapter that builds it ($HOME/.omp/agent/hooks-disabled/pre/eci-bash-gate.ts and $HOME/.omp/agent/hooks-disabled/lib/eci-hook-runner.ts, loaded by $HOME/.omp/agent/extensions/eci-bash-gate.ts) with Edit, restart the session and retry"
 
 // hookUnavailable reports a callback that could not reach a decision, with its repair step.
 //
