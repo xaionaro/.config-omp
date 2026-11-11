@@ -352,7 +352,7 @@ assert_reviewer_role_split() {
   for required in \
     '## Step 4 — Review coordination' \
     "Wait for each gate's required reviews and focused proof, plus E2E evidence when the central cadence calls for it. Final acceptance also requires the final E2E pair when a trigger applies." \
-    'Pre-route every finding with the review policy.' \
+    'The current Job owner sends the findings unchanged to a fresh Step 2 critic, which pre-routes them under the review policy.' \
     'Use the shared Supervisor/runtime policy for repair cycles, clean-pass, and limits.'; do
     require_text "$COORDINATOR" "$required"
   done
@@ -900,7 +900,7 @@ assert_e2e_policy_consumer_pointers() {
 
   require_line "$IMPLEMENT" 'E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).'
   require_line "$REVIEW" 'E2E cadence, scope, timing, and triggers: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).'
-  require_line "$COORDINATOR" 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for each outcome under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains final impact/treatment/disposition adjudication, acceptance, and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.'
+  require_line "$COORDINATOR" 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for each outcome under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains acceptance and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.'
   require_line "$FAST_PATH" 'Fast Producer E2E follows the [central ECI policy](../SKILL.md#e2e-cadence-scope-and-timing), including per-run timestamps, comparable-run regression checks, and parallel optimization when a material regression appears.'
   require_text "$REVIEW_POLICY" 'cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing)'
   require_text "$COORDINATOR_RUNTIME" 'E2E cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing)'
@@ -1367,7 +1367,7 @@ assert_post_fast_transition_contract() {
   require_active_literal_order "$text" "$explorer_directive" "$step2_directive" ||
     fail 'post-Fast active Explorer directive must precede active Step 2'
   require_section_pattern "$text" 'Step 2 reviews every Fast finding and Fast-originated hunk' \
-    'fresh Step 2 critic.*reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk.*recommends exactly one canonical disposition'
+    'fresh Step 2 critic.*reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk.*decides exactly one canonical disposition'
   require_section_pattern "$text" 'implementer fixes or justifies retained Fast changes under winner' \
     'implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings'
   require_section_pattern "$text" 'concurrent Step 4 is intermediate only' \
@@ -1401,9 +1401,9 @@ assert_post_fast_scope_and_disposition_contract() {
   routing_directive='Apply impact-proportional routing before implementation.'
   repair_batch='Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.'
   contained_now='Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.'
-  revise_replace='A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
+  revise_replace='A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
   other_dispositions='Other dispositions require evidence, not implementation.'
-  recommendation_directive='The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and recommends exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
+  recommendation_directive='The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
   final_evidence='The final cumulative Step 4 verifies every in-scope inventory item has exactly one disposition and final evidence.'
   final_now='The final cumulative Step 4 leaves no unresolved in-scope `treatment: now` finding or failed-eligibility `revise`/`replace` needing implementation.'
   separate_outcome='Unadmitted separate-outcome observations remain outside acceptance; admitted child outcomes retain their own acceptance evidence.'
@@ -1421,7 +1421,7 @@ assert_post_fast_scope_and_disposition_contract() {
   require_active_literal_directive "$text" 'post-Fast contained findings route once' "$contained_now"
   require_active_literal_directive "$text" 'post-Fast revise/replace mapping is explicit' "$revise_replace"
   require_active_literal_directive "$text" 'post-Fast non-now dispositions require evidence' "$other_dispositions"
-  require_active_literal_directive "$text" 'post-Fast recommendation covers every disposition' "$recommendation_directive"
+  require_active_literal_directive "$text" 'post-Fast Step 2 decision covers every disposition' "$recommendation_directive"
   require_active_literal_directive "$text" 'post-Fast defer policy is active' "$defer_directive"
   require_active_literal_directive "$text" 'post-Fast final evidence is active' "$final_evidence"
   require_active_literal_directive "$text" 'post-Fast unresolved-now rejection is active' "$final_now"
@@ -1429,13 +1429,9 @@ assert_post_fast_scope_and_disposition_contract() {
   require_section_pattern "$text" 'Step 1 reviews every Fast finding and hunk for scope and quality' \
     'The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality'
   require_section_pattern "$text" 'Step 2 reviews every Fast finding and hunk before disposition' \
-    'A fresh Step 2 critic.*reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk.*recommends exactly one canonical disposition'
-  require_section_pattern "$text" 'Step 2 recommends one disposition per in-scope item' \
-    'A fresh Step 2 critic.*recommends exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason'
-  require_section_pattern "$text" 'Step 2 authority is limited to design-winner selection' \
-    'Step 2 authority is limited to design-winner selection.*does not apply treatment'
-  require_section_pattern "$text" 'coordinator applies one canonical disposition per item' \
-    'The Supervisor owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item'
+    'A fresh Step 2 critic.*reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk.*decides exactly one canonical disposition'
+  require_section_pattern "$text" 'Step 2 decides one disposition per in-scope item' \
+    'A fresh Step 2 critic.*decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason'
   require_section_pattern "$text" 'Step 2 includes every disposition' \
     'retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason'
   require_section_pattern "$text" 'defer disposition points to impact-proportional routing' \
@@ -1468,8 +1464,8 @@ assert_post_fast_no_active_contradiction() {
 assert_post_fast_critique_contract() {
   local text="$1"
 
-  require_section_pattern "$text" 'critic recommends exactly one canonical disposition per in-scope item' \
-    'For post-Fast completion, independently assess final current sources and the new Explorer options before recommending exactly one canonical disposition for each in-scope inventory item in.*fast-path\.md#post-fast-completion'
+  require_section_pattern "$text" 'critic decides exactly one canonical disposition per in-scope item' \
+    'For post-Fast completion, independently assess final current sources and the new Explorer options before deciding exactly one canonical disposition for each in-scope inventory item in.*fast-path\.md#post-fast-completion'
   [[ "$text" != *'before selecting the canonical per-item disposition for each inventory item'* ]] ||
     fail 'critic still owns final per-item disposition selection'
   [[ "$text" != *'before selecting the concrete retain, revise, or replace disposition.'* ]] ||
@@ -1480,14 +1476,14 @@ assert_post_fast_critique_ownership_contract() {
   local text="$1"
 
   require_text <(printf '%s\n' "$text") \
-    'before recommending exactly one canonical disposition for each in-scope inventory item'
+    'before deciding exactly one canonical disposition for each in-scope inventory item'
   require_text <(printf '%s\n' "$text") \
-    'Step 2 authority is limited to design-winner selection; it does not apply treatment.'
+    "That critic alone decides each finding's scope, impact, treatment, and disposition, including conflicting remedies"
   require_text <(printf '%s\n' "$text") \
-    'The critic emits issues and a per-item disposition recommendation only; it does not rewrite options, implement, assign debt/defer treatment, or apply treatment.'
-  [[ "$text" != *'The Step 2 critic applies treatment.'* ]] ||
-    fail 'Step 2 critic ownership contradiction was admitted'
-  [[ "$text" != *'The Step 2 critic owns final disposition application/treatment.'* ]] ||
+    "The critic emits issues and each item's disposition and treatment; it does not rewrite options or implement."
+  [[ "$text" != *'Step 2 authority is limited to design-winner selection'* ]] ||
+    fail 'Step 2 critic treatment-limit contradiction was admitted'
+  [[ "$text" != *'The Supervisor owns final disposition application/treatment'* ]] ||
     fail 'Step 2 critic final-treatment contradiction was admitted'
 }
 
@@ -1495,12 +1491,12 @@ assert_post_fast_coordinator_ownership_contract() {
   local text="$1"
 
   require_text <(printf '%s\n' "$text") \
-    'After the Step 2 recommendation, the Supervisor owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item.'
+    "A fresh Step 2 critic decides each finding's impact, treatment, and disposition under [critique](critique.md#admission-and-treatment)."
   require_text <(printf '%s\n' "$text") \
-    'Step 2 authority is limited to design-winner selection; it does not apply treatment.'
+    'Enforce ECI without deciding them: verify that each in-scope item has exactly one disposition with its required evidence'
   [[ "$text" != *'The Supervisor applies multiple canonical dispositions per in-scope inventory item.'* ]] ||
     fail 'coordinator ownership contradiction was admitted'
-  [[ "$text" != *'The Supervisor does not own final disposition application/treatment.'* ]] ||
+  [[ "$text" != *'The Supervisor owns final disposition application/treatment'* ]] ||
     fail 'coordinator final-treatment contradiction was admitted'
 }
 
@@ -1512,27 +1508,27 @@ assert_post_fast_role_ownership() {
   assert_post_fast_critique_ownership_contract "$critique"
   assert_post_fast_coordinator_ownership_contract "$coordinator"
   require_text "$IMPLEMENT" \
-    "Receive the Step 2 design-winner recommendation and the Supervisor's final per-item disposition/treatment."
+    "Read the Step 2 critic's full output as the authoritative winner, disposition, and treatment; a summary does not replace it."
   require_text "$IMPLEMENT" \
-    'Implement only findings routed as `treatment: now`: fix each routed finding and implement Supervisor-applied `revise`/`replace` changes.'
+    'Implement only findings routed as `treatment: now`: fix each routed finding and implement routed `revise`/`replace` changes.'
   require_text "$IMPLEMENT" \
     'Provide evidence, not implementation, for other dispositions.'
   require_text "$REVIEW" \
-    'Review the final cumulative scoped state after the Supervisor applies exactly one canonical disposition per in-scope inventory item.'
+    'Review the final cumulative scoped state after the Step 2 critic decides exactly one canonical disposition per in-scope inventory item.'
 
-  pressure="$critique"$'\n\n''The Step 2 critic applies treatment.'
+  pressure="$critique"$'\n\n''Step 2 authority is limited to design-winner selection; it does not apply treatment.'
   if output="$(assert_post_fast_critique_ownership_contract "$pressure" 2>&1)"; then
-    fail 'Step 2 critic treatment pressure fixture was admitted'
+    fail 'Step 2 critic treatment-limit pressure fixture was admitted'
   fi
-  [[ "$output" == *'Step 2 critic ownership contradiction'* ]] ||
-    fail "unexpected Step 2 critic treatment pressure failure: $output"
+  [[ "$output" == *'Step 2 critic treatment-limit contradiction'* ]] ||
+    fail "unexpected Step 2 critic treatment-limit pressure failure: $output"
   pressure="$coordinator"$'\n\n''The Supervisor applies multiple canonical dispositions per in-scope inventory item.'
   if output="$(assert_post_fast_coordinator_ownership_contract "$pressure" 2>&1)"; then
     fail 'coordinator multiple-disposition pressure fixture was admitted'
   fi
   [[ "$output" == *'coordinator ownership contradiction'* ]] ||
     fail "unexpected coordinator multiple-disposition pressure failure: $output"
-  pressure="$coordinator"$'\n\n''The Supervisor does not own final disposition application/treatment.'
+  pressure="$coordinator"$'\n\n''The Supervisor owns final disposition application/treatment.'
   if output="$(assert_post_fast_coordinator_ownership_contract "$pressure" 2>&1)"; then
     fail 'coordinator final-treatment pressure fixture was admitted'
   fi
@@ -1591,10 +1587,9 @@ assert_deferred_disposition_policy_contract() {
 }
 
 assert_post_fast_inventory_contract() {
-  local text="$1" recommendation coordinator_application retained_fix scope_clause provenance
+  local text="$1" recommendation retained_fix scope_clause provenance
 
-  recommendation='recommends exactly one canonical disposition for each in-scope inventory item'
-  coordinator_application='The Supervisor owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item'
+  recommendation='decides exactly one canonical disposition for each in-scope inventory item'
   retained_fix='The Implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings'
   scope_clause='Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`'
   provenance='Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.'
@@ -1609,7 +1604,7 @@ assert_post_fast_inventory_contract() {
   require_section_pattern "$text" 'inventory states are provenance, not dispositions' "$provenance"
   require_active_literal_directive "$text" 'inventory states are active provenance-only guidance' "$provenance"
   require_section_pattern "$text" 'coordinator reconciles the complete inventory' \
-    'The current Job owner reconciles task-local findings with shared state and sends reports, evidence, and disposition recommendations to the Supervisor'
+    'The current Job owner reconciles task-local findings with shared state and sends reports and evidence to the Supervisor'
   require_section_pattern "$text" 'inventory is review context and never a gate' \
     'This complete inventory is review context, never a manifest, receipt, or admission/write gate'
   require_section_pattern "$text" 'final acceptance covers every inventory item' \
@@ -1618,12 +1613,12 @@ assert_post_fast_inventory_contract() {
     'The Explorer reviews each in-scope inventory item'
   require_section_pattern "$text" 'fresh Step 1 reviews every Fast-originated hunk for scope and quality' \
     'The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality'
-  require_section_pattern "$text" 'fresh Step 2 assigns one disposition per item' \
-    'A fresh Step 2 critic.*recommends exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason'
+  require_section_pattern "$text" 'fresh Step 2 decides one disposition per item' \
+    'A fresh Step 2 critic.*decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason'
   require_section_pattern "$text" 'contained treatment-now finding routes once' \
     'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated'
   require_section_pattern "$text" 'implementer applies selected revise and replace dispositions' \
-    'The Implementer implements those routed Supervisor-applied revise/replace changes'
+    'The Implementer implements those routed revise/replace changes'
   require_section_pattern "$text" 'implementer validates retained and revised changes' \
     'validates retained/revised changes'
   require_section_pattern "$text" 'implementer evidences no-hunk resolutions' \
@@ -1637,8 +1632,8 @@ assert_post_fast_inventory_contract() {
   require_order "$text" 'The current Job owner verifies [genuine Fast completion](#outcome-continuation-and-completion), including the full provisional outcome, producer verification, the Fast Producer'\''s scoped commits, finished and integrated Fast Helper work, and stopped Fast/Helper write-capable tools.' \
     'Fast Producer'\''s completion report enumerates every finding and changed hunk from the Fast Producer and its Helpers' &&
     require_order "$text" 'Fast Producer'\''s completion report enumerates every finding and changed hunk from the Fast Producer and its Helpers' \
-      'The current Job owner reconciles task-local findings with shared state and sends reports, evidence, and disposition recommendations to the Supervisor' &&
-    require_order "$text" 'The current Job owner reconciles task-local findings with shared state and sends reports, evidence, and disposition recommendations to the Supervisor' \
+      'The current Job owner reconciles task-local findings with shared state and sends reports and evidence to the Supervisor' &&
+    require_order "$text" 'The current Job owner reconciles task-local findings with shared state and sends reports and evidence to the Supervisor' \
       "$scope_clause" &&
     require_order "$text" "$scope_clause" \
       'The Explorer reviews each in-scope inventory item' &&
@@ -1647,24 +1642,22 @@ assert_post_fast_inventory_contract() {
     require_order "$text" "$provenance" \
       "$recommendation" &&
     require_order "$text" "$recommendation" \
-      "$coordinator_application" &&
-    require_order "$text" "$coordinator_application" \
       'Apply impact-proportional routing before implementation.' &&
     require_order "$text" 'Apply impact-proportional routing before implementation.' \
       'Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.' &&
     require_order "$text" 'Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.' \
       'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.' &&
     require_order "$text" 'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.' \
-      'A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' &&
-    require_order "$text" 'A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' \
+      'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' &&
+    require_order "$text" 'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' \
       'Other dispositions require evidence, not implementation.' &&
-    require_order "$text" "$coordinator_application" \
+    require_order "$text" "$recommendation" \
       "$retained_fix" &&
     require_order "$text" 'Other dispositions require evidence, not implementation.' \
       "$retained_fix" &&
     require_order "$text" "$retained_fix" \
-      'The Implementer implements those routed Supervisor-applied revise/replace changes' &&
-    require_order "$text" 'The Implementer implements those routed Supervisor-applied revise/replace changes' \
+      'The Implementer implements those routed revise/replace changes' &&
+    require_order "$text" 'The Implementer implements those routed revise/replace changes' \
       'supplies evidence for no-hunk resolutions' &&
     require_order "$text" 'supplies evidence for no-hunk resolutions' \
       'the final cumulative Step 4 independently reviews' ||
@@ -1682,7 +1675,7 @@ assert_post_fast_completion_contract() {
   require_section_pattern "$text" 'fresh exploration inspects final shared code' \
     'new Step 1 exploration of the final shared scoped code.*after Fast completion'
   require_section_pattern "$text" 'independent post-Fast design disposition' \
-    'fresh Step 2 critic independently assesses.*recommends exactly one canonical disposition'
+    'fresh Step 2 critic independently assesses.*decides exactly one canonical disposition'
   require_section_pattern "$text" 'post-Fast review remains required even without changes' \
     'Step 4 independently reviews the final cumulative scoped state even when no further edits are needed'
   require_section_pattern "$text" 'normal completion waits for post-Fast quality' \
@@ -1700,7 +1693,7 @@ assert_post_fast_completion_contract() {
 assert_post_fast_completion() {
   local text clause mutation output file pressure state dispositions replacement inventory_gate contradiction base
   local defer_clause defer_evidence_clause missing_defer missing_evidence observation report critique
-  local restart_line quality_clause scope_clause scope_line step2_directive step2_line step4_tail explorer_directive explorer_line recommendation recommendation_line coordinator_application retained_fix contained_now provenance provenance_line
+  local restart_line quality_clause scope_clause scope_line step2_directive step2_line step4_tail explorer_directive explorer_line recommendation recommendation_line retained_fix contained_now provenance provenance_line
   local inventory_line final_acceptance_line routing_line repair_batch_line contained_now_line revise_replace_line other_dispositions_line
   local defer_line final_evidence_line final_now_line separate_outcome_line
   text="$(awk '
@@ -1722,7 +1715,7 @@ assert_post_fast_completion() {
   routing_line='   - Apply impact-proportional routing before implementation.'
   repair_batch_line='   - Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.'
   contained_now_line='   - Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.'
-  revise_replace_line='   - A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
+  revise_replace_line='   - A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
   other_dispositions_line='   - Other dispositions require evidence, not implementation.'
   defer_line='   - A policy-valid deferred-with-reason disposition is only for an in-scope, non-hard, impact-trivial, isolated finding; it requires evidence supporting each eligibility condition, plus a technical reason and revisit trigger; it never waives original criteria.'
   contained_now='Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.'
@@ -1756,23 +1749,22 @@ $step2_line}"
   fi
   [[ "$output" == *'post-Fast scope-screen must precede the Step 1 quality review'* ]] ||
     fail "unexpected post-Fast scope-order failure: $output"
-  recommendation='recommends exactly one canonical disposition for each in-scope inventory item'
-  recommendation_line='   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and recommends exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
-  coordinator_application='The Supervisor owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item.'
+  recommendation='decides exactly one canonical disposition for each in-scope inventory item'
+  recommendation_line='   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
   provenance='Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.'
   provenance_line='   - '"$provenance"
   retained_fix='The Implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings.'
-  mutation="${text/"$coordinator_application"/}"
-  mutation="${mutation/"$contained_now"/"$contained_now"$'\n   - '"$coordinator_application"}"
+  mutation="${text/"$recommendation_line"/}"
+  mutation="${mutation/"$contained_now"/"$contained_now"$'\n'"$recommendation_line"}"
   if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
-    fail 'post-Fast ownership-order mutation admitted coordinator application after treatment routing'
+    fail 'post-Fast ownership-order mutation admitted Step 2 decision after treatment routing'
   fi
   [[ "$output" == *'post-Fast inventory and repair sequence is out of order'* ]] ||
     fail "unexpected post-Fast ownership-order failure: $output"
   mutation="${text/"$retained_fix"/}"
   mutation="${mutation/"$recommendation_line"/"$retained_fix"$'\n'"$recommendation_line"}"
   if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
-    fail 'post-Fast ownership-order mutation admitted retained-fix before coordinator application'
+    fail 'post-Fast ownership-order mutation admitted retained-fix before Step 2 decision'
   fi
   [[ "$output" == *'post-Fast inventory and repair sequence is out of order'* ]] ||
     fail "unexpected post-Fast retained-fix order failure: $output"
@@ -1806,7 +1798,7 @@ $step2_line}"
     'Apply impact-proportional routing before implementation' \
     'Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch' \
     'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated' \
-    'A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated' \
+    'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated' \
     'Other dispositions require evidence, not implementation' \
     'separate-outcome finding stays a post-ECI observation/follow-up' \
     'Keep every Fast-originated hunk in inventory/review context; do not expand authorization' \
@@ -1818,10 +1810,7 @@ $step2_line}"
     'every in-scope inventory item to have a disposition and evidence' \
     'reviews each in-scope inventory item' \
     'reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality' \
-    'recommends exactly one canonical disposition for each in-scope inventory item' \
-    'Step 2 authority is limited to design-winner selection' \
-    'does not apply treatment' \
-    'owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item' \
+    'decides exactly one canonical disposition for each in-scope inventory item' \
     'retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason' \
     'policy-valid deferred-with-reason only where' \
     'A policy-valid deferred-with-reason disposition is only for an in-scope' \
@@ -1833,7 +1822,7 @@ $step2_line}"
     'including no-hunk findings' \
     'Every no-hunk retain or resolved-with-evidence outcome requires evidence' \
     'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated' \
-    'implements those routed Supervisor-applied revise/replace changes' \
+    'implements those routed revise/replace changes' \
     'validates retained/revised changes' \
     'supplies evidence for no-hunk resolutions' \
     'supplies evidence for no-hunk resolutions and for non-retained, superseded, reverted, resolved, and deferred outcomes' \
@@ -1923,7 +1912,7 @@ $step2_line}"
     'This complete inventory is an admission/write gate.' \
     'Final Step 4 may leave an unresolved in-scope now finding.' \
     'Step 2 may assign multiple dispositions to an in-scope inventory item.' \
-    'The fresh Step 2 critic applies treatment.' \
+    'The Supervisor owns final disposition application/treatment.' \
     'The Supervisor applies multiple canonical dispositions per in-scope inventory item.' \
     'A policy-valid deferred-with-reason disposition may apply to a hard finding.'; do
     assert_active_literal_directive_fixtures \
@@ -2051,7 +2040,7 @@ assert_fast_path_progress_waits() {
 assert_fast_treatment_now_contract_text() {
   local text="$1" eligibility carry final_guard
 
-  eligibility='A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
+  eligibility='A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
   carry='Carry the resulting disposition and evidence into Step 4; never leave it unresolved.'
   final_guard='The final cumulative Step 4 leaves no unresolved in-scope `treatment: now` finding or failed-eligibility `revise`/`replace` needing implementation.'
 
@@ -2071,7 +2060,7 @@ assert_fast_treatment_now_contract() {
   text="$(<"$FAST_PATH")"
   assert_fast_treatment_now_contract_text "$text"
   for clause in \
-    'A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now`' \
+    'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now`' \
     'only when it is in-scope, contained, impact-trivial, and isolated' \
     'one complete fresh Steps 1–2 design-repair batch before implementation' \
     'Carry the resulting disposition and evidence into Step 4' \

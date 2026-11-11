@@ -54,7 +54,7 @@ At review and final acceptance, obtain the independent checks and E2E each outco
 
 At acceptance, compare the actual current target and diff with the review scope. A meaningful change triggers fresh appropriate review. Preserve historical notes when useful, but missing or malformed ledgers, receipts, hashes, or anchors are repairable coordination gaps, not a reason to reject normal work.
 
-**ECI adjudication:** The ECI Supervisor preserves each critic's substantive verdict and explains any disagreement. Use readable reports; do not make terminal markers, byte format, bounded text rules, or report hashes prerequisites for progress.
+**ECI findings:** The ECI Supervisor preserves each critic's substantive verdict unchanged; a fresh Step 2 critic decides its treatment. Use readable reports; do not make terminal markers, byte format, bounded text rules, or report hashes prerequisites for progress.
 
 The optional Critic C prewrite note may help a selected skip-design route, and a post-write reconciliation can improve final review. Neither is a prerequisite for the first production write. Nested ECI never removes the outer ATE marker.
 

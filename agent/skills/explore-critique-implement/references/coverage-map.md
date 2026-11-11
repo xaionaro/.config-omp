@@ -6,7 +6,7 @@ This map is an audit index, not an admission inventory. Source versions, hashes,
 | --- | --- | --- |
 | activation, lineage, and worker routing | ECI router | routing test |
 | published task ownership, active-outcome count, report routing/drain, and task-local review dispatch | task-orchestrator + router/coordinator/runtime/review-policy/Fast pointers | independent policy review |
-| role authority and messages to a Job | router role rules + task-orchestrator Messages to a Job + coordinator/runtime/review-policy/Fast pointers | policy pressure scenarios + independent policy review |
+| role authority, finding treatment, and messages to a Job | router role rules and Step 4 + critique Admission and treatment + task-orchestrator Messages to a Job + coordinator/runtime/review-policy/Fast restatements | policy pressure scenarios + independent policy review |
 | concurrent Fast owner, shared-tree priority, evidence feedback, retained-hunk review, closure | fast-path + owning role pointers | routing checks + independent policy scenarios/review |
 | coordinator lifecycle and teardown | coordinator runtime + ECI coordinator | routing test |
 | direct-user pause behavior | pause-all-work | routing test |

@@ -92,14 +92,14 @@ Reviewers report only. The assigned Implementer authors the TODO within the ordi
 - The main-path Implementer inspects retained Fast changes in place, adopts or revises them under the selected winner, and runs focused checks. Required final E2E follows the central policy after post-Fast implementation is complete. No copying or redundant rewrite is needed.
 - For overlapping work, the involved Producers compare actual edits and directly agree whether to separate or combine contributions and the shared-index order. Within one outcome, preserve main-path-over-Fast precedence; across outcomes or Jobs, apply no automatic priority. The Supervisor and Orchestrator relay peer identities and scope/index facts only, the Supervisor to each affected Job owner (for a child Job, through its parent owner); neither assigns contested content or Git turns. Producers resolve conflicts without waiting for user direction. If contributions are inseparable, every contributing Producer agrees the exact joint scope and selects a contributing Producer to commit it. Helpers report changes through their parents and follow their responsible Producer’s agreement; they never negotiate boundaries or commit. Preserve separate checkpoints for distinct Fast issues except that agreed inseparable joint checkpoint; exclude unrelated and in-flight changes.
 - If the involved Producers have not agreed the exact boundary or order, keep that issue checkpoint-pending, name the overlap, and continue unaffected work. Resume when the involved Producers resolve it directly; never silently treat it as committed or include unrelated/in-flight changes.
-- The current Job owner reconciles every Fast finding and Fast-originated changed hunk under [post-Fast completion](#post-fast-completion), then tracks each in-scope inventory item into review and sends reports, evidence, and disposition recommendations to the Supervisor. Retained Fast hunks are cumulative code targets. When a preceding baseline contains adopted Fast changes, add its unreviewed hunks as an explicit cumulative review target alongside the narrow iteration checkpoint; never exclude them as predecessor context.
+- The current Job owner reconciles every Fast finding and Fast-originated changed hunk under [post-Fast completion](#post-fast-completion), then tracks each in-scope inventory item into review and sends reports and evidence to the Supervisor. Retained Fast hunks are cumulative code targets. When a preceding baseline contains adopted Fast changes, add its unreviewed hunks as an explicit cumulative review target alongside the narrow iteration checkpoint; never exclude them as predecessor context.
 - Neither producer supplies its own independent acceptance reviews. Step 4 runs the fresh independent final E2E required by the central policy.
 - Before normal-path completion or final acceptance, satisfy [post-Fast completion](#post-fast-completion). The current Job owner coordinates the existing stop for both Producers' task-owned writes, including delegated Fast work, inspects the current cumulative scoped diff, verifies reviews and checks cover that state, and sends closure evidence to the Supervisor. The Supervisor retains task and cancellation closure decisions, cross-Job decisions, and final acceptance; it verifies closure evidence as needed. Material late edits require fresh appropriate review and verification.
 - On task cancellation/replacement, the Supervisor owns closure, cancels the Fast Producer and its delegated work with the main task, and preserves dirty changes/evidence. On task clean pass, it observes both Producers' final state. On either closure path, it observes both Producers and their task-owned write-capable tools stopped or finished. Root teardown and goal synchronization follow [concurrent task scheduling](../../../eci-binding-contract.md#concurrent-tasks) and [Job-owner closure](task-orchestrator.md#publication-transfer-and-report-drain). Fast success alone never closes ECI or outer ATE.
 
 ## Post-Fast completion
 
-The published Job owner coordinates task-local post-Fast dispatch and evidence under the [task-orchestrator contract](task-orchestrator.md#authority-and-reporting). The Supervisor retains closed-Job evidence, final adjudication, acceptance, and teardown.
+The published Job owner coordinates task-local post-Fast dispatch and evidence under the [task-orchestrator contract](task-orchestrator.md#authority-and-reporting). The Supervisor retains closed-Job evidence, acceptance, and teardown.
 
 Main ECI may advance and review iterations concurrently with Fast.
 
@@ -121,7 +121,7 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
    - The Fast Producer's completion report enumerates every finding and changed hunk from the Fast Producer and its Helpers.
    - Include findings with no retained hunk and changes that are retained, revised, non-retained, superseded, or reverted.
    - Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.
-   - The current Job owner reconciles task-local findings with shared state and sends reports, evidence, and disposition recommendations to the Supervisor.
+   - The current Job owner reconciles task-local findings with shared state and sends reports and evidence to the Supervisor.
    - This complete inventory is review context, never a manifest, receipt, or admission/write gate.
    - Final acceptance requires every in-scope inventory item to have a disposition and evidence.
 2. Restart main ECI at a fresh Step 1.
@@ -130,13 +130,11 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
    - Then the current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion. The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.
    - The Explorer reviews each in-scope inventory item against original requirements and quality standards, alongside retained main-path changes. Reread current targets and relevant surrounding code. Prior exploration, diffs, and passing tests are context, not this new exploration.
 3. A fresh Step 2 critic independently assesses the current sources and Explorer's options.
-   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and recommends exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).
-   - Step 2 authority is limited to design-winner selection; it does not apply treatment.
-   - The Supervisor owns final disposition application/treatment and applies exactly one canonical disposition per in-scope inventory item.
+   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).
    - Apply impact-proportional routing before implementation.
    - Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.
    - Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.
-   - A Supervisor-applied `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.
+   - A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.
    - Other dispositions require evidence, not implementation.
    - Carry the resulting disposition and evidence into Step 4; never leave it unresolved.
    - Use policy-valid deferred-with-reason only where [review-policy.md#impact-proportional-routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) permits.
@@ -145,7 +143,7 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
    - Preserve qualifying code; make only justified changes through the main-path Implementer.
    - The Implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings.
    - Every no-hunk retain or resolved-with-evidence outcome requires evidence.
-   - The Implementer implements those routed Supervisor-applied revise/replace changes and validates retained/revised changes.
+   - The Implementer implements those routed revise/replace changes and validates retained/revised changes.
    - The Implementer supplies evidence for no-hunk resolutions and for non-retained, superseded, reverted, resolved, and deferred outcomes.
    - Run required focused checks and checkpoint changed iterations normally. Reserve triggered final E2E for the stabilized candidate under the central policy.
 4. After the fresh Step 1, Step 2, and Implementer disposition, the final cumulative Step 4 independently reviews the final cumulative scoped state even when no further edits are needed.

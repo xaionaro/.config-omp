@@ -9,7 +9,7 @@ Also review any cumulative retained-fast target supplied under the [adoption bou
 Apply [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility): assess retained Fast work with the same correctness, style, and maintainability scrutiny as main-path changes; passing producer tests or an existing checkpoint does not resolve quality findings.
 
 Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-completion).
-Review the final cumulative scoped state after the Supervisor applies exactly one canonical disposition per in-scope inventory item.
+Review the final cumulative scoped state after the Step 2 critic decides exactly one canonical disposition per in-scope inventory item.
 For post-Fast completion, independently review the final cumulative scoped state after the new exploration and design disposition, including unchanged retained code. Report missing final-state coverage; earlier reviews alone do not satisfy this assignment.
 
 Tag every factual claim. An untagged claim or unpromoted T5 is not review evidence. For every finding, state one disposition (`REJECT`, `CONDITIONAL`, `NIT`, or `PASS`), its impact, exact location, concrete evidence or repro/test output, and the condition that would resolve uncertainty. A behavior/interface mismatch is a hard finding, never a style deviation.
