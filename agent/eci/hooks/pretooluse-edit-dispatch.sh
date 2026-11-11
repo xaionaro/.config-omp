@@ -220,7 +220,8 @@ for index in "${!pids[@]}"; do
 done
 
 # Classify concrete session/control targets using the same path predicates as
-# the guards. Return 2 when no target could be classified.
+# the guards, filling dispatch_resolved_targets with each canonical target.
+# Return 2 when no target could be classified.
 dispatch_protected_target() {
   local cwd targets path lexical resolved classified=0 unknown=0
   dispatch_resolved_targets=()
@@ -295,6 +296,18 @@ gate_failed=""
 failed_guards=()
 for index in "${!gates[@]}"; do
   # Preserve the first failed child while still looking for a healthy denial.
+  # A child that cannot load its hook library is a failed guard, not a healthy
+  # denial, so the guard-failure repair route applies to it.
+  if [ "$index" != "$reminder_index" ] && [ "${statuses[$index]:-1}" -eq 0 ] &&
+    [ -s "$tmp_dir/output-$index" ] &&
+    dispatch_candidate_is_valid "$tmp_dir/output-$index" &&
+    jq -r '.hookSpecificOutput.permissionDecisionReason // empty' "$tmp_dir/output-$index" >"$tmp_dir/lib-reason-$index" &&
+    grep -q '^\[ECI_HOOK_LIB_UNAVAILABLE\]' "$tmp_dir/lib-reason-$index"; then
+    mv -- "$tmp_dir/lib-reason-$index" "$tmp_dir/error-$index"
+    failed_guards+=("$index")
+    [ -n "$gate_failed" ] || gate_failed="$index"
+    continue
+  fi
   if [ "$index" != "$reminder_index" ] && [ "${statuses[$index]:-1}" -ne 0 ]; then
     failed_guards+=("$index")
     [ -n "$gate_failed" ] || gate_failed="$index"

@@ -136,4 +136,20 @@ for guard in validate-edit-write eci-active-gate validate-apply-patch; do
     printf 'guard %s lib-load denial is not actionable\n' "$guard" >&2; exit 1
   }
 done
+# A guard lib-load denial is a guard failure: under a marker the broken shared
+# lib is repairable through Write, and any other target stays denied.
+diag="$tmp/diag-hooks"
+cp -a "$ROOT/hooks/." "$diag/"
+printf '%s\n' 'if then' >>"$diag/lib/eci-diagnostic.sh"
+printf 'session_id: fixture\ncwd: %s\n' "$tmp/repo" >"$tmp/proof/fixture/eci_active"
+for spec in "allow:$diag/lib/eci-diagnostic.sh" "deny:$tmp/repo/file.txt"; do
+  expected="${spec%%:*}" path="${spec#*:}"
+  jq -cn --arg cwd "$tmp/repo" --arg path "$path" '{tool_name:"Write",session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x"}}' |
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$diag/pretooluse-edit-dispatch.sh" >"$tmp/diag.out" 2>"$tmp/diag.err"
+  if [ "$expected" = allow ]; then
+    [ ! -s "$tmp/diag.out" ] && grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' "$tmp/diag.err"
+  else
+    jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_EDIT_GATE_FAILED]") and contains("bash -n"))' "$tmp/diag.out" >/dev/null
+  fi || { printf 'broken diagnostic lib case %s not %s\n' "$path" "$expected" >&2; cat "$tmp/diag.out" "$tmp/diag.err" >&2; exit 1; }
+done
 printf '%s\n' 'edit guard failure assertions: PASS'
