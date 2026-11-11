@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 // toolCallIDVar is the environment entry prefix omp puts on every Bash child.
@@ -61,6 +60,7 @@ func runCallSurvivors(
 }
 
 // callSurvivors returns sorted PIDs under procRoot tagged with any of ids, excluding self; a missing procRoot gives nil, nil.
+// A PID whose environ cannot be read (exited, not ours, or any other error) is skipped: the notice is advisory.
 //
 // Example: callSurvivors("/proc", []ToolCallID{"toolu_01AbC"}, 99) returns []ProcessID{4242}.
 func callSurvivors(
@@ -86,11 +86,8 @@ func callSurvivors(
 			continue
 		}
 		environ, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "environ"))
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.ESRCH) {
-			continue
-		}
 		if err != nil {
-			return nil, err
+			continue
 		}
 		if taggedWithAny(environ, want) {
 			pids = append(pids, ProcessID(n))

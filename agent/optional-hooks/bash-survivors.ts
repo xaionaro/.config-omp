@@ -2,13 +2,16 @@
 // Foreground calls are checked at their tool result. Background jobs (`async: true` or auto-backgrounded) are checked
 // when a `wait` result or an async-result message reports them settled; omp has no job-completion hook event.
 // Named services are meant to keep running and are never checked. The Go helper owns the scan and the notice text;
-// any failure means no notice.
+// any failure means no notice. Not covered: jobs settled through eval's wait(), processes alive at session teardown,
+// and processes launched with a cleared environment (env -i, sudo, systemd-run, containers).
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ensureHookBinary, waitForProvision } from "../eci/native-hook-binary.ts";
 
 const exec = promisify(execFile);
+// Every tool result waits on this hook, so a slow helper build or scan costs at most this long before failing open.
+const HELPER_TIMEOUT_MS = 2000;
 let warned = false;
 
 type BashDetails = { async?: { state?: unknown; jobId?: unknown }; service?: unknown };
@@ -18,8 +21,8 @@ type SettledJob = { id?: unknown; jobId?: unknown; status?: unknown };
 async function survivorNotice(callIds: string[], ctx: ExtensionContext): Promise<string | undefined> {
 	if (callIds.length === 0) return undefined;
 	try {
-		const binary = await waitForProvision(ensureHookBinary(), 2000);
-		const { stdout } = await exec(binary, ["call-survivors", ...callIds], { timeout: 2000 });
+		const binary = await waitForProvision(ensureHookBinary(), HELPER_TIMEOUT_MS);
+		const { stdout } = await exec(binary, ["call-survivors", ...callIds], { timeout: HELPER_TIMEOUT_MS });
 		return stdout.trim() || undefined;
 	} catch (error) {
 		if (!warned) {
@@ -35,6 +38,11 @@ async function survivorNotice(callIds: string[], ctx: ExtensionContext): Promise
 export default function bashSurvivors(pi: ExtensionAPI): void {
 	// This session's running background Bash jobs: job ID -> tool call ID.
 	const runningJobs = new Map<string, string>();
+	const forgetJobs = () => { runningJobs.clear(); };
+	pi.on("session_start", forgetJobs);
+	pi.on("session_switch", forgetJobs);
+	pi.on("session_tree", forgetJobs);
+	pi.on("session_branch", forgetJobs);
 
 	// Claims the tool call IDs of remembered jobs that settled; `wait` keys jobs by `id`, async-result by `jobId`.
 	function claimSettled(jobs: unknown, key: "id" | "jobId"): string[] {
@@ -52,18 +60,25 @@ export default function bashSurvivors(pi: ExtensionAPI): void {
 	}
 
 	pi.on("tool_result", async (event, ctx) => {
-		if (event.toolName === "wait") {
-			const additionalContext = await survivorNotice(claimSettled((event.details as { jobs?: unknown } | undefined)?.jobs, "id"), ctx);
-			return additionalContext ? { additionalContext } : undefined;
+		let callIds: string[];
+		switch (event.toolName) {
+			case "wait":
+				callIds = claimSettled((event.details as { jobs?: unknown } | undefined)?.jobs, "id");
+				break;
+			case "bash": {
+				const details = event.details as BashDetails | undefined;
+				if (details?.service !== undefined) return undefined;
+				if (details?.async?.state === "running") {
+					if (typeof details.async.jobId === "string") runningJobs.set(details.async.jobId, event.toolCallId);
+					return undefined;
+				}
+				callIds = [event.toolCallId];
+				break;
+			}
+			default:
+				return undefined;
 		}
-		if (event.toolName !== "bash") return undefined;
-		const details = event.details as BashDetails | undefined;
-		if (details?.service !== undefined) return undefined;
-		if (details?.async?.state === "running") {
-			if (typeof details.async.jobId === "string") runningJobs.set(details.async.jobId, event.toolCallId);
-			return undefined;
-		}
-		const additionalContext = await survivorNotice([event.toolCallId], ctx);
+		const additionalContext = await survivorNotice(callIds, ctx);
 		return additionalContext ? { additionalContext } : undefined;
 	});
 

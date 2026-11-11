@@ -16,7 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// startTagged starts a detached `sleep 30` whose environment carries id.
+// startTagged starts a detached `sleep 30` whose environment carries PI_TOOL_CALL_ID=id and kills it at cleanup.
+//
+// Example: pid := startTagged(t, "test-call-1").
 func startTagged(t *testing.T, id string) ProcessID {
 	t.Helper()
 	cmd := exec.Command("sleep", "30")
@@ -30,6 +32,9 @@ func startTagged(t *testing.T, id string) ProcessID {
 	return ProcessID(cmd.Process.Pid)
 }
 
+// uniqueID returns a tool call ID no other process carries.
+//
+// Example: uniqueID(t) returns "test-TestCallSurvivorsListsTaggedProcess-1731369600000000000".
 func uniqueID(t *testing.T) ToolCallID {
 	return ToolCallID(fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()))
 }
@@ -79,6 +84,17 @@ func TestCallSurvivorsFakeRoot(t *testing.T) {
 	got, err = callSurvivors(root, []ToolCallID{"a", "b"}, 7)
 	require.NoError(t, err)
 	assert.Equal(t, []ProcessID{9, 30}, got)
+}
+
+func TestCallSurvivorsSkipsUnreadableEntry(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "40", "environ"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "41"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "41", "environ"), []byte("PI_TOOL_CALL_ID=a\x00"), 0o600))
+
+	got, err := callSurvivors(root, []ToolCallID{"a"}, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []ProcessID{41}, got)
 }
 
 func TestSurvivorNotice(t *testing.T) {

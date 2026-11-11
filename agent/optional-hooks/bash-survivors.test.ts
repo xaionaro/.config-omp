@@ -187,6 +187,16 @@ test("T8 remembered jobs belong to one hook instance", async () => {
 	expect(b.sent).toEqual([]);
 });
 
+test("T11 session changes forget remembered jobs", async () => {
+	for (const event of ["session_start", "session_switch", "session_tree", "session_branch"]) {
+		const instance = await load();
+		await result(instance, running("bg_1"));
+		await instance.handlers[event]?.({}, instance.ctx);
+		expect(await result(instance, waitResult([{ id: "bg_1", status: "completed" }]))).toBeUndefined();
+	}
+	expect(calls()).toEqual([]);
+});
+
 test("T9 a helper that outlives the timeout yields nothing", async () => {
 	// Real hang: exercises the hook's 2 s execFile timeout against an actual child.
 	writeHelper("setTimeout(() => process.stdout.write('late notice'), 5000);");
