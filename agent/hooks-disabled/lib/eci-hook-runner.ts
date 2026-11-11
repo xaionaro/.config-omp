@@ -377,12 +377,17 @@ export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	return fail("returned unsupported permissionDecision");
 }
 
+/** Same-actor repair class for an unavailable Bash gate: fixed rebuild, native environment, or hook source. */
+export type BashGateRepair = "fixed" | "native" | "source";
+
 /** Blocks an unchecked Bash call without exposing callback data; names the same-actor repair. */
-export function bashGateUnavailable(detail: string, repairable = false): PreToolVerdict {
-	const repair = repairable
-		? " If eci_bash_gate_repair is available, call it; otherwise send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair. It uses current working-tree source and may replace shared gate binaries; approvals still apply."
-		: " Repair: a deadline or cleanup failure may be transient, so retry once; otherwise Read $HOME/.omp/agent/eci/hooks/validate-bash.sh, hooks/lib/eci-bash-guard.sh and hooks/lib/eci-native-binary.sh (or, for an adapter failure, $HOME/.omp/agent/hooks/pre/eci-bash-gate.ts), restore or fix the broken file with Edit or Write, and retry (restart the session after an adapter fix).";
-	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${repair} If Bash stays blocked, continue non-Bash work and report the failure.` };
+export function bashGateUnavailable(detail: string, repair: BashGateRepair = "source"): PreToolVerdict {
+	const step = {
+		fixed: " If eci_bash_gate_repair is available, call it; otherwise send exactly : eci-bash-gate-repair as a Bash command for the fixed shared repair. It uses current working-tree source and may replace shared gate binaries; approvals still apply.",
+		native: " Repair: the native gate binary or its environment is untrusted or unusable, and rebuilding does not fix that. Make $HOME/.omp/agent/eci/bin, its parent directories and its binaries owned by you or root and not group/other-writable, or set TMPDIR to a private directory you own, then retry; an ownership change may need the user.",
+		source: " Repair: a deadline or cleanup failure may be transient, so retry once; otherwise Read $HOME/.omp/agent/eci/hooks/validate-bash.sh, hooks/lib/eci-bash-guard.sh and hooks/lib/eci-native-binary.sh (or, for an adapter failure, $HOME/.omp/agent/hooks/pre/eci-bash-gate.ts), restore or fix the broken file with Edit or Write, and retry (restart the session after an adapter fix).",
+	}[repair];
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${step} If Bash stays blocked, continue non-Bash work and report the failure.` };
 }
 
 const nativeRepairReasons = [
@@ -462,7 +467,7 @@ export function bashPreToolVerdict(run: HookRun): PreToolVerdict {
 		case "unavailable": {
 			const native = nativeGateDenial(run);
 			const detail = native ? `${native.name}: ${native.reason}` : decision.detail;
-			return bashGateUnavailable(detail, bashGateRepairable(run));
+			return bashGateUnavailable(detail, bashGateRepairable(run) ? "fixed" : native ? "native" : "source");
 		}
 	}
 }

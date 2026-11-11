@@ -160,10 +160,14 @@ test("native denial guidance exposes only recognized binary reasons", () => {
 	expect(unsafe).toContain("is group- or other-writable");
 	expect(unsafe).not.toContain(": eci-bash-gate-repair");
 	expect(unsafe).not.toContain("private trailing data");
+	expect(unsafe).toContain("$HOME/.omp/agent/eci/bin, its parent directories and its binaries owned by you or root");
+	expect(unsafe).not.toContain("restore or fix the broken file");
 	for (const reason of ["host CPU type is not supported", "temporary directory is missing", "temporary directory is not trusted: owned by another user, or group/other-writable without a root-owned sticky bit", "private copy directory cannot be created"]) {
 		const message = bashPreToolVerdict(run(reason))?.reason ?? "";
 		expect(message).toContain(reason);
 		expect(message).not.toContain(": eci-bash-gate-repair");
+		expect(message).toContain("set TMPDIR to a private directory you own");
+		expect(message).not.toContain("restore or fix the broken file");
 	}
 	expect(bashPreToolVerdict(run("private attacker data"))?.reason).not.toContain("private attacker data");
 });

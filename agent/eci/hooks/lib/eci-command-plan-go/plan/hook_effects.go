@@ -885,7 +885,8 @@ func hookRemovalTargets(
 		}
 		if options && strings.HasPrefix(value, "-") && value != "-" {
 			switch {
-			case name == "git" && (value == "--cached" || value == "-n" || value == "--dry-run"):
+			// git rm and git mv short options take no values, so -rn is a preview like -n.
+			case name == "git" && (value == "--cached" || value == "--dry-run" || !strings.HasPrefix(value, "--") && strings.ContainsRune(value, 'n')):
 				return name, "", nil
 			case name == "mv" && (value == "-t" || value == "--target-directory"):
 				targetDirectory = true

@@ -22,29 +22,21 @@ printf '%s\n' \
 run_hook() {
   local command="$1" output="$TMP_ROOT/output"
   jq -cn --arg cwd "$ROOT" --arg command "$command" \
-    '{session_id:"t00-session",cwd:$cwd,tool_input:{command:$command}}' |
+    '{session_id:"t00-session",tool_name:"Bash",cwd:$cwd,tool_input:{command:$command}}' |
     ECI_PROOF_ROOT="$TMP_ROOT/proof" ECI_HOME="$ROOT" PATH="$ROOT/bin:$PATH" \
       bash "$ROOT/hooks/validate-bash.sh" >"$output"
   printf '%s\n' "$output"
 }
 
-# A repeated approved canonical root stays on the bounded read-only path.
-allowed_output="$(run_hook "git -C $ROOT -C $ROOT status --short")"
-if [ -s "$allowed_output" ]; then
-  cat -- "$allowed_output" >&2
-  exit 1
-fi
-
-# Every leading `-C` must be approved. The rejected second root must not
-# fall through from bounded parsing to the ordinary-command allow path.
-denied_output="$(run_hook "git -C $ROOT -C $TMP_ROOT status --short")"
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_GIT_EXECUTION_CONTEXT_DENIED]")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("operation=git-execution-context")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("token=-C")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("argv_index=3")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("unapproved-canonical-repository-root"))
-' "$denied_output" >/dev/null
+# The Bash callback never activates marker-based repository approval, so
+# read-only Git stays native for repeated and for differing `-C` roots.
+for command in "git -C $ROOT -C $ROOT status --short" "git -C $ROOT -C $TMP_ROOT status --short"; do
+  output="$(run_hook "$command")"
+  if [ -s "$output" ]; then
+    printf 'read-only git -C was denied: %s\n' "$command" >&2
+    cat -- "$output" >&2
+    exit 1
+  fi
+done
 
 printf '%s\n' 'validate-bash repeated git -C roots: PASS'

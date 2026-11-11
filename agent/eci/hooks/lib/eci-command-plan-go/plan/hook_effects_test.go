@@ -376,7 +376,6 @@ func TestHookCleanupTargets(t *testing.T) {
 	for _, command := range []string{
 		"rm -f generated.cache", "rm -rf bin/__pycache__", "rm -rf missing-directory", "rm -f " + alias,
 		"rm -f " + other, "rm -f " + clone, "rm -rf " + filepath.Dir(filepath.Dir(clone)),
-		"cd " + filepath.Dir(filepath.Dir(clone)) + " && rm -f hooks/validate-bash.sh",
 		"mv " + filepath.Join(provider, "new-hook") + " " + hook,
 		hookLiveRemovalAcknowledgment + " rm -f " + hook,
 		"env " + hookLiveRemovalAcknowledgment + " mv " + hook + " " + filepath.Join(provider, "saved-hook"),
@@ -388,6 +387,14 @@ func TestHookCleanupTargets(t *testing.T) {
 			diagnostic := inspectHookEffects(request, Classify(request))
 			require.Falsef(t, diagnostic != nil, "ordinary or acknowledged cleanup denied: %s: %+v", command, diagnostic)
 		}
+	}
+	// A relative removal in a clone with the live layout is ordinary multi-repo work.
+	cloneRequest := request
+	cloneRequest.CWD = filepath.Dir(filepath.Dir(clone))
+	cloneRequest.Command = "rm -f hooks/validate-bash.sh"
+	{
+		diagnostic := inspectHookEffects(cloneRequest, Classify(cloneRequest))
+		require.Nilf(t, diagnostic, "clone removal denied: %+v", diagnostic)
 	}
 	for _, command := range []string{
 		"rm -f " + hook, "rm -f -- " + guard, "rm -rf " + provider, "unlink " + hook, "shred -u " + alias,
@@ -435,6 +442,9 @@ func TestHookGitLiveGateRemoval(t *testing.T) {
 		{"git -C agent/eci mv hooks/validate-bash.sh saved", true},
 		{"git rm --cached agent/eci/hooks/validate-bash.sh", false},
 		{"git rm -n agent/eci/hooks/validate-bash.sh", false},
+		{"git rm -rn -- agent/eci/hooks", false},
+		{"git mv -nk agent/eci/hooks/validate-bash.sh saved", false},
+		{"git rm -rf -- agent/eci/hooks", true},
 		{"git mv saved agent/eci/hooks/validate-bash.sh", false},
 		{"git checkout -- agent/eci/hooks/validate-bash.sh", false},
 		{"git restore -- agent/eci/hooks/validate-bash.sh", false},
