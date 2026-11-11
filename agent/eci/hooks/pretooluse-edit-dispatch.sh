@@ -207,6 +207,7 @@ done
 # the guards. Return 2 when no target could be classified.
 dispatch_protected_target() {
   local cwd targets path lexical resolved classified=0 unknown=0
+  dispatch_resolved_targets=()
   cwd="$(jq -r '.cwd // empty' <"$input_file")"
   if [ "$tool_name" = apply_patch ]; then
     targets="$(jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' <"$input_file" |
@@ -224,6 +225,7 @@ dispatch_protected_target() {
     if [ -z "$lexical" ] || [ -z "$resolved" ]; then unknown=1; fi
     [ -n "$lexical$resolved" ] || continue
     classified=1
+    dispatch_resolved_targets+=("$resolved")
     for path in "$lexical" "$resolved"; do
       [ -n "$path" ] || continue
       case "$path" in "$HOME/tmp/agent/proof/"*) return 0 ;; esac
@@ -241,6 +243,35 @@ dispatch_protected_target() {
   done <<<"$targets"
   [ "$classified" = 1 ] && [ "$unknown" = 0 ] && return 1
   return 2
+}
+
+# Succeed when every classified target is the canonical source of a failed
+# child guard or a hook library those guards source, so the same actor can
+# repair it under an active marker. apply_patch moves and deletes never qualify.
+dispatch_targets_failed_guard_source() {
+  local target index source matched allowed=()
+  [ "${#dispatch_resolved_targets[@]}" -gt 0 ] || return 1
+  if [ "$tool_name" = apply_patch ] &&
+    jq -r '.tool_input.command // .tool_input.patch // .tool_input.input // empty' <"$input_file" |
+      grep -Eq '^\*\*\* (Delete File|Move to): '; then
+    return 1
+  fi
+  for source in "${failed_guards[@]/#/gate:}" lib/eci-proof-state.sh lib/eci-tmp.sh lib/eci-diagnostic.sh; do
+    case "$source" in
+      gate:*) index="${source#gate:}"; source="${gates[$index]}" ;;
+      *) source="$hook_dir/$source" ;;
+    esac
+    source="$(eci_realpath_canonical "$source" 2>/dev/null || true)"
+    [ -z "$source" ] || allowed+=("$source")
+  done
+  for target in "${dispatch_resolved_targets[@]}"; do
+    [ -n "$target" ] || return 1
+    matched=0
+    for source in "${allowed[@]}"; do
+      if [ "$source" = "$target" ]; then matched=1; break; fi
+    done
+    [ "$matched" = 1 ] || return 1
+  done
 }
 
 candidate_output=""
@@ -278,8 +309,9 @@ elif [ -n "$gate_failed" ]; then
   failure_reason="[ECI_EDIT_GATE_FAILED] ${gates[$gate_failed]##*/} exited ${statuses[$gate_failed]}: ${failure_detail:-no diagnostic}"
   target_status=0
   dispatch_protected_target || target_status=$?
-  if eci_marker_active_or_unknown; then
-    failure_reason="$failure_reason; inspect the named hook using Bash; active-marker failures have no Edit/Write repair route"
+  if eci_marker_active_or_unknown &&
+    ! { [ "$target_status" = 1 ] && dispatch_targets_failed_guard_source; }; then
+    failure_reason="$failure_reason; inspect the named hook using Bash, or repair it through an ordinary Edit or Write that targets only its source, then retry"
     jq -cn --arg reason "$failure_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
   elif [ "$target_status" = 0 ]; then
     failure_reason="$failure_reason; inspect and repair $hook_dir/${gates[$gate_failed]##*/} using an ordinary Edit or Write, then retry"

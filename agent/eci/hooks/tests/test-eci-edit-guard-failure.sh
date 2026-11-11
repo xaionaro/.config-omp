@@ -45,11 +45,12 @@ cat >"$hooks/eci-active-gate.sh" <<'SCRIPT'
 if [ "${FAIL_ACTIVE:-0}" = 1 ]; then printf '%s\n' 'synthetic active failure' >&2; exit 19; fi
 SCRIPT
 run_case() {
-  local name="$1" path="$2" validator="$3" active="$4" expected="$5" output="$tmp/$1.out" error="$tmp/$1.err"
-  jq -cn --arg cwd "$tmp/repo" --arg path "$path" '{tool_name:"Write",session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"update"}}' |
+  local name="$1" path="$2" validator="$3" active="$4" expected="$5" tool="${6:-Write}" output="$tmp/$1.out" error="$tmp/$1.err"
+  jq -cn --arg tool "$tool" --arg cwd "$tmp/repo" --arg path "$path" '{tool_name:$tool,session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"update"}}' |
     ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 FAIL_VALIDATOR="$validator" FAIL_ACTIVE="$active" bash "$hooks/pretooluse-edit-dispatch.sh" >"$output" 2>"$error"
   case "$expected" in
     allow) [ ! -s "$output" ] && grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' "$error" ;;
+    allow-active) [ ! -s "$output" ] && grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED eci-active-gate.sh' "$error" ;;
     deny) jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_EDIT_GATE_FAILED")) and (.hookSpecificOutput.permissionDecisionReason | contains("synthetic validator failure"))' "$output" >/dev/null ;;
     deny-active) jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("ECI_EDIT_GATE_FAILED")) and (.hookSpecificOutput.permissionDecisionReason | contains("synthetic active failure"))' "$output" >/dev/null ;;
     precedence) jq -e '.hookSpecificOutput.permissionDecision == "deny" and .hookSpecificOutput.permissionDecisionReason == "real target denial"' "$output" >/dev/null ;;
@@ -70,6 +71,29 @@ run_case precedence "$tmp/proof/other/ordinary.txt" 2 1 precedence
 mkdir -p "$tmp/proof/fixture"
 printf 'session_id: fixture\ncwd: %s\n' "$tmp/repo" >"$tmp/proof/fixture/eci_active"
 run_case marker "$tmp/repo/file.txt" 1 0 deny
+# Under a marker only a failed guard's own source is repairable via Edit/Write.
+run_case marker-repair-write "$hooks/validate-edit-write.sh" 1 0 allow
+run_case marker-repair-edit "$hooks/validate-edit-write.sh" 1 0 allow Edit
+run_case marker-repair-active "$hooks/eci-active-gate.sh" 0 1 allow-active Edit
+run_case marker-other-hook "$hooks/eci-active-gate.sh" 1 0 deny
+run_case marker-repair-precedence "$hooks/eci-active-gate.sh" 2 1 precedence
+run_case marker-repair-lib "$hooks/lib/eci-proof-state.sh" 1 0 allow
+# apply_patch routes to its own validator: an update of only its source is
+# allowed, while mixed targets and deletes stay denied.
+cp "$hooks/validate-edit-write.sh" "$hooks/validate-apply-patch.sh"
+for expected in "allow:*** Update File: $hooks/validate-apply-patch.sh" "deny:*** Update File: $hooks/validate-apply-patch.sh
+*** Update File: $tmp/repo/file.txt" "deny:*** Delete File: $hooks/validate-apply-patch.sh"; do
+  patch="${expected#*:}" expected="${expected%%:*}"
+  jq -cn --arg cwd "$tmp/repo" --arg patch "*** Begin Patch
+$patch
+*** End Patch" '{tool_name:"apply_patch",session_id:"fixture",cwd:$cwd,tool_input:{command:$patch}}' |
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 FAIL_VALIDATOR=1 bash "$hooks/pretooluse-edit-dispatch.sh" >"$tmp/patch.out" 2>"$tmp/patch.err"
+  if [ "$expected" = allow ]; then
+    [ ! -s "$tmp/patch.out" ] && grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED validate-apply-patch.sh' "$tmp/patch.err"
+  else
+    jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$tmp/patch.out" >/dev/null
+  fi || { printf 'marker patch not %s: %s\n' "$expected" "$patch" >&2; cat "$tmp/patch.out" "$tmp/patch.err" >&2; exit 1; }
+done
 # A dispatcher failure denies under a marker, because Codex and Claude Code run
 # the edit after a hook exit other than 2; without a marker it keeps its status.
 awk '{print; if (!injected && index($0, "trap '\''_dispatch_err_trap") == 1) {print "false"; injected=1}} END {if (!injected) exit 2}' \
