@@ -928,65 +928,46 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 }
 
 // secretMaskRule replaces one family of likely credential values with ***.
-// A match whose first capture equals exemptName exactly is left unchanged.
 //
-// Example: the env-assignment rule turns `GH_TOKEN=x` into `GH_TOKEN=***`.
+// Example: the credential-assignment rule turns `GH_TOKEN=x` into `GH_TOKEN=***`.
 type secretMaskRule struct {
 	pattern     *regexp.Regexp
 	replacement string
-	exemptName  string
 }
 
-// planDiagnosticTokenKey is the planner's `token=<argv token>` diagnostic field;
-// it names the offending argv token (e.g. `add`), not a credential.
+// credentialName matches a key that names a credential, case-insensitively.
 //
-// Example: `byte_offset=2, token=add, path=/r` keeps `token=add`.
-const planDiagnosticTokenKey = "token"
+// Example: `GH_TOKEN`, `db_password`, and a URL query key `token`.
+const credentialName = `[a-z0-9_]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9_]*`
 
-// secretMaskRules lists credential shapes masked in stored command and reason text,
-// applied in order: Authorization headers before bare Bearer tokens. Unquoted
-// values stop at `,` so comma-separated diagnostic fields survive.
+// credentialWord matches one shell-word value: concatenated quoted, escaped,
+// and bare pieces up to whitespace or a `;`, `&`, `|` separator.
 //
-// Example: `--password hunter2` matches the space-separated flag rule.
+// Example: `ab"c d"\"e` is one word.
+const credentialWord = `(?:"(?:[^"\\]|\\.)*"|'[^']*'|\\.|[^\s;&|'"\\])+`
+
+// secretMaskRules lists credential shapes masked in stored command and reason
+// text. Header values are masked before bare Bearer tokens.
+//
+// Example: `--password hunter2` matches the credential-flag rule.
 var secretMaskRules = []secretMaskRule{
-	{regexp.MustCompile(`(?i)\b([a-z0-9_]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|),'"]*)`), "${1}=***", planDiagnosticTokenKey},
-	{regexp.MustCompile(`(?i)(authorization:\s*)(?:(?:bearer|basic)\s+)?[^\s'"]+`), "${1}***", ""},
-	{regexp.MustCompile(`(?i)\b(bearer\s+)[^\s'"]+`), "${1}***", ""},
-	{regexp.MustCompile(`(?i)(--[a-z0-9-]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9-]*)(\s+|=)("[^"]*"|'[^']*'|[^\s;&|),'"-][^\s;&|),'"]*)`), "${1}${2}***", ""},
+	{regexp.MustCompile(`(?i)\b((?:proxy-)?authorization\s*:\s*|x-[a-z0-9-]*(?:key|token|secret|auth)[a-z0-9-]*\s*:\s*)[^'"\r\n]+`), "${1}***"},
+	{regexp.MustCompile(`(?i)\b(bearer\s+)[^\s'"]+`), "${1}***"},
+	{regexp.MustCompile(`(?i)(--[a-z0-9-]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9-]*(?:\s+|=))` + credentialWord), "${1}***"},
+	{regexp.MustCompile(`(?i)\b(` + credentialName + `=)` + credentialWord), "${1}***"},
+	{regexp.MustCompile(`(?i)((?:^|\s)(?:-u\s*|--user(?:\s+|=))['"]?[^\s:'"]+:)[^\s'"]+`), "${1}***"},
 }
 
-// maskSecrets replaces likely credentials in diagnostic text with ***: values of
-// env assignments whose name names a credential, Authorization/Bearer header
-// values, and credential-named `--flag v` values.
+// maskSecrets replaces likely credentials in diagnostic text with ***: header
+// values (Authorization, X-*-Key/Token), Bearer tokens, credential-named flags
+// and key=value assignments (including URL query keys), and curl user passwords.
 //
 // Example: maskSecrets("GITHUB_TOKEN=abc git push") is "GITHUB_TOKEN=*** git push".
 func maskSecrets(text string) string {
 	for _, rule := range secretMaskRules {
-		text = rule.mask(text)
+		text = rule.pattern.ReplaceAllString(text, rule.replacement)
 	}
 	return text
-}
-
-// mask applies one rule to text, skipping matches named exactly exemptName.
-//
-// Example: the env-assignment rule masks `TOKEN=x` but keeps `token=add`.
-func (rule secretMaskRule) mask(text string) string {
-	if rule.exemptName == "" {
-		return rule.pattern.ReplaceAllString(text, rule.replacement)
-	}
-	var masked []byte
-	last := 0
-	for _, match := range rule.pattern.FindAllStringSubmatchIndex(text, -1) {
-		masked = append(masked, text[last:match[0]]...)
-		switch {
-		case text[match[2]:match[3]] == rule.exemptName:
-			masked = append(masked, text[match[0]:match[1]]...)
-		default:
-			masked = rule.pattern.ExpandString(masked, rule.replacement, text, match)
-		}
-		last = match[1]
-	}
-	return string(append(masked, text[last:]...))
 }
 
 // boundDiagnosticText cuts text so its JSON string encoding stays within limit bytes.

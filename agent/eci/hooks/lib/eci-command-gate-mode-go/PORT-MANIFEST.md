@@ -29,9 +29,14 @@ Compatibility invariants:
   `reason`. `cwd` is the callback's working directory, not a directory a
   later `cd` in the command would reach; `command` is the whole callback
   command, and the denied segment is identified inside `reason`. Likely
-  credentials in `command` and `reason` (credential-named env assignments,
-  `Authorization:`/`Bearer` values, credential-named `--flag` values) become
-  `***`. Each field is cut to its JSON-encoded byte bound with a
+  credentials in `command` and `reason` become `***`: the whole shell-word
+  value of any key matching token/secret/password/pass/key/auth/credential
+  (case-insensitive, in `KEY=v`, URL `?token=v`, and the planner's own
+  `token=` diagnostic field), the same for such `--flag v`/`--flag=v`, the
+  rest of an `Authorization:`/`Proxy-Authorization:`/`X-*-Key|Token:` header
+  value, `Bearer` tokens, and the password in `-u`/`--user user:pw`. Masking
+  is best-effort, not a shell parser. Each field is cut to its JSON-encoded
+  byte bound with a
   `…[truncated]` marker; it warns with the fixed
   `eci-command-gate-mode: telemetry unavailable` line when reduction/storage
   cannot be completed.

@@ -252,8 +252,8 @@ func TestTelemetryStoreAppendsDiagnosticEvent(t *testing.T) {
 	if event["command"] != "git add -A" || event["cwd"] != "/tmp/repo" || event["session_id"] != "sess-1" {
 		t.Fatalf("event diagnostic context = %#v", event)
 	}
-	if reason, _ := event["reason"].(string); !strings.Contains(reason, "[ECI_SAMPLE_DENIED]") || !strings.Contains(reason, "token=private-token)") {
-		t.Fatalf("event reason = %#v, want denial reason with its diagnostic argv token", event["reason"])
+	if reason, _ := event["reason"].(string); !strings.Contains(reason, "[ECI_SAMPLE_DENIED]") || !strings.Contains(reason, "token=***") || strings.Contains(reason, "private-token") {
+		t.Fatalf("event reason = %#v, want masked denial reason", event["reason"])
 	}
 
 	info, err := os.Lstat(path)
@@ -364,9 +364,20 @@ func TestMaskSecrets(t *testing.T) {
 		{"tool --token=abc --password hunter2 --api-key k --verbose", "tool --token=*** --password *** --api-key *** --verbose"},
 		{"tool --client-secret=s --auth-token t", "tool --client-secret=*** --auth-token ***"},
 		{"MONKEY=banana", "MONKEY=***"},
-		{"(argv_index=2, byte_offset=2, token=add, path=/r)", "(argv_index=2, byte_offset=2, token=add, path=/r)"},
+		{"(argv_index=2, byte_offset=2, token=add, path=/r)", "(argv_index=2, byte_offset=2, token=*** path=/r)"},
 		{"TOKEN=abc token_x=y", "TOKEN=*** token_x=***"},
-		{"API_KEY=a,b next", "API_KEY=***,b next"},
+		{"API_KEY=a,SECRET25 x", "API_KEY=*** x"},
+		{"token=SECRET21 ./deploy.sh", "token=*** ./deploy.sh"},
+		{`curl "https://api.example/x?token=SECRET22&y=1"`, `curl "https://api.example/x?token=***&y=1"`},
+		{"(byte_offset=0, token=GH_TOKEN=SECRET26, path=/r)", "(byte_offset=0, token=*** path=/r)"},
+		{"(byte_offset=4, token=--password=SECRET27) x", "(byte_offset=4, token=*** x"},
+		{`curl -H "Authorization: token ghp_SECRET1" url`, `curl -H "Authorization: ***" url`},
+		{"curl -H 'X-Api-Key: SECRET2' url", "curl -H 'X-Api-Key: ***' url"},
+		{`FOO_TOKEN="ab\"SECRET5" next`, "FOO_TOKEN=*** next"},
+		{`FOO_TOKEN=ab"SECRET6" next`, "FOO_TOKEN=*** next"},
+		{"tool --password -SECRET7 next", "tool --password *** next"},
+		{"curl -u alice:SECRET8 url", "curl -u alice:*** url"},
+		{"curl --user=alice:SECRET9 url", "curl --user=alice:*** url"},
 	} {
 		if got := maskSecrets(test.in); got != test.want {
 			t.Errorf("maskSecrets(%q) = %q, want %q", test.in, got, test.want)
