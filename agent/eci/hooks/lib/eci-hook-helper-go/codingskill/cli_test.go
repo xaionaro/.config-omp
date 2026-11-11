@@ -38,6 +38,28 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.False(t, verdict.Block)
 }
 
+// TestCLIAcceptsLegacyReadsObject keeps running bridges that still hold object-form state working.
+//
+// Example: {"reads":{"coding-common":true,"coding-go":true}} allows a Go write; without coding-go it blocks.
+func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
+	for _, tc := range []struct {
+		reads string
+		block bool
+	}{
+		{`{"coding-common":true,"coding-go":true}`, false},
+		{`{"coding-common":true}`, true},
+	} {
+		request := `{"state":{"reads":` + tc.reads + `,"hydrated":true},"call":{"toolName":"write","input":{"path":"a.go"}}}`
+		var output bytes.Buffer
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), &output))
+		var verdict struct {
+			Block bool `json:"block"`
+		}
+		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
+		require.Equal(t, tc.block, verdict.Block, tc.reads)
+	}
+}
+
 // TestDescribeListsGatedExtensions keeps the TS prefilter on the Go extension sets.
 //
 // Example: describe lists ".cpp" and ".md" because skillForPath can gate both.
