@@ -11,13 +11,13 @@ case "${BASH_SOURCE[0]}" in
 esac
 HOOK_DIR="$(cd "$HOOK_DIR" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load lib/eci-proof-state.sh or lib/eci-diagnostic.sh in its hook directory; find the broken file using Bash (bash -n on each, git diff on the hook directory), repair it with Bash, and retry"}}'
   exit 0
 fi
 # Every lib function this gate calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_marker_active_or_unknown eci_diagnostic_reason eci_diagnostic_value eci_lexical_hook_path eci_resolve_hook_path eci_path_is_eci_control_alias eci_path_is_eci_control_file eci_path_owner_session_id eci_hook_roots_load eci_edit_dispatch_fields_load; do
-  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn"; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook eci-active-gate cannot load ECI library function %s; find the lib/ file in its hook directory that should define it using Bash (grep, git diff), repair it with Bash, and retry"}}\n' "$fn"; exit 0; }
 done
 
 input=$(cat)

@@ -113,4 +113,27 @@ rm -- "$tmp/proof/fixture/eci_active"
 [ "$(run_injected_dispatcher)" = 1 ] && [ ! -s "$tmp/injected.out" ] && grep -Fq 'pretooluse-edit-dispatch failed at line' "$tmp/injected.err" || {
   printf '%s\n' 'marker-free dispatcher failure did not keep its status' >&2; cat "$tmp/injected.out" "$tmp/injected.err" >&2; exit 1
 }
+# A proof-state lib that fails to load denies everything except Edit or Write
+# of that exact lib, and the denial names the lib and a Bash diagnosis.
+broken="$tmp/broken-hooks"
+cp -a "$ROOT/hooks/." "$broken/"
+printf '%s\n' 'if then' >>"$broken/lib/eci-proof-state.sh"
+for spec in "allow:Write:$broken/lib/eci-proof-state.sh" "allow:Edit:$broken/lib/../lib/eci-proof-state.sh" \
+  "deny:Write:$tmp/repo/file.txt" "deny:Write:$broken/lib/eci-tmp.sh" "deny:apply_patch:$broken/lib/eci-proof-state.sh"; do
+  expected="${spec%%:*}" rest="${spec#*:}" tool="${spec#*:}"; tool="${tool%%:*}" path="${rest#*:}"
+  jq -cn --arg tool "$tool" --arg cwd "$tmp/repo" --arg path "$path" \
+    '{tool_name:$tool,session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x",command:"*** Begin Patch\n*** Update File: \($path)\n*** End Patch"}}' |
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$broken/pretooluse-edit-dispatch.sh" >"$tmp/lib.out" 2>"$tmp/lib.err"
+  if [ "$expected" = allow ]; then
+    [ ! -s "$tmp/lib.out" ] && grep -Fq 'ECI_HOOK_LIB_REPAIR_ALLOWED' "$tmp/lib.err"
+  else
+    jq -e --arg lib "$broken/lib/eci-proof-state.sh" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains($lib) and contains("bash -n"))' "$tmp/lib.out" >/dev/null
+  fi || { printf 'broken lib case %s not %s\n' "$spec" "$expected" >&2; cat "$tmp/lib.out" "$tmp/lib.err" >&2; exit 1; }
+done
+for guard in validate-edit-write eci-active-gate validate-apply-patch; do
+  ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" bash "$broken/$guard.sh" </dev/null 2>/dev/null |
+    jq -e '.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_HOOK_LIB_UNAVAILABLE]") and contains("lib/eci-proof-state.sh") and contains("bash -n")' >/dev/null || {
+    printf 'guard %s lib-load denial is not actionable\n' "$guard" >&2; exit 1
+  }
+done
 printf '%s\n' 'edit guard failure assertions: PASS'

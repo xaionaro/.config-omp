@@ -16,8 +16,24 @@ dispatch_write_deny() {
 # ECI marker check or on the protected-target classifier, both from the
 # proof-state lib, so the lib must load and define the marker check first; if
 # it cannot, the gate cannot decide and denies.
+# The one exception is an Edit or Write of exactly that lib, so the same actor
+# can repair it; every other call is denied with a Bash diagnosis route.
 if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
-  dispatch_write_deny '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load or does not define eci_marker_active_or_unknown; reinstall the ECI hooks and retry"}}'
+  dispatch_lib="$hook_dir/lib/eci-proof-state.sh"
+  { IFS= read -r dispatch_lib_cwd && IFS= read -r dispatch_lib_target; } < <(
+    jq -r 'select(.tool_name == "Write" or .tool_name == "Edit") | (.cwd // ""), (.tool_input.file_path // "")' 2>/dev/null) || true
+  case "${dispatch_lib_target:-}" in
+    /*) ;;
+    ?*) dispatch_lib_target="${dispatch_lib_cwd:-$PWD}/$dispatch_lib_target" ;;
+  esac
+  if [ -n "${dispatch_lib_target:-}" ] && [ ! -L "$dispatch_lib_target" ] &&
+    [ "$(cd -- "${dispatch_lib_target%/*}" 2>/dev/null && pwd -P)/${dispatch_lib_target##*/}" = "$dispatch_lib" ]; then
+    printf 'ECI_HOOK_LIB_REPAIR_ALLOWED %s\n' "$dispatch_lib" >&2
+    exit 0
+  fi
+  dispatch_lib_reason="[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: $dispatch_lib failed to load or does not define eci_marker_active_or_unknown; diagnose it using Bash (bash -n '$dispatch_lib'; git -C '$hook_dir' diff -- '$dispatch_lib'), then repair it with Bash or an Edit or Write that targets only that file, and retry"
+  dispatch_write_deny "$(jq -cn --arg reason "$dispatch_lib_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null ||
+    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load; diagnose it using Bash (bash -n), then repair it and retry"}}')"
   exit 0
 fi
 # Report dispatcher failures on stderr.  omp blocks any non-zero exit, but

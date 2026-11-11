@@ -20,13 +20,13 @@ deny_stdout_usable() {
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! . "$HOOK_DIR/lib/eci-proof-state.sh" || ! . "$HOOK_DIR/lib/eci-tmp.sh" || ! . "$HOOK_DIR/lib/eci-diagnostic.sh"; then
   deny_stdout_usable || deny_write_failed validate-apply-patch
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load its ECI hook library; the native install is incomplete or damaged; reinstall the ECI hooks and retry"}}' || deny_write_failed validate-apply-patch
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load lib/eci-proof-state.sh, lib/eci-tmp.sh or lib/eci-diagnostic.sh in its hook directory; find the broken file using Bash (bash -n on each, git diff on the hook directory), repair it with Bash, and retry"}}' || deny_write_failed validate-apply-patch
   exit 0
 fi
 # Every lib function this hook calls must be defined; a partial load would let
 # a missing marker check fall through to a silent exit.
 for fn in eci_init_tmp eci_require_jq_or_deny eci_install_fail_closed_trap eci_diagnostic_value eci_diagnostic_reason eci_diagnostic_code_for_reason eci_marker_active_or_unknown eci_hook_subagent_status eci_hook_subagent_status_seed eci_strip_trailing_newlines eci_proof_root_load eci_hook_roots_load eci_resolve_hook_path eci_lexical_hook_path eci_session_path_is_unsafe eci_path_is_eci_control_alias eci_path_is_session_ledger_file eci_path_is_eci_control_file eci_path_is_git_approval_file eci_path_owner_session_id eci_hook_allowed_session_ids eci_session_owner_allowed eci_path_is_under_proof_root eci_context_session_rest eci_proof_root eci_note_touched_repo eci_mark_activity _eci_fail_closed_constant _eci_lib_unavailable_constant; do
-  declare -F "$fn" >/dev/null 2>&1 || { deny_stdout_usable || deny_write_failed validate-apply-patch; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; reinstall the ECI hooks and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
+  declare -F "$fn" >/dev/null 2>&1 || { deny_stdout_usable || deny_write_failed validate-apply-patch; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] hook validate-apply-patch cannot load ECI library function %s; find the lib/ file in its hook directory that should define it using Bash (grep, git diff), repair it with Bash, and retry"}}\n' "$fn" || deny_write_failed validate-apply-patch; exit 0; }
 done
 eci_init_tmp || true
 eci_require_jq_or_deny validate-apply-patch
