@@ -16,6 +16,8 @@
 //	edit-gate <bash> <dispatcher>           run the edit dispatcher once per
 //	                                        target of the omp edit request on stdin
 //	coding-skill <describe|reduce|check>     evaluate coding skill evidence
+//	call-survivors <tool-call-id>           notice naming processes still tagged
+//	                                        with that Bash tool call ID
 package main
 
 import (
@@ -71,6 +73,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return statusRejected
 		}
 		return statusOK
+	case len(args) >= 1 && args[0] == "call-survivors":
+		return runCallSurvivors(args[1:], stdout, stderr)
 	}
 	return statusRejected
 }

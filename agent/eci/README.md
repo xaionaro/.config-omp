@@ -37,10 +37,11 @@ bash 3.2.
   `tools/*/go.mod`. `hooks/build-native-binaries.sh` is the only builder of the native
   tools (`eci-command-plan`, `eci-safe-import`, `eci-hook-helper`, `eci-worker-git`, and
   `eci-verexec` on Linux). `bin/eci-active` provisions missing native tools
-  (`hooks/lib/eci-native-provision.sh`). The optional coding-skill and disabled
-  edit-hook bridges provision a missing shared helper and, on Linux, verifier.
-  The edit launcher verifies the helper receipt; the coding-skill bridge invokes
-  the helper directly. Provisioning does not enable either hook. A source change
+  (`hooks/lib/eci-native-provision.sh`). The optional coding-skill and Bash survivor
+  bridges and the disabled edit-hook bridge provision a missing shared helper and,
+  on Linux, verifier. The edit launcher verifies the helper receipt; the coding-skill
+  and Bash survivor bridges invoke the helper directly. Provisioning does not enable
+  any hook. A source change
   does not refresh an existing binary: rebuild it with
   `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`.
   Hook provisioning inherits `GOCACHE` and `GOMODCACHE` when set; otherwise it
