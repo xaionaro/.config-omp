@@ -928,22 +928,31 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 }
 
 // secretMaskRule replaces one family of likely credential values with ***.
+// A match whose first capture equals exemptName exactly is left unchanged.
 //
 // Example: the env-assignment rule turns `GH_TOKEN=x` into `GH_TOKEN=***`.
 type secretMaskRule struct {
 	pattern     *regexp.Regexp
 	replacement string
+	exemptName  string
 }
 
+// planDiagnosticTokenKey is the planner's `token=<argv token>` diagnostic field;
+// it names the offending argv token (e.g. `add`), not a credential.
+//
+// Example: `byte_offset=2, token=add, path=/r` keeps `token=add`.
+const planDiagnosticTokenKey = "token"
+
 // secretMaskRules lists credential shapes masked in stored command and reason text,
-// applied in order: Authorization headers before bare Bearer tokens.
+// applied in order: Authorization headers before bare Bearer tokens. Unquoted
+// values stop at `,` so comma-separated diagnostic fields survive.
 //
 // Example: `--password hunter2` matches the space-separated flag rule.
 var secretMaskRules = []secretMaskRule{
-	{regexp.MustCompile(`(?i)\b([a-z0-9_]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)'"]*)`), "${1}=***"},
-	{regexp.MustCompile(`(?i)(authorization:\s*)(?:(?:bearer|basic)\s+)?[^\s'"]+`), "${1}***"},
-	{regexp.MustCompile(`(?i)\b(bearer\s+)[^\s'"]+`), "${1}***"},
-	{regexp.MustCompile(`(?i)(--[a-z0-9-]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9-]*)(\s+)("[^"]*"|'[^']*'|[^\s;&|)'"-][^\s;&|)'"]*)`), "${1}${2}***"},
+	{regexp.MustCompile(`(?i)\b([a-z0-9_]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|),'"]*)`), "${1}=***", planDiagnosticTokenKey},
+	{regexp.MustCompile(`(?i)(authorization:\s*)(?:(?:bearer|basic)\s+)?[^\s'"]+`), "${1}***", ""},
+	{regexp.MustCompile(`(?i)\b(bearer\s+)[^\s'"]+`), "${1}***", ""},
+	{regexp.MustCompile(`(?i)(--[a-z0-9-]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9-]*)(\s+|=)("[^"]*"|'[^']*'|[^\s;&|),'"-][^\s;&|),'"]*)`), "${1}${2}***", ""},
 }
 
 // maskSecrets replaces likely credentials in diagnostic text with ***: values of
@@ -953,9 +962,31 @@ var secretMaskRules = []secretMaskRule{
 // Example: maskSecrets("GITHUB_TOKEN=abc git push") is "GITHUB_TOKEN=*** git push".
 func maskSecrets(text string) string {
 	for _, rule := range secretMaskRules {
-		text = rule.pattern.ReplaceAllString(text, rule.replacement)
+		text = rule.mask(text)
 	}
 	return text
+}
+
+// mask applies one rule to text, skipping matches named exactly exemptName.
+//
+// Example: the env-assignment rule masks `TOKEN=x` but keeps `token=add`.
+func (rule secretMaskRule) mask(text string) string {
+	if rule.exemptName == "" {
+		return rule.pattern.ReplaceAllString(text, rule.replacement)
+	}
+	var masked []byte
+	last := 0
+	for _, match := range rule.pattern.FindAllStringSubmatchIndex(text, -1) {
+		masked = append(masked, text[last:match[0]]...)
+		switch {
+		case text[match[2]:match[3]] == rule.exemptName:
+			masked = append(masked, text[match[0]:match[1]]...)
+		default:
+			masked = rule.pattern.ExpandString(masked, rule.replacement, text, match)
+		}
+		last = match[1]
+	}
+	return string(append(masked, text[last:]...))
 }
 
 // boundDiagnosticText cuts text so its JSON string encoding stays within limit bytes.

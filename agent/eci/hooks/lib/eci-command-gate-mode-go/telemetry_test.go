@@ -252,8 +252,8 @@ func TestTelemetryStoreAppendsDiagnosticEvent(t *testing.T) {
 	if event["command"] != "git add -A" || event["cwd"] != "/tmp/repo" || event["session_id"] != "sess-1" {
 		t.Fatalf("event diagnostic context = %#v", event)
 	}
-	if reason, _ := event["reason"].(string); !strings.Contains(reason, "[ECI_SAMPLE_DENIED]") || !strings.Contains(reason, "token=***") || strings.Contains(reason, "private-token") {
-		t.Fatalf("event reason = %#v, want masked denial reason", event["reason"])
+	if reason, _ := event["reason"].(string); !strings.Contains(reason, "[ECI_SAMPLE_DENIED]") || !strings.Contains(reason, "token=private-token)") {
+		t.Fatalf("event reason = %#v, want denial reason with its diagnostic argv token", event["reason"])
 	}
 
 	info, err := os.Lstat(path)
@@ -364,6 +364,9 @@ func TestMaskSecrets(t *testing.T) {
 		{"tool --token=abc --password hunter2 --api-key k --verbose", "tool --token=*** --password *** --api-key *** --verbose"},
 		{"tool --client-secret=s --auth-token t", "tool --client-secret=*** --auth-token ***"},
 		{"MONKEY=banana", "MONKEY=***"},
+		{"(argv_index=2, byte_offset=2, token=add, path=/r)", "(argv_index=2, byte_offset=2, token=add, path=/r)"},
+		{"TOKEN=abc token_x=y", "TOKEN=*** token_x=***"},
+		{"API_KEY=a,b next", "API_KEY=***,b next"},
 	} {
 		if got := maskSecrets(test.in); got != test.want {
 			t.Errorf("maskSecrets(%q) = %q, want %q", test.in, got, test.want)
