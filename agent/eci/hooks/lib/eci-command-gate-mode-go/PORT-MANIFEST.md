@@ -23,9 +23,12 @@ Compatibility invariants:
 - `set` persists exactly `permissive\n` or `enforcing\n`; failures use the
   published `eci-command-gate-mode: set failed:` prefix and exit `1`.
 - `finalize` exits `0` in both modes. Enforcing forwards stdin unchanged;
-  permissive reduces and stores a bounded event, warning with the fixed
-  `eci-command-gate-mode: telemetry unavailable` line when reduction/storage
-  cannot be completed.
+  permissive stores one `eci-command-gate-event/v2` record (at most
+  `MaxEventBytes`) that adds `session_id`, `cwd`, `command` (from the
+  `ECI_GATE_DENIAL_*` env the planner sets) and the denial `reason`, each cut
+  to its JSON-encoded byte bound with a `…[truncated]` marker; it warns with
+  the fixed `eci-command-gate-mode: telemetry unavailable` line when
+  reduction/storage cannot be completed.
 - The binary has no runtime interpreter dependency and is built for the
   provider architecture with `go build -trimpath -buildvcs=false`.
 

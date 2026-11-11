@@ -204,7 +204,7 @@ func ParseDenial(raw []byte) (Denial, error) {
 	if _, ok := telemetryOperationRegistry[operation]; !ok {
 		operation = TelemetryOperationOther
 	}
-	return Denial{Raw: append([]byte(nil), raw...), Code: code, Operation: operation}, nil
+	return Denial{Raw: append([]byte(nil), raw...), Code: code, Operation: operation, Reason: reason}, nil
 }
 
 // TelemetryReductionError identifies a denial that cannot be reduced safely.
@@ -868,9 +868,9 @@ func tryRotateTelemetry(parent *configDirectoryHandle, record []byte) (RotationO
 	return RotationOutcomeAppended, nil
 }
 
-// AppendEvent reduces and stores one denial event under descriptor-relative state.
+// AppendEvent stores one denial event with bounded diagnostics under descriptor-relative state.
 //
-// Example: AppendEvent never serializes the original command or denial reason.
+// Example: a permissive `git add -A` denial records its command, cwd, session, and reason.
 func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) error {
 	location, err := store.openLogDirectory()
 	if err != nil {
@@ -888,6 +888,10 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 		Code        string `json:"code"`
 		Operation   string `json:"operation"`
 		ConfigState string `json:"config_state"`
+		SessionID   string `json:"session_id"`
+		CWD         string `json:"cwd"`
+		Command     string `json:"command"`
+		Reason      string `json:"reason"`
 	}{
 		Schema:      EventSchema,
 		Event:       "would-deny",
@@ -899,6 +903,10 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 		Code:        string(denial.Code),
 		Operation:   string(denial.Operation),
 		ConfigState: string(context.ConfigState),
+		SessionID:   boundDiagnosticText(context.SessionID, MaxEventSessionIDBytes),
+		CWD:         boundDiagnosticText(context.CWD, MaxEventCWDBytes),
+		Command:     boundDiagnosticText(context.Command, MaxEventCommandBytes),
+		Reason:      boundDiagnosticText(denial.Reason, MaxEventReasonBytes),
 	}
 	record, err := json.Marshal(event)
 	if err != nil {
@@ -912,6 +920,54 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 		return err
 	}
 	return location.root.validate()
+}
+
+// boundDiagnosticText cuts text so its JSON string encoding stays within limit bytes.
+// The cut lands on a rune boundary and appends TruncationMarker; invalid UTF-8
+// becomes U+FFFD exactly as encoding/json would render it.
+//
+// Example: a 10 KiB command becomes its leading ~1 KiB followed by "…[truncated]".
+func boundDiagnosticText(text string, limit int) string {
+	if jsonStringBytes(text) <= limit {
+		return strings.ToValidUTF8(text, "\uFFFD")
+	}
+	budget := limit - jsonStringBytes(TruncationMarker)
+	var kept strings.Builder
+	for _, r := range text {
+		size := jsonRuneBytes(r)
+		if size > budget {
+			break
+		}
+		budget -= size
+		kept.WriteRune(r)
+	}
+	kept.WriteString(TruncationMarker)
+	return kept.String()
+}
+
+// jsonStringBytes returns the encoded byte length of text's JSON string body without quotes.
+//
+// Example: jsonStringBytes("a\"b") is 4.
+func jsonStringBytes(text string) int {
+	total := 0
+	for _, r := range text {
+		total += jsonRuneBytes(r)
+	}
+	return total
+}
+
+// jsonRuneBytes returns the bytes encoding/json.Marshal emits for one decoded rune.
+//
+// Example: '<' costs 6 bytes (\u003c) because Marshal escapes HTML characters.
+func jsonRuneBytes(r rune) int {
+	switch {
+	case r == '"' || r == '\\' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t':
+		return 2
+	case r < 0x20 || r == '<' || r == '>' || r == '&' || r == '\u2028' || r == '\u2029' || r == utf8.RuneError:
+		return 6
+	default:
+		return utf8.RuneLen(r)
+	}
 }
 
 // readBoundedDenial reads at most MaxDenialBytes plus one byte and drains the input.
@@ -971,6 +1027,9 @@ func finalizeDenial(
 				Marker:      command.Marker,
 				Source:      command.Source,
 				ConfigState: modeState.ConfigState,
+				Command:     os.Getenv(EnvDenialCommand),
+				CWD:         os.Getenv(EnvDenialCWD),
+				SessionID:   os.Getenv(EnvDenialSessionID),
 			})
 		}
 	}

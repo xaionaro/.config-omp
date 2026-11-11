@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // RunHook handles one provider callback. Uncertain external metadata remains
@@ -109,6 +110,11 @@ func finalizeHookDenial(
 		return denial, nil
 	}
 	command := exec.Command(tool, "finalize", string(request.Provider), string(request.Role), string(request.Marker), "parser")
+	command.Env = append(os.Environ(),
+		"ECI_GATE_DENIAL_COMMAND="+finalizeEnvValue(request.Command),
+		"ECI_GATE_DENIAL_CWD="+finalizeEnvValue(request.CWD),
+		"ECI_GATE_DENIAL_SESSION_ID="+finalizeEnvValue(request.HookSessionID),
+	)
 	command.Stdin = bytes.NewReader(denial)
 	command.Stderr = os.Stderr
 	finalized, err := command.Output()
@@ -116,6 +122,24 @@ func finalizeHookDenial(
 		return denial, err
 	}
 	return finalized, nil
+}
+
+// maxFinalizeEnvBytes caps one diagnostic env value well under the kernel's
+// per-string exec limit; the finalizer applies its own tighter record bounds.
+//
+// Example: a 20 KiB command reaches the finalizer as its first 4 KiB.
+const maxFinalizeEnvBytes = 4_096
+
+// finalizeEnvValue makes text exec-safe: NUL bytes (rejected by execve) become
+// "\0" and the value is cut to maxFinalizeEnvBytes on a valid UTF-8 boundary.
+//
+// Example: finalizeEnvValue("a\x00b") is `a\0b`.
+func finalizeEnvValue(text string) string {
+	text = strings.ReplaceAll(text, "\x00", `\0`)
+	if len(text) <= maxFinalizeEnvBytes {
+		return text
+	}
+	return strings.ToValidUTF8(text[:maxFinalizeEnvBytes], "")
 }
 
 // hookCallbackRepair names the same-actor repair for a callback the planner cannot decode.

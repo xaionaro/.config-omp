@@ -15,7 +15,24 @@ const (
 	MaxLogFiles = 4
 
 	// EventSchema identifies the persisted command-gate telemetry schema.
-	EventSchema = "eci-command-gate-event/v1"
+	// v2 adds bounded command, cwd, session_id, and reason diagnostics.
+	EventSchema = "eci-command-gate-event/v2"
+	// MaxEventCommandBytes bounds the JSON-encoded command field of one record.
+	MaxEventCommandBytes = 1_024
+	// MaxEventCWDBytes bounds the JSON-encoded cwd field of one record.
+	MaxEventCWDBytes = 512
+	// MaxEventSessionIDBytes bounds the JSON-encoded session_id field of one record.
+	MaxEventSessionIDBytes = 128
+	// MaxEventReasonBytes bounds the JSON-encoded reason field of one record.
+	MaxEventReasonBytes = 1_536
+	// TruncationMarker ends every diagnostic field cut to its byte bound.
+	TruncationMarker = "…[truncated]"
+	// EnvDenialCommand carries the denied command from the hook to finalize.
+	EnvDenialCommand = "ECI_GATE_DENIAL_COMMAND"
+	// EnvDenialCWD carries the denied command's working directory to finalize.
+	EnvDenialCWD = "ECI_GATE_DENIAL_CWD"
+	// EnvDenialSessionID carries the callback session id to finalize.
+	EnvDenialSessionID = "ECI_GATE_DENIAL_SESSION_ID"
 	// ConfigDirectoryName is the command-gate configuration directory name.
 	ConfigDirectoryName = "eci"
 	// ConfigFileName is the command-gate configuration file name.
@@ -208,13 +225,14 @@ const (
 	TelemetryOperationOther TelemetryOperation = "other"
 )
 
-// Denial is the redacted identity extracted from one hook denial document.
+// Denial is the identity and diagnostic reason extracted from one hook denial document.
 //
-// Example: ParseDenial returns a Denial without retaining command text or secrets.
+// Example: ParseDenial returns the closed code/operation plus the unbounded reason text.
 type Denial struct {
 	Raw       []byte
 	Code      TelemetryCode
 	Operation TelemetryOperation
+	Reason    string
 }
 
 // TelemetryBytes returns the stable reduced representation used by redaction tests.
@@ -224,15 +242,18 @@ func (denial Denial) TelemetryBytes() []byte {
 	return []byte(string(denial.Code) + "\n" + string(denial.Operation) + "\n")
 }
 
-// EventContext binds a reduced denial to its provider and ECI ownership state.
+// EventContext binds a denial to its provider, ECI ownership state, and command context.
 //
-// Example: EventContext{Provider: ProviderOmp, Role: RoleWorker} records worker provenance.
+// Example: EventContext{Provider: ProviderOmp, Command: "git add -A"} records worker provenance.
 type EventContext struct {
 	Provider    Provider
 	Role        Role
 	Marker      Marker
 	Source      Source
 	ConfigState ConfigState
+	Command     string
+	CWD         string
+	SessionID   string
 }
 
 // Mode identifies the command-gate enforcement mode.

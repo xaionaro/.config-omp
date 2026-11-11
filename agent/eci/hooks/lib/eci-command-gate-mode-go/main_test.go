@@ -92,6 +92,9 @@ func TestRunFinalizePermissivePersistsReducedEvent(t *testing.T) {
 	stateRoot := filepath.Join(root, "state")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 	t.Setenv("XDG_STATE_HOME", stateRoot)
+	t.Setenv(EnvDenialCommand, "git add -A")
+	t.Setenv(EnvDenialCWD, "/tmp/repo")
+	t.Setenv(EnvDenialSessionID, "sess-9")
 
 	var setOut, setErr bytes.Buffer
 	if status := run([]string{"set", "permissive"}, strings.NewReader(""), &setOut, &setErr); status != 0 {
@@ -125,6 +128,10 @@ func TestRunFinalizePermissivePersistsReducedEvent(t *testing.T) {
 		Code        string `json:"code"`
 		Operation   string `json:"operation"`
 		ConfigState string `json:"config_state"`
+		Command     string `json:"command"`
+		CWD         string `json:"cwd"`
+		SessionID   string `json:"session_id"`
+		Reason      string `json:"reason"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(record), &event); err != nil {
 		t.Fatalf("decode permissive telemetry: %v; record=%q", err, record)
@@ -132,8 +139,10 @@ func TestRunFinalizePermissivePersistsReducedEvent(t *testing.T) {
 	if event.Schema != EventSchema || event.Event != "would-deny" || event.Provider != "omp" ||
 		event.Role != "worker" || event.Marker != "active" || event.Source != "parser" ||
 		event.Code != string(TelemetryCodeCommandSyntaxDenied) || event.Operation != string(TelemetryOperationPlanSegment) ||
-		event.ConfigState != string(ConfigStateConfiguredPermissive) {
-		t.Fatalf("reduced telemetry event = %#v", event)
+		event.ConfigState != string(ConfigStateConfiguredPermissive) ||
+		event.Command != "git add -A" || event.CWD != "/tmp/repo" || event.SessionID != "sess-9" ||
+		!strings.HasPrefix(event.Reason, "[ECI_COMMAND_SYNTAX_DENIED]") {
+		t.Fatalf("telemetry event = %#v", event)
 	}
 }
 

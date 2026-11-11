@@ -8,11 +8,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
+	"unicode/utf8"
 )
 
-// TestParseDenialReducesToClosedFields checks that raw diagnostics never cross the telemetry boundary.
+// TestParseDenialReducesToClosedFields checks that the closed identity fields never carry raw diagnostics.
 //
 // Example: an unknown denial code and operation become the two closed fallback values.
 func TestParseDenialReducesToClosedFields(t *testing.T) {
@@ -197,10 +199,10 @@ func TestParseDenialRejectsMalformedAndOversizeInput(t *testing.T) {
 	}
 }
 
-// TestTelemetryStoreAppendsRedactedEvent checks the exact event shape and state binding.
+// TestTelemetryStoreAppendsDiagnosticEvent checks the exact event shape and state binding.
 //
-// Example: a valid denial produces one compact would-deny record without the command payload.
-func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
+// Example: a valid denial produces one compact would-deny record with its reason and context.
+func TestTelemetryStoreAppendsDiagnosticEvent(t *testing.T) {
 	store := newTestTelemetryStore(t)
 	denial, err := ParseDenial(sampleTelemetryDenial("private-token"))
 	if err != nil {
@@ -212,6 +214,9 @@ func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
 		Marker:      MarkerActive,
 		Source:      SourceParser,
 		ConfigState: ConfigStateMissing,
+		Command:     "git add -A",
+		CWD:         "/tmp/repo",
+		SessionID:   "sess-1",
 	}); err != nil {
 		t.Fatalf("AppendEvent(): %v", err)
 	}
@@ -229,6 +234,7 @@ func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
 		"schema": true, "event": true, "at_utc": true, "provider": true,
 		"role": true, "marker": true, "source": true, "code": true,
 		"operation": true, "config_state": true,
+		"command": true, "cwd": true, "session_id": true, "reason": true,
 	}
 	if len(event) != len(wantKeys) {
 		t.Fatalf("event keys = %#v, want exactly %#v", event, wantKeys)
@@ -247,8 +253,11 @@ func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
 	if event["code"] != string(TelemetryCodeOther) || event["operation"] != string(TelemetryOperationOther) {
 		t.Fatalf("event reduction = %#v", event)
 	}
-	if bytes.Contains(records, []byte("private-token")) {
-		t.Fatal("telemetry retained raw denial data")
+	if event["command"] != "git add -A" || event["cwd"] != "/tmp/repo" || event["session_id"] != "sess-1" {
+		t.Fatalf("event diagnostic context = %#v", event)
+	}
+	if reason, _ := event["reason"].(string); !strings.Contains(reason, "private-token") {
+		t.Fatalf("event reason = %#v, want denial reason", event["reason"])
 	}
 
 	info, err := os.Lstat(path)
@@ -257,6 +266,48 @@ func TestTelemetryStoreAppendsRedactedEvent(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 || !info.Mode().IsRegular() || info.Sys().(*syscall.Stat_t).Nlink != 1 {
 		t.Fatalf("telemetry metadata = mode=%04o regular=%v nlink=%d", info.Mode().Perm(), info.Mode().IsRegular(), info.Sys().(*syscall.Stat_t).Nlink)
+	}
+}
+
+// TestTelemetryStoreBoundsDiagnosticFields checks truncation and JSON safety of free-text fields.
+//
+// Example: a huge command full of escapable bytes is cut with a marker and the record stays bounded.
+func TestTelemetryStoreBoundsDiagnosticFields(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	hostile := strings.Repeat("\x01\"<\\é\u2028", 2_000)
+	denial, err := ParseDenial(sampleTelemetryDenial(strings.Repeat("r", 8_000)))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{
+		Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerActive, Source: SourceParser,
+		ConfigState: ConfigStateMissing,
+		Command:     "git add -A " + hostile,
+		CWD:         "/tmp/" + hostile,
+		SessionID:   hostile,
+	}); err != nil {
+		t.Fatalf("AppendEvent(): %v", err)
+	}
+	path := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName)
+	records, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read telemetry: %v", err)
+	}
+	if len(records) > MaxEventBytes || bytes.Count(records, []byte("\n")) != 1 {
+		t.Fatalf("record size=%d lines=%d, want one bounded line", len(records), bytes.Count(records, []byte("\n")))
+	}
+	var event map[string]string
+	if err := json.Unmarshal(bytes.TrimSpace(records), &event); err != nil {
+		t.Fatalf("decode telemetry: %v", err)
+	}
+	for _, key := range []string{"command", "cwd", "session_id", "reason"} {
+		value := event[key]
+		if !strings.HasSuffix(value, TruncationMarker) || !utf8.ValidString(value) {
+			t.Fatalf("%s = %q, want valid UTF-8 ending in %q", key, value, TruncationMarker)
+		}
+	}
+	if !strings.HasPrefix(event["command"], "git add -A ") || !strings.HasPrefix(event["cwd"], "/tmp/") {
+		t.Fatalf("truncated fields lost their prefix: %#v", event)
 	}
 }
 

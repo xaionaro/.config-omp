@@ -22,7 +22,7 @@ func TestCommandGateContractConstants(t *testing.T) {
 		{name: "event bytes", got: MaxEventBytes, want: 4_096},
 		{name: "log bytes", got: MaxLogBytes, want: 1_048_576},
 		{name: "log files", got: MaxLogFiles, want: 4},
-		{name: "schema", got: EventSchema, want: "eci-command-gate-event/v1"},
+		{name: "schema", got: EventSchema, want: "eci-command-gate-event/v2"},
 		{name: "config directory", got: ConfigDirectoryName, want: "eci"},
 		{name: "config file", got: ConfigFileName, want: "command-gate-mode"},
 		{name: "telemetry directory", got: TelemetryDirectoryName, want: "command-gate"},
