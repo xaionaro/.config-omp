@@ -24,7 +24,7 @@ const mode = process.argv[3];
 if (mode === 'describe') {
  if (fs.existsSync(${JSON.stringify(join(root, "fail-describe"))})) process.exit(1);
  if (fs.existsSync(${JSON.stringify(join(root, "stale-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']})); process.exit(0); }
- process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read'],codeExtensions:['.go','.cpp']}));
+ process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read'],gatedExtensions:['.go','.cpp']}));
 } else {
  let data=''; process.stdin.on('data',chunk=>data+=chunk); process.stdin.on('end',()=>{
   const req=JSON.parse(data); fs.appendFileSync(${JSON.stringify(join(root, "requests.jsonl"))},JSON.stringify({mode,...req})+'\\n');

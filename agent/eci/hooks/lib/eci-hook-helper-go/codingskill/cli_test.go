@@ -42,21 +42,21 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.False(t, verdict.Block)
 }
 
-// TestDescribeListsCodeExtensions keeps the TS prefilter on the Go extension map.
+// TestDescribeListsGatedExtensions keeps the TS prefilter on the Go extension sets.
 //
-// Example: describe lists ".cpp" because skillForPath maps it to coding-common.
-func TestDescribeListsCodeExtensions(t *testing.T) {
+// Example: describe lists ".cpp" and ".md" because skillForPath can gate both.
+func TestDescribeListsGatedExtensions(t *testing.T) {
 	var output bytes.Buffer
 	require.NoError(t, Run([]string{"describe"}, nil, &output))
 	var described struct {
-		CodeExtensions []string `json:"codeExtensions"`
+		GatedExtensions []string `json:"gatedExtensions"`
 	}
 	require.NoError(t, json.Unmarshal(output.Bytes(), &described))
 	require.NotEmpty(t, codeExtensions)
-	keys := make([]string, 0, len(codeExtensions))
+	keys := append([]string{}, instructionExtensions...)
 	for ext := range codeExtensions {
 		keys = append(keys, ext)
 	}
-	require.ElementsMatch(t, keys, described.CodeExtensions)
-	require.Contains(t, described.CodeExtensions, ".cpp")
+	require.ElementsMatch(t, keys, described.GatedExtensions)
+	require.Contains(t, described.GatedExtensions, ".cpp")
 }

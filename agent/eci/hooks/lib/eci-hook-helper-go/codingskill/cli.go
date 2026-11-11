@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 )
 
@@ -19,6 +20,7 @@ type cliEvent struct {
 	Details     map[string]any `json:"details"`
 	IsError     bool           `json:"isError"`
 	EditTargets []string       `json:"editTargets"`
+	Cwd         string         `json:"cwd"`
 }
 
 // cliInput provides one state transition or preflight request.
@@ -44,15 +46,15 @@ func Run(
 	}
 	switch args[0] {
 	case "describe":
-		extensions := make([]string, 0, len(codeExtensions))
+		extensions := slices.Clone(instructionExtensions)
 		for ext := range codeExtensions {
 			extensions = append(extensions, ext)
 		}
 		sort.Strings(extensions)
 		return json.NewEncoder(output).Encode(map[string]any{
-			"callTools":      []string{"write", "edit"},
-			"resultTools":    []string{"read"},
-			"codeExtensions": extensions,
+			"callTools":       []string{"write", "edit"},
+			"resultTools":     []string{"read"},
+			"gatedExtensions": extensions,
 		})
 	case "reduce", "check":
 	default:
@@ -65,7 +67,7 @@ func Run(
 	req := Request{State: in.State, Branch: in.Branch}
 	if args[0] == "check" {
 		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
-		req.EditTargets = in.Call.EditTargets
+		req.EditTargets, req.Cwd = in.Call.EditTargets, in.Call.Cwd
 		response, err := decide(req)
 		if err != nil {
 			return err

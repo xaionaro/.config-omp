@@ -1,6 +1,7 @@
 package codingskill
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -83,6 +84,50 @@ func TestWriteRequirementsByExtension(t *testing.T) {
 	got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://coding-common"}, Details: completeRead(), State: state})
 	require.NoError(t, err)
 	got, err = decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "a.cpp"}, State: got.State})
+	require.NoError(t, err)
+	require.Empty(t, got.Reason)
+}
+
+// TestInstructionWritesRequireHarnessTuning covers ~/.omp/agent instruction targets.
+//
+// Example: a SKILL.md write needs coding-common and harness-tuning; a session log needs nothing.
+func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	omp := filepath.Join(home, ".omp")
+	want := "requires skill://coding-common and skill://harness-tuning."
+	for _, tc := range []struct {
+		path, cwd string
+		gated     bool
+	}{
+		{"agent/skills/x/SKILL.md", omp, true},
+		{"agent/skills/x/references/y.md", omp, true},
+		{"~/.omp/agent/RULES.md", "", true},
+		{filepath.Join(omp, "agent", "AGENTS.md"), "", true},
+		{"eci-binding-contract.md", filepath.Join(omp, "agent"), true},
+		{"agent/agents/eci-preset-helper.md", omp, true},
+		{"agent/eci/tools/eci-presets/templates/helper.tmpl", omp, true},
+		{"[agent/RULES.md#ABCD]", omp, true},
+		{"agent/sessions/x.md", omp, false},
+		{"agent/skills/x/notes.txt", omp, false},
+		{"agent/RULES.md", home, false},
+		{"agent/skills/x/SKILL.md", "", false},
+	} {
+		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": tc.path}, Cwd: tc.cwd})
+		require.NoError(t, err)
+		if !tc.gated {
+			require.Empty(t, got.Reason, tc.path)
+			continue
+		}
+		require.Contains(t, got.Reason, want, tc.path)
+	}
+	state := State{}
+	for _, name := range []string{"coding-common", "harness-tuning"} {
+		got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://" + name}, Details: completeRead(), State: state})
+		require.NoError(t, err)
+		state = got.State
+	}
+	got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent/RULES.md"}, Cwd: omp, State: state})
 	require.NoError(t, err)
 	require.Empty(t, got.Reason)
 }

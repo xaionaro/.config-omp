@@ -2,7 +2,9 @@ package codingskill
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -28,6 +30,10 @@ const (
 	//
 	// Example: writing a Python file requires skillPython.
 	skillPython
+	// skillHarness identifies the prompt and instruction writing skill.
+	//
+	// Example: editing a SKILL.md under ~/.omp/agent requires skillHarness.
+	skillHarness
 )
 
 // name returns the host URI name of a supported skill.
@@ -41,6 +47,8 @@ func (skill Skill) name() string {
 		return "coding-go"
 	case skillPython:
 		return "coding-python"
+	case skillHarness:
+		return "harness-tuning"
 	default:
 		return ""
 	}
@@ -50,9 +58,10 @@ func (skill Skill) name() string {
 //
 // Example: Common is true after a complete coding-common read.
 type ReadSkills struct {
-	Common bool `json:"coding-common,omitempty"`
-	Go     bool `json:"coding-go,omitempty"`
-	Python bool `json:"coding-python,omitempty"`
+	Common  bool `json:"coding-common,omitempty"`
+	Go      bool `json:"coding-go,omitempty"`
+	Python  bool `json:"coding-python,omitempty"`
+	Harness bool `json:"harness-tuning,omitempty"`
 }
 
 // mark records a completed read of a supported skill.
@@ -66,6 +75,8 @@ func (reads *ReadSkills) mark(skill Skill) {
 		reads.Go = true
 	case skillPython:
 		reads.Python = true
+	case skillHarness:
+		reads.Harness = true
 	}
 }
 
@@ -80,6 +91,8 @@ func (reads ReadSkills) has(skill Skill) bool {
 		return reads.Go
 	case skillPython:
 		return reads.Python
+	case skillHarness:
+		return reads.Harness
 	default:
 		return false
 	}
@@ -122,6 +135,7 @@ type Request struct {
 	Input       map[string]any
 	Details     map[string]any
 	EditTargets []string
+	Cwd         string
 	IsError     bool
 	Branch      []map[string]any
 	State       State
@@ -162,7 +176,7 @@ func decide(req Request) (Response, error) {
 	}
 	paths := writeTargets(req)
 	for _, path := range paths {
-		targetSkill := skillForPath(path)
+		targetSkill := skillForPath(path, req.Cwd)
 		if targetSkill == skillUnknown {
 			continue
 		}
@@ -264,7 +278,7 @@ func verifiedSkill(
 		return skillUnknown
 	}
 	path = strings.TrimSuffix(strings.TrimPrefix(path, "skill://"), "/SKILL.md")
-	for _, name := range []Skill{skillCommon, skillGo, skillPython} {
+	for _, name := range []Skill{skillCommon, skillGo, skillPython, skillHarness} {
 		if path == name.name() {
 			return name
 		}
@@ -290,17 +304,67 @@ var codeExtensions = func() map[string]Skill {
 	return m
 }()
 
-// skillForPath maps a file extension to the most specific coding skill.
+// instructionExtensions lists extensions that can hold agent instructions.
 //
-// Example: a.go requires coding-go and coding-common; a.cpp requires only coding-common.
-func skillForPath(path string) Skill {
+// Example: SKILL.md and preset .tmpl files are instruction candidates.
+var instructionExtensions = []string{".md", ".tmpl"}
+
+// instructionFiles and instructionDirs name agent-root instruction locations.
+//
+// Example: agent/skills/x/references/y.md is an instruction file.
+var (
+	instructionFiles = []string{"RULES.md", "AGENTS.md", "eci-binding-contract.md"}
+	instructionDirs  = []string{"skills/", "agents/", "eci/tools/eci-presets/templates/"}
+)
+
+// skillForPath maps a write target to the most specific required skill.
+//
+// Example: a.go requires coding-go and coding-common; ~/.omp/agent/RULES.md requires harness-tuning and coding-common.
+func skillForPath(path, cwd string) Skill {
 	if match := patchHeader.FindStringSubmatch(path); len(match) == 2 {
 		path = match[1]
 	}
 	if strings.HasPrefix(path, "local://") || strings.HasPrefix(path, "vault://") {
 		path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), ":conflicts")
 	}
+	if isInstructionPath(path, cwd) {
+		return skillHarness
+	}
 	return codeExtensions[strings.ToLower(filepath.Ext(path))]
+}
+
+// isInstructionPath reports whether path names an instruction file under ~/.omp/agent.
+//
+// Example: with cwd ~/.omp, agent/skills/a/SKILL.md is an instruction path.
+func isInstructionPath(path, cwd string) bool {
+	if !slices.Contains(instructionExtensions, strings.ToLower(filepath.Ext(path))) {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		path = filepath.Join(home, rest)
+	} else if !filepath.IsAbs(path) {
+		if cwd == "" {
+			return false
+		}
+		path = filepath.Join(cwd, path)
+	}
+	rel, err := filepath.Rel(filepath.Join(home, ".omp", "agent"), filepath.Clean(path))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		return false
+	}
+	if slices.Contains(instructionFiles, rel) {
+		return true
+	}
+	for _, dir := range instructionDirs {
+		if strings.HasPrefix(rel, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 // asString obtains a JSON string without inventing a value for other types.
