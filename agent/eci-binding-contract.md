@@ -232,8 +232,8 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - At every `task` spawn for an ECI/ATE role: apply SKILL.md Model selection, including its spawn paths and refusal rule; name the router and the role's module paths (SKILL.md, Module routing) in the worker prompt.
 - Label every spawned/resumed agent. Immediately print/update the roster after spawn/resume/reassignment/scope change: `<role label>: <runtime name> [type]`.
 - Every wait/status/close update uses `<role label> (<runtime name> [type])`, never a bare nickname after labeling.
-- Wait only for evidence or agents needed by the next action when advancing ECI outcomes; independently verify available results and continue independent ready work. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
-- Outside ECI tasks, await every still-running in-scope subagent before using results; exclude closed/completed/outside agents and shell jobs/tests/background services.
+- When advancing ECI outcomes, do not use or advance on evidence or agent results before delivery; park meanwhile; independently verify available results and continue independent ready work. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
+- Outside ECI tasks, do not use or advance on a still-running in-scope subagent's results before delivery; park meanwhile; exclude closed/completed/outside agents and shell jobs/tests/background services.
 - Independently verify subagent claims before relying on them.
 - Subagents verify assigned work, fix in-scope blockers, and report recovery needs through ordinary handoff.
 

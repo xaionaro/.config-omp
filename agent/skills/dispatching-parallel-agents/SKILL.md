@@ -136,11 +136,7 @@ Return: root cause, changed files, verification run, and remaining risk.
 
 ### 4. Review and Integrate
 
-Wait for the spawned agents before integrating:
-
-```python
-wait
-```
+Park (end your turn) until the spawned agents' results auto-deliver; integrate only after delivery.
 
 When agents return:
 - Read each summary

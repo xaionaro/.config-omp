@@ -6,7 +6,7 @@ Skills may name tools from other harnesses. When you encounter these in a skill,
 |-----------------|----------------|
 | Legacy subagent dispatch | `task` (choose the most specific `agent`) |
 | Legacy parallel dispatches | Multiple `task` entries in one `tasks[]` batch |
-| Legacy subagent result | Auto-delivered results; `wait` only when blocked |
+| Legacy subagent result | Auto-delivered results; park |
 | Legacy fire-and-forget dispatch | `proc://<id>/kill` to cancel a running job |
 | `update_plan` (task tracking) | No dedicated tool; keep the plan in visible notes |
 | `Skill` tool (invoke a skill) | `read skill://<name>` |
