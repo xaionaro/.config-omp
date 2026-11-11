@@ -23,6 +23,7 @@ const fs = require('fs');
 const mode = process.argv[3];
 if (mode === 'describe') {
  if (fs.existsSync(${JSON.stringify(join(root, "fail-describe"))})) process.exit(1);
+ if (fs.existsSync(${JSON.stringify(join(root, "stale-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']})); process.exit(0); }
  process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read'],codeExtensions:['.go','.cpp']}));
 } else {
  let data=''; process.stdin.on('data',chunk=>data+=chunk); process.stdin.on('end',()=>{
@@ -96,6 +97,32 @@ test("fails open with one error when the engine description is unavailable", asy
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.cpp"}}, ctx)).toBeUndefined();
 		expect(errors).toHaveLength(1);
+	} finally {
+		console.error = original;
+		rmSync(marker);
+	}
+});
+
+test("warns once per session with the rebuild command when the helper description is stale", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const notices: [string, string][] = [];
+	const ctx = {cwd: root, agent: {id: "Main"}, ui: {notify: (message: string, type: string) => { notices.push([message, type]); }},
+		sessionManager: {getSessionId: () => "stale-describe", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const marker = join(root, "stale-describe");
+	writeFileSync(marker, "");
+	const original = console.error;
+	console.error = () => {};
+	try {
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.cpp"}}, ctx)).toBeUndefined();
+		expect(notices).toHaveLength(1);
+		expect(notices[0][0]).toContain('bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper');
+		expect(notices[0][1]).toBe("warning");
+		await handlers.session_start({}, ctx);
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(notices).toHaveLength(2);
 	} finally {
 		console.error = original;
 		rmSync(marker);
@@ -232,9 +259,9 @@ test("retries a failed startup description after the helper returns", async () =
 });
 
 test.each([
-	{ label: "silent stale helper", stderr: "", expected: 'build-native-binaries.sh" eci-hook-helper', forbidden: "invalid request" },
-	{ label: "reported engine error", stderr: "invalid request", expected: "invalid request", forbidden: "build-native-binaries.sh" },
-])("reports $label without misleading repair advice", async ({ stderr, expected, forbidden }) => {
+	{ label: "silent stale helper", stderr: "", expected: 'build-native-binaries.sh" eci-hook-helper' },
+	{ label: "reported engine error", stderr: "invalid request", expected: "invalid request" },
+])("reports $label with the rebuild command", async ({ stderr, expected }) => {
 	const engine = join(root, "eci", "bin", "eci-hook-helper");
 	renameSync(engine, `${engine}.held`);
 	writeFileSync(engine, `#!/bin/sh\nprintf '%s' '${stderr}' >&2\nexit 2\n`, { mode: 0o755 });
@@ -249,7 +276,7 @@ test.each([
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
 		expect(errors).toHaveLength(1);
 		expect(errors[0]).toContain(expected);
-		expect(errors[0]).not.toContain(forbidden);
+		expect(errors[0]).toContain('bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper');
 	} finally {
 		console.error = original;
 		rmSync(engine);

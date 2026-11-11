@@ -82,8 +82,8 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 	let ownAgent: string | undefined;
 	let generation = 0;
 	const reset = () => { generation++; agents.clear(); };
-	pi.on("session_start", (_event, ctx) => { reset(); ownAgent = ctx.agent?.id; });
-	pi.on("session_switch", reset);
+	pi.on("session_start", (_event, ctx) => { reset(); describeWarned = false; ownAgent = ctx.agent?.id; });
+	pi.on("session_switch", () => { reset(); describeWarned = false; });
 	pi.on("session_tree", reset);
 	pi.on("session_branch", reset);
 
@@ -138,8 +138,12 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 			try {
 				described = await describe();
 			} catch (error) {
-				if (!describeWarned) console.error(`Coding skill gate disabled: engine description unavailable (${String(error)}).`);
-				describeWarned = true;
+				if (!describeWarned) {
+					describeWarned = true;
+					const message = `Coding skill gate is not checking writes: the eci-hook-helper description is unavailable or stale (${String(error)}). Rebuild with: bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`;
+					console.error(message);
+					ctx.ui?.notify(message, "warning");
+				}
 				return undefined;
 			}
 			if (!touchesCode() || !described.callTools.includes(event.toolName)) return undefined;
