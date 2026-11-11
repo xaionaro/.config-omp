@@ -54,7 +54,7 @@ Workers explicitly deliver progress and final reports before returning. Preserve
 ## Job hold and tool errors
 
 - The published Orchestrator holds its Job until the Job closes under the closure predicate or the Supervisor tears it down. A report, an outcome ready for acceptance, or a stand-by does not release the Job. See [Counts and ownership](#counts-and-ownership).
-- When nothing is actionable, it parks under the the Parking rule in `~/.omp/agent/RULES.md`. On a tool error, it reads `proc://` to check its Workers and continues any actionable work, else parks. A tool error never releases the Job.
+- When nothing is actionable, it parks under the Parking rule in `~/.omp/agent/RULES.md`. On a tool error, it reads `proc://` to check its Workers and continues any actionable work, else parks. A tool error never releases the Job.
 - A cancel of this owner's own run, by the Supervisor or parent owner with `write proc://<id>/kill`, or by a user or a runtime stop, is not a tool error: it ends the turn, and `Operation aborted` from a tool is the cancel signature. If the turn continues after that result, treat it as a tool error under the bullet above. The Job stays open and this owner stays published. On revival after a cancel, it reads `proc://` for Workers that may still run, then acts, parks again, or reports the remaining state. Cancelling one of its Workers returns a normal result and does not end the turn. See [Counts and ownership](#counts-and-ownership).
 - Before parking, it sends its parent owner (for a root Job, the Supervisor) only Job state not yet reported, by `write agent://<parent owner>`. It stays idle as the still-published owner until revived. See [Authority and reporting](#authority-and-reporting).
 
