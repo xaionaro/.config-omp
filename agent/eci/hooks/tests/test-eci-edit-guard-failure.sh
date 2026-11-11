@@ -113,23 +113,36 @@ rm -- "$tmp/proof/fixture/eci_active"
 [ "$(run_injected_dispatcher)" = 1 ] && [ ! -s "$tmp/injected.out" ] && grep -Fq 'pretooluse-edit-dispatch failed at line' "$tmp/injected.err" || {
   printf '%s\n' 'marker-free dispatcher failure did not keep its status' >&2; cat "$tmp/injected.out" "$tmp/injected.err" >&2; exit 1
 }
-# A proof-state lib that fails to load denies everything except Edit or Write
-# of that exact lib, and the denial names the lib and a Bash diagnosis.
-broken="$tmp/broken-hooks"
-cp -a "$ROOT/hooks/." "$broken/"
-printf '%s\n' 'if then' >>"$broken/lib/eci-proof-state.sh"
-for spec in "allow:Write:$broken/lib/eci-proof-state.sh" "allow:Edit:$broken/lib/../lib/eci-proof-state.sh" \
-  "deny:Write:$tmp/repo/file.txt" "deny:Write:$broken/lib/eci-tmp.sh" "deny:apply_patch:$broken/lib/eci-proof-state.sh"; do
-  expected="${spec%%:*}" rest="${spec#*:}" tool="${spec#*:}"; tool="${tool%%:*}" path="${rest#*:}"
-  jq -cn --arg tool "$tool" --arg cwd "$tmp/repo" --arg path "$path" \
+# A proof-state load-chain lib that fails to load denies everything except
+# Edit or Write of exactly one lib in that chain, and the denial names the
+# libs and a Bash diagnosis.
+lib_case() {
+  local dir="$1" expected="$2" tool="$3" path="$4" cwd="${5:-$tmp/repo}"
+  jq -cn --arg tool "$tool" --arg cwd "$cwd" --arg path "$path" \
     '{tool_name:$tool,session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x",command:"*** Begin Patch\n*** Update File: \($path)\n*** End Patch"}}' |
-    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$broken/pretooluse-edit-dispatch.sh" >"$tmp/lib.out" 2>"$tmp/lib.err"
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$dir/pretooluse-edit-dispatch.sh" >"$tmp/lib.out" 2>"$tmp/lib.err"
   if [ "$expected" = allow ]; then
     [ ! -s "$tmp/lib.out" ] && grep -Fq 'ECI_HOOK_LIB_REPAIR_ALLOWED' "$tmp/lib.err"
   else
-    jq -e --arg lib "$broken/lib/eci-proof-state.sh" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains($lib) and contains("bash -n"))' "$tmp/lib.out" >/dev/null
-  fi || { printf 'broken lib case %s not %s\n' "$spec" "$expected" >&2; cat "$tmp/lib.out" "$tmp/lib.err" >&2; exit 1; }
-done
+    jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("bash -n") and contains("/lib/eci-portable.sh'\''"))' "$tmp/lib.out" >/dev/null
+  fi || { printf 'broken lib case %s %s %s not %s\n' "$dir" "$tool" "$path" "$expected" >&2; cat "$tmp/lib.out" "$tmp/lib.err" >&2; exit 1; }
+}
+broken="$tmp/broken-hooks"
+cp -a "$ROOT/hooks/." "$broken/"
+printf '%s\n' 'if then' >>"$broken/lib/eci-proof-state.sh"
+lib_case "$broken" allow Write "$broken/lib/eci-proof-state.sh"
+lib_case "$broken" allow Edit "$broken/lib/../lib/eci-proof-state.sh"
+lib_case "$broken" allow Edit lib/eci-proof-state.sh "$broken"
+lib_case "$broken" deny Write "$tmp/repo/file.txt"
+lib_case "$broken" deny Write "$broken/lib/eci-tmp.sh"
+lib_case "$broken" deny apply_patch "$broken/lib/eci-proof-state.sh"
+lib_case "$broken" deny Edit lib/eci-proof-state.sh "$broken
+$tmp/repo"
+portable="$tmp/portable-hooks"
+cp -a "$ROOT/hooks/." "$portable/"
+printf '%s\n' 'if then' >>"$portable/lib/eci-portable.sh"
+lib_case "$portable" allow Write "$portable/lib/eci-portable.sh"
+lib_case "$portable" deny Write "$tmp/repo/file.txt"
 for guard in validate-edit-write eci-active-gate validate-apply-patch; do
   ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" bash "$broken/$guard.sh" </dev/null 2>/dev/null |
     jq -e '.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_HOOK_LIB_UNAVAILABLE]") and contains("lib/eci-proof-state.sh") and contains("bash -n")' >/dev/null || {
@@ -137,19 +150,25 @@ for guard in validate-edit-write eci-active-gate validate-apply-patch; do
   }
 done
 # A guard lib-load denial is a guard failure: under a marker the broken shared
-# lib is repairable through Write, and any other target stays denied.
+# lib is repairable through Write and any other target stays denied; without a
+# marker ordinary targets stay editable and protected targets stay denied.
 diag="$tmp/diag-hooks"
 cp -a "$ROOT/hooks/." "$diag/"
 printf '%s\n' 'if then' >>"$diag/lib/eci-diagnostic.sh"
-printf 'session_id: fixture\ncwd: %s\n' "$tmp/repo" >"$tmp/proof/fixture/eci_active"
-for spec in "allow:$diag/lib/eci-diagnostic.sh" "deny:$tmp/repo/file.txt"; do
-  expected="${spec%%:*}" path="${spec#*:}"
+for spec in "marker:allow:$diag/lib/eci-diagnostic.sh" "marker:deny:$tmp/repo/file.txt" \
+  "none:allow:$tmp/repo/file.txt" "none:deny:$tmp/proof/other/ordinary.txt"; do
+  marker="${spec%%:*}" rest="${spec#*:}"; expected="${rest%%:*}" path="${rest#*:}"
+  if [ "$marker" = marker ]; then
+    printf 'session_id: fixture\ncwd: %s\n' "$tmp/repo" >"$tmp/proof/fixture/eci_active"
+  else
+    rm -f -- "$tmp/proof/fixture/eci_active"
+  fi
   jq -cn --arg cwd "$tmp/repo" --arg path "$path" '{tool_name:"Write",session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x"}}' |
     ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$diag/pretooluse-edit-dispatch.sh" >"$tmp/diag.out" 2>"$tmp/diag.err"
   if [ "$expected" = allow ]; then
     [ ! -s "$tmp/diag.out" ] && grep -Fxq 'ECI_EDIT_GATE_FAILED_ALLOWED validate-edit-write.sh' "$tmp/diag.err"
   else
-    jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_EDIT_GATE_FAILED]") and contains("bash -n"))' "$tmp/diag.out" >/dev/null
-  fi || { printf 'broken diagnostic lib case %s not %s\n' "$path" "$expected" >&2; cat "$tmp/diag.out" "$tmp/diag.err" >&2; exit 1; }
+    jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_EDIT_GATE_FAILED]") and contains("bash -n") and contains("lib/eci-diagnostic.sh"))' "$tmp/diag.out" >/dev/null
+  fi || { printf 'broken diagnostic lib case %s not %s\n' "$spec" "$expected" >&2; cat "$tmp/diag.out" "$tmp/diag.err" >&2; exit 1; }
 done
 printf '%s\n' 'edit guard failure assertions: PASS'

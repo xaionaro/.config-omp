@@ -16,24 +16,40 @@ dispatch_write_deny() {
 # ECI marker check or on the protected-target classifier, both from the
 # proof-state lib, so the lib must load and define the marker check first; if
 # it cannot, the gate cannot decide and denies.
-# The one exception is an Edit or Write of exactly that lib, so the same actor
-# can repair it; every other call is denied with a Bash diagnosis route.
+# The one exception is an Edit or Write of exactly one library in the
+# proof-state load chain, so the same actor can repair it; every other call is
+# denied with a Bash diagnosis route.
 if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker_active_or_unknown >/dev/null 2>&1; then
-  dispatch_lib="$hook_dir/lib/eci-proof-state.sh"
+  dispatch_libs=()
+  for dispatch_lib in eci-proof-state eci-portable eci-file-lock eci-native-binary; do
+    dispatch_libs+=("$hook_dir/lib/$dispatch_lib.sh")
+  done
+  # Fields containing a newline are rejected so the two reads stay aligned.
   { IFS= read -r dispatch_lib_cwd && IFS= read -r dispatch_lib_target; } < <(
-    jq -r 'select(.tool_name == "Write" or .tool_name == "Edit") | (.cwd // ""), (.tool_input.file_path // "")' 2>/dev/null) || true
+    jq -r 'select(.tool_name == "Write" or .tool_name == "Edit")
+      | [(.cwd // ""), (.tool_input.file_path // "")]
+      | select(all(.[]; type == "string" and (contains("\n") | not)))
+      | .[]' 2>/dev/null) || dispatch_lib_target=""
   case "${dispatch_lib_target:-}" in
     /*) ;;
     ?*) dispatch_lib_target="${dispatch_lib_cwd:-$PWD}/$dispatch_lib_target" ;;
   esac
-  if [ -n "${dispatch_lib_target:-}" ] && [ ! -L "$dispatch_lib_target" ] &&
-    [ "$(cd -- "${dispatch_lib_target%/*}" 2>/dev/null && pwd -P)/${dispatch_lib_target##*/}" = "$dispatch_lib" ]; then
-    printf 'ECI_HOOK_LIB_REPAIR_ALLOWED %s\n' "$dispatch_lib" >&2
-    exit 0
+  if [ -n "${dispatch_lib_target:-}" ] && [ ! -L "$dispatch_lib_target" ]; then
+    dispatch_lib_target="$(cd -- "${dispatch_lib_target%/*}" 2>/dev/null && pwd -P)/${dispatch_lib_target##*/}"
+    for dispatch_lib in "${dispatch_libs[@]}"; do
+      if [ "$dispatch_lib_target" = "$dispatch_lib" ]; then
+        printf 'ECI_HOOK_LIB_REPAIR_ALLOWED %s\n' "$dispatch_lib" >&2
+        exit 0
+      fi
+    done
   fi
-  dispatch_lib_reason="[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: $dispatch_lib failed to load or does not define eci_marker_active_or_unknown; diagnose it using Bash (bash -n '$dispatch_lib'; git -C '$hook_dir' diff -- '$dispatch_lib'), then repair it with Bash or an Edit or Write that targets only that file, and retry"
+  dispatch_lib_reason="[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh or a library it sources failed to load, or eci_marker_active_or_unknown is undefined; diagnose using Bash ("
+  for dispatch_lib in "${dispatch_libs[@]}"; do
+    dispatch_lib_reason="${dispatch_lib_reason}bash -n '$dispatch_lib'; "
+  done
+  dispatch_lib_reason="${dispatch_lib_reason}git -C '$hook_dir' diff -- lib), then repair the broken file with Bash or an Edit or Write that targets only that file, and retry"
   dispatch_write_deny "$(jq -cn --arg reason "$dispatch_lib_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}' 2>/dev/null ||
-    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh failed to load; diagnose it using Bash (bash -n), then repair it and retry"}}')"
+    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh or a library it sources failed to load; diagnose them using Bash (bash -n), then repair and retry"}}')"
   exit 0
 fi
 # Report dispatcher failures on stderr.  omp blocks any non-zero exit, but
@@ -301,9 +317,8 @@ for index in "${!gates[@]}"; do
   if [ "$index" != "$reminder_index" ] && [ "${statuses[$index]:-1}" -eq 0 ] &&
     [ -s "$tmp_dir/output-$index" ] &&
     dispatch_candidate_is_valid "$tmp_dir/output-$index" &&
-    jq -r '.hookSpecificOutput.permissionDecisionReason // empty' "$tmp_dir/output-$index" >"$tmp_dir/lib-reason-$index" &&
-    grep -q '^\[ECI_HOOK_LIB_UNAVAILABLE\]' "$tmp_dir/lib-reason-$index"; then
-    mv -- "$tmp_dir/lib-reason-$index" "$tmp_dir/error-$index"
+    jq -e '.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_HOOK_LIB_UNAVAILABLE]")' "$tmp_dir/output-$index" >/dev/null 2>&1; then
+    jq -r '.hookSpecificOutput.permissionDecisionReason' "$tmp_dir/output-$index" >"$tmp_dir/error-$index"
     failed_guards+=("$index")
     [ -n "$gate_failed" ] || gate_failed="$index"
     continue
@@ -340,7 +355,7 @@ elif [ -n "$gate_failed" ]; then
   dispatch_protected_target || target_status=$?
   if eci_marker_active_or_unknown &&
     ! { [ "$target_status" = 1 ] && dispatch_targets_failed_guard_source; }; then
-    failure_reason="$failure_reason; inspect the named hook using Bash, or repair it through an ordinary Edit or Write that targets only its source, then retry"
+    failure_reason="$failure_reason; inspect the named hook using Bash, or repair it through an ordinary Edit or Write whose only targets are the failed guard's source or lib/eci-proof-state.sh, lib/eci-tmp.sh or lib/eci-diagnostic.sh in $hook_dir, then retry"
     jq -cn --arg reason "$failure_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
   elif [ "$target_status" = 0 ]; then
     failure_reason="$failure_reason; inspect and repair $hook_dir/${gates[$gate_failed]##*/} using an ordinary Edit or Write, then retry"
