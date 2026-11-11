@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,7 +155,7 @@ type TelemetryStore struct {
 	allowLogicalAlias bool
 }
 
-// ParseDenial reduces a hook denial to closed diagnostic identities.
+// ParseDenial extracts the closed code/operation identities and the reason text from a hook denial.
 //
 // Example: unknown code and operation values become ECI_OTHER_DENIAL and other.
 func ParseDenial(raw []byte) (Denial, error) {
@@ -905,14 +906,18 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 		ConfigState: string(context.ConfigState),
 		SessionID:   boundDiagnosticText(context.SessionID, MaxEventSessionIDBytes),
 		CWD:         boundDiagnosticText(context.CWD, MaxEventCWDBytes),
-		Command:     boundDiagnosticText(context.Command, MaxEventCommandBytes),
-		Reason:      boundDiagnosticText(denial.Reason, MaxEventReasonBytes),
+		Command:     boundDiagnosticText(maskSecrets(context.Command), MaxEventCommandBytes),
+		Reason:      boundDiagnosticText(maskSecrets(denial.Reason), MaxEventReasonBytes),
 	}
-	record, err := json.Marshal(event)
-	if err != nil {
+	// Commands are full of `<`, `>`, and `&`; HTML escaping would make the log
+	// unreadable and waste the bounded field budgets, and the log is never HTML.
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(event); err != nil {
 		return &TelemetryReductionError{Reason: "telemetry event encoding rejected", Err: err}
 	}
-	record = append(record, '\n')
+	record := encoded.Bytes()
 	if len(record) > MaxEventBytes {
 		return &TelemetryReductionError{Reason: "telemetry event exceeds the bounded record size"}
 	}
@@ -922,14 +927,46 @@ func (store TelemetryStore) AppendEvent(denial Denial, context EventContext) err
 	return location.root.validate()
 }
 
+// secretMaskRule replaces one family of likely credential values with ***.
+//
+// Example: the env-assignment rule turns `GH_TOKEN=x` into `GH_TOKEN=***`.
+type secretMaskRule struct {
+	pattern     *regexp.Regexp
+	replacement string
+}
+
+// secretMaskRules lists credential shapes masked in stored command and reason text,
+// applied in order: Authorization headers before bare Bearer tokens.
+//
+// Example: `--password hunter2` matches the space-separated flag rule.
+var secretMaskRules = []secretMaskRule{
+	{regexp.MustCompile(`(?i)\b([a-z0-9_]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)'"]*)`), "${1}=***"},
+	{regexp.MustCompile(`(?i)(authorization:\s*)(?:(?:bearer|basic)\s+)?[^\s'"]+`), "${1}***"},
+	{regexp.MustCompile(`(?i)\b(bearer\s+)[^\s'"]+`), "${1}***"},
+	{regexp.MustCompile(`(?i)(--[a-z0-9-]*(?:token|secret|password|pass|key|auth|credential)[a-z0-9-]*)(\s+)("[^"]*"|'[^']*'|[^\s;&|)'"-][^\s;&|)'"]*)`), "${1}${2}***"},
+}
+
+// maskSecrets replaces likely credentials in diagnostic text with ***: values of
+// env assignments whose name names a credential, Authorization/Bearer header
+// values, and credential-named `--flag v` values.
+//
+// Example: maskSecrets("GITHUB_TOKEN=abc git push") is "GITHUB_TOKEN=*** git push".
+func maskSecrets(text string) string {
+	for _, rule := range secretMaskRules {
+		text = rule.pattern.ReplaceAllString(text, rule.replacement)
+	}
+	return text
+}
+
 // boundDiagnosticText cuts text so its JSON string encoding stays within limit bytes.
-// The cut lands on a rune boundary and appends TruncationMarker; invalid UTF-8
-// becomes U+FFFD exactly as encoding/json would render it.
+// Invalid UTF-8 first becomes U+FFFD so the measured text is exactly what is
+// encoded; the cut lands on a rune boundary and appends TruncationMarker.
 //
 // Example: a 10 KiB command becomes its leading ~1 KiB followed by "…[truncated]".
 func boundDiagnosticText(text string, limit int) string {
+	text = strings.ToValidUTF8(text, "\uFFFD")
 	if jsonStringBytes(text) <= limit {
-		return strings.ToValidUTF8(text, "\uFFFD")
+		return text
 	}
 	budget := limit - jsonStringBytes(TruncationMarker)
 	var kept strings.Builder
@@ -956,14 +993,15 @@ func jsonStringBytes(text string) int {
 	return total
 }
 
-// jsonRuneBytes returns the bytes encoding/json.Marshal emits for one decoded rune.
+// jsonRuneBytes returns the bytes a json.Encoder with SetEscapeHTML(false) emits
+// for one rune of valid UTF-8 text.
 //
-// Example: '<' costs 6 bytes (\u003c) because Marshal escapes HTML characters.
+// Example: '\x01' costs 6 bytes (\u0001) and '<' costs 1.
 func jsonRuneBytes(r rune) int {
 	switch {
 	case r == '"' || r == '\\' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t':
 		return 2
-	case r < 0x20 || r == '<' || r == '>' || r == '&' || r == '\u2028' || r == '\u2029' || r == utf8.RuneError:
+	case r < 0x20 || r == '\u2028' || r == '\u2029':
 		return 6
 	default:
 		return utf8.RuneLen(r)

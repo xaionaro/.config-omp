@@ -14,12 +14,11 @@ import (
 	"unicode/utf8"
 )
 
-// TestParseDenialReducesToClosedFields checks that the closed identity fields never carry raw diagnostics.
+// TestParseDenialReducesToClosedFields checks that unregistered identities collapse to the closed fallbacks.
 //
 // Example: an unknown denial code and operation become the two closed fallback values.
 func TestParseDenialReducesToClosedFields(t *testing.T) {
-	secret := "OPENAI_API_KEY=must-not-persist"
-	raw := []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_UNREGISTERED] ECI gate denied (phase=PreToolUse, operation=unregistered, token=` + secret + `); reason: sample"}}`)
+	raw := []byte(`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_UNREGISTERED] ECI gate denied (phase=PreToolUse, operation=unregistered, token=opaque); reason: sample"}}`)
 
 	denial, err := ParseDenial(raw)
 	if err != nil {
@@ -30,9 +29,6 @@ func TestParseDenialReducesToClosedFields(t *testing.T) {
 	}
 	if denial.Operation != TelemetryOperationOther {
 		t.Fatalf("operation = %q, want %q", denial.Operation, TelemetryOperationOther)
-	}
-	if bytes.Contains(denial.TelemetryBytes(), []byte(secret)) {
-		t.Fatal("reduced denial retained the raw secret")
 	}
 }
 
@@ -256,8 +252,8 @@ func TestTelemetryStoreAppendsDiagnosticEvent(t *testing.T) {
 	if event["command"] != "git add -A" || event["cwd"] != "/tmp/repo" || event["session_id"] != "sess-1" {
 		t.Fatalf("event diagnostic context = %#v", event)
 	}
-	if reason, _ := event["reason"].(string); !strings.Contains(reason, "private-token") {
-		t.Fatalf("event reason = %#v, want denial reason", event["reason"])
+	if reason, _ := event["reason"].(string); !strings.Contains(reason, "[ECI_SAMPLE_DENIED]") || !strings.Contains(reason, "token=***") || strings.Contains(reason, "private-token") {
+		t.Fatalf("event reason = %#v, want masked denial reason", event["reason"])
 	}
 
 	info, err := os.Lstat(path)
@@ -275,7 +271,7 @@ func TestTelemetryStoreAppendsDiagnosticEvent(t *testing.T) {
 func TestTelemetryStoreBoundsDiagnosticFields(t *testing.T) {
 	store := newTestTelemetryStore(t)
 	hostile := strings.Repeat("\x01\"<\\é\u2028", 2_000)
-	denial, err := ParseDenial(sampleTelemetryDenial(strings.Repeat("r", 8_000)))
+	denial, err := ParseDenial(sampleTelemetryDenial("x " + strings.Repeat("r", 8_000)))
 	if err != nil {
 		t.Fatalf("ParseDenial(): %v", err)
 	}
@@ -296,18 +292,103 @@ func TestTelemetryStoreBoundsDiagnosticFields(t *testing.T) {
 	if len(records) > MaxEventBytes || bytes.Count(records, []byte("\n")) != 1 {
 		t.Fatalf("record size=%d lines=%d, want one bounded line", len(records), bytes.Count(records, []byte("\n")))
 	}
-	var event map[string]string
-	if err := json.Unmarshal(bytes.TrimSpace(records), &event); err != nil {
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal(bytes.TrimSpace(records), &encoded); err != nil {
 		t.Fatalf("decode telemetry: %v", err)
 	}
-	for _, key := range []string{"command", "cwd", "session_id", "reason"} {
-		value := event[key]
+	limits := map[string]int{
+		"command": MaxEventCommandBytes, "cwd": MaxEventCWDBytes,
+		"session_id": MaxEventSessionIDBytes, "reason": MaxEventReasonBytes,
+	}
+	for key, limit := range limits {
+		var value string
+		if err := json.Unmarshal(encoded[key], &value); err != nil {
+			t.Fatalf("decode %s: %v", key, err)
+		}
+		if body := len(encoded[key]) - 2; body > limit {
+			t.Fatalf("%s encoded body = %d bytes, want <= %d", key, body, limit)
+		}
 		if !strings.HasSuffix(value, TruncationMarker) || !utf8.ValidString(value) {
 			t.Fatalf("%s = %q, want valid UTF-8 ending in %q", key, value, TruncationMarker)
 		}
 	}
-	if !strings.HasPrefix(event["command"], "git add -A ") || !strings.HasPrefix(event["cwd"], "/tmp/") {
-		t.Fatalf("truncated fields lost their prefix: %#v", event)
+	if !bytes.Contains(encoded["command"], []byte(`git add -A \u0001\"<\\é`)) || !bytes.HasPrefix(encoded["cwd"], []byte(`"/tmp/`)) {
+		t.Fatalf("truncated fields lost their prefix or HTML-escaped: command=%s", encoded["command"])
+	}
+}
+
+// TestBoundDiagnosticTextLimits checks exact-limit retention, one-over truncation, and invalid UTF-8.
+//
+// Example: a value whose encoding is exactly the limit is kept verbatim.
+func TestBoundDiagnosticTextLimits(t *testing.T) {
+	exact := strings.Repeat("a<", 10) + "\n"
+	limit := 22
+	if got := boundDiagnosticText(exact, limit); got != exact {
+		t.Fatalf("exact-limit text = %q, want unchanged", got)
+	}
+	over := exact + "b"
+	got := boundDiagnosticText(over, limit)
+	if !strings.HasSuffix(got, TruncationMarker) || jsonStringBytes(got) > limit {
+		t.Fatalf("one-over text = %q (%d bytes), want truncated within %d", got, jsonStringBytes(got), limit)
+	}
+	for _, text := range []string{"a\xffb", "\xff\xfe\xfd", "ok\x00\u2028<>&\"\\\t"} {
+		bounded := boundDiagnosticText(text, 64)
+		if !utf8.ValidString(bounded) {
+			t.Fatalf("bounded %q is invalid UTF-8", bounded)
+		}
+		var buffer bytes.Buffer
+		encoder := json.NewEncoder(&buffer)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(bounded); err != nil {
+			t.Fatal(err)
+		}
+		if want := buffer.Len() - 3; jsonStringBytes(bounded) != want {
+			t.Fatalf("jsonStringBytes(%q) = %d, encoder emits %d", bounded, jsonStringBytes(bounded), want)
+		}
+	}
+}
+
+// TestMaskSecrets checks that likely credentials in command and reason text become ***.
+//
+// Example: `GITHUB_TOKEN=abc git push` is stored as `GITHUB_TOKEN=*** git push`.
+func TestMaskSecrets(t *testing.T) {
+	for _, test := range []struct{ in, want string }{
+		{"git add -A", "git add -A"},
+		{"GITHUB_TOKEN=abc git push", "GITHUB_TOKEN=*** git push"},
+		{"export db_password='p w' && run", "export db_password=*** && run"},
+		{`API_KEY="x y" AUTH_HEADER=z PATH=/bin cmd`, "API_KEY=*** AUTH_HEADER=*** PATH=/bin cmd"},
+		{"aws_secret_access_key=s3 credential_file=c pass=p", "aws_secret_access_key=*** credential_file=*** pass=***"},
+		{`curl -H "Authorization: Bearer abc.def" url`, `curl -H "Authorization: ***" url`},
+		{"curl -H 'authorization: Basic Zm9v' url", "curl -H 'authorization: ***' url"},
+		{"Bearer abc123 trailing", "Bearer *** trailing"},
+		{"tool --token=abc --password hunter2 --api-key k --verbose", "tool --token=*** --password *** --api-key *** --verbose"},
+		{"tool --client-secret=s --auth-token t", "tool --client-secret=*** --auth-token ***"},
+		{"MONKEY=banana", "MONKEY=***"},
+	} {
+		if got := maskSecrets(test.in); got != test.want {
+			t.Errorf("maskSecrets(%q) = %q, want %q", test.in, got, test.want)
+		}
+	}
+}
+
+// TestTelemetryStoreMasksSecrets checks AppendEvent masks command and reason before writing.
+//
+// Example: a denied `TOKEN=x git push` never persists x.
+func TestTelemetryStoreMasksSecrets(t *testing.T) {
+	store := newTestTelemetryStore(t)
+	denial, err := ParseDenial(sampleTelemetryDenial("--password=leak1"))
+	if err != nil {
+		t.Fatalf("ParseDenial(): %v", err)
+	}
+	if err := store.AppendEvent(denial, EventContext{ConfigState: ConfigStateMissing, Command: "GH_TOKEN=leak2 git push"}); err != nil {
+		t.Fatalf("AppendEvent(): %v", err)
+	}
+	records, err := os.ReadFile(filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName))
+	if err != nil {
+		t.Fatalf("read telemetry: %v", err)
+	}
+	if bytes.Contains(records, []byte("leak1")) || bytes.Contains(records, []byte("leak2")) || !bytes.Contains(records, []byte("GH_TOKEN=***")) {
+		t.Fatalf("record not masked: %s", records)
 	}
 }
 
@@ -343,8 +424,14 @@ func TestTelemetryStoreRotatesOnlyFixedGenerations(t *testing.T) {
 		t.Fatalf("sentinel changed: %q err=%v", got, err)
 	}
 	rotated := filepath.Join(store.Root, TelemetryParentDirectoryName, TelemetryDirectoryName, TelemetryFileName+".1")
-	if _, err := os.Stat(rotated); err != nil {
-		t.Fatalf("missing first rotated generation %s: %v", rotated, err)
+	for _, path := range []string{rotated, logPath} {
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if info.Mode().Perm() != 0o600 || !info.Mode().IsRegular() {
+			t.Fatalf("%s mode = %04o regular=%v, want 0600 regular", path, info.Mode().Perm(), info.Mode().IsRegular())
+		}
 	}
 	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched\n" {
 		t.Fatalf("fifth generation sentinel changed: %q err=%v", got, err)

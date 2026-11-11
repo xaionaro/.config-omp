@@ -235,13 +235,6 @@ type Denial struct {
 	Reason    string
 }
 
-// TelemetryBytes returns the stable reduced representation used by redaction tests.
-//
-// Example: the returned bytes contain only closed diagnostic fields.
-func (denial Denial) TelemetryBytes() []byte {
-	return []byte(string(denial.Code) + "\n" + string(denial.Operation) + "\n")
-}
-
 // EventContext binds a denial to its provider, ECI ownership state, and command context.
 //
 // Example: EventContext{Provider: ProviderOmp, Command: "git add -A"} records worker provenance.
