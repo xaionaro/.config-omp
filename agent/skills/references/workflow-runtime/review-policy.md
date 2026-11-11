@@ -64,7 +64,7 @@ Required E2E uses the shortest faithful real path that proves the original crite
 
 After all required reports, pre-route findings. At least one substantive `now` REJECT/CONDITIONAL, or design/API-uncertain E2E failure, becomes one design-revision issue batch for re-exploration/critique. A trivial `now` REJECT/CONDITIONAL or trivial E2E failure returns in one implementer repair batch. A clean iteration gate has no remaining `now` issue and all required same-run focused proof; final acceptance also needs the final E2E pair when triggered. A post-ECI observation/follow-up for an unadmitted separate outcome, valid defer, and ignored contradiction are not clean-pass defects. Admitted child outcomes retain independent acceptance under the Job contract.
 
-The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria. Never patch substantive gate issues one by one without the design loop. Review caps and loop-breaker/BRP escalation remain owned by the outer workflow.
+The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria from the original requirements and findings. Never patch substantive gate issues one by one without the design loop. Review caps and loop-breaker/BRP escalation remain owned by the outer workflow.
 
 ## Independent-review discipline
 
