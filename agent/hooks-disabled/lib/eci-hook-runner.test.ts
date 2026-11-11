@@ -170,7 +170,7 @@ test("native denial guidance exposes only recognized binary reasons", () => {
 		["not an allowed artifact name or HOME is not absolute", "set HOME to the account's absolute home directory"],
 		["bin directory is missing", "build-native-binaries.sh"],
 		["is not executable", "chmod u+x"],
-		["cannot be hashed", "install shasum or sha256sum"],
+		["cannot be hashed", "install shasum on PATH"],
 	]) {
 		const message = bashPreToolVerdict(run(reason))?.reason ?? "";
 		expect(message).toContain(reason);

@@ -385,10 +385,9 @@ const ownershipRepairStep = " Repair: rebuilding does not fix this. Make $HOME/.
 const nativeRepairSteps: Readonly<Record<string, string>> = {
 	"host CPU type is not supported": " Repair: none; the native gate does not support this host's CPU type, so report the host as unsupported.",
 	"not an allowed artifact name or HOME is not absolute": " Repair: set HOME to the account's absolute home directory and retry.",
-	"is not an allowed artifact name": " Repair: set HOME to the account's absolute home directory and retry.",
 	"bin directory is missing": " Repair: rebuild with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry.",
 	"is not executable": " Repair: run chmod u+x on the named binary in $HOME/.omp/agent/eci/bin and retry.",
-	"cannot be hashed": " Repair: install shasum or sha256sum on PATH and retry.",
+	"cannot be hashed": " Repair: install shasum on PATH (the verifier runs shasum -a 256) and retry.",
 };
 
 /** Blocks an unchecked Bash call without exposing callback data; names the same-actor repair step. */
