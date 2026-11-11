@@ -41,3 +41,22 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 	require.False(t, verdict.Block)
 }
+
+// TestDescribeListsCodeExtensions keeps the TS prefilter on the Go extension map.
+//
+// Example: describe lists ".cpp" because skillForPath maps it to coding-common.
+func TestDescribeListsCodeExtensions(t *testing.T) {
+	var output bytes.Buffer
+	require.NoError(t, Run([]string{"describe"}, nil, &output))
+	var described struct {
+		CodeExtensions []string `json:"codeExtensions"`
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &described))
+	require.NotEmpty(t, codeExtensions)
+	keys := make([]string, 0, len(codeExtensions))
+	for ext := range codeExtensions {
+		keys = append(keys, ext)
+	}
+	require.ElementsMatch(t, keys, described.CodeExtensions)
+	require.Contains(t, described.CodeExtensions, ".cpp")
+}

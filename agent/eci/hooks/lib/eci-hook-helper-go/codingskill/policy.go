@@ -272,6 +272,24 @@ func verifiedSkill(
 	return skillUnknown
 }
 
+// codeExtensions maps lowercase source-code extensions to their most specific coding skill.
+//
+// Example: ".go" needs coding-go plus coding-common; ".cpp" needs only coding-common.
+var codeExtensions = func() map[string]Skill {
+	m := map[string]Skill{".go": skillGo, ".py": skillPython}
+	for _, ext := range []string{
+		".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
+		".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+		".rs", ".java", ".kt", ".kts", ".swift", ".rb", ".php", ".cs",
+		".sh", ".bash", ".zsh", ".lua", ".scala", ".m", ".mm", ".dart",
+		".pl", ".pm", ".r", ".jl", ".zig", ".hs", ".ex", ".exs", ".erl",
+		".clj", ".fs", ".ml", ".vue", ".svelte", ".sql", ".proto", ".qml",
+	} {
+		m[ext] = skillCommon
+	}
+	return m
+}()
+
 // skillForPath maps a file extension to the most specific coding skill.
 //
 // Example: a.go requires coding-go and coding-common; a.cpp requires only coding-common.
@@ -282,21 +300,7 @@ func skillForPath(path string) Skill {
 	if strings.HasPrefix(path, "local://") || strings.HasPrefix(path, "vault://") {
 		path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), ":conflicts")
 	}
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".go":
-		return skillGo
-	case ".py":
-		return skillPython
-	case ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
-		".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
-		".rs", ".java", ".kt", ".kts", ".swift", ".rb", ".php", ".cs",
-		".sh", ".bash", ".zsh", ".lua", ".scala", ".m", ".mm", ".dart",
-		".pl", ".pm", ".r", ".jl", ".zig", ".hs", ".ex", ".exs", ".erl",
-		".clj", ".fs", ".ml", ".vue", ".svelte", ".sql", ".proto", ".qml":
-		return skillCommon
-	default:
-		return skillUnknown
-	}
+	return codeExtensions[strings.ToLower(filepath.Ext(path))]
 }
 
 // asString obtains a JSON string without inventing a value for other types.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 )
 
 // cliEvent carries the host data required to evaluate a single tool event.
@@ -43,9 +44,15 @@ func Run(
 	}
 	switch args[0] {
 	case "describe":
+		extensions := make([]string, 0, len(codeExtensions))
+		for ext := range codeExtensions {
+			extensions = append(extensions, ext)
+		}
+		sort.Strings(extensions)
 		return json.NewEncoder(output).Encode(map[string]any{
-			"callTools":   []string{"write", "edit"},
-			"resultTools": []string{"read"},
+			"callTools":      []string{"write", "edit"},
+			"resultTools":    []string{"read"},
+			"codeExtensions": extensions,
 		})
 	case "reduce", "check":
 	default:

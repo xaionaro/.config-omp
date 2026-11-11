@@ -22,7 +22,8 @@ beforeAll(async () => {
 const fs = require('fs');
 const mode = process.argv[3];
 if (mode === 'describe') {
- process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']}));
+ if (fs.existsSync(${JSON.stringify(join(root, "fail-describe"))})) process.exit(1);
+ process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read'],codeExtensions:['.go','.cpp']}));
 } else {
  let data=''; process.stdin.on('data',chunk=>data+=chunk); process.stdin.on('end',()=>{
   const req=JSON.parse(data); fs.appendFileSync(${JSON.stringify(join(root, "requests.jsonl"))},JSON.stringify({mode,...req})+'\\n');
@@ -79,6 +80,26 @@ test("consults the helper for recognized code files and skips non-code files", a
 	expect(checks().at(-1)).toContain("a.cpp");
 	expect(await handlers.tool_call({toolName: "write", input: {path: "a.md"}}, ctx)).toBeUndefined();
 	expect(checks()).toHaveLength(before + 1);
+});
+
+test("fails open with one error when the engine description is unavailable", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "no-describe", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const marker = join(root, "fail-describe");
+	writeFileSync(marker, "");
+	const errors: unknown[] = [];
+	const original = console.error;
+	console.error = (...args: unknown[]) => { errors.push(args); };
+	try {
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.cpp"}}, ctx)).toBeUndefined();
+		expect(errors).toHaveLength(1);
+	} finally {
+		console.error = original;
+		rmSync(marker);
+	}
 });
 
 test("does not hydrate an advisor from its parent's transcript", async () => {
@@ -200,7 +221,7 @@ test("retries a failed startup description after the helper returns", async () =
 		gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
 		const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "retry", getBranch: () => []}};
 		await handlers.session_start({}, ctx);
-		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toMatchObject({block: true});
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
 		renameSync(`${engine}.held`, engine);
 		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-common"}, isError: false}, ctx);
 		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-go"}, isError: false}, ctx);
@@ -217,16 +238,20 @@ test.each([
 	const engine = join(root, "eci", "bin", "eci-hook-helper");
 	renameSync(engine, `${engine}.held`);
 	writeFileSync(engine, `#!/bin/sh\nprintf '%s' '${stderr}' >&2\nexit 2\n`, { mode: 0o755 });
+	const errors: string[] = [];
+	const original = console.error;
+	console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
 	try {
 		const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
 		gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
 		const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "diagnostic", getBranch: () => []}};
 		await handlers.session_start({}, ctx);
-		const verdict = await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx) as { block: boolean; reason: string };
-		expect(verdict.block).toBe(true);
-		expect(verdict.reason).toContain(expected);
-		expect(verdict.reason).not.toContain(forbidden);
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toContain(expected);
+		expect(errors[0]).not.toContain(forbidden);
 	} finally {
+		console.error = original;
 		rmSync(engine);
 		renameSync(`${engine}.held`, engine);
 	}
