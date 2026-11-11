@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +9,8 @@ let helper: string;
 const originalHome = process.env.HOME;
 const originalError = console.error;
 let errors: string[] = [];
-type Handler = (event: unknown) => Promise<unknown>;
+type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
+type Instance = { handlers: Record<string, Handler>; sent: unknown[][]; notices: unknown[][]; ctx: unknown };
 
 function writeHelper(body: string): void {
 	writeFileSync(helper, `#!/usr/bin/env node
@@ -24,15 +25,39 @@ function calls(): string[][] {
 	return existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
 }
 
-async function load(): Promise<Handler> {
-	const handlers: Record<string, Handler> = {};
-	// Fresh module instance per test: the warn-once flag is module state.
-	const factory = (await import(`./bash-survivors.ts?${Math.random()}`)).default;
-	factory({ on(name: string, handler: Handler) { handlers[name] = handler; } } as never);
-	return handlers.tool_result;
+type Factory = (pi: unknown) => void;
+
+// Fresh module instance per test: the warn-once flag is module state.
+async function loadFactory(): Promise<Factory> {
+	return (await import(`./bash-survivors.ts?${Math.random()}`)).default;
 }
 
-const bash = (details?: unknown, isError = false) => ({ toolName: "bash", toolCallId: "call-1", input: { command: "x" }, details, isError });
+function instantiate(factory: Factory): Instance {
+	const instance: Instance = { handlers: {}, sent: [], notices: [], ctx: undefined };
+	instance.ctx = { ui: { notify: (...args: unknown[]) => { instance.notices.push(args); } } };
+	factory({
+		on(name: string, handler: Handler) { instance.handlers[name] = handler; },
+		sendMessage(...args: unknown[]) { instance.sent.push(args); },
+	});
+	return instance;
+}
+
+async function load(): Promise<Instance> {
+	return instantiate(await loadFactory());
+}
+
+const bash = (details?: unknown, isError = false, toolCallId = "call-1") => ({ toolName: "bash", toolCallId, input: { command: "x" }, details, isError });
+const running = (jobId: string, toolCallId = "call-1") => bash({ async: { state: "running", jobId, type: "bash" } }, false, toolCallId);
+const waitResult = (jobs: unknown) => ({ toolName: "wait", toolCallId: "w", input: {}, details: { op: "wait", jobs }, isError: false });
+const asyncResult = (jobs: unknown, role = "custom", customType = "async-result") => ({ message: { role, customType, details: { jobs } } });
+
+async function result(instance: Instance, event: unknown): Promise<unknown> {
+	return instance.handlers.tool_result(event, instance.ctx);
+}
+
+async function messageEnd(instance: Instance, event: unknown): Promise<unknown> {
+	return instance.handlers.message_end(event, instance.ctx);
+}
 
 beforeAll(() => {
 	home = mkdtempSync(join(tmpdir(), "bash-survivors-"));
@@ -51,53 +76,133 @@ beforeAll(() => {
 beforeEach(() => {
 	rmSync(join(root, "calls.jsonl"), { force: true });
 	errors = [];
+	writeHelper("process.stdout.write('notice text\\n');");
 });
 
 afterAll(() => {
 	console.error = originalError;
-	mock.restore();
 	if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
 	rmSync(home, { recursive: true, force: true });
 });
 
 test("returns the helper notice as additionalContext", async () => {
-	writeHelper("process.stdout.write('notice text\\n');");
-	const onResult = await load();
-	expect(await onResult(bash())).toEqual({ additionalContext: "notice text" });
+	const instance = await load();
+	expect(await result(instance, bash())).toEqual({ additionalContext: "notice text" });
 	expect(calls()).toEqual([["call-survivors", "call-1"]]);
 });
 
 test("scans errored bash results", async () => {
-	writeHelper("process.stdout.write('notice');");
-	const onResult = await load();
-	expect(await onResult(bash(undefined, true))).toEqual({ additionalContext: "notice" });
+	const instance = await load();
+	expect(await result(instance, bash(undefined, true))).toEqual({ additionalContext: "notice text" });
 });
 
 test("empty helper output returns nothing", async () => {
 	writeHelper("");
-	const onResult = await load();
-	expect(await onResult(bash())).toBeUndefined();
+	const instance = await load();
+	expect(await result(instance, bash())).toBeUndefined();
 	expect(calls()).toHaveLength(1);
 });
 
-test("skips non-bash, running async, and service results", async () => {
-	writeHelper("process.stdout.write('notice');");
-	const onResult = await load();
-	expect(await onResult({ ...bash(), toolName: "read" })).toBeUndefined();
-	expect(await onResult(bash({ async: { state: "running", jobId: "bg_1" } }))).toBeUndefined();
-	expect(await onResult(bash({ service: { name: "svc" } }))).toBeUndefined();
+test("skips non-bash and service results", async () => {
+	const instance = await load();
+	expect(await result(instance, { ...bash(), toolName: "read" })).toBeUndefined();
+	expect(await result(instance, bash({ service: { name: "svc" } }))).toBeUndefined();
 	expect(calls()).toEqual([]);
 });
 
-test("helper failures return nothing and warn once", async () => {
-	writeHelper("process.exit(2);");
-	const onResult = await load();
-	expect(await onResult(bash())).toBeUndefined();
+test("T1 running async job is scanned when wait reports it settled", async () => {
+	const instance = await load();
+	expect(await result(instance, running("bg_1"))).toBeUndefined();
+	expect(calls()).toEqual([]);
+	expect(await result(instance, waitResult([{ id: "bg_1", type: "bash", status: "completed" }]))).toEqual({ additionalContext: "notice text" });
+	expect(calls()).toEqual([["call-survivors", "call-1"]]);
+});
+
+test("T2 a settled job is claimed once", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	await result(instance, waitResult([{ id: "bg_1", status: "completed" }]));
+	expect(await result(instance, waitResult([{ id: "bg_1", status: "completed" }]))).toBeUndefined();
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", status: "completed" }]));
+	expect(calls()).toHaveLength(1);
+	expect(instance.sent).toEqual([]);
+});
+
+test("T3 a still-running job in a wait result stays remembered", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	expect(await result(instance, waitResult([{ id: "bg_1", status: "running" }]))).toBeUndefined();
+	expect(calls()).toEqual([]);
+	expect(await result(instance, waitResult([{ id: "bg_1", status: "failed" }]))).toEqual({ additionalContext: "notice text" });
+	expect(calls()).toEqual([["call-survivors", "call-1"]]);
+});
+
+test("T4 unremembered jobs, non-array jobs and peer-message waits do not scan", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	expect(await result(instance, waitResult([{ id: "bg_9", status: "completed" }]))).toBeUndefined();
+	expect(await result(instance, waitResult({ id: "bg_1" }))).toBeUndefined();
+	expect(await result(instance, { toolName: "wait", toolCallId: "w", input: {}, details: { op: "wait", messages: [] }, isError: false })).toBeUndefined();
+	await messageEnd(instance, asyncResult([{ jobId: "bg_9", status: "completed" }]));
+	await messageEnd(instance, asyncResult("bg_1"));
+	expect(calls()).toEqual([]);
+	expect(instance.sent).toEqual([]);
+});
+
+test("T5 async-result message sends the notice as a hidden aside", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", type: "bash", status: "completed" }]));
+	expect(calls()).toEqual([["call-survivors", "call-1"]]);
+	expect(instance.sent).toEqual([[{ customType: "bash-survivors", content: "notice text", display: false }, { deliverAs: "aside" }]]);
+});
+
+test("T6 other messages and empty notices send nothing", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", status: "completed" }], "assistant"));
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", status: "completed" }], "custom", "other"));
+	expect(calls()).toEqual([]);
+	writeHelper("");
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", status: "completed" }]));
+	expect(calls()).toHaveLength(1);
+	expect(instance.sent).toEqual([]);
+});
+
+test("T7 two settled jobs share one scan", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1", "call-1"));
+	await result(instance, running("bg_2", "call-2"));
+	expect(await result(instance, waitResult([{ id: "bg_1", status: "completed" }, { id: "bg_2", status: "cancelled" }]))).toEqual({ additionalContext: "notice text" });
+	expect(calls()).toEqual([["call-survivors", "call-1", "call-2"]]);
+});
+
+test("T8 remembered jobs belong to one hook instance", async () => {
+	const factory = await loadFactory();
+	const a = instantiate(factory);
+	const b = instantiate(factory);
+	await result(a, running("bg_1"));
+	await messageEnd(b, asyncResult([{ jobId: "bg_1", status: "completed" }]));
+	expect(calls()).toEqual([]);
+	expect(b.sent).toEqual([]);
+});
+
+test("T9 a helper that outlives the timeout yields nothing", async () => {
 	// Real hang: exercises the hook's 2 s execFile timeout against an actual child.
-	writeHelper("setTimeout(() => {}, 10000);");
-	expect(await onResult(bash())).toBeUndefined();
+	writeHelper("setTimeout(() => process.stdout.write('late notice'), 5000);");
+	const instance = await load();
+	expect(await result(instance, bash())).toBeUndefined();
+}, 10_000);
+
+test("T10 helper failures warn once on stderr and in the UI", async () => {
+	writeHelper("process.exit(2);");
+	const instance = await load();
+	expect(await result(instance, bash())).toBeUndefined();
 	rmSync(helper);
-	expect(await onResult(bash())).toBeUndefined();
+	expect(await result(instance, bash())).toBeUndefined();
 	expect(errors).toHaveLength(1);
-	expect(errors[0]).toContain("build-native-binaries.sh eci-hook-helper");
-}, 15_000);
+	expect(errors[0]).toContain('build-native-binaries.sh" eci-hook-helper');
+	expect(instance.notices).toHaveLength(1);
+	expect(instance.notices[0][0]).toContain('build-native-binaries.sh" eci-hook-helper');
+	expect(instance.notices[0][1]).toBe("warning");
+});

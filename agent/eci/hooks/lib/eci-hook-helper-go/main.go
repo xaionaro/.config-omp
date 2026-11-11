@@ -1,5 +1,5 @@
-// Command eci-hook-helper provides bounded hook-input readers, the opt-in
-// security reminder, the omp edit gate, and coding-skill evidence evaluation.
+// Command eci-hook-helper provides bounded hook-input readers, the opt-in security
+// reminder, the omp edit gate, coding-skill evidence evaluation, and the Bash survivor notice.
 //
 // Modes (argv must match exactly; anything else exits 2):
 //
@@ -16,8 +16,8 @@
 //	edit-gate <bash> <dispatcher>           run the edit dispatcher once per
 //	                                        target of the omp edit request on stdin
 //	coding-skill <describe|reduce|check>     evaluate coding skill evidence
-//	call-survivors <tool-call-id>           notice naming processes still tagged
-//	                                        with that Bash tool call ID
+//	call-survivors <tool-call-id>...         notice naming processes still tagged
+//	                                        with any of those Bash tool call IDs
 package main
 
 import (

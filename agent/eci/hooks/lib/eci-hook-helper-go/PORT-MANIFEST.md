@@ -22,7 +22,7 @@ request, through the `hooks/eci-edit-gate.sh` launcher.
 The `coding-skill <describe|reduce|check>` mode implements the optional coding-skill
 bridge policy; that bridge invokes the shared helper directly.
 
-The `call-survivors <tool-call-id>` mode implements the Bash survivor notice; the
+The `call-survivors <tool-call-id>...` mode implements the Bash survivor notice; the
 `optional-hooks/bash-survivors.ts` bridge invokes the shared helper directly.
 
 Known divergences from the Python implementation:

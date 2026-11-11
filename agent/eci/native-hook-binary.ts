@@ -1,4 +1,4 @@
-// Both hook bridges use the canonical receipt-backed helper. Provision only when absent;
+// Every hook bridge uses the canonical receipt-backed helper. Provision only when absent;
 // the native provisioner serializes builds and coordinates publication across processes.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -41,18 +42,23 @@ func TestCallSurvivorsListsTaggedProcess(t *testing.T) {
 	pid := startTagged(t, string(id))
 	other := startTagged(t, string(id)+"x")
 
-	got, err := callSurvivors("/proc", id, ProcessID(os.Getpid()))
+	second := uniqueID(t) + "-2"
+	pid2 := startTagged(t, string(second))
+
+	got, err := callSurvivors("/proc", []ToolCallID{id, second}, ProcessID(os.Getpid()))
 	require.NoError(t, err)
-	assert.Equal(t, []ProcessID{pid}, got)
+	want := []ProcessID{pid, pid2}
+	slices.Sort(want)
+	assert.Equal(t, want, got)
 	assert.NotContains(t, got, other)
 
-	got, err = callSurvivors("/proc", id, pid)
+	got, err = callSurvivors("/proc", []ToolCallID{id}, pid)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
 
 func TestCallSurvivorsFakeRoot(t *testing.T) {
-	got, err := callSurvivors(filepath.Join(t.TempDir(), "missing"), "a", 0)
+	got, err := callSurvivors(filepath.Join(t.TempDir(), "missing"), []ToolCallID{"a"}, 0)
 	require.NoError(t, err)
 	assert.Nil(t, got)
 
@@ -68,14 +74,16 @@ func TestCallSurvivorsFakeRoot(t *testing.T) {
 	write("30", "X=1\x00PI_TOOL_CALL_ID=a\x00")
 	write("7", "PI_TOOL_CALL_ID=a\x00")
 	write("8", "PI_TOOL_CALL_ID=ab\x00")
-	got, err = callSurvivors(root, "a", 0)
+	write("9", "PI_TOOL_CALL_ID=b\x00")
+	write("10", "PI_TOOL_CALL_ID=c\x00")
+	got, err = callSurvivors(root, []ToolCallID{"a", "b"}, 7)
 	require.NoError(t, err)
-	assert.Equal(t, []ProcessID{7, 30}, got)
+	assert.Equal(t, []ProcessID{9, 30}, got)
 }
 
 func TestSurvivorNotice(t *testing.T) {
 	assert.Equal(t, "", survivorNotice(nil))
-	assert.Equal(t, "This Bash call left processes running: PIDs 123. Inspect: `ps -o pid,etime,args -p 123`. Per the Processes rule, stop them before you finish unless the user or your parent agent needs them kept running.", survivorNotice([]ProcessID{123}))
+	assert.Equal(t, "Processes still running after their Bash call finished: PIDs 123. Inspect: `ps -o pid,etime,args -p 123`. Per the Processes rule, stop them before you finish unless the user or your parent agent needs them; leave shared on-demand servers (adb, gpg-agent, ssh ControlPersist masters) running.", survivorNotice([]ProcessID{123}))
 
 	var pids []ProcessID
 	var shown []string
@@ -91,11 +99,12 @@ func TestSurvivorNotice(t *testing.T) {
 }
 
 func TestCallSurvivorsModeArgs(t *testing.T) {
-	for _, args := range [][]string{{"call-survivors"}, {"call-survivors", ""}, {"call-survivors", "a", "b"}} {
+	for _, args := range [][]string{{"call-survivors"}, {"call-survivors", ""}, {"call-survivors", "a", ""}} {
 		var stdout, stderr bytes.Buffer
 		assert.Equal(t, statusRejected, run(args, nil, &stdout, &stderr), args)
 	}
 	var stdout, stderr bytes.Buffer
-	assert.Equal(t, statusOK, run([]string{"call-survivors", "no-such-call-id-" + fmt.Sprint(time.Now().UnixNano())}, nil, &stdout, &stderr))
+	missing := "no-such-call-id-" + fmt.Sprint(time.Now().UnixNano())
+	assert.Equal(t, statusOK, run([]string{"call-survivors", missing, missing + "-2"}, nil, &stdout, &stderr))
 	assert.Empty(t, stdout.String())
 }
