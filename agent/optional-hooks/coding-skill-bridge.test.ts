@@ -67,6 +67,20 @@ test("serializes parallel read reductions before the next write check", async ()
 	expect(reductions[1].state.reads).toContain("skill://coding-common");
 });
 
+test("consults the helper for recognized code files and skips non-code files", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "code-ext", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const checks = () => readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").filter(line => JSON.parse(line).mode === "check");
+	const before = checks().length;
+	expect(await handlers.tool_call({toolName: "write", input: {path: "a.cpp"}}, ctx)).toMatchObject({block: true});
+	expect(checks()).toHaveLength(before + 1);
+	expect(checks().at(-1)).toContain("a.cpp");
+	expect(await handlers.tool_call({toolName: "write", input: {path: "a.md"}}, ctx)).toBeUndefined();
+	expect(checks()).toHaveLength(before + 1);
+});
+
 test("does not hydrate an advisor from its parent's transcript", async () => {
 	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
 	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
