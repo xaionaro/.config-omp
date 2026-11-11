@@ -34,8 +34,10 @@ if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker
     /*) ;;
     ?*) dispatch_lib_target="${dispatch_lib_cwd:-$PWD}/$dispatch_lib_target" ;;
   esac
-  if [ -n "${dispatch_lib_target:-}" ] && [ ! -L "$dispatch_lib_target" ]; then
-    dispatch_lib_target="$(cd -- "${dispatch_lib_target%/*}" 2>/dev/null && pwd -P)/${dispatch_lib_target##*/}"
+  # A missing parent directory falls through to the deny below.
+  if [ -n "${dispatch_lib_target:-}" ] && [ ! -L "$dispatch_lib_target" ] &&
+    dispatch_lib_dir="$(cd -- "${dispatch_lib_target%/*}" 2>/dev/null && pwd -P)"; then
+    dispatch_lib_target="$dispatch_lib_dir/${dispatch_lib_target##*/}"
     for dispatch_lib in "${dispatch_libs[@]}"; do
       if [ "$dispatch_lib_target" = "$dispatch_lib" ]; then
         printf 'ECI_HOOK_LIB_REPAIR_ALLOWED %s\n' "$dispatch_lib" >&2

@@ -120,7 +120,9 @@ lib_case() {
   local dir="$1" expected="$2" tool="$3" path="$4" cwd="${5:-$tmp/repo}"
   jq -cn --arg tool "$tool" --arg cwd "$cwd" --arg path "$path" \
     '{tool_name:$tool,session_id:"fixture",cwd:$cwd,tool_input:{file_path:$path,content:"x",command:"*** Begin Patch\n*** Update File: \($path)\n*** End Patch"}}' |
-    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$dir/pretooluse-edit-dispatch.sh" >"$tmp/lib.out" 2>"$tmp/lib.err"
+    ECI_PROOF_ROOT="$tmp/proof" TMPDIR="$tmp" ENABLE_SECURITY_REMINDER=0 bash "$dir/pretooluse-edit-dispatch.sh" >"$tmp/lib.out" 2>"$tmp/lib.err" || {
+    printf 'broken lib case %s %s %s exited %s\n' "$dir" "$tool" "$path" "$?" >&2; cat "$tmp/lib.out" "$tmp/lib.err" >&2; exit 1
+  }
   if [ "$expected" = allow ]; then
     [ ! -s "$tmp/lib.out" ] && grep -Fq 'ECI_HOOK_LIB_REPAIR_ALLOWED' "$tmp/lib.err"
   else
@@ -136,6 +138,7 @@ lib_case "$broken" allow Edit lib/eci-proof-state.sh "$broken"
 lib_case "$broken" deny Write "$tmp/repo/file.txt"
 lib_case "$broken" deny Write "$broken/lib/eci-tmp.sh"
 lib_case "$broken" deny apply_patch "$broken/lib/eci-proof-state.sh"
+lib_case "$broken" deny Write "$tmp/proof/missing-parent/x.txt"
 lib_case "$broken" deny Edit lib/eci-proof-state.sh "$broken
 $tmp/repo"
 portable="$tmp/portable-hooks"
