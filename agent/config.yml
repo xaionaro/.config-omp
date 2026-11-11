@@ -85,7 +85,7 @@ lsp:
   diagnosticsOnEdit: true
   formatOnWrite: true
 retry:
-  waitForUsageReset: true
+  waitForUsageReset: false
   # Automatic switch on provider failure or usage limit, both directions.
   # Role keys: Claude tiers -> GPT 6.1. Model keys (win over role keys):
   # GPT 6.1 -> Opus; bare sol entry keeps the failing effort (medium/xhigh).
