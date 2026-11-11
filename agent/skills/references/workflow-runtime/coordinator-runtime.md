@@ -17,7 +17,7 @@ Use this module as the ECI Supervisor or the owning outer-workflow Coordinator/L
 
 ## Role and model admission
 
-Every assignment and roster entry names one category and one semantic role. State the work, target/change/verification for implementation, and owner. Use plain readable records; canonical JSON, hashes, receipts, and exact field order are optional diagnostics, never admission requirements.
+Every assignment and roster entry names one category and one semantic role. State the work, the selected design's target/change/verification for implementation, and owner. Use plain readable records; canonical JSON, hashes, receipts, and exact field order are optional diagnostics, never admission requirements.
 
 | Category | Authority/model | Permitted roles and work |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ criterion.
 
 ## Routing packet guidance
 
-Before every spawn, followup, lane-changing `write agent://<id>` message, or durable execution, carry enough context to identify the task, scope, owner, target/change/verification when implementation is involved, and reason for any reroute. Use stable IDs and lineage where helpful. Missing metadata routes a concise clarification or queue; it does not block harmless work or create an admission failure state.
+Before every spawn, followup, lane-changing `write agent://<id>` message, or durable execution, carry enough context to identify the task, scope, owner, the selected design's target/change/verification when implementation is involved, and reason for any reroute. Use stable IDs and lineage where helpful. Missing metadata routes a concise clarification or queue; it does not block harmless work or create an admission failure state.
 
 Every prompt states semantic role, exact scope/files/ownership, expected output, fresh-assignment reread rule, matching skills, concurrent-edit warning, relevant verification, and scoped verification and recovery duties. Reviewer/verifier/QA packets also state objective/criteria and the current target/diff. Use concise readable context; no prompt artifact, hash, or ledger prefix gates dispatch.
 
