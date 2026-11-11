@@ -197,6 +197,46 @@ test("T11 session changes forget remembered jobs", async () => {
 	expect(calls()).toEqual([]);
 });
 
+const killResult = (jobs: unknown) => ({ toolName: "write", toolCallId: "k", input: { path: "proc://bg_1/kill", content: "" }, details: { proc: { op: "cancel", jobs, cancelled: [{ id: "bg_1", status: "cancelled" }] } }, isError: false });
+
+test("T12 a killed job is scanned at the kill result", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	expect(await result(instance, killResult([{ id: "bg_1", type: "bash", status: "cancelled" }]))).toEqual({ additionalContext: "notice text" });
+	expect(calls()).toEqual([["call-survivors", "call-1"]]);
+});
+
+test("T13 a killed job is claimed once", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	await result(instance, killResult([{ id: "bg_1", type: "bash", status: "cancelled" }]));
+	expect(await result(instance, killResult([{ id: "bg_1", status: "cancelled" }]))).toBeUndefined();
+	expect(await result(instance, waitResult([{ id: "bg_1", status: "completed" }]))).toBeUndefined();
+	await messageEnd(instance, asyncResult([{ jobId: "bg_1", status: "completed" }]));
+	expect(calls()).toHaveLength(1);
+	expect(instance.sent).toEqual([]);
+});
+
+test("T14 a kill result reporting an already finished job scans it", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	expect(await result(instance, killResult([{ id: "bg_1", status: "completed" }]))).toEqual({ additionalContext: "notice text" });
+	expect(calls()).toEqual([["call-survivors", "call-1"]]);
+});
+
+test("T15 other write results do not scan", async () => {
+	const instance = await load();
+	await result(instance, running("bg_1"));
+	const write = (details: unknown, isError = false) => ({ toolName: "write", toolCallId: "k", input: { path: "a.txt", content: "x" }, details, isError });
+	expect(await result(instance, write(undefined))).toBeUndefined();
+	expect(await result(instance, write({}))).toBeUndefined();
+	expect(await result(instance, write({ proc: { action: "stop", daemon: { name: "svc" } } }))).toBeUndefined();
+	expect(await result(instance, write({ proc: { op: "cancel", jobs: [], cancelled: [{ id: "A1", status: "cancelled" }] } }))).toBeUndefined();
+	expect(await result(instance, killResult([{ id: "bg_9", status: "cancelled" }]))).toBeUndefined();
+	expect(await result(instance, write(undefined, true))).toBeUndefined();
+	expect(calls()).toEqual([]);
+});
+
 test("T9 a helper that outlives the timeout yields nothing", async () => {
 	// Real hang: exercises the hook's 2 s execFile timeout against an actual child.
 	writeHelper("setTimeout(() => process.stdout.write('late notice'), 5000);");

@@ -1,8 +1,11 @@
 // Optional advisory hook (Linux /proc only): when a Bash call finishes, tell the model which processes it left running.
 // Foreground calls are checked at their tool result. Background jobs (`async: true` or auto-backgrounded) are checked
-// when a `wait` result or an async-result message reports them settled; omp has no job-completion hook event.
+// when a `wait` result, an async-result message, or a `write proc://<id>/kill` result reports them settled; omp has no
+// job-completion hook event. A kill result arrives while omp is still stopping the job, so a process that ignores
+// SIGTERM can be named although omp kills it within about a second.
 // Named services are meant to keep running and are never checked. The Go helper owns the scan and the notice text;
-// any failure means no notice. Not covered: jobs settled through eval's wait(), processes alive at session teardown,
+// any failure means no notice. Not covered: jobs settled through eval's wait() or cancelled other than by a `write`
+// call (/jobs, the jobs panel), processes alive at session teardown,
 // and processes launched with a cleared environment (env -i, sudo, systemd-run, containers).
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { execFile } from "node:child_process";
@@ -44,7 +47,7 @@ export default function bashSurvivors(pi: ExtensionAPI): void {
 	pi.on("session_tree", forgetJobs);
 	pi.on("session_branch", forgetJobs);
 
-	// Claims the tool call IDs of remembered jobs that settled; `wait` keys jobs by `id`, async-result by `jobId`.
+	// Claims the tool call IDs of remembered jobs that settled; `wait` and kill results key jobs by `id`, async-result by `jobId`.
 	function claimSettled(jobs: unknown, key: "id" | "jobId"): string[] {
 		if (!Array.isArray(jobs)) return [];
 		const callIds: string[] = [];
@@ -64,6 +67,10 @@ export default function bashSurvivors(pi: ExtensionAPI): void {
 		switch (event.toolName) {
 			case "wait":
 				callIds = claimSettled((event.details as { jobs?: unknown } | undefined)?.jobs, "id");
+				break;
+			case "write":
+				// `write proc://<id>/kill` lists the jobs it cancelled; omp reports a cancelled job nowhere else.
+				callIds = claimSettled((event.details as { proc?: { jobs?: unknown } } | undefined)?.proc?.jobs, "id");
 				break;
 			case "bash": {
 				const details = event.details as BashDetails | undefined;
