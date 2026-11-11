@@ -237,6 +237,10 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - Independently verify subagent claims before relying on them.
 - Subagents verify assigned work, fix in-scope blockers, and report recovery needs through ordinary handoff.
 
+### Parking
+
+Applies to every role. When nothing is actionable, park: end the turn with no tool call and without restating status. Completions of your own runs and `write agent://<id>` revive you. Never pass time with `wait`, `sleep`, or a "No reply within" wait, and never re-check your own bash or background job in a loop; a check that returns nothing new is polling, so never repeat it. A job you need runs in the foreground with a timeout, or its completion auto-delivers; a `task` subagent that ends its turn ends its task. Under an active goal, continuation stops only when no todo is pending or in_progress and at least one is blocked: before parking, block every remaining todo with what it waits on; unblock on revival. Report only changed state; a status report needs no reply; never write to an owner parked on running Workers. Silence is non-terminal: do not retry or infer a crash.
+
 ## Environment/Stop
 
 | Resource | Value/rule |
