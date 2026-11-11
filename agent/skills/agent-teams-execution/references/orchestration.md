@@ -6,7 +6,7 @@ Coordinator/lead only. Load shared coordinator runtime first. ATE coordinates re
 
 Create/update `ate_active` before the first spawn and at each phase transition. Keep validated lineage, lane/assignment binding, ownership, and the project-understanding ledger current. An ATE marker remains through nested ECI work; only explicit shutdown, switch, cancellation, withdrawal, or root-scope replacement closes it. Apply [ECI fast path](../../explore-critique-implement/references/fast-path.md) within nested ECI tasks. Apply pause and stop recovery only on their predicates.
 
-Use stable reusable producers, fresh special design/review roles, fresh blind critics, disjoint ownership except under the linked nested-ECI rule, and park until each expected completion auto-delivers ([park rule](../../../eci-binding-contract.md#parking)). Lead validates prompt artifacts, scope, skills, bindings, stop conditions, and evidence forwarding before a provider call. Status uses role trees and the redacted requirements registry; timeout or silence never authorizes a retry, re-spawn, or shutdown.
+Use stable reusable producers, fresh special design/review roles, fresh blind critics, disjoint ownership except under the linked nested-ECI rule, and park until each expected completion auto-delivers (the Parking rule in `~/.omp/agent/RULES.md`). Lead validates prompt artifacts, scope, skills, bindings, stop conditions, and evidence forwarding before a provider call. Status uses role trees and the redacted requirements registry; timeout or silence never authorizes a retry, re-spawn, or shutdown.
 
 ## Teardown and explicit closure
 

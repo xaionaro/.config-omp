@@ -13,7 +13,7 @@ Start only when the user explicitly asks to use ATE or `agent-teams-execution`, 
 
 - Every worker reads this router plus only its exact role module and named conditional modules. Unknown role, predicate, or link returns to coordinator before work.
 - Coordinator/lead alone load lifecycle, prompt/model admission, blocker, pause, stop, required-critic, shutdown, and pressure-policy modules.
-- Use provider-native agents, stable reusable producer roles, fresh blind reviewers, disjoint write ownership except within nested ECI as linked below, and park until each expected completion auto-delivers ([park rule](../../eci-binding-contract.md#parking)).
+- Use provider-native agents, stable reusable producer roles, fresh blind reviewers, disjoint write ownership except within nested ECI as linked below, and park until each expected completion auto-delivers (the Parking rule in `~/.omp/agent/RULES.md`).
 - Every root follows research → design → execution → root proof → aggregate review → post-review proof → QA. Do not collapse phases because a request looks small.
 - ATE may contain ECI for bounded uncertain work and retains outer status/lifecycle. Nested tasks use [ECI fast path](../explore-critique-implement/references/fast-path.md), including its scoped shared-tree ownership exception; ATE outside ECI remains unchanged.
 
