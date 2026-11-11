@@ -195,3 +195,25 @@ test("retries a failed startup description after the helper returns", async () =
 		if (existsSync(`${engine}.held`)) renameSync(`${engine}.held`, engine);
 	}
 });
+
+test.each([
+	{ label: "silent stale helper", stderr: "", expected: 'build-native-binaries.sh" eci-hook-helper', forbidden: "invalid request" },
+	{ label: "reported engine error", stderr: "invalid request", expected: "invalid request", forbidden: "build-native-binaries.sh" },
+])("reports $label without misleading repair advice", async ({ stderr, expected, forbidden }) => {
+	const engine = join(root, "eci", "bin", "eci-hook-helper");
+	renameSync(engine, `${engine}.held`);
+	writeFileSync(engine, `#!/bin/sh\nprintf '%s' '${stderr}' >&2\nexit 2\n`, { mode: 0o755 });
+	try {
+		const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+		gate({pi: {settings: {}}, on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+		const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "diagnostic", getBranch: () => []}};
+		await handlers.session_start({}, ctx);
+		const verdict = await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx) as { block: boolean; reason: string };
+		expect(verdict.block).toBe(true);
+		expect(verdict.reason).toContain(expected);
+		expect(verdict.reason).not.toContain(forbidden);
+	} finally {
+		rmSync(engine);
+		renameSync(`${engine}.held`, engine);
+	}
+});

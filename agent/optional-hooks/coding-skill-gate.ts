@@ -29,7 +29,7 @@ async function invoke(command: string, request?: unknown): Promise<unknown> {
 	child.on("error", reject);
 	child.stdin.on("error", reject);
 	child.on("close", code => {
-		if (code !== 0) return reject(new Error(code === 2 ? `helper may not support coding-skill; rebuild with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper and retry${stderr.trim() ? `: ${stderr.trim()}` : ""}` : stderr.trim() || `engine exited ${code}`));
+		if (code !== 0) return reject(new Error(code === 2 && !stderr.trim() ? 'helper may not support coding-skill; rebuild with "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper and retry' : stderr.trim() || `engine exited ${code}`));
 		try { resolve(JSON.parse(stdout)); } catch (error) { reject(error); }
 	});
 	child.stdin.end(request === undefined ? "" : JSON.stringify(request));
