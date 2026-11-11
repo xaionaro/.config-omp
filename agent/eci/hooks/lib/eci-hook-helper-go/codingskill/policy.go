@@ -167,7 +167,11 @@ func decide(req Request) (Response, error) {
 			continue
 		}
 		var missing []string
-		for _, skill := range []Skill{skillCommon, targetSkill} {
+		required := []Skill{skillCommon, targetSkill}
+		if targetSkill == skillCommon {
+			required = required[:1]
+		}
+		for _, skill := range required {
 			if !state.Reads.has(skill) {
 				missing = append(missing, "skill://"+skill.name())
 			}
@@ -268,9 +272,9 @@ func verifiedSkill(
 	return skillUnknown
 }
 
-// skillForPath maps a file extension to a coding skill.
+// skillForPath maps a file extension to the most specific coding skill.
 //
-// Example: a.go requires coding-go and coding-common.
+// Example: a.go requires coding-go and coding-common; a.cpp requires only coding-common.
 func skillForPath(path string) Skill {
 	if match := patchHeader.FindStringSubmatch(path); len(match) == 2 {
 		path = match[1]
@@ -283,6 +287,13 @@ func skillForPath(path string) Skill {
 		return skillGo
 	case ".py":
 		return skillPython
+	case ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
+		".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+		".rs", ".java", ".kt", ".kts", ".swift", ".rb", ".php", ".cs",
+		".sh", ".bash", ".zsh", ".lua", ".scala", ".m", ".mm", ".dart",
+		".pl", ".pm", ".r", ".jl", ".zig", ".hs", ".ex", ".exs", ".erl",
+		".clj", ".fs", ".ml", ".vue", ".svelte", ".sql", ".proto", ".qml":
+		return skillCommon
 	default:
 		return skillUnknown
 	}

@@ -1,6 +1,7 @@
 package codingskill
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,6 +50,41 @@ func TestDirectWritesRequirePriorReads(t *testing.T) {
 	got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "a.py"}, State: state})
 	require.NoError(t, err)
 	require.Contains(t, got.Reason, "skill://coding-python")
+}
+
+// TestWriteRequirementsByExtension covers code, language, and non-code targets.
+//
+// Example: a C++ write needs only coding-common; Markdown needs nothing.
+func TestWriteRequirementsByExtension(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want []string
+	}{
+		{"a.cpp", []string{"skill://coding-common"}},
+		{"a.ts", []string{"skill://coding-common"}},
+		{"src/a.RS", []string{"skill://coding-common"}},
+		{"a.sh", []string{"skill://coding-common"}},
+		{"a.go", []string{"skill://coding-common", "skill://coding-go"}},
+		{"a.py", []string{"skill://coding-common", "skill://coding-python"}},
+		{"a.md", nil},
+		{"a.txt", nil},
+		{"a.yml", nil},
+		{"Makefile", nil},
+	} {
+		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": tc.path}})
+		require.NoError(t, err)
+		if tc.want == nil {
+			require.Empty(t, got.Reason, tc.path)
+			continue
+		}
+		require.Contains(t, got.Reason, "requires "+strings.Join(tc.want, " and ")+".", tc.path)
+	}
+	state := State{}
+	got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://coding-common"}, Details: completeRead(), State: state})
+	require.NoError(t, err)
+	got, err = decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "a.cpp"}, State: got.State})
+	require.NoError(t, err)
+	require.Empty(t, got.Reason)
 }
 
 // TestSkillEvidenceRejectsPartialReads verifies host completeness metadata.

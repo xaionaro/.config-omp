@@ -12,8 +12,11 @@ type AgentState = { state: unknown; initialized: boolean; tail: Promise<void> };
 type Verdict = { block: true; reason: string } | undefined;
 
 // Recognize potential coding targets before waiting for a missing engine.
+// Mirrors skillForPath in codingskill/policy.go, which decides the required skills.
+const CODE_EXTENSIONS = "go|py|c|h|cc|cpp|cxx|hh|hpp|hxx|js|jsx|mjs|cjs|ts|tsx|mts|cts|rs|java|kt|kts|swift|rb|php|cs|sh|bash|zsh|lua|scala|m|mm|dart|pl|pm|r|jl|zig|hs|ex|exs|erl|clj|fs|ml|vue|svelte|sql|proto|qml";
+const CODE_PATH = new RegExp(`\\.(?:${CODE_EXTENSIONS})(?:#[a-z0-9]{4}\\]\\s*)?(?::(?:raw|conflicts))?$`, "i");
 function mayNeedCodingSkills(path: string): boolean {
-	return /\.(?:go|py)(?:#[a-z0-9]{4}\]\s*)?(?::(?:raw|conflicts))?$/i.test(path);
+	return CODE_PATH.test(path);
 }
 
 // Each invocation carries one complete JSON request; the engine owns its state format.
