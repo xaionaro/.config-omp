@@ -21,6 +21,7 @@ type cliEvent struct {
 	IsError     bool           `json:"isError"`
 	EditTargets []string       `json:"editTargets"`
 	Cwd         string         `json:"cwd"`
+	AgentName   string         `json:"agentName"`
 }
 
 // cliInput provides one state transition or preflight request.
@@ -52,9 +53,10 @@ func Run(
 		}
 		sort.Strings(extensions)
 		return json.NewEncoder(output).Encode(map[string]any{
-			"callTools":       []string{"write", "edit"},
-			"resultTools":     []string{"read"},
-			"gatedExtensions": extensions,
+			"callTools":          callTools,
+			"resultTools":        []string{"read"},
+			"gatedExtensions":    extensions,
+			"gatedAgentPrefixes": []string{eciPresetPrefix},
 		})
 	case "reduce", "check":
 	default:
@@ -67,7 +69,7 @@ func Run(
 	req := Request{State: in.State, Branch: in.Branch}
 	if args[0] == "check" {
 		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
-		req.EditTargets, req.Cwd = in.Call.EditTargets, in.Call.Cwd
+		req.EditTargets, req.Cwd, req.AgentName = in.Call.EditTargets, in.Call.Cwd, in.Call.AgentName
 		response, err := decide(req)
 		if err != nil {
 			return err

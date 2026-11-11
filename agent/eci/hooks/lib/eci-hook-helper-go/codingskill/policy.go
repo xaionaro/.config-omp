@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Skill identifies one supported coding skill.
+// Skill identifies one skill whose completed read the policy can require.
 //
 // Example: skillGo corresponds to skill://coding-go.
 type Skill int
@@ -34,9 +34,41 @@ const (
 	//
 	// Example: editing a SKILL.md under ~/.omp/agent requires skillHarness.
 	skillHarness
+	// skillECIRouter identifies the explore-critique-implement router every ECI preset agent reads.
+	//
+	// Example: a helper preset needs only skillECIRouter.
+	skillECIRouter
+	// skillECIExplore identifies the ECI explorer module.
+	//
+	// Example: an explorer preset needs skillECIExplore.
+	skillECIExplore
+	// skillECICritique identifies the ECI Step 2 critique module.
+	//
+	// Example: a critic-step2 preset needs skillECICritique.
+	skillECICritique
+	// skillECIImplement identifies the ECI Producer module.
+	//
+	// Example: an implementer preset needs skillECIImplement.
+	skillECIImplement
+	// skillECIFastPath identifies the ECI fast-path module.
+	//
+	// Example: a fast-owner preset needs skillECIFastPath.
+	skillECIFastPath
+	// skillECIReview identifies the ECI review module.
+	//
+	// Example: reviewer and independent-e2e presets need skillECIReview.
+	skillECIReview
+	// skillECIOrchestrator identifies the ECI Job Orchestrator module.
+	//
+	// Example: an orchestrator preset needs skillECIOrchestrator.
+	skillECIOrchestrator
+	// skillEnd bounds the supported skills; it names no skill.
+	//
+	// Example: verifiedSkill scans skillCommon through skillEnd-1.
+	skillEnd
 )
 
-// name returns the host URI name of a supported skill.
+// name returns the host URI name of a supported skill, without the skill:// scheme.
 //
 // Example: skillGo.name() returns coding-go.
 func (skill Skill) name() string {
@@ -49,53 +81,55 @@ func (skill Skill) name() string {
 		return "coding-python"
 	case skillHarness:
 		return "harness-tuning"
+	case skillECIRouter:
+		return "explore-critique-implement"
+	case skillECIExplore:
+		return "explore-critique-implement/references/explore.md"
+	case skillECICritique:
+		return "explore-critique-implement/references/critique.md"
+	case skillECIImplement:
+		return "explore-critique-implement/references/implement.md"
+	case skillECIFastPath:
+		return "explore-critique-implement/references/fast-path.md"
+	case skillECIReview:
+		return "explore-critique-implement/references/review.md"
+	case skillECIOrchestrator:
+		return "explore-critique-implement/references/task-orchestrator.md"
 	default:
 		return ""
 	}
 }
 
-// ReadSkills tracks completed reads using the existing state JSON keys.
+// ReadSkills is the set of completed skill reads, one bit per Skill.
 //
-// Example: Common is true after a complete coding-common read.
-type ReadSkills struct {
-	Common  bool `json:"coding-common,omitempty"`
-	Go      bool `json:"coding-go,omitempty"`
-	Python  bool `json:"coding-python,omitempty"`
-	Harness bool `json:"harness-tuning,omitempty"`
-}
+// Example: the skillCommon bit is set after a complete coding-common read.
+type ReadSkills uint64
 
 // mark records a completed read of a supported skill.
 //
-// Example: marking skillGo sets the Go flag.
+// Example: marking skillGo sets its bit.
 func (reads *ReadSkills) mark(skill Skill) {
-	switch skill {
-	case skillCommon:
-		reads.Common = true
-	case skillGo:
-		reads.Go = true
-	case skillPython:
-		reads.Python = true
-	case skillHarness:
-		reads.Harness = true
-	}
+	*reads |= 1 << skill
 }
 
 // has reports whether a supported skill has been read.
 //
 // Example: has(skillGo) is true after marking skillGo.
 func (reads ReadSkills) has(skill Skill) bool {
-	switch skill {
-	case skillCommon:
-		return reads.Common
-	case skillGo:
-		return reads.Go
-	case skillPython:
-		return reads.Python
-	case skillHarness:
-		return reads.Harness
-	default:
-		return false
+	return reads&(1<<skill) != 0
+}
+
+// missing returns the skill:// URIs of required skills not yet read, in order.
+//
+// Example: with only coding-common read, [skillCommon, skillGo] yields skill://coding-go.
+func (reads ReadSkills) missing(required []Skill) []string {
+	var uris []string
+	for _, skill := range required {
+		if !reads.has(skill) {
+			uris = append(uris, "skill://"+skill.name())
+		}
 	}
+	return uris
 }
 
 // State holds the current agent's completed skill reads.
@@ -136,6 +170,7 @@ type Request struct {
 	Details     map[string]any
 	EditTargets []string
 	Cwd         string
+	AgentName   string
 	IsError     bool
 	Branch      []map[string]any
 	State       State
@@ -174,27 +209,40 @@ func decide(req Request) (Response, error) {
 	default:
 		return Response{}, fmt.Errorf("unknown event action %d", req.Action)
 	}
-	paths := writeTargets(req)
-	for _, path := range paths {
-		targetSkill := skillForPath(path, req.Cwd)
+	if !slices.Contains(callTools, req.Tool) {
+		return Response{State: state}, nil
+	}
+	missing := state.Reads.missing(requiredRoleSkills(req.AgentName))
+	actor := ""
+	if len(missing) > 0 {
+		actor = req.AgentName + " "
+	}
+	subject := actor + "calling " + req.Tool
+	for _, path := range writeTargets(req) {
+		targetSkill, err := skillForPath(path, req.Cwd)
+		if err != nil {
+			return Response{}, err
+		}
 		if targetSkill == skillUnknown {
 			continue
 		}
-		var missing []string
 		required := []Skill{skillCommon, targetSkill}
 		if targetSkill == skillCommon {
 			required = required[:1]
 		}
-		for _, skill := range required {
-			if !state.Reads.has(skill) {
-				missing = append(missing, "skill://"+skill.name())
-			}
+		pathMissing := state.Reads.missing(required)
+		if len(pathMissing) == 0 {
+			continue
 		}
-		if len(missing) > 0 {
-			return Response{State: state, Reason: fmt.Sprintf("Coding skill gate: writing %s requires %s. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", path, strings.Join(missing, " and "))}, nil
-		}
+		// Name the first gated path; role skills stay first so one denial lists every read.
+		subject = actor + "writing " + path
+		missing = append(missing, pathMissing...)
+		break
 	}
-	return Response{State: state}, nil
+	if len(missing) == 0 {
+		return Response{State: state}, nil
+	}
+	return Response{State: state, Reason: fmt.Sprintf("Coding skill gate: %s requires %s. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", subject, strings.Join(missing, " and "))}, nil
 }
 
 // hydrate restores completed reads from the active host transcript branch.
@@ -278,9 +326,9 @@ func verifiedSkill(
 		return skillUnknown
 	}
 	path = strings.TrimSuffix(strings.TrimPrefix(path, "skill://"), "/SKILL.md")
-	for _, name := range []Skill{skillCommon, skillGo, skillPython, skillHarness} {
-		if path == name.name() {
-			return name
+	for skill := skillCommon; skill < skillEnd; skill++ {
+		if path == skill.name() {
+			return skill
 		}
 	}
 	return skillUnknown
@@ -309,62 +357,80 @@ var codeExtensions = func() map[string]Skill {
 // Example: SKILL.md and preset .tmpl files are instruction candidates.
 var instructionExtensions = []string{".md", ".tmpl"}
 
-// instructionFiles and instructionDirs name agent-root instruction locations.
+// instructionFiles names instruction files relative to ~/.omp/agent.
 //
-// Example: agent/skills/x/references/y.md is an instruction file.
-var (
-	instructionFiles = []string{"RULES.md", "AGENTS.md", "eci-binding-contract.md"}
-	instructionDirs  = []string{"skills/", "agents/", "eci/tools/eci-presets/templates/"}
-)
+// Example: RULES.md and the ECI stop checklist are instruction files.
+var instructionFiles = []string{
+	"RULES.md", "AGENTS.md", "eci-binding-contract.md",
+	"eci/hooks/reviewer-rules.md", "eci/hooks/stop-checklist.md", "eci/hooks/stop-verification.md",
+}
+
+// instructionDirs names directories under ~/.omp/agent whose Markdown and templates are instructions.
+//
+// Example: agent/skills/x/references/y.md is under an instruction directory.
+var instructionDirs = []string{"skills/", "agents/", "eci/tools/eci-presets/templates/"}
 
 // skillForPath maps a write target to the most specific required skill.
 //
 // Example: a.go requires coding-go and coding-common; ~/.omp/agent/RULES.md requires harness-tuning and coding-common.
-func skillForPath(path, cwd string) Skill {
+func skillForPath(path, cwd string) (Skill, error) {
 	if match := patchHeader.FindStringSubmatch(path); len(match) == 2 {
 		path = match[1]
 	}
 	if strings.HasPrefix(path, "local://") || strings.HasPrefix(path, "vault://") {
 		path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), ":conflicts")
 	}
-	if isInstructionPath(path, cwd) {
-		return skillHarness
+	instruction, err := isInstructionPath(path, cwd)
+	if err != nil {
+		return skillUnknown, err
 	}
-	return codeExtensions[strings.ToLower(filepath.Ext(path))]
+	if instruction {
+		return skillHarness, nil
+	}
+	return codeExtensions[strings.ToLower(filepath.Ext(path))], nil
 }
 
 // isInstructionPath reports whether path names an instruction file under ~/.omp/agent.
 //
 // Example: with cwd ~/.omp, agent/skills/a/SKILL.md is an instruction path.
-func isInstructionPath(path, cwd string) bool {
+//
+// TODO: writes through the agent/eci/skills -> ../skills symlink match lexically
+// as eci/skills/... and are not gated; resolve symlinks of possibly missing
+// targets if edits start using that alias.
+func isInstructionPath(path, cwd string) (bool, error) {
 	if !slices.Contains(instructionExtensions, strings.ToLower(filepath.Ext(path))) {
-		return false
+		return false, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return false
+		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", path, err)
 	}
-	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+	rest, tilde := strings.CutPrefix(path, "~/")
+	switch {
+	case tilde:
 		path = filepath.Join(home, rest)
-	} else if !filepath.IsAbs(path) {
-		if cwd == "" {
-			return false
-		}
+	case filepath.IsAbs(path):
+	case cwd == "":
+		return false, nil
+	default:
 		path = filepath.Join(cwd, path)
 	}
 	rel, err := filepath.Rel(filepath.Join(home, ".omp", "agent"), filepath.Clean(path))
-	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-		return false
+	if err != nil {
+		return false, fmt.Errorf("relating %s to ~/.omp/agent: %w", path, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return false, nil
 	}
 	if slices.Contains(instructionFiles, rel) {
-		return true
+		return true, nil
 	}
 	for _, dir := range instructionDirs {
 		if strings.HasPrefix(rel, dir) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // asString obtains a JSON string without inventing a value for other types.

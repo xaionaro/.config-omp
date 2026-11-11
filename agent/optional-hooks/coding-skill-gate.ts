@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { ensureHookBinary, hookAgentRoot, waitForProvision } from "../eci/native-hook-binary.ts";
 
-type Description = { callTools: string[]; resultTools: string[]; gatedExtensions: Set<string> };
+type Description = { callTools: string[]; resultTools: string[]; gatedExtensions: Set<string>; gatedAgentPrefixes: string[] };
 type HostEvent = { toolName: string; input: Record<string, unknown>; details?: unknown; isError?: boolean };
 type AgentState = { state: unknown; initialized: boolean; tail: Promise<void> };
 type Verdict = { block: true; reason: string } | undefined;
@@ -16,9 +16,9 @@ function extensionOf(path: string): string | undefined {
 	return /(\.[^./\\#:\]\s]+)(?:#[a-z0-9]{4}\]\s*)?(?::(?:raw|conflicts))?$/i.exec(path)?.[1].toLowerCase();
 }
 
-// Reads of skills the Go policy can require; other reads never affect its state.
+// Every skill read may be required (coding, harness, ECI role modules); the Go policy decides which count.
 function isSkillRead(path: string): boolean {
-	return path.startsWith("skill://coding-") || path.startsWith("skill://harness-tuning");
+	return path.startsWith("skill://");
 }
 
 // Each invocation carries one complete JSON request; the engine owns its state format.
@@ -42,12 +42,12 @@ async function invoke(command: string, request?: unknown): Promise<unknown> {
 }
 
 function description(value: unknown): Description {
-	if (value === null || typeof value !== "object" || !("callTools" in value) || !("resultTools" in value) || !("gatedExtensions" in value) ||
-		!Array.isArray(value.callTools) || !Array.isArray(value.resultTools) || !Array.isArray(value.gatedExtensions) ||
-		![...value.callTools, ...value.resultTools, ...value.gatedExtensions].every(item => typeof item === "string")) {
+	if (value === null || typeof value !== "object" || !("callTools" in value) || !("resultTools" in value) || !("gatedExtensions" in value) || !("gatedAgentPrefixes" in value) ||
+		!Array.isArray(value.callTools) || !Array.isArray(value.resultTools) || !Array.isArray(value.gatedExtensions) || !Array.isArray(value.gatedAgentPrefixes) ||
+		![...value.callTools, ...value.resultTools, ...value.gatedExtensions, ...value.gatedAgentPrefixes].every(item => typeof item === "string")) {
 		throw new Error("invalid engine description");
 	}
-	return { callTools: value.callTools, resultTools: value.resultTools, gatedExtensions: new Set(value.gatedExtensions) };
+	return { callTools: value.callTools, resultTools: value.resultTools, gatedExtensions: new Set(value.gatedExtensions), gatedAgentPrefixes: value.gatedAgentPrefixes };
 }
 
 // Retain only read call/result pairs needed by the Go policy during hydration.
@@ -128,8 +128,8 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event, ctx): Promise<Verdict> => {
 		const current = generation;
 		let editTargets: string[] | undefined;
-		let described: Description | undefined;
-		const touchesCode = () => described !== undefined && paths.some(path => described!.gatedExtensions.has(extensionOf(path) ?? ""));
+		// Set once the engine says this call is checked: by agent role, or by a gated write target. Only checked calls block on failure.
+		let gated = false;
 		let paths = event.toolName === "write" && typeof event.input.path === "string" ? [event.input.path] : [];
 		try {
 			if (event.toolName === "edit") {
@@ -139,7 +139,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				paths = [...inspection.paths, ...inspection.fileOps.flatMap(op => op.to === undefined ? [] : [op.to])];
 				if (paths.length) editTargets = paths;
 			}
-			if (!paths.length) return undefined;
+			let described: Description;
 			try {
 				described = await describe();
 			} catch (error) {
@@ -151,13 +151,17 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				}
 				return undefined;
 			}
-			if (!touchesCode() || !described.callTools.includes(event.toolName)) return undefined;
+			if (!described.callTools.includes(event.toolName)) return undefined;
+			const agentName = ctx.agent?.name;
+			gated = (agentName !== undefined && described.gatedAgentPrefixes.some(prefix => agentName.startsWith(prefix))) ||
+				paths.some(path => described.gatedExtensions.has(extensionOf(path) ?? ""));
+			if (!gated) return undefined;
 			if (current !== generation) throw new Error("session changed; retry the call");
 			return await enqueue(ctx, async slot => {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (!slot.initialized) await reduce(slot, ctx, []);
 				if (current !== generation) throw new Error("session changed; retry the call");
-				const response = await invoke("check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets, cwd: ctx.cwd } });
+				const response = await invoke("check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets, cwd: ctx.cwd, agentName } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
 				if (!response.block) return undefined;
@@ -165,7 +169,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				return { block: true, reason: response.reason };
 			});
 		} catch (error) {
-			if (!touchesCode()) return undefined;
+			if (!gated) return undefined;
 			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
 			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Ensure Go and the native provisioner are available to build ${binary}, then retry, or delete agent/extensions/coding-skill-gate.ts and restart.` };
 		}

@@ -24,7 +24,8 @@ const mode = process.argv[3];
 if (mode === 'describe') {
  if (fs.existsSync(${JSON.stringify(join(root, "fail-describe"))})) process.exit(1);
  if (fs.existsSync(${JSON.stringify(join(root, "stale-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']})); process.exit(0); }
- process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read'],gatedExtensions:['.go','.cpp']}));
+ if (fs.existsSync(${JSON.stringify(join(root, "prefixless-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit','task'],resultTools:['read'],gatedExtensions:['.go','.cpp']})); process.exit(0); }
+ process.stdout.write(JSON.stringify({callTools:['write','edit','task'],resultTools:['read'],gatedExtensions:['.go','.cpp'],gatedAgentPrefixes:['eci-preset-']}));
 } else {
  let data=''; process.stdin.on('data',chunk=>data+=chunk); process.stdin.on('end',()=>{
   const req=JSON.parse(data); fs.appendFileSync(${JSON.stringify(join(root, "requests.jsonl"))},JSON.stringify({mode,...req})+'\\n');
@@ -281,5 +282,82 @@ test.each([
 		console.error = original;
 		rmSync(engine);
 		renameSync(`${engine}.held`, engine);
+	}
+});
+
+// Requests the fake engine received in the named mode after the first `before` requests.
+function requestsSince(before: number, mode: string): Record<string, any>[] {
+	return readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").slice(before).map(line => JSON.parse(line)).filter(request => request.mode === mode);
+}
+
+function requestCount(): number {
+	return readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").length;
+}
+
+test("checks any write by an ECI preset agent with its name and skips other agents", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const eci = {cwd: root, agent: {id: "Explorer", name: "eci-preset-explorer-anthropic-default"}, sessionManager: {getSessionId: () => "eci-write", getBranch: () => []}};
+	await handlers.session_start({}, {...eci, agent: {id: "Main", name: "main"}});
+	const before = requestCount();
+	expect(await handlers.tool_call({toolName: "write", input: {path: "agent://O"}}, eci)).toMatchObject({block: true});
+	const checks = requestsSince(before, "check");
+	expect(checks).toHaveLength(1);
+	expect(checks[0].call.agentName).toBe("eci-preset-explorer-anthropic-default");
+	const after = requestCount();
+	expect(await handlers.tool_call({toolName: "write", input: {path: "agent://O"}}, {...eci, agent: {id: "Main", name: "main"}})).toBeUndefined();
+	expect(requestsSince(after, "check")).toHaveLength(0);
+});
+
+test("checks task calls by ECI preset agents only", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const eci = {cwd: root, agent: {id: "Orch", name: "eci-preset-orchestrator-anthropic-default"}, sessionManager: {getSessionId: () => "eci-task", getBranch: () => []}};
+	await handlers.session_start({}, {...eci, agent: {id: "Main", name: "main"}});
+	const before = requestCount();
+	expect(await handlers.tool_call({toolName: "task", input: {tasks: []}}, eci)).toMatchObject({block: true});
+	expect(requestsSince(before, "check").map(request => request.call.toolName)).toEqual(["task"]);
+	const after = requestCount();
+	expect(await handlers.tool_call({toolName: "task", input: {tasks: []}}, {...eci, agent: {id: "Main", name: "main"}})).toBeUndefined();
+	expect(await handlers.tool_call({toolName: "bash", input: {command: "true"}}, eci)).toBeUndefined();
+	expect(requestsSince(after, "check")).toHaveLength(0);
+});
+
+test("forwards ECI skill reads to reduce and hydration history", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const module = "skill://explore-critique-implement/references/explore.md";
+	const branch = [
+		{type: "message", message: {role: "assistant", content: [{type: "toolCall", id: "m", name: "read", arguments: {path: module}}]}},
+		{type: "message", message: {role: "toolResult", toolCallId: "m", toolName: "read", details: {totalLines: 1}}},
+	];
+	const ctx = {cwd: root, agent: {id: "Main", name: "main"}, sessionManager: {getSessionId: () => "eci-read", getBranch: () => branch}};
+	await handlers.session_start({}, ctx);
+	const before = requestCount();
+	await handlers.tool_result({toolName: "read", input: {path: module}, isError: false}, ctx);
+	const reductions = requestsSince(before, "reduce");
+	expect(reductions).toHaveLength(1);
+	expect(reductions[0].results[0].input.path).toBe(module);
+	expect(JSON.stringify(reductions[0].branch)).toContain(module);
+});
+
+test("treats a description without agent prefixes as stale and fails open", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const notices: string[] = [];
+	const ctx = {cwd: root, agent: {id: "Orch", name: "eci-preset-orchestrator-anthropic-default"}, ui: {notify: (message: string) => { notices.push(message); }},
+		sessionManager: {getSessionId: () => "prefixless", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const marker = join(root, "prefixless-describe");
+	writeFileSync(marker, "");
+	const original = console.error;
+	console.error = () => {};
+	try {
+		expect(await handlers.tool_call({toolName: "task", input: {tasks: []}}, ctx)).toBeUndefined();
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(notices).toHaveLength(1);
+	} finally {
+		console.error = original;
+		rmSync(marker);
 	}
 });

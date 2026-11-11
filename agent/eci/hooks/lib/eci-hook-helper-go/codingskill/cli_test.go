@@ -20,17 +20,13 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	var output bytes.Buffer
 	require.NoError(t, Run([]string{"reduce"}, bytes.NewReader(request), &output))
-	var wire struct {
-		State struct {
-			Reads map[string]bool `json:"reads"`
-		} `json:"state"`
-	}
-	require.NoError(t, json.Unmarshal(output.Bytes(), &wire))
-	require.Equal(t, map[string]bool{"coding-common": true, "coding-go": true}, wire.State.Reads)
 	var reduced struct {
 		State State `json:"state"`
 	}
 	require.NoError(t, json.Unmarshal(output.Bytes(), &reduced))
+	require.True(t, reduced.State.Reads.has(skillCommon))
+	require.True(t, reduced.State.Reads.has(skillGo))
+	require.False(t, reduced.State.Reads.has(skillPython))
 	request, err = json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": "a.go"}}})
 	require.NoError(t, err)
 	output.Reset()
@@ -59,4 +55,42 @@ func TestDescribeListsGatedExtensions(t *testing.T) {
 	}
 	require.ElementsMatch(t, keys, described.GatedExtensions)
 	require.Contains(t, described.GatedExtensions, ".cpp")
+}
+
+// TestCLICheckCarriesAgentName gates an ECI agent's task through check.
+//
+// Example: an orchestrator task call is blocked until its role reads finish.
+func TestCLICheckCarriesAgentName(t *testing.T) {
+	for _, tc := range []struct {
+		agent string
+		block bool
+	}{
+		{"eci-preset-orchestrator-openai-default", true},
+		{"main", false},
+	} {
+		request, err := json.Marshal(cliInput{Call: cliEvent{ToolName: "task", Input: map[string]any{}, AgentName: tc.agent}})
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		var verdict struct {
+			Block bool `json:"block"`
+		}
+		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
+		require.Equal(t, tc.block, verdict.Block, tc.agent)
+	}
+}
+
+// TestDescribeListsRoleGating exposes task and the ECI agent prefix to the adapter.
+//
+// Example: the adapter checks task calls from eci-preset-* agents.
+func TestDescribeListsRoleGating(t *testing.T) {
+	var output bytes.Buffer
+	require.NoError(t, Run([]string{"describe"}, nil, &output))
+	var described struct {
+		CallTools          []string `json:"callTools"`
+		GatedAgentPrefixes []string `json:"gatedAgentPrefixes"`
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &described))
+	require.Equal(t, []string{"write", "edit", "task"}, described.CallTools)
+	require.Equal(t, []string{"eci-preset-"}, described.GatedAgentPrefixes)
 }
