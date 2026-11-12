@@ -1594,21 +1594,23 @@ assert_coordinator_role_boundary() {
 }
 
 assert_finding_treatment_rules() {
-  local superseded
+  local forbidden
   require_text "$REVIEW_POLICY" '`user decision` for a decision the critic names as the user'
   require_text "$REVIEW_POLICY" 'a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.'
   require_text "$REVIEW_POLICY" 'Treatments other than `now` and `user decision` are not clean-pass defects. A `user decision` holds final acceptance until a fresh Step 2 critic decides the finding again from the user'
-  for superseded in 'gets one treatment per part' "that the user's quoted answer accepts"; do
-    ! grep -Fq -- "$superseded" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $superseded"
+  for forbidden in 'gets one treatment per part' "that the user's quoted answer accepts"; do
+    ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $forbidden"
   done
 }
 
 assert_user_set_order_rule() {
-  require_text "$ECI" 'In a user-set order, make no change that belongs to a step unless the steps before it are done and still in effect.'
+  require_text "$ECI" 'In a user-set order, make no change that belongs to a step unless every step before it in the order is done and either still in effect or undone by another of those steps.'
   require_text "$ECI" 'Read each step by its plain meaning; never narrow it to fit a better option, such as a shorter outage.'
-  require_text "$POLICY" 'A Fast Owner Producer that sees a shorter outage keeps the order, reports the alternative, and makes every logging edit, commit, and deploy while the hooks are disabled. A later logging change, such as a main-path revision, first disables them again.'
+  require_text "$POLICY" 'A Fast Owner Producer that sees a shorter outage keeps the order, reports the alternative, and makes every logging edit, commit, and deploy while the hooks are disabled. A later change that belongs to the logging fix, such as a main-path revision, first disables them again. If the user adds a fourth step, "then deploy", the deploy follows the re-enable and runs with the hooks enabled.'
   ! grep -Fq -- 'until the steps before it are done' "$ECI" || fail "$ECI retains superseded user-set order wording"
   ! grep -Fq -- 'shorter disabled window' "$POLICY" || fail "$POLICY retains superseded user-set sequence wording"
+  ! grep -Fq -- 'unless the steps before it are done and still in effect' "$ECI" || fail "$ECI retains superseded user-set order wording"
+  ! grep -Fq -- 'A later logging change' "$POLICY" || fail "$POLICY retains superseded user-set sequence wording"
 }
 
 assert_deferred_disposition_policy_contract_text() {
