@@ -189,7 +189,8 @@ for name in "${names[@]}"; do
   echo "build-native-binaries: building $name"
   # TODO: a non-repair build publishes this module's working tree, other Jobs' uncommitted edits included, to every
   # running session; only the ECI router's codingskill step asks for a clean tree. Warn or refuse here when
-  # git status --short -- "$module" is non-empty, as --gate-repair already prints source status.
+  # GIT_OPTIONAL_LOCKS=0 git -C "$module" status --short -- . is non-empty; if it fails (no repository),
+  # report unknown status as --gate-repair does.
   (cd -- "$module" && env -u GO386 -u GOAMD64 -u GOARM -u GOARM64 -u GOMIPS -u GOMIPS64 -u GOPPC64 -u GORISCV64 -u GOWASM \
     GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
