@@ -268,7 +268,7 @@ func decide(req Request) (Response, error) {
 	}
 	switch req.Action {
 	case resultAction:
-		if req.Tool == "read" && !req.IsError { // TODO: flatten; this result branch nests three deep (switch, if, if); move result crediting into its own function with early returns.
+		if req.Tool == "read" && !req.IsError { // TODO: flatten; this result branch nests three deep (switch, if, if); move its credit step (creditedSkill, skip skillUnknown, Reads.mark), which hydrate repeats, into one function that both call.
 			skill := creditedSkill(req.Input, req.Details)
 			if skill != skillUnknown {
 				state.Reads.mark(skill)
