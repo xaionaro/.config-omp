@@ -39,6 +39,7 @@ task:
   perCallModel: "on"
   softRequestBudget: 0
   agentSoftRequestBudget: {}
+  agentIdleTtlMs: 3600000
 defaultThinkingLevel: low
 advisor:
   enabled: true
