@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -377,11 +378,21 @@ var codeExtensions = func() map[string]Skill {
 // Example: SKILL.md, preset .tmpl files, rules/*.mdc, the WATCHDOG.yml advisor roster, and skill graphviz guides such as graphviz-conventions.dot are instruction candidates.
 var instructionExtensions = []string{".dot", ".md", ".mdc", ".tmpl", ".yml", ".yaml"}
 
+// contextFileNames lists the fixed names omp's built-in discovery loads as context files; any file so named in ~/.omp is an instruction file.
+//
+// Example: ~/.omp/agent/AGENTS.md, ~/.omp/agent/eci/AGENTS.md, and x/.claude/CLAUDE.md are instruction files.
+var contextFileNames = []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md", "copilot-instructions.md"}
+
+// internalURL recognizes an omp internal URL such as local://; writable ones address session artifacts or the vault, never loaded instructions.
+//
+// Example: local://AGENTS.md is a session artifact, not an instruction file.
+var internalURL = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
+
 // instructionFiles names instruction files relative to ~/.omp/agent: the prompt, rule, and advisor files omp loads from there, then ECI's binding contract, gate catalog, and hook prompts.
 //
 // Example: RULES.md, WATCHDOG.yml, and the ECI stop checklist are instruction files.
 var instructionFiles = []string{
-	"AGENTS.md", "RULES.md", "SYSTEM.md", "SYSTEM_TEMPLATE.md", "APPEND_SYSTEM.md", "TITLE_SYSTEM.md", "PERSONALITY.md",
+	"RULES.md", "SYSTEM.md", "SYSTEM_TEMPLATE.md", "APPEND_SYSTEM.md", "TITLE_SYSTEM.md", "PERSONALITY.md",
 	"WATCHDOG.md", "WATCHDOG.yml", "WATCHDOG.yaml",
 	"eci-binding-contract.md", "eci/hooks/gate-escape-hatches.md",
 	"eci/hooks/reviewer-rules.md", "eci/hooks/stop-checklist.md", "eci/hooks/stop-verification.md",
@@ -418,9 +429,9 @@ func skillForPath(
 	return codeExtensions[strings.ToLower(filepath.Ext(path))], nil
 }
 
-// isInstructionPath reports whether path names an instruction file under ~/.omp/agent.
+// isInstructionPath reports whether path names an instruction file in ~/.omp: a context file anywhere there, or a listed file or directory under ~/.omp/agent.
 //
-// Example: with cwd ~/.omp, agent/skills/a/SKILL.md is an instruction path.
+// Example: with cwd ~/.omp, agent/skills/a/SKILL.md and agent/eci/AGENTS.md are instruction paths.
 func isInstructionPath(
 	path string,
 	cwd string,
@@ -433,27 +444,42 @@ func isInstructionPath(
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", path, err)
+		return false, fmt.Errorf("locating ~/.omp for %s: %w", path, err)
 	}
 	rest, tilde := strings.CutPrefix(path, "~/")
 	switch {
 	case tilde:
 		path = filepath.Join(home, rest)
+	case internalURL.MatchString(path):
+		return false, nil
 	case filepath.IsAbs(path):
 	case cwd == "":
 		return false, nil
 	default:
 		path = filepath.Join(cwd, path)
 	}
-	// TODO: omp also loads instructions from paths inside ~/.omp that this anchor
-	// misses: ~/.omp/WATCHDOG.{md,yml,yaml} (sessions in the ~/.omp repo or in
-	// non-repo directories at or under home), .omp/ project directories such as
-	// ~/.omp/.omp, and named-profile agent directories under ~/.omp/profiles/. None
-	// exists yet; if one appears, gate those WATCHDOG files and match the
-	// directories against instructionFiles and instructionDirs too.
-	rel, err := filepath.Rel(filepath.Join(home, ".omp", "agent"), filepath.Clean(path))
+	inOmp, err := filepath.Rel(filepath.Join(home, ".omp"), filepath.Clean(path))
 	if err != nil {
-		return false, fmt.Errorf("relating %s to ~/.omp/agent: %w", path, err)
+		return false, fmt.Errorf("relating %s to ~/.omp: %w", path, err)
+	}
+	if !filepath.IsLocal(inOmp) {
+		return false, nil
+	}
+	if slices.Contains(contextFileNames, filepath.Base(inOmp)) {
+		return true, nil
+	}
+	// TODO: omp loads instructions from more places in ~/.omp than this check
+	// gates; see omp's context-files, skills, and advisor-watchdog docs. Ungated
+	// ones include ~/.omp/WATCHDOG.{md,yml,yaml}, .omp/ project directories such
+	// as ~/.omp/.omp, named-profile agent directories under ~/.omp/profiles/, and
+	// other tools' rule files (.cursor/rules/, .cursorrules, .windsurf/rules/,
+	// .windsurfrules, .clinerules, .github/instructions/). Fix: also match
+	// instructionFiles and instructionDirs under each such directory and gate
+	// those WATCHDOG and rule files; describe must also list names such as
+	// .cursorrules so the bridge forwards them.
+	rel, inAgent := strings.CutPrefix(inOmp, "agent/")
+	if !inAgent {
+		return false, nil
 	}
 	if slices.Contains(instructionFiles, rel) {
 		return true, nil
