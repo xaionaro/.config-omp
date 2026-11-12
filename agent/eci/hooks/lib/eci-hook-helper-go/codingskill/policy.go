@@ -345,7 +345,7 @@ func creditedSkill(
 	if !ok || details["summary"] != nil {
 		return skillUnknown
 	}
-	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>[/SKILL.md]/[:raw], which the host resolves to the whole file; trim that "/" after ":raw" and before "/SKILL.md".
+	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>[/SKILL.md]/[:raw], which the host resolves to the whole file; trim one trailing "/" after removing ":raw" and before removing "/SKILL.md".
 	for skill := skillCommon; skill < skillEnd; skill++ {
 		if path == skill.name() {
 			return skill
@@ -374,21 +374,26 @@ var codeExtensions = func() map[string]Skill {
 
 // instructionExtensions lists extensions that can hold agent instructions.
 //
-// Example: SKILL.md and preset .tmpl files are instruction candidates.
-var instructionExtensions = []string{".md", ".tmpl"}
+// Example: SKILL.md, preset .tmpl files, rules/*.mdc, and the WATCHDOG.yml advisor roster are instruction candidates.
+var instructionExtensions = []string{".md", ".mdc", ".tmpl", ".yml", ".yaml"}
 
-// instructionFiles names instruction files relative to ~/.omp/agent.
+// instructionFiles names instruction files relative to ~/.omp/agent: the prompt, rule, and advisor files omp loads from there, then ECI's binding contract, gate catalog, and hook prompts.
 //
-// Example: RULES.md and the ECI stop checklist are instruction files.
+// Example: RULES.md, WATCHDOG.yml, and the ECI stop checklist are instruction files.
 var instructionFiles = []string{
-	"RULES.md", "AGENTS.md", "eci-binding-contract.md",
+	"AGENTS.md", "RULES.md", "SYSTEM.md", "SYSTEM_TEMPLATE.md", "APPEND_SYSTEM.md", "TITLE_SYSTEM.md", "PERSONALITY.md",
+	"WATCHDOG.md", "WATCHDOG.yml", "WATCHDOG.yaml",
+	"eci-binding-contract.md", "eci/hooks/gate-escape-hatches.md",
 	"eci/hooks/reviewer-rules.md", "eci/hooks/stop-checklist.md", "eci/hooks/stop-verification.md",
 }
 
-// instructionDirs names directories under ~/.omp/agent whose Markdown and templates are instructions.
+// instructionDirs names directories under ~/.omp/agent whose files with instruction extensions are instructions: omp's skill, agent, command, prompt, instruction, and rule directories, and ECI's preset templates.
 //
 // Example: agent/skills/x/references/y.md is under an instruction directory.
-var instructionDirs = []string{"skills/", "agents/", "eci/tools/eci-presets/templates/"}
+var instructionDirs = []string{
+	"skills/", "managed-skills/", "agents/", "commands/", "prompts/", "instructions/", "rules/",
+	"eci/tools/eci-presets/templates/",
+}
 
 // skillForPath maps a write target to the most specific required skill.
 //

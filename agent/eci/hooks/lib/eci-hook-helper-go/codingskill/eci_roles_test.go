@@ -205,10 +205,10 @@ func TestBranchHydrationCreditsECIModules(t *testing.T) {
 	require.Contains(t, got.Reason, "requires "+eciModuleURI("explore.md")+".")
 }
 
-// TestECIHookPromptsAreInstructions gates hook prompt files but not hook catalogs or fixtures.
+// TestECIHookInstructionsAreGated gates hook prompt files and the gate catalog but not hook fixtures.
 //
-// Example: eci/hooks/stop-checklist.md needs harness-tuning; eci/hooks/tests/a.md does not.
-func TestECIHookPromptsAreInstructions(t *testing.T) {
+// Example: eci/hooks/gate-escape-hatches.md needs harness-tuning; eci/hooks/tests/a.md does not.
+func TestECIHookInstructionsAreGated(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent := filepath.Join(home, ".omp", "agent")
@@ -219,7 +219,7 @@ func TestECIHookPromptsAreInstructions(t *testing.T) {
 		{"eci/hooks/reviewer-rules.md", true},
 		{"eci/hooks/stop-checklist.md", true},
 		{"eci/hooks/stop-verification.md", true},
-		{"eci/hooks/gate-escape-hatches.md", false},
+		{"eci/hooks/gate-escape-hatches.md", true},
 		{"eci/hooks/tests/a.md", false},
 	} {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": tc.path}, Cwd: agent})

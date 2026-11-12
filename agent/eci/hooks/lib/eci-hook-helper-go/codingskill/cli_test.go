@@ -189,7 +189,7 @@ func TestCLIRejectsMalformedReads(t *testing.T) {
 
 // TestDescribeListsGatedExtensions keeps the TS prefilter on the Go extension sets.
 //
-// Example: describe lists ".cpp" and ".md" because skillForPath can gate both.
+// Example: describe lists ".cpp", ".md", and ".yml" because skillForPath can gate all three.
 func TestDescribeListsGatedExtensions(t *testing.T) {
 	var output bytes.Buffer
 	require.NoError(t, Run([]string{"describe"}, nil, &output))
@@ -203,7 +203,7 @@ func TestDescribeListsGatedExtensions(t *testing.T) {
 		keys = append(keys, ext)
 	}
 	require.ElementsMatch(t, keys, described.GatedExtensions)
-	require.Contains(t, described.GatedExtensions, ".cpp")
+	require.Subset(t, described.GatedExtensions, []string{".cpp", ".md", ".mdc", ".yml", ".yaml"})
 }
 
 // TestCLICheckCarriesAgentName gates an ECI agent's task through check.
