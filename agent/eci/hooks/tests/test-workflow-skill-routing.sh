@@ -1328,11 +1328,14 @@ assert_fast_quality() {
 }
 
 assert_fast_path_progress_wait_contract() {
-  local eci_text="$1" fast_text="$2" park_rule section
+  local eci_text="$1" fast_text="$2" dependency_rule section
 
-  park_rule="$(grep '^- When advancing ECI outcomes' <<<"$eci_text" || true)"
-  require_section_pattern "$park_rule" 'dependency-scoped global parking' \
+  dependency_rule="$(grep '^- When advancing ECI outcomes' <<<"$eci_text")" ||
+    fail 'missing ECI dependency rule line'
+  require_section_pattern "$dependency_rule" 'dependency-scoped global parking' \
     'do not use or advance on .*before delivery.*block only the actions that need them.*continue independent ready work, then park'
+  ! grep -Eiq -- 'park.*continue independent ready work' <<<"$dependency_rule" ||
+    fail 'ECI dependency rule parks before independent ready work'
   section="$(extract_h2_section <(printf '%s\n' "$fast_text") '## Progress waits')" ||
     fail 'missing cross-path wait section'
   require_section_pattern "$section" 'cross-path wait preserves verification and real dependencies' \
@@ -2060,6 +2063,11 @@ assert_fast_path_progress_waits() {
     fail 'cross-path wait regression admitted unscoped global parking'
   fi
   [[ "$output" == *'dependency-scoped global parking'* ]] || fail "unexpected mutation failure: $output"
+  mutation="$(sed '/^- When advancing ECI outcomes/s/before delivery; /before delivery; park meanwhile; /' <<<"$eci_text")"
+  if output="$(assert_fast_path_progress_wait_contract "$mutation" "$fast_text" 2>&1)"; then
+    fail 'cross-path wait regression admitted parking before independent ready work'
+  fi
+  [[ "$output" == *'parks before independent ready work'* ]] || fail "unexpected mutation failure: $output"
   mutation="$(sed "s/ and the next action's dependencies are satisfied//" <<<"$fast_text")"
   if output="$(assert_fast_path_progress_wait_contract "$eci_text" "$mutation" 2>&1)"; then
     fail 'cross-path wait regression admitted unfinished required evidence'
@@ -3342,6 +3350,7 @@ assert_least_restriction_contract() {
   require_text "$ECI_BINDING_CONTRACT" 'Every enabled denial names a documented bounded legitimate-work escape path in'
   require_text "$GATE_CATALOG" 'If a future gate has no bounded legitimate path, disable that gate until one exists.'
   require_text "$GATE_CATALOG" 'owner-scoped dependency work'
+  # TODO: the authoritative eci-binding-contract.md "Dependency repositories" row is unpinned; only the catalog wording below is checked. Add require_text "$ECI_BINDING_CONTRACT" 'Native Git and scripts in dependency repositories are not gated by callback marker state.'
   require_text "$GATE_CATALOG" 'Native Git and scripts remain available in any repository'
 
   forbid_text "$ECI_COVERAGE" 'Baseline source SHA-256:'
