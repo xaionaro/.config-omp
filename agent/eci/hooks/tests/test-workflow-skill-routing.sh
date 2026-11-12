@@ -2989,6 +2989,7 @@ assert_yaml_understanding_contract() {
   require_text "$LEDGER" 'Between checkpoints, review affected subjects and linked contradictions rather than rescanning unrelated state for every event.'
   require_text "$LEDGER" 'run `yq4 -i` on the canonical file'
   require_text "$LEDGER" 'yq4 -e "$check" "$f" && yq4 -i "$e" "$f"'
+  require_text "$LEDGER" 'and the write separate tool calls: write only after reading the preview.'
   forbid_pattern "$LEDGER" '^yq4 -i'
   require_text "$LEDGER" 'set -o pipefail'
   forbid_text "$LEDGER" 'project-understanding.md'

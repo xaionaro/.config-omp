@@ -508,28 +508,42 @@ check that the ID is absent and add a complete record. `yq4` keeps the quoting
 of existing scalars but writes new keys and strings unquoted; set
 `style="double"` on them. Preview each change as a diff before applying it: only
 the intended records may change, apart from one-time layout normalization (line
-wrapping, blank lines, comment spacing, sequence indentation). One canonical
-session writer applies bounded worker proposals to the latest file.
+wrapping, blank lines, comment spacing, sequence indentation). Make the preview
+and the write separate tool calls: write only after reading the preview. Run
+each call in a subshell that sets every variable it uses, so no ID or text
+carries into a later call. One canonical session writer applies bounded worker
+proposals to the latest file.
 
 ```sh
-cd "$HOME/.agent/context/sessions/$SESSION_ID"
-f=project-understanding.yaml
-
 # Update an existing work record. Each write runs only if its check passes.
+# Call 1 checks and previews:
+(
+f="$HOME/.agent/context/sessions/$SESSION_ID/project-understanding.yaml"
 export id='work:receiver:clock' owner='worker-b'
 e='.records[strenv(id)].data.owner = strenv(owner)'
 check='.records[strenv(id)].type == "work"'
 yq4 -e "$check" "$f" && yq4 "$e" "$f" | diff -u "$f" -
-yq4 -e "$check" "$f" && yq4 -i "$e" "$f"  # after reviewing the preview
+)
+# Call 2, after reading the preview, repeats call 1 with the write as its last line:
+(
+f="$HOME/.agent/context/sessions/$SESSION_ID/project-understanding.yaml"
+export id='work:receiver:clock' owner='worker-b'
+e='.records[strenv(id)].data.owner = strenv(owner)'
+check='.records[strenv(id)].type == "work"'
+yq4 -e "$check" "$f" && yq4 -i "$e" "$f"
+)
 
-# Add a complete record with a quoted key and strings.
+# Add a complete record with a quoted key and strings. Call 1 previews; call 2
+# repeats it with the same write line as its last line.
+(
+f="$HOME/.agent/context/sessions/$SESSION_ID/project-understanding.yaml"
 export id='guard:receiver:clock-source' rule='Keep a supplied setting distinct from a measurement' \
   reason='A supplied setting is not observed evidence'
 e='.records[strenv(id)] = {"section": "proof", "type": "guard", "data": {"rule": strenv(rule), "reason": strenv(reason)}, "evidence": []}
   | with(.records[strenv(id)]; (.. | select(tag == "!!str")) style="double" | key style="double")'
 check='.records | has(strenv(id)) | not'
 yq4 -e "$check" "$f" && yq4 "$e" "$f" | diff -u "$f" -
-yq4 -e "$check" "$f" && yq4 -i "$e" "$f"
+)
 ```
 
 Example fixture: [project-understanding.yaml](examples/project-understanding.yaml).
