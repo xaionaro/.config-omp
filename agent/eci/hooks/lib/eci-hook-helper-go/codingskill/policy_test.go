@@ -21,6 +21,21 @@ func completeRead() map[string]any {
 	return map[string]any{"totalLines": float64(2), "displayContent": map[string]any{"startLine": float64(1), "lineNumbers": []any{float64(1), float64(2)}, "text": "first\nsecond"}}
 }
 
+// TestReadSkillsHasAll requires every listed skill, so one missing read keeps a call gated.
+//
+// Example: a coding-common read alone does not cover a Go write's coding-common and coding-go.
+func TestReadSkillsHasAll(t *testing.T) {
+	var reads ReadSkills
+	require.True(t, reads.hasAll(nil))
+	require.False(t, reads.hasAll([]Skill{skillCommon}))
+	reads.mark(skillCommon)
+	require.True(t, reads.hasAll([]Skill{skillCommon}))
+	require.False(t, reads.hasAll([]Skill{skillCommon, skillGo}))
+	require.False(t, reads.hasAll([]Skill{skillGo, skillCommon}))
+	reads.mark(skillGo)
+	require.True(t, reads.hasAll([]Skill{skillCommon, skillGo}))
+}
+
 // TestOneDenialListsEveryMissingSkill names every gated path and skill of one call.
 //
 // Example: an edit of a.go and b.py names coding-common, coding-go, and coding-python together.

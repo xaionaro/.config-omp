@@ -31,7 +31,7 @@ type cliEvent struct {
 	IsError     bool           `json:"isError"`
 	EditTargets []string       `json:"editTargets"`
 	Cwd         string         `json:"cwd"`
-	AgentName   string         `json:"agentName"`
+	AgentName   AgentName      `json:"agentName"`
 }
 
 // cliInput provides one state transition or preflight request.
@@ -167,7 +167,7 @@ func gateDisabled() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", disableFileName, err)
 	}
-	_, err = os.Stat(filepath.Join(home, ".omp", "agent", disableFileName))
+	_, err = os.Stat(filepath.Join(home, ompDirName, agentDirName, disableFileName))
 	switch {
 	case err == nil:
 		return true, nil

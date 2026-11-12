@@ -11,6 +11,25 @@ import (
 	"strings"
 )
 
+const (
+	// skillScheme starts every skill URI the policy requires or credits.
+	//
+	// Example: skillScheme + skillGo.name() is skill://coding-go.
+	skillScheme = "skill://"
+	// rawSelector ends a read path that asks the host for the file's verbatim content.
+	//
+	// Example: skill://coding-go:raw reads the Go skill verbatim.
+	rawSelector = ":raw"
+	// ompDirName names omp's directory in the account home; context files anywhere under it are instruction files.
+	//
+	// Example: ~/.omp/x/.claude/CLAUDE.md is an instruction file.
+	ompDirName = ".omp"
+	// agentDirName names omp's agent directory inside ompDirName, which holds the disable switch and the listed instruction files and directories.
+	//
+	// Example: ~/.omp/agent/RULES.md is an instruction file.
+	agentDirName = "agent"
+)
+
 // Skill identifies one skill whose successful read the policy can require.
 //
 // Example: skillGo corresponds to skill://coding-go.
@@ -71,10 +90,10 @@ const (
 	skillEnd
 )
 
-// This blank array's length turns negative, failing compilation, when supported skills outgrow ReadSkills' 64 bits.
+// This blank constant overflows ReadSkills, failing compilation, when the last supported skill's bit no longer fits in it.
 //
 // Example: a 64th supported skill breaks the build instead of losing its bit.
-var _ [64 - int(skillEnd)]struct{}
+const _ = ReadSkills(1) << (skillEnd - 1)
 
 // name returns the host URI name of a supported skill, without the skill:// scheme.
 //
@@ -127,6 +146,18 @@ func (reads ReadSkills) has(skill Skill) bool {
 	return reads&(1<<skill) != 0
 }
 
+// hasAll reports whether every required skill has been read.
+//
+// Example: hasAll([skillCommon, skillGo]) is false until both coding-common and coding-go are marked.
+func (reads ReadSkills) hasAll(required []Skill) bool {
+	for _, skill := range required {
+		if !reads.has(skill) {
+			return false
+		}
+	}
+	return true
+}
+
 // UnmarshalJSON accepts the bitset number and the earlier name-to-bool object.
 //
 // Example: bridges started before the bitset change still send {"coding-common":true}; it decodes to the skillCommon bit.
@@ -161,7 +192,7 @@ func (reads ReadSkills) missing(required []Skill) []string {
 	listed := reads
 	for _, skill := range required {
 		if !listed.has(skill) {
-			uris = append(uris, "skill://"+skill.name())
+			uris = append(uris, skillScheme+skill.name())
 			listed.mark(skill)
 		}
 	}
@@ -201,12 +232,12 @@ const (
 // Example: a successful read result records skill evidence in State.
 type Request struct {
 	Action      Action
-	Tool        string
+	Tool        string // TODO: give tool names a named type (ToolName) for Tool, cliEvent.ToolName, and callTools, as AgentName does for agent names.
 	Input       map[string]any
 	Details     map[string]any
 	EditTargets []string
 	Cwd         string
-	AgentName   string
+	AgentName   AgentName
 	IsError     bool
 	Branch      []map[string]any
 	State       State
@@ -253,10 +284,10 @@ func decide(req Request) (Response, error) {
 	if !slices.Contains(callTools, req.Tool) {
 		return Response{State: state}, nil
 	}
-	required := slices.Clone(requiredRoleSkills(req.AgentName))
+	required := slices.Clone(req.AgentName.requiredRoleSkills())
 	actor := ""
-	if len(state.Reads.missing(required)) > 0 {
-		actor = req.AgentName + " "
+	if !state.Reads.hasAll(required) {
+		actor = string(req.AgentName) + " "
 	}
 	var gatedPaths []string
 	for _, path := range writeTargets(req) {
@@ -271,7 +302,7 @@ func decide(req Request) (Response, error) {
 		if targetSkill == skillCommon {
 			pathSkills = pathSkills[:1]
 		}
-		if len(state.Reads.missing(pathSkills)) == 0 || slices.Contains(gatedPaths, path) {
+		if state.Reads.hasAll(pathSkills) || slices.Contains(gatedPaths, path) {
 			continue
 		}
 		gatedPaths = append(gatedPaths, path)
@@ -342,11 +373,11 @@ func creditedSkill(
 	input map[string]any,
 	details map[string]any,
 ) Skill {
-	path, ok := strings.CutPrefix(asString(input["path"]), "skill://")
+	path, ok := strings.CutPrefix(asString(input["path"]), skillScheme)
 	if !ok || details["summary"] != nil {
 		return skillUnknown
 	}
-	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>[/SKILL.md]/[:raw], which the host resolves to the whole file; trim one trailing "/" after removing ":raw" and before removing "/SKILL.md".
+	path = strings.TrimSuffix(strings.TrimSuffix(path, rawSelector), "/SKILL.md") // TODO: also credit skill://<name>[/SKILL.md]/[:raw], which the host resolves to the whole file; trim one trailing "/" after removing ":raw" and before removing "/SKILL.md".
 	for skill := skillCommon; skill < skillEnd; skill++ {
 		if path == skill.name() {
 			return skill
@@ -417,7 +448,7 @@ func skillForPath(
 		path = match[1]
 	}
 	if strings.HasPrefix(path, "local://") || strings.HasPrefix(path, "vault://") {
-		path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), ":conflicts")
+		path = strings.TrimSuffix(strings.TrimSuffix(path, rawSelector), ":conflicts")
 	}
 	instruction, err := isInstructionPath(path, cwd)
 	if err != nil {
@@ -458,7 +489,7 @@ func isInstructionPath(
 	default:
 		path = filepath.Join(cwd, path)
 	}
-	inOmp, err := filepath.Rel(filepath.Join(home, ".omp"), filepath.Clean(path))
+	inOmp, err := filepath.Rel(filepath.Join(home, ompDirName), filepath.Clean(path))
 	if err != nil {
 		return false, fmt.Errorf("relating %s to ~/.omp: %w", path, err)
 	}
@@ -477,7 +508,7 @@ func isInstructionPath(
 	// instructionFiles and instructionDirs under each such directory and gate
 	// those WATCHDOG and rule files; describe must also list names such as
 	// .cursorrules so the bridge forwards them.
-	rel, inAgent := strings.CutPrefix(inOmp, "agent/")
+	rel, inAgent := strings.CutPrefix(inOmp, agentDirName+"/")
 	if !inAgent {
 		return false, nil
 	}

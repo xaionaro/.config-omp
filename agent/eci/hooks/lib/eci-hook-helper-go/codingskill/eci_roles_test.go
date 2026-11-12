@@ -62,11 +62,11 @@ func readAll(
 // Example: an explorer writing agent://O must read the router and explore.md.
 func TestECIRolesRequireTheirSkills(t *testing.T) {
 	for _, tc := range roleCases {
-		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: "eci-preset-" + tc.role + "-openai-max"})
+		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: AgentName("eci-preset-" + tc.role + "-openai-max")})
 		require.NoError(t, err)
 		require.Contains(t, got.Reason, "requires "+strings.Join(tc.want, " and ")+".", tc.role)
 	}
-	for _, name := range []string{"", "main", "explore", "advisor", "sub", "eci-preset"} {
+	for _, name := range []AgentName{"", "main", "explore", "advisor", "sub", "eci-preset"} {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: name})
 		require.NoError(t, err)
 		require.Empty(t, got.Reason, name)
@@ -77,7 +77,7 @@ func TestECIRolesRequireTheirSkills(t *testing.T) {
 //
 // Example: a filesystem-path or line-range read of the router earns no credit.
 func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {
-	agent := "eci-preset-explorer-anthropic-default"
+	agent := AgentName("eci-preset-explorer-anthropic-default")
 
 	// call checks a write to agent://O by the explorer holding state and returns the denial reason, empty when the write is allowed.
 	//
@@ -107,7 +107,7 @@ func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {
 //
 // Example: an orchestrator cannot spawn workers before reading its module.
 func TestECIOrchestratorTaskRequiresSkills(t *testing.T) {
-	agent := "eci-preset-orchestrator-anthropic-default"
+	agent := AgentName("eci-preset-orchestrator-anthropic-default")
 	task := Request{Action: callAction, Tool: "task", Input: map[string]any{"tasks": []any{}}, AgentName: agent}
 	got, err := decide(task)
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestECIRoleAndCodeSkillsCombine(t *testing.T) {
 //
 // Example: eci-preset-zz-openai-max needs only the router.
 func TestUnknownECIRoleRequiresRouter(t *testing.T) {
-	for _, name := range []string{"eci-preset-zz-openai-max", "eci-preset-zz"} {
+	for _, name := range []AgentName{"eci-preset-zz-openai-max", "eci-preset-zz"} {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: name})
 		require.NoError(t, err)
 		require.Contains(t, got.Reason, "requires "+eciRouterURI+".", name)

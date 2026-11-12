@@ -276,7 +276,7 @@ func TestDescribeListsGatedExtensions(t *testing.T) {
 func TestCLICheckCarriesAgentName(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, tc := range []struct {
-		agent string
+		agent AgentName
 		block bool
 	}{
 		{"eci-preset-orchestrator-openai-default", true},
