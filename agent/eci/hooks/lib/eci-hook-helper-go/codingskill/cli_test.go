@@ -61,16 +61,19 @@ func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 	}
 }
 
-// TestCLIRejectsMalformedReads names the state form that failed to decode.
+// TestCLIRejectsMalformedReads names the state form that failed to decode and keeps the decoder's cause.
 //
 // Example: {"reads":-1} fails as a bitset; {"reads":{"coding-common":1}} fails as a skill-name object.
 func TestCLIRejectsMalformedReads(t *testing.T) {
-	for reads, want := range map[string]string{
-		`-1`:                  "reads is not a bitset: json: cannot unmarshal number -1 into Go value of type uint64",
-		`{"coding-common":1}`: "reads is not a skill-name object: json: cannot unmarshal number into Go value of type bool",
+	for reads, form := range map[string]string{
+		`-1`:                  "reads is not a bitset: ",
+		`{"coding-common":1}`: "reads is not a skill-name object: ",
 	} {
 		request := `{"state":{"reads":` + reads + `},"call":{"toolName":"write","input":{"path":"a.go"}}}`
-		require.EqualError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), io.Discard), want, reads)
+		err := Run([]string{"check"}, bytes.NewReader([]byte(request)), io.Discard)
+		require.ErrorContains(t, err, form, reads)
+		var cause *json.UnmarshalTypeError
+		require.ErrorAs(t, err, &cause, reads)
 	}
 }
 

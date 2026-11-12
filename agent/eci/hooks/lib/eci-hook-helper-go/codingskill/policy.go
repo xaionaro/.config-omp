@@ -109,7 +109,7 @@ func (skill Skill) name() string {
 
 // ReadSkills is the set of credited skill reads, one bit per Skill.
 //
-// Example: the skillCommon bit is set after a selector-free skill://coding-common read.
+// Example: the skillCommon bit is set after a skill://coding-common read without a line range.
 type ReadSkills uint64
 
 // mark records a credited read of a supported skill.
@@ -334,7 +334,7 @@ func collectReadCalls(
 	}
 }
 
-// creditedSkill returns the supported skill a successful selector-free skill:// read names, or skillUnknown; host output truncation still credits, because no selector-free read can show more, while a host summary does not, because a :raw read returns the verbatim skill.
+// creditedSkill returns the supported skill named by a successful skill:// read without a line range, or skillUnknown; host output truncation still credits, because no such read can show more, while a host summary does not, because a :raw read returns the verbatim skill.
 //
 // Example: skill://coding-go, skill://coding-go/SKILL.md and skill://coding-go:raw credit coding-go; skill://coding-go:1-20 and a filesystem path do not.
 func creditedSkill(

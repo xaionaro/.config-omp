@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// wholeReadBudget is the largest supported skill file, in bytes, that one selector-free read should show whole.
+// wholeReadBudget is the largest supported skill file, in bytes, that one read without a line range should show whole.
 //
 // Example: omp spills read output above tools.artifactSpillThreshold (default 50 KiB), so 40 KiB leaves room for the header line and for review before a skill outgrows one read.
 const wholeReadBudget = 40 << 10
@@ -48,7 +48,7 @@ func TestOneDenialListsEveryMissingSkill(t *testing.T) {
 	require.Equal(t, "Coding skill gate: writing a.go requires skill://coding-common and skill://coding-go. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
 }
 
-// TestSupportedSkillsFitOneRead checks every gated skill exists and one selector-free read can show it whole.
+// TestSupportedSkillsFitOneRead checks every gated skill exists and one read without a line range can show it whole.
 //
 // Example: renaming references/explore.md or growing the router past wholeReadBudget fails here.
 func TestSupportedSkillsFitOneRead(t *testing.T) {
@@ -181,10 +181,10 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
-// TestSkillCreditRequiresSelectorFreeSkillURI credits successful selector-free skill:// reads, even when the host truncates them.
+// TestSkillCreditRequiresSkillURIWithoutLineRange credits successful skill:// reads without a line range, even when the host truncates them.
 //
 // Example: a line range or a host summary earns no credit; host truncation at the spill limit does.
-func TestSkillCreditRequiresSelectorFreeSkillURI(t *testing.T) {
+func TestSkillCreditRequiresSkillURIWithoutLineRange(t *testing.T) {
 	for _, path := range []string{"skill://coding-go:1-2", "skill://coding-go:raw:1-2", "/tmp/coding-go/SKILL.md"} {
 		require.Equal(t, skillUnknown, creditedSkill(map[string]any{"path": path}, completeRead()), path)
 	}

@@ -73,10 +73,10 @@ func TestECIRolesRequireTheirSkills(t *testing.T) {
 	}
 }
 
-// TestECIReadsRequireSelectorFreeSkillURIs credits selector-free skill:// reads, including host-truncated ones.
+// TestECIReadsRequireSkillURIsWithoutLineRange credits skill:// reads without a line range, including host-truncated ones.
 //
 // Example: a filesystem-path or line-range read of the router earns no credit.
-func TestECIReadsRequireSelectorFreeSkillURIs(t *testing.T) {
+func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {
 	agent := "eci-preset-explorer-anthropic-default"
 	call := func(state State) string {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: agent, State: state})
