@@ -173,6 +173,7 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 		{"agent/rules/x.md", omp, true},
 		{"agent/rules/x.mdc", omp, true},
 		{"agent/skills/x/agents/openai.yaml", omp, true},
+		{"agent/skills/x/flow.dot", omp, true},
 		{"agent/sessions/x.md", omp, false},
 		{"agent/skills/x/notes.txt", omp, false},
 		{"agent/RULES.md", home, false},
@@ -181,6 +182,7 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 		{"agent/eci/model-selection.yaml", omp, false},
 		{"agent/eci/README.md", omp, false},
 		{"agent/tools/x.md", omp, false},
+		{"agent/eci/flow.dot", omp, false},
 		{"agent/skills/x/SKILL.md", "", false},
 	} {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": tc.path}, Cwd: tc.cwd})

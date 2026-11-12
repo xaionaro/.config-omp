@@ -374,8 +374,8 @@ var codeExtensions = func() map[string]Skill {
 
 // instructionExtensions lists extensions that can hold agent instructions.
 //
-// Example: SKILL.md, preset .tmpl files, rules/*.mdc, and the WATCHDOG.yml advisor roster are instruction candidates.
-var instructionExtensions = []string{".md", ".mdc", ".tmpl", ".yml", ".yaml"}
+// Example: SKILL.md, preset .tmpl files, rules/*.mdc, the WATCHDOG.yml advisor roster, and skill graphviz guides such as graphviz-conventions.dot are instruction candidates.
+var instructionExtensions = []string{".dot", ".md", ".mdc", ".tmpl", ".yml", ".yaml"}
 
 // instructionFiles names instruction files relative to ~/.omp/agent: the prompt, rule, and advisor files omp loads from there, then ECI's binding contract, gate catalog, and hook prompts.
 //
@@ -445,6 +445,12 @@ func isInstructionPath(
 	default:
 		path = filepath.Join(cwd, path)
 	}
+	// TODO: omp also loads instructions from paths inside ~/.omp that this anchor
+	// misses: ~/.omp/WATCHDOG.{md,yml,yaml} (sessions in the ~/.omp repo or in
+	// non-repo directories at or under home), .omp/ project directories such as
+	// ~/.omp/.omp, and named-profile agent directories under ~/.omp/profiles/. None
+	// exists yet; if one appears, gate those WATCHDOG files and match the
+	// directories against instructionFiles and instructionDirs too.
 	rel, err := filepath.Rel(filepath.Join(home, ".omp", "agent"), filepath.Clean(path))
 	if err != nil {
 		return false, fmt.Errorf("relating %s to ~/.omp/agent: %w", path, err)

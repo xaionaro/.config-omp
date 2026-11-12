@@ -267,7 +267,7 @@ func TestDescribeListsGatedExtensions(t *testing.T) {
 		keys = append(keys, ext)
 	}
 	require.ElementsMatch(t, keys, described.GatedExtensions)
-	require.Subset(t, described.GatedExtensions, []string{".cpp", ".md", ".mdc", ".yml", ".yaml"})
+	require.Subset(t, described.GatedExtensions, []string{".cpp", ".dot", ".md", ".mdc", ".yml", ".yaml"})
 }
 
 // TestCLICheckCarriesAgentName gates an ECI agent's task through check.
