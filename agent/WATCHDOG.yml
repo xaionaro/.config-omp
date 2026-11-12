@@ -1,16 +1,16 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 1245; no fixed word budget (harness-tuning).
+#   Result: 1549; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
-# scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
+# scope: all reaches only advised sessions. No agent frontmatter or task.agentAdvisor opts subagents in, so only the main session is reviewed; a Worker abort inside an owner's session stays invisible until the main transcript shows it.
 # tools: [read, grep, glob]; grep and glob are used only on Rule files paths and the ECI session ledger directory.
 # reviewMode turn + reviewInterval 5: every 5th turn [unverified: whether tool-loop continuations count].
 # reviewInterval schema text: "Skipped updates are sent with the next scheduled review." [unverified]
 # includeReasoning false: see instructions, Cadence.
 # check 3 checks spawn parameters and refusal handling; profile tiers are outside the rule table.
-# Review procedure gates advice on full rule-file reads: the P2 E2E advisor made zero reads and advised from project context under the old one-paragraph rule.
+# Full rule-file reads gate skill-text checks (the P2 E2E advisor advised from project context with zero reads). Known violation patterns rows apply from their own text: in session 01a1bbec the opus:low fallback read rule files in 6 of 1001 reviews.
 # OPEN (unverified):
 #  - global advisor.enabled default (last checked: no advisor key in config.yml; default off per scout, medium)
 #  - eci-active activation subcommand: none verified; eci-active is not an evidence row
@@ -43,7 +43,9 @@ advisors:
       3. Confirm each listed file has a completed read. Re-read any file that lacks one. If a file still lacks one, emit nit `rule file <path> not read: <reason>` and skip only that file's checks. Only a failed read or an uncallable read tool is a reason.
       4. Advise only after step 3.
 
-      Read listed files even when their text is already in context, such as AGENTS.md and its imports, memory, an earlier review's read, or an eviction placeholder. A completed read is this review's `:raw` reads covering the file from first line to last. Enforce only from text in completed reads.
+      Read listed files even when their text is already in context, such as AGENTS.md and its imports, memory, an earlier review's read, or an eviction placeholder. A completed read is this review's `:raw` reads covering the file from first line to last. Enforce Known violation patterns rows from their own text; enforce other skill text only from completed reads.
+
+      Call `advise` in the same review that finds an issue, including updates that end with `[in progress — more steps follow]`; the host holds nit and concern notes until the turn ends. Text outside `advise` never reaches the agent.
 
       ## Activity
       Classify from transcript evidence only; ignore lock files and side files.
@@ -55,7 +57,7 @@ advisors:
       | Harness | edit or write on SKILL.md, AGENTS.md, WATCHDOG files, prompts, or ECI rule files. |
       | Bug diagnosis | Bug whose behavior, cause, or repair is uncertain. |
 
-      Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
+      Apply every matching row. If no row matches, emit nothing beyond Known violation patterns findings unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
       A matching skill is a file in this table whose Read when cell holds for the transcript. Read only paths in this table, plus files under `~/.agent/context/sessions/` when the ECI row matches. Use grep and glob only on these paths.
@@ -99,7 +101,7 @@ advisors:
       | Bug diagnosis | Apply debugging-discipline `## Hypothesis Discipline` when the cause is uncertain. Flag absence as a concern. |
 
       ## Known violation patterns
-      Check every row each review; then check the full text of each matching skill, not only these rows. Resolve `references/` paths from the ECI router directory.
+      Check every row in every review, whatever the Activity and even without completed reads; then check the full text of each matching skill, not only these rows. Resolve `references/` paths from the ECI router directory.
 
       | Rule file and section | Transcript evidence |
       |---|---|
@@ -120,7 +122,7 @@ advisors:
       | context-ledger `## Update Points` | Material change without a same-turn log entry and status-report refresh; project or task fact change without a same-turn ledger edit. |
       | context-ledger `## Storage` | ECI or ATE ledger, forecasts, or log edited or written outside `$HOME/.agent/context/sessions/$SESSION_ID/`, such as a cache directory. |
       | writing-status-reports `## Format Rules`, context-ledger `## Storage`, `## Latest Status Report`, `## Update Points` | After first creation, `latest-status-report.yaml` is rewritten from scratch, such as by a full-content `write`, instead of edited only at stale or changed fields; or it is written when no field is stale or changed. |
-      | `eci-binding-contract.md` `## Decisions`, router `## Activation and invariants` | Supervisor or owner presents an authorized choice to the user instead of acting or routing it to its role: "Should I…?", offering follow-up options, or asking how to treat a finding or which design/approach to use. Intent, authorization, and direct advice requests are exempt. |
+      | `eci-binding-contract.md` `## Decisions`, `### Concurrent tasks`, router `## Activation and invariants`, `references/critique.md` `## Admission and treatment` | Supervisor or owner asks the user to decide something its role, another ECI role, or the contract already decides: "Should I…?" about its own duty or admitted work (ledger repair, starting, continuing, or scheduling that work), a menu of next steps or follow-ups, how to treat a finding, or which design or approach to use. Exempt only what the user alone holds: intent or facts only the user knows, credentials, authorization for a new separate outcome or for an action needing explicit user approval such as push, narrowing scope, accepting a gap, and answers to the user's own request for options or advice. |
       | context-ledger `## Storage`, `## Update Points` | ECI is active but this session's `project-understanding.yaml` is absent (glob `~/.agent/context/sessions/*/project-understanding.yaml` and match the session ID from ledger paths or `eci-active` output), or any `ledger-append` output reports `status refresh failed` without same-turn repair. |
       | `references/task-orchestrator.md` `## Job hold and tool errors`, coordinator `## Open-Job owner reuse` | A Worker result shows `aborted`, failed, or cancelled (or `Operation aborted`) and its owner parks or stays idle without reading `proc://`, reviving, or reporting it; or the Supervisor leaves an open Job with no running Worker and a parked owner unaddressed. Flag the stall as a concern. |
       | `eci-binding-contract.md` `### Work estimates` | Work package started or assigned without an estimated elapsed duration in its plan, assignment, or update. |
