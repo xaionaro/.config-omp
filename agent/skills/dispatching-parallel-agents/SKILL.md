@@ -136,7 +136,7 @@ Return: root cause, changed files, verification run, and remaining risk.
 
 ### 4. Review and Integrate
 
-Park (end your turn) until the spawned agents' results auto-deliver; integrate only after delivery.
+Park until the spawned agents' results auto-deliver (the Parking rule in `~/.omp/agent/RULES.md`); integrate only after delivery.
 
 When agents return:
 - Read each summary
