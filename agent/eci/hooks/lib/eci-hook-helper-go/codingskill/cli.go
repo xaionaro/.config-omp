@@ -44,6 +44,14 @@ type cliInput struct {
 	Call    cliEvent         `json:"call"`
 }
 
+// checkVerdict is the check reply: whether the host blocks the call, and the denial text when it does.
+//
+// Example: {"block":true,"reason":"Coding skill gate: writing a.go requires ..."} denies an unread Go write.
+type checkVerdict struct {
+	Block  bool   `json:"block"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // Run applies a single JSON request or describes the supported events.
 //
 // Example: reduce folds completed result events into an opaque agent state.
@@ -83,9 +91,7 @@ func Run(
 			return err
 		}
 		if disabled {
-			return json.NewEncoder(output).Encode(struct {
-				Block bool `json:"block"`
-			}{})
+			return json.NewEncoder(output).Encode(checkVerdict{})
 		}
 		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
 		req.EditTargets, req.Cwd, req.AgentName = in.Call.EditTargets, in.Call.Cwd, in.Call.AgentName
@@ -93,10 +99,7 @@ func Run(
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(output).Encode(struct {
-			Block  bool   `json:"block"`
-			Reason string `json:"reason,omitempty"`
-		}{Block: response.Reason != "", Reason: response.Reason})
+		return json.NewEncoder(output).Encode(checkVerdict{Block: response.Reason != "", Reason: response.Reason})
 	}
 	if len(in.Results) == 0 {
 		req.Action = hydrateAction
@@ -123,6 +126,7 @@ func Run(
 //
 // Example: check allows the call when gateDisabled returns true.
 func gateDisabled() (bool, error) {
+	// TODO: with HOME unset this fails every gated check, while the TS bridge's hookAgentRoot falls back to the account home; resolve the agent root the same way on both sides if omp ever runs without HOME.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", disableFileName, err)
