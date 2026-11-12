@@ -7,7 +7,7 @@ description: Use when running bounded host process families with deadline or int
 
 Use `"$HOME/.omp/agent/eci/bin/owned-command"` for finite host command families requiring descendant retirement. Run ordinary foreground inspection such as `rg --files` directly. Persistent services use their intended service lifecycle.
 
-Launch with a unique receipt and `--` before the command:
+Launch with an explicit `-deadline` (default 3s; longer commands are retired with status 125), a unique receipt and `--` before the command:
 
 ```bash
 receipt_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-command.XXXXXXXX")
