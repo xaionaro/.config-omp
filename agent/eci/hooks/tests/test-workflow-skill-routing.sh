@@ -1513,7 +1513,7 @@ assert_post_fast_coordinator_ownership_contract() {
   local text="$1"
 
   require_text <(printf '%s\n' "$text") \
-    'Enforce ECI without making [finding decisions](../SKILL.md#step-handoffs); a fresh Step 2 critic makes them.'
+    'Enforce ECI without making [finding decisions](../SKILL.md#step-handoffs); a fresh Step 2 critic makes them, except a [stall decision](#stall-decisions).'
   require_text <(printf '%s\n' "$text") \
     'check that the critic decided one [treatment](../../references/workflow-runtime/review-policy.md#gate-evaluation) for each finding and exactly one disposition for each in-scope inventory item'
   require_text <(printf '%s\n' "$text") \
