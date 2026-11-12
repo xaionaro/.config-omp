@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Skill identifies one skill whose completed read the policy can require.
+// Skill identifies one skill whose successful read the policy can require.
 //
 // Example: skillGo corresponds to skill://coding-go.
 type Skill int
@@ -65,9 +65,14 @@ const (
 	skillECIOrchestrator
 	// skillEnd bounds the supported skills; it names no skill.
 	//
-	// Example: verifiedSkill scans skillCommon through skillEnd-1.
+	// Example: creditedSkill scans skillCommon through skillEnd-1.
 	skillEnd
 )
+
+// readSkillsFit fails compilation when supported skills outgrow ReadSkills' 64 bits.
+//
+// Example: a 64th supported skill breaks the build instead of losing its bit.
+var _ [64 - int(skillEnd)]struct{}
 
 // name returns the host URI name of a supported skill, without the skill:// scheme.
 //
@@ -101,12 +106,12 @@ func (skill Skill) name() string {
 	}
 }
 
-// ReadSkills is the set of completed skill reads, one bit per Skill.
+// ReadSkills is the set of credited skill reads, one bit per Skill.
 //
-// Example: the skillCommon bit is set after a complete coding-common read.
+// Example: the skillCommon bit is set after a selector-free skill://coding-common read.
 type ReadSkills uint64
 
-// mark records a completed read of a supported skill.
+// mark records a credited read of a supported skill.
 //
 // Example: marking skillGo sets its bit.
 func (reads *ReadSkills) mark(skill Skill) {
@@ -142,20 +147,22 @@ func (reads *ReadSkills) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// missing returns the skill:// URIs of required skills not yet read, in order.
+// missing returns the skill:// URIs of required skills not yet read, in first-listed order, each once.
 //
 // Example: with only coding-common read, [skillCommon, skillGo] yields skill://coding-go.
 func (reads ReadSkills) missing(required []Skill) []string {
 	var uris []string
+	listed := reads
 	for _, skill := range required {
-		if !reads.has(skill) {
+		if !listed.has(skill) {
 			uris = append(uris, "skill://"+skill.name())
+			listed.mark(skill)
 		}
 	}
 	return uris
 }
 
-// State holds the current agent's completed skill reads.
+// State holds the current agent's credited skill reads.
 //
 // Example: a navigation event replaces the state with an empty value.
 type State struct {
@@ -207,6 +214,11 @@ type Response struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// callTools lists the tool calls decide checks: write and edit for their targets, and all three for ECI role skills.
+//
+// Example: an orchestrator's task call is checked before it spawns workers.
+var callTools = []string{"write", "edit", "task"}
+
 // decide applies one result or call to the current agent state.
 //
 // Example: a completed read is recorded before a later write is checked.
@@ -220,7 +232,7 @@ func decide(req Request) (Response, error) {
 	switch req.Action {
 	case resultAction:
 		if req.Tool == "read" && !req.IsError {
-			skill := verifiedSkill(req.Input, req.Details)
+			skill := creditedSkill(req.Input, req.Details)
 			if skill != skillUnknown {
 				state.Reads.mark(skill)
 			}
@@ -235,12 +247,12 @@ func decide(req Request) (Response, error) {
 	if !slices.Contains(callTools, req.Tool) {
 		return Response{State: state}, nil
 	}
-	missing := state.Reads.missing(requiredRoleSkills(req.AgentName))
+	required := slices.Clone(requiredRoleSkills(req.AgentName))
 	actor := ""
-	if len(missing) > 0 {
+	if len(state.Reads.missing(required)) > 0 {
 		actor = req.AgentName + " "
 	}
-	subject := actor + "calling " + req.Tool
+	var gatedPaths []string
 	for _, path := range writeTargets(req) {
 		targetSkill, err := skillForPath(path, req.Cwd)
 		if err != nil {
@@ -249,28 +261,31 @@ func decide(req Request) (Response, error) {
 		if targetSkill == skillUnknown {
 			continue
 		}
-		required := []Skill{skillCommon, targetSkill}
+		pathSkills := []Skill{skillCommon, targetSkill}
 		if targetSkill == skillCommon {
-			required = required[:1]
+			pathSkills = pathSkills[:1]
 		}
-		pathMissing := state.Reads.missing(required)
-		if len(pathMissing) == 0 {
+		if len(state.Reads.missing(pathSkills)) == 0 || slices.Contains(gatedPaths, path) {
 			continue
 		}
-		// Name the first gated path; role skills stay first so one denial lists every read.
-		subject = actor + "writing " + path
-		missing = append(missing, pathMissing...)
-		break
+		gatedPaths = append(gatedPaths, path)
+		required = append(required, pathSkills...)
 	}
+	missing := state.Reads.missing(required)
 	if len(missing) == 0 {
 		return Response{State: state}, nil
 	}
+	subject := actor + "calling " + req.Tool
+	if len(gatedPaths) > 0 {
+		subject = actor + "writing " + strings.Join(gatedPaths, ", ")
+	}
+	// TODO: rename the gate (extension files, re-export, catalog row, messages); it also enforces harness-tuning and ECI role reads.
 	return Response{State: state, Reason: fmt.Sprintf("Coding skill gate: %s requires %s. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", subject, strings.Join(missing, " and "))}, nil
 }
 
-// hydrate restores completed reads from the active host transcript branch.
+// hydrate restores credited reads from the active host transcript branch.
 //
-// Example: an assistant read call paired with a complete result restores credit.
+// Example: an assistant skill:// read call paired with its successful result restores credit.
 func hydrate(
 	state *State,
 	req Request,
@@ -292,7 +307,7 @@ func hydrate(
 			if !ok {
 				continue
 			}
-			skill := verifiedSkill(input, asMap(message["details"]))
+			skill := creditedSkill(input, asMap(message["details"]))
 			if skill != skillUnknown {
 				state.Reads.mark(skill)
 			}
@@ -314,41 +329,18 @@ func collectReadCalls(
 	}
 }
 
-// verifiedSkill recognizes a complete, successful unselected skill URI read.
+// creditedSkill returns the supported skill a successful selector-free skill:// read names, or skillUnknown; host output truncation still credits, because no selector-free read can show more, while a host summary does not, because a :raw read returns the verbatim skill.
 //
-// Example: an incomplete two-line result does not credit a longer skill.
-func verifiedSkill(
+// Example: skill://coding-go, skill://coding-go/SKILL.md and skill://coding-go:raw credit coding-go; skill://coding-go:1-20 and a filesystem path do not.
+func creditedSkill(
 	input map[string]any,
 	details map[string]any,
 ) Skill {
-	path := asString(input["path"])
-	raw := strings.HasSuffix(path, ":raw")
-	if raw {
-		path = strings.TrimSuffix(path, ":raw")
-	}
-	display := asMap(details["displayContent"])
-	meta := asMap(details["meta"])
-	if details["summary"] != nil || details["truncation"] != nil || meta["truncation"] != nil || meta["limits"] != nil || display["startLine"] != float64(1) {
+	path, ok := strings.CutPrefix(asString(input["path"]), "skill://")
+	if !ok || details["summary"] != nil {
 		return skillUnknown
 	}
-	numbers, ok := display["lineNumbers"].([]any)
-	text, textOK := display["text"].(string)
-	total, totalOK := details["totalLines"].(float64)
-	if raw && strings.HasSuffix(text, "\n") {
-		total++
-	}
-	if !ok || !textOK || !totalOK || raw != asBool(details["raw"]) || float64(len(numbers)) != total || strings.Count(text, "\n")+1 != len(numbers) {
-		return skillUnknown
-	}
-	for i, number := range numbers {
-		if number != float64(i+1) {
-			return skillUnknown
-		}
-	}
-	if !strings.HasPrefix(path, "skill://") {
-		return skillUnknown
-	}
-	path = strings.TrimSuffix(strings.TrimPrefix(path, "skill://"), "/SKILL.md")
+	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md")
 	for skill := skillCommon; skill < skillEnd; skill++ {
 		if path == skill.name() {
 			return skill
@@ -396,7 +388,10 @@ var instructionDirs = []string{"skills/", "agents/", "eci/tools/eci-presets/temp
 // skillForPath maps a write target to the most specific required skill.
 //
 // Example: a.go requires coding-go and coding-common; ~/.omp/agent/RULES.md requires harness-tuning and coding-common.
-func skillForPath(path, cwd string) (Skill, error) {
+func skillForPath(
+	path string,
+	cwd string,
+) (Skill, error) {
 	if match := patchHeader.FindStringSubmatch(path); len(match) == 2 {
 		path = match[1]
 	}
@@ -416,11 +411,13 @@ func skillForPath(path, cwd string) (Skill, error) {
 // isInstructionPath reports whether path names an instruction file under ~/.omp/agent.
 //
 // Example: with cwd ~/.omp, agent/skills/a/SKILL.md is an instruction path.
-//
-// TODO: writes through the agent/eci/skills -> ../skills symlink match lexically
-// as eci/skills/... and are not gated; resolve symlinks of possibly missing
-// targets if edits start using that alias.
-func isInstructionPath(path, cwd string) (bool, error) {
+func isInstructionPath(
+	path string,
+	cwd string,
+) (bool, error) {
+	// TODO: writes through the agent/eci/skills -> ../skills symlink match lexically
+	// as eci/skills/... and are not gated; resolve symlinks of possibly missing
+	// targets if edits start using that alias.
 	if !slices.Contains(instructionExtensions, strings.ToLower(filepath.Ext(path))) {
 		return false, nil
 	}
@@ -441,9 +438,6 @@ func isInstructionPath(path, cwd string) (bool, error) {
 	rel, err := filepath.Rel(filepath.Join(home, ".omp", "agent"), filepath.Clean(path))
 	if err != nil {
 		return false, fmt.Errorf("relating %s to ~/.omp/agent: %w", path, err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, "../") {
-		return false, nil
 	}
 	if slices.Contains(instructionFiles, rel) {
 		return true, nil

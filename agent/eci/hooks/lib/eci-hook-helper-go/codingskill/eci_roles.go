@@ -7,20 +7,12 @@ import "strings"
 // Example: eci-preset-explorer-anthropic-default is an ECI preset agent.
 const eciPresetPrefix = "eci-preset-"
 
-// callTools lists the tool calls the policy checks; an ECI preset agent must finish its role reads before any of them.
-//
-// Example: an orchestrator's task call is checked before it spawns workers.
-var callTools = []string{"write", "edit", "task"}
-
 // presetRole names an ECI preset role, the agent name without prefix and camp/profile suffix.
 //
 // Example: eci-preset-critic-step2-openai-max has role critic-step2.
 type presetRole string
 
-// roleSkills maps each ECI preset role to the skills its template tells it to read, in denial order.
-//
-// The ECI router's Module routing table owns this mapping; the preset templates
-// restate it and TestECITemplatesNameRoleSkills keeps both in sync.
+// roleSkills maps each ECI preset role to the skills its template names, in denial order; it restates the router's Module routing table, and TestECITemplatesNameRoleSkills binds it to the templates.
 //
 // Example: roleSkills["explorer"] holds the router and the explore module.
 var roleSkills = map[presetRole][]Skill{
@@ -35,10 +27,7 @@ var roleSkills = map[presetRole][]Skill{
 	"helper":          {skillECIRouter},
 }
 
-// requiredRoleSkills returns the skills an agent must read before checked calls.
-//
-// Non-ECI agents need none. An unknown ECI role needs only the router, because
-// the router says an unknown role must not deny or stall work.
+// requiredRoleSkills returns the skills an agent must read before checked calls: none for non-ECI agents, and only the router for an unknown ECI role, because the router says an unknown role must not deny or stall work.
 //
 // Example: eci-preset-orchestrator-openai-default needs the router and the task-orchestrator module.
 func requiredRoleSkills(agentName string) []Skill {

@@ -1,6 +1,7 @@
 package codingskill
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,11 +9,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// completeRead models host read metadata for a complete two-line skill.
+// wholeReadBudget is the largest supported skill file, in bytes, that one selector-free read should show whole.
+//
+// Example: omp spills read output above tools.artifactSpillThreshold (default 50 KiB), so 40 KiB leaves room for the header line and for review before a skill outgrows one read.
+const wholeReadBudget = 40 << 10
+
+// completeRead models host read metadata for a successful two-line skill read.
 //
 // Example: both line numbers and totalLines describe the entire result.
 func completeRead() map[string]any {
 	return map[string]any{"totalLines": float64(2), "displayContent": map[string]any{"startLine": float64(1), "lineNumbers": []any{float64(1), float64(2)}, "text": "first\nsecond"}}
+}
+
+// TestOneDenialListsEveryMissingSkill names every gated path and skill of one call.
+//
+// Example: an edit of a.go and b.py names coding-common, coding-go, and coding-python together.
+func TestOneDenialListsEveryMissingSkill(t *testing.T) {
+	req := Request{Action: callAction, Tool: "edit", EditTargets: []string{"a.go", "b.py"}}
+	got, err := decide(req)
+	require.NoError(t, err)
+	require.Equal(t, "Coding skill gate: writing a.go, b.py requires skill://coding-common and skill://coding-go and skill://coding-python. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
+	for _, name := range []string{"coding-common", "coding-go"} {
+		got, err = decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://" + name}, Details: completeRead(), State: req.State})
+		require.NoError(t, err)
+		req.State = got.State
+	}
+	got, err = decide(req)
+	require.NoError(t, err)
+	require.Equal(t, "Coding skill gate: writing b.py requires skill://coding-python. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
+}
+
+// TestSupportedSkillsFitOneRead checks every gated skill exists and one selector-free read can show it whole.
+//
+// Example: renaming references/explore.md or growing the router past wholeReadBudget fails here.
+func TestSupportedSkillsFitOneRead(t *testing.T) {
+	for skill := skillCommon; skill < skillEnd; skill++ {
+		path := filepath.Join("..", "..", "..", "..", "..", "skills", skill.name())
+		info, err := os.Stat(path)
+		require.NoError(t, err, skill.name())
+		if info.IsDir() {
+			info, err = os.Stat(filepath.Join(path, "SKILL.md"))
+			require.NoError(t, err, skill.name())
+		}
+		require.LessOrEqual(t, info.Size(), int64(wholeReadBudget), skill.name())
+	}
 }
 
 // TestDirectWritesRequirePriorReads covers both ordinary editing tools.
@@ -132,30 +172,28 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
-// TestSkillEvidenceRejectsPartialReads verifies host completeness metadata.
+// TestSkillCreditRequiresSelectorFreeSkillURI credits successful selector-free skill:// reads, even when the host truncates them.
 //
-// Example: a raw range is not a complete skill read.
-func TestSkillEvidenceRejectsPartialReads(t *testing.T) {
+// Example: a line range or a host summary earns no credit; host truncation at the spill limit does.
+func TestSkillCreditRequiresSelectorFreeSkillURI(t *testing.T) {
 	for _, path := range []string{"skill://coding-go:1-2", "skill://coding-go:raw:1-2", "/tmp/coding-go/SKILL.md"} {
-		require.Empty(t, verifiedSkill(map[string]any{"path": path}, completeRead()), path)
+		require.Equal(t, skillUnknown, creditedSkill(map[string]any{"path": path}, completeRead()), path)
 	}
-	partial := completeRead()
-	partial["totalLines"] = float64(3)
-	require.Empty(t, verifiedSkill(map[string]any{"path": "skill://coding-go"}, partial))
+	summarized := completeRead()
+	summarized["summary"] = map[string]any{"elided": float64(10)}
+	require.Equal(t, skillUnknown, creditedSkill(map[string]any{"path": "skill://coding-go"}, summarized))
+	for _, path := range []string{"skill://coding-go", "skill://coding-go/SKILL.md", "skill://coding-go:raw"} {
+		require.Equal(t, skillGo, creditedSkill(map[string]any{"path": path}, completeRead()), path)
+	}
 	truncated := completeRead()
 	truncated["truncation"] = map[string]any{"truncated": true}
-	require.Empty(t, verifiedSkill(map[string]any{"path": "skill://coding-go"}, truncated))
-	for _, path := range []string{"skill://coding-go", "skill://coding-go/SKILL.md"} {
-		require.Equal(t, skillGo, verifiedSkill(map[string]any{"path": path}, completeRead()), path)
+	hostTruncated := completeRead()
+	hostTruncated["meta"] = map[string]any{"truncation": map[string]any{"direction": "middle", "truncatedBy": "middle", "maxBytes": float64(16384)}}
+	limited := completeRead()
+	limited["meta"] = map[string]any{"limits": map[string]any{"maxBytes": float64(16384)}}
+	for i, details := range []map[string]any{truncated, hostTruncated, limited} {
+		require.Equal(t, skillGo, creditedSkill(map[string]any{"path": "skill://coding-go"}, details), i)
 	}
-}
-
-// TestRawSkillRead accepts the host's trailing empty line in raw output.
-//
-// Example: totalLines excludes the final newline but lineNumbers includes it.
-func TestRawSkillRead(t *testing.T) {
-	details := map[string]any{"raw": true, "totalLines": float64(2), "displayContent": map[string]any{"startLine": float64(1), "lineNumbers": []any{float64(1), float64(2), float64(3)}, "text": "first\nsecond\n"}}
-	require.Equal(t, skillGo, verifiedSkill(map[string]any{"path": "skill://coding-go:raw"}, details))
 }
 
 // TestBranchHydrationRequiresSuccessfulPairs restores only the active transcript.

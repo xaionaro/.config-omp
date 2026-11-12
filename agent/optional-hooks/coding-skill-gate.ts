@@ -70,15 +70,20 @@ function skillReadHistory(ctx: ExtensionContext): unknown[] {
 	return history;
 }
 
+// A failed helper description is retried after this window: provisioning stays off the per-call path, and a finished build or rebuild takes effect within a minute.
+const describeRetryMs = 60_000;
+
 export default function codingSkillGate(pi: ExtensionAPI): void {
 	const root = hookAgentRoot();
 	const binary = join(root, "eci", "bin", "eci-hook-helper");
 	let cachedDescription: Promise<Description> | undefined;
+	let retryAt = Infinity;
 	function describe(): Promise<Description> {
-		if (!cachedDescription) {
+		if (!cachedDescription || Date.now() >= retryAt) {
 			const pending = invoke("describe").then(description);
 			cachedDescription = pending;
-			pending.catch(() => { if (cachedDescription === pending) cachedDescription = undefined; });
+			retryAt = Infinity;
+			pending.catch(() => { if (cachedDescription === pending) retryAt = Date.now() + describeRetryMs; });
 		}
 		return cachedDescription;
 	}

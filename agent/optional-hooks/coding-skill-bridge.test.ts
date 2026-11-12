@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, expect, mock, setSystemTime, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ beforeAll(async () => {
 const fs = require('fs');
 const mode = process.argv[3];
 if (mode === 'describe') {
+ fs.appendFileSync(${JSON.stringify(join(root, "describes.log"))}, 'd');
  if (fs.existsSync(${JSON.stringify(join(root, "fail-describe"))})) process.exit(1);
  if (fs.existsSync(${JSON.stringify(join(root, "stale-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit'],resultTools:['read']})); process.exit(0); }
  if (fs.existsSync(${JSON.stringify(join(root, "prefixless-describe"))})) { process.stdout.write(JSON.stringify({callTools:['write','edit','task'],resultTools:['read'],gatedExtensions:['.go','.cpp']})); process.exit(0); }
@@ -101,6 +102,41 @@ test("fails open with one error when the engine description is unavailable", asy
 	} finally {
 		console.error = original;
 		rmSync(marker);
+	}
+});
+
+// Helper describe launches recorded by the fake engine.
+function describeCount(): number {
+	return existsSync(join(root, "describes.log")) ? readFileSync(join(root, "describes.log"), "utf8").length : 0;
+}
+
+test("retries a failed description at most once per minute", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "backoff", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	const marker = join(root, "fail-describe");
+	writeFileSync(marker, "");
+	const original = console.error;
+	console.error = () => {};
+	const start = Date.now();
+	setSystemTime(new Date(start));
+	const before = describeCount();
+	try {
+		for (const call of [{toolName: "bash", input: {command: "true"}}, {toolName: "read", input: {path: "a.go"}}, {toolName: "grep", input: {pattern: "x"}}, {toolName: "bash", input: {command: "true"}}, {toolName: "write", input: {path: "a.go"}}]) {
+			expect(await handlers.tool_call(call, ctx)).toBeUndefined();
+		}
+		expect(describeCount() - before).toBe(1);
+		setSystemTime(new Date(start + 60_001));
+		expect(await handlers.tool_call({toolName: "bash", input: {command: "true"}}, ctx)).toBeUndefined();
+		expect(describeCount() - before).toBe(2);
+		rmSync(marker);
+		setSystemTime(new Date(start + 120_002));
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toEqual({block: true, reason: "missing skill"});
+	} finally {
+		setSystemTime();
+		console.error = original;
+		rmSync(marker, {force: true});
 	}
 });
 
@@ -251,10 +287,14 @@ test("retries a failed startup description after the helper returns", async () =
 		await handlers.session_start({}, ctx);
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
 		renameSync(`${engine}.held`, engine);
+		setSystemTime(new Date(Date.now() + 60_001));
+		const before = requestCount();
 		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-common"}, isError: false}, ctx);
 		await handlers.tool_result({toolName: "read", input: {path: "skill://coding-go"}, isError: false}, ctx);
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+		expect(requestsSince(before, "check")).toHaveLength(1);
 	} finally {
+		setSystemTime();
 		if (existsSync(`${engine}.held`)) renameSync(`${engine}.held`, engine);
 	}
 });

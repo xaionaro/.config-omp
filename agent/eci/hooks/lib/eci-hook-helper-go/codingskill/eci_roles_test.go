@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// eciRouterURI is the router read every ECI preset agent must complete.
+// eciRouterURI is the router read every ECI preset agent must earn credit for.
 //
 // Example: a helper needs only this read.
 const eciRouterURI = "skill://explore-critique-implement"
@@ -41,7 +41,7 @@ var roleCases = []struct {
 	{"helper", []string{eciRouterURI}},
 }
 
-// readAll records complete successful reads of each URI.
+// readAll records successful reads of each path.
 //
 // Example: readAll(t, State{}, eciRouterURI) credits the router.
 func readAll(
@@ -73,10 +73,10 @@ func TestECIRolesRequireTheirSkills(t *testing.T) {
 	}
 }
 
-// TestECIReadsRequireCompleteSkillURIs credits only whole skill:// reads.
+// TestECIReadsRequireSelectorFreeSkillURIs credits selector-free skill:// reads, including host-truncated ones.
 //
-// Example: a filesystem-path read of the router earns no credit.
-func TestECIReadsRequireCompleteSkillURIs(t *testing.T) {
+// Example: a filesystem-path or line-range read of the router earns no credit.
+func TestECIReadsRequireSelectorFreeSkillURIs(t *testing.T) {
 	agent := "eci-preset-explorer-anthropic-default"
 	call := func(state State) string {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: agent, State: state})
@@ -84,28 +84,18 @@ func TestECIReadsRequireCompleteSkillURIs(t *testing.T) {
 		return got.Reason
 	}
 	for _, router := range []string{eciRouterURI, eciRouterURI + "/SKILL.md", eciRouterURI + ":raw"} {
-		state := State{}
-		details := completeRead()
-		if strings.HasSuffix(router, ":raw") {
-			details = map[string]any{"raw": true, "totalLines": float64(2), "displayContent": map[string]any{"startLine": float64(1), "lineNumbers": []any{float64(1), float64(2), float64(3)}, "text": "first\nsecond\n"}}
-		}
-		got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": router}, Details: details, State: state})
-		require.NoError(t, err)
-		state = readAll(t, got.State, eciModuleURI("explore.md"))
+		state := readAll(t, State{}, router, eciModuleURI("explore.md"))
 		require.Empty(t, call(state), router)
 	}
-	partial := completeRead()
-	partial["displayContent"].(map[string]any)["startLine"] = float64(2)
-	truncated := completeRead()
-	truncated["truncation"] = map[string]any{"truncated": true}
-	for _, details := range []map[string]any{partial, truncated} {
-		got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": eciRouterURI}, Details: details})
-		require.NoError(t, err)
-		state := readAll(t, got.State, eciModuleURI("explore.md"))
-		require.Contains(t, call(state), eciRouterURI+".")
-	}
+	hostTruncated := completeRead()
+	hostTruncated["meta"] = map[string]any{"truncation": map[string]any{"direction": "middle", "truncatedBy": "middle", "maxBytes": float64(16384)}}
+	got, err := decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": eciRouterURI}, Details: hostTruncated})
+	require.NoError(t, err)
+	require.Empty(t, call(readAll(t, got.State, eciModuleURI("explore.md"))))
+	state := readAll(t, State{}, eciRouterURI+":1-100", eciModuleURI("explore.md"))
+	require.Contains(t, call(state), "requires "+eciRouterURI+".")
 	skills := "/home/x/.omp/agent/skills/explore-critique-implement/"
-	state := readAll(t, State{}, skills+"SKILL.md", skills+"references/explore.md")
+	state = readAll(t, State{}, skills+"SKILL.md", skills+"references/explore.md")
 	require.Contains(t, call(state), "requires "+eciRouterURI+" and "+eciModuleURI("explore.md")+".")
 }
 
@@ -117,7 +107,7 @@ func TestECIOrchestratorTaskRequiresSkills(t *testing.T) {
 	task := Request{Action: callAction, Tool: "task", Input: map[string]any{"tasks": []any{}}, AgentName: agent}
 	got, err := decide(task)
 	require.NoError(t, err)
-	require.Contains(t, got.Reason, "requires "+eciRouterURI+" and "+eciModuleURI("task-orchestrator.md")+".")
+	require.Equal(t, "Coding skill gate: eci-preset-orchestrator-anthropic-default calling task requires skill://explore-critique-implement and skill://explore-critique-implement/references/task-orchestrator.md. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
 	task.State = readAll(t, State{}, eciRouterURI, eciModuleURI("task-orchestrator.md"))
 	got, err = decide(task)
 	require.NoError(t, err)
