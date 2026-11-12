@@ -1597,16 +1597,19 @@ assert_coordinator_role_boundary() {
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
   require_text "$ECI" "The Supervisor and Orchestrators work through delegation: an Orchestrator owns its Job's progress, and the Supervisor enforces ECI across Jobs. Design selection, [finding decisions](#step-handoffs), and implementation choices stay with Steps 1–2, Step 2 critics, and Producers, except a recorded [stall decision](references/coordinator.md#stall-decisions)."
   require_text "$ECI" "A brief, relay, or user update presents design content as a Job's plan, target, constraint, or acceptance criterion only from its sources, unchanged and attributed"
+  require_text "$ECI" "a review finding in its reviewer's words, and a recorded stall decision cited as its decider's."
   require_text "$ECI" "their own design idea goes to the Job's Steps 1–2 as such input, never into a brief's targets or criteria."
   require_text "$ECI" "When they see a technical mistake in a Job's work, they promptly notify the Worker whose work it concerns, before any dependent action such as its commit, and the owner or fresh Step 2 critic whose decision it affects (for a child Job, through its parent owner); the notice states the mistake and its source, and the receiver decides the remedy."
   require_text "$COORDINATOR" '### Stall decisions'
   require_text "$COORDINATOR" "the BRP route ends with options but no Step 2 selection, the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls."
   require_text "$COORDINATOR" 'A stall decision waives no original criterion, takes no user-owned decision, which goes to hard escalation, and never settles for good enough'
-  require_text "$COORDINATOR" 'A technical choice still open after BRP gets a [stall decision](#stall-decisions); hard escalation remains for user-owned decisions'
+  require_text "$COORDINATOR" "The Supervisor carries out BRP's route step: it sends the feasible options to the current Job owner for a fresh Step 2 selection (for a child Job, through its parent owner). When that selection leaves a technical choice open, the Supervisor hands the choice and its options, by the same route, to the decider named in [Stall decisions](#stall-decisions). Hard escalation remains for user-owned decisions and for blocks no stall decision resolves."
   require_text "$TASK_ORCHESTRATOR" "Attribute your own observations, views, and mistake notices as the role rule sets; quote or cite findings with their authors. Tag your readings of the user's words \`[INFERENCE]\`."
   require_text "$TASK_ORCHESTRATOR" 'Resolve concrete ECI-duty deviations through the responsible Worker and verify its correction; a technical mistake gets the role rule'
   require_text "$TASK_ORCHESTRATOR" 'relay matching identity, scope, and index facts, plus any mistake notice the role rule requires'
   require_text "$POLICY" '| stalled loop, technical choice | A loop-breaker returned `BLOCKED`'
+  require_text "$POLICY" 'The Supervisor hands the choice and both options to the Orchestrator.'
+  require_text "$POLICY" "Its Implementer brief cites that decision as the Orchestrator's."
   require_text "$POLICY" '| stalled loop, user-owned choice |'
   require_text "$POLICY" '| unstalled loop | A Step 2 critic returned a second all-REJECT, and no loop-breaker has returned `BLOCKED`. The Orchestrator makes no stall decision; any preference of its own goes to Steps 1–2 as attributed input.'
   require_text "$POLICY" '| own view in user update |'
