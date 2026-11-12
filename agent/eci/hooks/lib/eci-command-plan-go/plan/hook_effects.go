@@ -828,7 +828,7 @@ func inspectHookLiveGateRemoval(
 				diagnostic := diagnosticForToken(hookCodeLiveBashGateRemoval,
 					name+" removes or relocates live Bash-gate file "+hook+" through "+target+"; afterwards every Bash call is blocked, including the shell repair route",
 					record.Segment, argument.offset, argument,
-					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; make structural removals in a separate clone or worktree; to remove or relocate it here intentionally, prefix this command with "+hookLiveRemovalAcknowledgment+" and restore the file with Write before the next Bash call",
+					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; to remove or relocate it here intentionally, prefix this command with "+hookLiveRemovalAcknowledgment+" and restore the file with Write before the next Bash call",
 					"live-bash-gate-removal")
 				diagnostic.Path = target
 				return diagnostic

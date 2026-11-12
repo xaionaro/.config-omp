@@ -89,7 +89,7 @@ assert_broad_denied() {
     (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]"))' "$output" >/dev/null
 }
 # Removing or relocating a live Bash-gate file blocks every later Bash call, so it
-# is denied with the in-place, index-only, separate-checkout and acknowledged routes.
+# is denied with the in-place, index-only and acknowledged routes.
 assert_live_gate_denied() {
   local command="$1" output="$TMP_ROOT/live-gate-denial.json"
   run_hook "$command" "$output" || return $?

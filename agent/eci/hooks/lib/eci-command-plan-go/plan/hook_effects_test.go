@@ -406,8 +406,11 @@ func TestHookCleanupTargets(t *testing.T) {
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
 			require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeLiveBashGateRemoval, "live Bash-gate removal allowed: %s: %+v", command, diagnostic)
-			for _, hatch := range []string{"Edit or Write", "git rm --cached", "separate clone or worktree", hookLiveRemovalAcknowledgment} {
+			for _, hatch := range []string{"Edit or Write", "git rm --cached", hookLiveRemovalAcknowledgment} {
 				require.Contains(t, diagnostic.Remediation, hatch, command)
+			}
+			for _, checkout := range []string{"clone", "worktree"} {
+				require.NotContains(t, diagnostic.Remediation, checkout, command)
 			}
 		}
 	}
