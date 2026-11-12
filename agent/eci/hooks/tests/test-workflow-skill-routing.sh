@@ -1579,9 +1579,10 @@ assert_coordinator_role_boundary() {
   require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
   require_text "$FAST_PATH" 'which chooses its next bounded action'
   require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
-  require_text "$ECI" 'when every claim in the summary appears in its source; a direct answer to the user'
-  require_text "$REVIEW_POLICY" '`user decision` for a decision the critic names as the user'
-  require_text "$REVIEW_POLICY" 'a finding with separable parts gets one treatment per part'
+  require_text "$ECI" 'when every claim in the summary appears in its source. Any other report'
+  require_text "$ECI" "evidence for Steps 1–2. This bullet does not govern a direct answer to the user's advice request."
+  require_text "$ECI" "which puts it to the user and returns the user's quoted answer to the Job owner for a fresh Step 2 critic."
+  ! grep -Fq -- 'advice request is not a user update' "$ECI" || fail "$ECI retains superseded advice-answer wording"
   require_text "$COORDINATOR" 'state no treatment or impact of your own, and withhold acceptance until the critic decides it'
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
   local forbidden
@@ -1590,8 +1591,24 @@ assert_coordinator_role_boundary() {
       fail "superseded coordinator acceptance wording: $forbidden"
     fi
   done
-  require_text "$ECI" 'In a user-set order, make no change that belongs to a step until the steps before it are done.'
+}
+
+assert_finding_treatment_rules() {
+  local superseded
+  require_text "$REVIEW_POLICY" '`user decision` for a decision the critic names as the user'
+  require_text "$REVIEW_POLICY" 'a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.'
+  require_text "$REVIEW_POLICY" 'Treatments other than `now` and `user decision` are not clean-pass defects. A `user decision` holds final acceptance until a fresh Step 2 critic decides the finding again from the user'
+  for superseded in 'gets one treatment per part' "that the user's quoted answer accepts"; do
+    ! grep -Fq -- "$superseded" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $superseded"
+  done
+}
+
+assert_user_set_order_rule() {
+  require_text "$ECI" 'In a user-set order, make no change that belongs to a step unless the steps before it are done and still in effect.'
   require_text "$ECI" 'Read each step by its plain meaning; never narrow it to fit a better option, such as a shorter outage.'
+  require_text "$POLICY" 'A Fast Owner Producer that sees a shorter outage keeps the order, reports the alternative, and makes every logging edit, commit, and deploy while the hooks are disabled. A later logging change, such as a main-path revision, first disables them again.'
+  ! grep -Fq -- 'until the steps before it are done' "$ECI" || fail "$ECI retains superseded user-set order wording"
+  ! grep -Fq -- 'shorter disabled window' "$POLICY" || fail "$POLICY retains superseded user-set sequence wording"
 }
 
 assert_deferred_disposition_policy_contract_text() {
@@ -3695,6 +3712,8 @@ assert_fast_treatment_now_contract
 assert_fast_lexer_fixtures
 assert_post_fast_role_ownership
 assert_coordinator_role_boundary
+assert_finding_treatment_rules
+assert_user_set_order_rule
 assert_deferred_disposition_policy_contract
 assert_fast_path_progress_waits
 assert_concurrent_tasks
