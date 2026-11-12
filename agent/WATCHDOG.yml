@@ -1,6 +1,6 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
-# Word count method: `wc -w` on the instructions block with table pipe tokens removed (`tr -d '|'`, separator rows dropped).
-#   Result: 1549; no fixed word budget (harness-tuning).
+# Word count method: `yq4 '.advisors[0].instructions' agent/WATCHDOG.yml | grep -vE '^\s*\|[-|: ]+\|\s*$' | tr -d '|' | wc -w` (raw block text; table separator rows dropped; pipe tokens removed).
+#   Result: 1587; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
@@ -11,6 +11,7 @@
 # includeReasoning false: see instructions, Cadence.
 # check 3 checks spawn parameters and refusal handling; profile tiers are outside the rule table.
 # Full rule-file reads gate skill-text checks (the P2 E2E advisor advised from project context with zero reads). Known violation patterns rows apply from their own text: in session 01a1bbec the opus:low fallback read rule files in 6 of 1001 reviews.
+# TODO: refresh stale comments: omp://advisor-watchdog.md says turns include tool-loop continuations and skipped updates go to the next scheduled review; no "Cadence" section or "check 3" exists; config.yml sets advisor.enabled: true.
 # OPEN (unverified):
 #  - global advisor.enabled default (last checked: no advisor key in config.yml; default off per scout, medium)
 #  - eci-active activation subcommand: none verified; eci-active is not an evidence row
@@ -18,7 +19,7 @@
 #  - whether "turn" counts tool-loop continuations
 #  - whether skipped updates arrive; whether syncBacklog off suppresses them
 #  - whether a blocker interrupts the primary
-#  - scope all vs main: subagent visibility vs quota cost
+#  - reviewInterval 5 vs 1: revisit if a note arrives more than one scheduled review after its evidence
 #  - whether the advisor's project context expands eci-binding-contract.md (AGENTS.md:3 imports it, verified; expansion inferred)
 #  - whether an eviction placeholder appears before the next review
 advisors:
@@ -40,12 +41,12 @@ advisors:
       Each review, run these steps in order:
       1. Classify the transcript with Activity, then list every matching skill from Rule files.
       2. Read each listed file with `<path>:raw` before any other tool call. If a read stops with "Use :N to continue", read `<path>:N-:raw` and repeat until the last line. Run this step in every review with listed files, including reviews with nothing to flag.
-      3. Confirm each listed file has a completed read. Re-read any file that lacks one. If a file still lacks one, emit nit `rule file <path> not read: <reason>` and skip only that file's checks. Only a failed read or an uncallable read tool is a reason.
+      3. Confirm each listed file has a completed read. Re-read any file that lacks one. If a file still lacks one, emit nit `rule file <path> not read: <reason>` and skip only that file's skill-text checks; Known violation patterns rows still apply. Only a failed read or an uncallable read tool is a reason.
       4. Advise only after step 3.
 
       Read listed files even when their text is already in context, such as AGENTS.md and its imports, memory, an earlier review's read, or an eviction placeholder. A completed read is this review's `:raw` reads covering the file from first line to last. Enforce Known violation patterns rows from their own text; enforce other skill text only from completed reads.
 
-      Call `advise` in the same review that finds an issue, including updates that end with `[in progress — more steps follow]`; the host holds nit and concern notes until the turn ends. Text outside `advise` never reaches the agent.
+      Call `advise` in the same review that finds an issue, including updates that end with `[in progress — more steps follow]`; the host holds nit and concern notes until the turn ends. Judge same-turn conditions only once an update ends without that marker. Text outside `advise` never reaches the agent.
 
       ## Activity
       Classify from transcript evidence only; ignore lock files and side files.
@@ -110,7 +111,7 @@ advisors:
       | `references/coordinator.md` `## Blockers, bugs, and limits` | Supervisor profiles or root-causes an uncertain defect itself, such as benchmarks or timing probes, instead of delegating repro and RCA. |
       | router `## Step handoffs` | A step is skipped or reordered: Supervisor-drafted design sent straight to a critic, no Step 2 critique, no fresh A/B/C set, or acceptance before review. |
       | `references/fast-path.md` `## Start and lifetime` | Admitted outcome has no concurrent Fast Owner Producer, or its Fast Owner is stopped before its outcome completes. |
-      | router `## Model selection` | Spawn omits `model` on the Enabled path; profile does not match the activity; refused spawn retried; Default-path `profile <name> not applied` record missing. |
+      | router `## Model selection` | Profile does not match the activity; refused spawn retried; a specialist spawn other than `eci-preset-*`, `scout`, `reviewer`, or `security-reviewer` omits `model` on the Enabled path or lacks the Default-path `profile <name> not applied` record. |
       | router `## Spawn skill routing` | Spawn brief lacks `match:` or `no match:` Routing lines or the `Skills:` line. |
       | `references/coordinator.md` `## Clean pass and teardown` | Commit, outcome, or Job accepted or closed before its post-Fast sequence, independent verification, or outcome criteria pass. |
       | `references/coordinator.md` `## Open-Job owner reuse` | Open Job's Orchestrator cancelled as stuck without reading `history://<id>`, or replaced before `write agent://<id>` revives it. |
@@ -122,9 +123,9 @@ advisors:
       | context-ledger `## Update Points` | Material change without a same-turn log entry and status-report refresh; project or task fact change without a same-turn ledger edit. |
       | context-ledger `## Storage` | ECI or ATE ledger, forecasts, or log edited or written outside `$HOME/.agent/context/sessions/$SESSION_ID/`, such as a cache directory. |
       | writing-status-reports `## Format Rules`, context-ledger `## Storage`, `## Latest Status Report`, `## Update Points` | After first creation, `latest-status-report.yaml` is rewritten from scratch, such as by a full-content `write`, instead of edited only at stale or changed fields; or it is written when no field is stale or changed. |
-      | `eci-binding-contract.md` `## Decisions`, `### Concurrent tasks`, router `## Activation and invariants`, `references/critique.md` `## Admission and treatment` | Supervisor or owner asks the user to decide something its role, another ECI role, or the contract already decides: "Should I…?" about its own duty or admitted work (ledger repair, starting, continuing, or scheduling that work), a menu of next steps or follow-ups, how to treat a finding, or which design or approach to use. Exempt only what the user alone holds: intent or facts only the user knows, credentials, authorization for a new separate outcome or for an action needing explicit user approval such as push, narrowing scope, accepting a gap, and answers to the user's own request for options or advice. |
+      | `eci-binding-contract.md` `## Decisions`, `### Concurrent tasks`, router `## Activation and invariants`, `references/critique.md` `## Admission and treatment` | Supervisor asks the user to decide something its role, another ECI role, or the contract already decides: "Should I…?" about its own duty or admitted work (ledger repair; starting, continuing, ordering, or scheduling that work), a menu of next steps within admitted work, how to treat a finding, or which design or approach to use. Exempt only what the user alone holds: intent or facts only the user knows, credentials, authorization for a new separate outcome, approval for an action a rule reserves for the user (push, changing user-set configuration, stopping a process the agent did not start), narrowing scope, accepting a gap, and answers to the user's own request for options or advice. If a question bundles an exempt authorization with a role-decided part (which option, when to start, order against running Jobs), flag that part. |
       | context-ledger `## Storage`, `## Update Points` | ECI is active but this session's `project-understanding.yaml` is absent (glob `~/.agent/context/sessions/*/project-understanding.yaml` and match the session ID from ledger paths or `eci-active` output), or any `ledger-append` output reports `status refresh failed` without same-turn repair. |
-      | `references/task-orchestrator.md` `## Job hold and tool errors`, coordinator `## Open-Job owner reuse` | A Worker result shows `aborted`, failed, or cancelled (or `Operation aborted`) and its owner parks or stays idle without reading `proc://`, reviving, or reporting it; or the Supervisor leaves an open Job with no running Worker and a parked owner unaddressed. Flag the stall as a concern. |
+      | `references/task-orchestrator.md` `## Job hold and tool errors`, `references/coordinator.md` `## Open-Job owner reuse` | A Worker result shows `aborted`, failed, or cancelled (or `Operation aborted`) and its owner parks or stays idle without reviving or reporting it; or the Supervisor leaves an open Job with no running Worker and a parked owner unaddressed. Skip cancellations the user, the Supervisor, or an owner deliberately issued, and Jobs that await a recorded blocker, such as a user decision. Flag the stall as a concern. |
       | `eci-binding-contract.md` `### Work estimates` | Work package started or assigned without an estimated elapsed duration in its plan, assignment, or update. |
       | `eci-binding-contract.md` `### ECI Supervisor repository-edit routing` | Agent starts substantive work, including writing a brief, before loading every installed skill its task matches. |
       | `eci-binding-contract.md` `### Clean system and repair` | Agent reads, or sends workers, a duplicate skill copy instead of the router-linked path. |
