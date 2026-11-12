@@ -187,6 +187,9 @@ for name in "${names[@]}"; do
   module="$hook_dir/lib/$name-go"
   [ -f "$module/go.mod" ] || die "missing Go module $module"
   echo "build-native-binaries: building $name"
+  # TODO: a non-repair build publishes this module's working tree, other Jobs' uncommitted edits included, to every
+  # running session; only the ECI router's codingskill step asks for a clean tree. Warn or refuse here when
+  # git status --short -- "$module" is non-empty, as --gate-repair already prints source status.
   (cd -- "$module" && env -u GO386 -u GOAMD64 -u GOARM -u GOARM64 -u GOMIPS -u GOMIPS64 -u GOPPC64 -u GORISCV64 -u GOWASM \
     GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
