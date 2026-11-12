@@ -43,6 +43,41 @@ func TestCLIRoundTrip(t *testing.T) {
 	require.False(t, verdict.Block)
 }
 
+// TestCLIReduceHydratesFromBranch credits the transcript's earlier skill reads when a reduce carries no results.
+//
+// Example: a branch with completed coding-common and coding-go reads allows a later Go write; a Python write still needs coding-python.
+func TestCLIReduceHydratesFromBranch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	request, err := json.Marshal(cliInput{Branch: []map[string]any{
+		{"type": "message", "message": map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "toolCall", "name": "read", "id": "1", "arguments": map[string]any{"path": "skill://coding-common"}},
+			map[string]any{"type": "toolCall", "name": "read", "id": "2", "arguments": map[string]any{"path": "skill://coding-go"}},
+		}}},
+		{"type": "message", "message": map[string]any{"role": "toolResult", "toolName": "read", "toolCallId": "1", "details": completeRead()}},
+		{"type": "message", "message": map[string]any{"role": "toolResult", "toolName": "read", "toolCallId": "2", "details": completeRead()}},
+	}})
+	require.NoError(t, err)
+	var output bytes.Buffer
+	require.NoError(t, Run([]string{"reduce"}, bytes.NewReader(request), &output))
+	var reduced struct {
+		State State `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &reduced))
+
+	// check runs one check of a write to path with the reduced state and returns its raw reply.
+	//
+	// Example: check("a.go") replies {"block":false} once the branch credited coding-common and coding-go.
+	check := func(path string) string {
+		request, err := json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": path}}})
+		require.NoError(t, err)
+		output.Reset()
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		return output.String()
+	}
+	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
+}
+
 // TestCLICheckHonorsDisableFile lets running sessions turn every check off and back on without a restart.
 //
 // Example: while ~/.omp/agent/coding-skill-gate.disabled exists, an unread Go write gets {"block":false}.
@@ -187,6 +222,35 @@ func TestCLIRejectsMalformedReads(t *testing.T) {
 	}
 }
 
+// TestCLIStateKeepsSkillBits decodes state written by earlier helpers with the same credits: running bridges keep their state across helper rebuilds, so skill bits are append-only and the state's JSON form stays fixed.
+//
+// Example: {"reads":6,"hydrated":true} credits coding-common and coding-go.
+func TestCLIStateKeepsSkillBits(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	released := []string{
+		"coding-common", "coding-go", "coding-python", "harness-tuning", "explore-critique-implement",
+		"explore-critique-implement/references/explore.md", "explore-critique-implement/references/critique.md",
+		"explore-critique-implement/references/implement.md", "explore-critique-implement/references/fast-path.md",
+		"explore-critique-implement/references/review.md", "explore-critique-implement/references/task-orchestrator.md",
+	}
+	for i, name := range released {
+		skill := skillCommon + Skill(i)
+		require.Equal(t, name, skill.name(), "bit %d changed meaning; running bridges still send it, so add new skills only before skillEnd", skill)
+	}
+
+	// check runs one check of a write to path with an earlier helper's state crediting coding-common and coding-go, and returns its raw reply.
+	//
+	// Example: check("a.go") replies {"block":false}.
+	check := func(path string) string {
+		var output bytes.Buffer
+		request := `{"state":{"reads":6,"hydrated":true},"call":{"toolName":"write","input":{"path":"` + path + `"}}}`
+		require.NoError(t, Run([]string{"check"}, strings.NewReader(request), &output))
+		return output.String()
+	}
+	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
+}
+
 // TestDescribeListsGatedExtensions keeps the TS prefilter on the Go extension sets.
 //
 // Example: describe lists ".cpp", ".md", and ".yml" because skillForPath can gate all three.
@@ -227,6 +291,56 @@ func TestCLICheckCarriesAgentName(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.block, verdict.Block, tc.agent)
+	}
+}
+
+// TestCLICheckCarriesEditTargets checks the edit targets the host resolved instead of the raw edit input.
+//
+// Example: an edit the host resolved to a.go is blocked even when its input names notes.txt.
+func TestCLICheckCarriesEditTargets(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, tc := range []struct {
+		target string
+		input  string
+		block  bool
+	}{
+		{"a.go", "notes.txt", true},
+		{"notes.txt", "a.go", false},
+	} {
+		request, err := json.Marshal(cliInput{Call: cliEvent{ToolName: "edit", Input: map[string]any{"path": tc.input}, EditTargets: []string{tc.target}}})
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		var verdict struct {
+			Block bool `json:"block"`
+		}
+		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
+		require.Equal(t, tc.block, verdict.Block, tc.target)
+	}
+}
+
+// TestCLICheckCarriesCwd resolves a relative write target against the session's working directory.
+//
+// Example: agent/RULES.md written from ~/.omp is an instruction file; written from ~ it is not.
+func TestCLICheckCarriesCwd(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, tc := range []struct {
+		cwd   string
+		block bool
+	}{
+		{filepath.Join(home, ".omp"), true},
+		{home, false},
+	} {
+		request, err := json.Marshal(cliInput{Call: cliEvent{ToolName: "write", Input: map[string]any{"path": "agent/RULES.md"}, Cwd: tc.cwd}})
+		require.NoError(t, err)
+		var output bytes.Buffer
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		var verdict struct {
+			Block bool `json:"block"`
+		}
+		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
+		require.Equal(t, tc.block, verdict.Block, tc.cwd)
 	}
 }
 

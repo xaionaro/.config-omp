@@ -261,7 +261,8 @@ test("reports an actionable error when the provisioned engine disappears", async
 	renameSync(engine, `${engine}.held`);
 	try {
 		const result = await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx);
-		expect(result).toMatchObject({block: true, reason: expect.stringContaining("Coding skill gate unavailable")});
+		expect(result).toEqual({block: true, reason: expect.stringMatching(/^Coding skill gate unavailable \(.+; if it still fails, report this denial to your owner or the user\.$/)});
+		expect(result).not.toEqual({block: true, reason: expect.stringContaining("coding-skill-gate.ts")});
 		expect(await handlers.tool_call({toolName: "write", input: {path: "[a.go#ABCD]"}}, ctx)).toMatchObject({block: true});
 		expect(await handlers.tool_call({toolName: "write", input: {path: "notes.txt"}}, ctx)).toBeUndefined();
 		editMode = "sloppy";

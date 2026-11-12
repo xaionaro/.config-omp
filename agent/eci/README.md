@@ -43,6 +43,9 @@ bash 3.2.
   and Bash survivor bridges invoke the helper directly. Provisioning does not enable
   any hook. A source change does not refresh an existing binary: rebuild it with
   `"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`.
+  Running sessions use the rebuilt helper at once; before rebuilding it for an
+  unreviewed `codingskill` change, follow the coding-skill row of
+  `hooks/gate-escape-hatches.md`.
   Hook provisioning inherits `GOCACHE` and `GOMODCACHE` when set; otherwise it
   resolves them with `go env` using the account home, not the hook's `HOME`.
 - No GNU coreutils are needed: the hook libraries take their `sha256sum`, `realpath`

@@ -176,7 +176,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 		} catch (error) {
 			if (!gated) return undefined;
 			if (current !== generation) return { block: true, reason: "Coding skill gate: session changed; retry the call." };
-			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Ensure Go and the native provisioner are available to build ${binary}, then retry, or delete agent/extensions/coding-skill-gate.ts and restart.` };
+			return { block: true, reason: `Coding skill gate unavailable (${String(error)}). Ensure Go and the native provisioner are available to build ${binary}, then retry; if it still fails, report this denial to your owner or the user.` };
 		}
 	});
 }
