@@ -494,19 +494,19 @@ documents. These are writing/quality rules, not runtime content permission gates
 Edit YAML in place with mikefarah `yq` v4 (`yq4`; `yq4 --version` reports
 mikefarah v4): run `yq4 -i` on the canonical file and pass IDs and text through
 `strenv()`. Do not edit a temporary copy and swap it in. Never write YAML with
-the jq-based `yq` (version 3.x), which drops comments and quoting, or redirect a
+the jq-based `yq` (version 3.x); it drops comments and quoting. Never redirect a
 tool's output onto its input. Use a native selective text edit instead when
 `yq4` is unavailable or its preview changes more than the diff rule below
 allows. For the [capture-and-prepare operation](requirement-assignment.md),
 express the changes as its exact native text replacements; do not run `yq4 -i`.
 
-`yq4 -i` creates missing paths instead of failing, so chain each write to its
-`yq4 -e` check with `&&`. Before an update or deletion
+Chain each write to its `yq4 -e` check with `&&`; `yq4 -i` creates missing
+paths instead of failing. Before an update or deletion
 (`del(.records[strenv(id)])`), check with `yq4 -e` that the ID exists and the
 ledger record’s `type` or forecast record’s `kind` matches; before an addition,
-check that the ID is absent and add a complete record. `yq4` keeps the quoting
-of existing scalars but writes new keys and strings unquoted; set
-`style="double"` on them. Preview each change as a diff before applying it: only
+check that the ID is absent and add a complete record. Set `style="double"` on
+new keys and strings; `yq4` writes them unquoted but keeps the quoting of
+existing scalars. Preview each change as a diff before applying it: only
 the intended records may change, apart from one-time layout normalization (line
 wrapping, blank lines, comment spacing, sequence indentation). Make the preview
 and the write separate tool calls: write only after reading the preview. Run
