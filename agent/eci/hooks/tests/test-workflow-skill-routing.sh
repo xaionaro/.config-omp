@@ -1517,7 +1517,7 @@ assert_post_fast_coordinator_ownership_contract() {
   require_text <(printf '%s\n' "$text") \
     'check that the critic decided one [treatment](../../references/workflow-runtime/review-policy.md#gate-evaluation) for each finding and exactly one disposition for each in-scope inventory item'
   require_text <(printf '%s\n' "$text") \
-    'Check that cited evidence exists at its source, not whether it suffices'
+    'Check that cited evidence exists at its source; evidence you see as insufficient gets the'
   [[ "$text" != *'The Supervisor applies multiple canonical dispositions per in-scope inventory item.'* ]] ||
     fail 'coordinator ownership contradiction was admitted'
   [[ "$text" != *'The Supervisor owns final disposition application/treatment'* ]] ||
@@ -1584,26 +1584,43 @@ assert_post_fast_role_ownership() {
 }
 
 assert_coordinator_role_boundary() {
-  require_text "$ECI" 'including user updates, adds no mechanism'
+  require_text "$ECI" "may appear in any message, including user updates, attributed as theirs"
   require_text "$TASK_ORCHESTRATOR" 'quote or cite findings with their authors'
   require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
   require_text "$FAST_PATH" 'which chooses its next bounded action'
   require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
-  require_text "$ECI" 'when every claim in the summary appears in its source; the summary adds no claim, risk, mitigation, or `[INFERENCE]` of their own. Any other report'
+  require_text "$ECI" 'In a user update, they may summarize that content with its author. Their own observation, concern, or risk or impact remark may appear in any message, including user updates, attributed as theirs, tagged `[INFERENCE]` where unchecked, and presented as input, never as a decision or as another role'
   require_text "$ECI" "evidence for Steps 1–2. This bullet does not govern a direct answer to the user's advice request."
   require_text "$ECI" "which puts it to the user and returns the user's quoted answer to the Job owner for a fresh Step 2 critic."
   ! grep -Fq -- 'advice request is not a user update' "$ECI" || fail "$ECI retains superseded advice-answer wording"
-  require_text "$COORDINATOR" 'state no treatment or impact of your own, and withhold acceptance until the critic decides it'
+  require_text "$COORDINATOR" 'with your attributed view of its impact if useful; withhold acceptance until the critic decides it'
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
-  require_text "$ECI" "design-specific acceptance criterion, technical concern, or [finding decision](#step-handoffs) of their own, including a finding's scope, impact, or consequence, whether labeled"
-  require_text "$ECI" "whether labeled a proposal, recommendation, example, evidence, risk, or \`[INFERENCE]\`. Two cases differ. A finding's scope, impact, or consequence is never theirs to state, checked or not. Their own observation about a Job's current or pending work is evidence they owe that Job: they send it to the Job's owner for its Step 2 critic, with its source, tagged \`[INFERENCE]\` where unchecked, and naming no action, order, or timing; it goes into no user update."
-  require_text "$TASK_ORCHESTRATOR" "Give your own observations about the Job's work as the role rule sets: facts with sources, tagged \`[INFERENCE]\` where unchecked, for the Job's Step 2 critic; state no scope, impact, or consequence of a finding; quote or cite findings with their authors. Tag your readings of the user's words \`[INFERENCE]\`."
+  require_text "$ECI" "The Supervisor and Orchestrators work through delegation: an Orchestrator owns its Job's progress, and the Supervisor enforces ECI across Jobs. Design selection, [finding decisions](#step-handoffs), and implementation choices stay with Steps 1–2, Step 2 critics, and Producers, except a recorded [stall decision](references/coordinator.md#stall-decisions)."
+  require_text "$ECI" "A brief, relay, or user update presents design content as a Job's plan, target, constraint, or acceptance criterion only from its sources, unchanged and attributed"
+  require_text "$ECI" "their own design idea goes to the Job's Steps 1–2 as such input, never into a brief's targets or criteria."
+  require_text "$ECI" "When they see a technical mistake in a Job's work, they promptly notify the Worker whose work it concerns, before any dependent action such as its commit, and the owner or fresh Step 2 critic whose decision it affects (for a child Job, through its parent owner); the notice states the mistake and its source, and the receiver decides the remedy."
+  require_text "$COORDINATOR" '### Stall decisions'
+  require_text "$COORDINATOR" "the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls."
+  require_text "$COORDINATOR" 'A stall decision waives no original criterion, takes no user-owned decision, which goes to hard escalation, and never settles for good enough'
+  require_text "$COORDINATOR" 'A technical choice still open after BRP gets a [stall decision](#stall-decisions); hard escalation remains for user-owned decisions'
+  require_text "$TASK_ORCHESTRATOR" "Attribute your own observations, views, and mistake notices as the role rule sets; quote or cite findings with their authors. Tag your readings of the user's words \`[INFERENCE]\`."
+  require_text "$TASK_ORCHESTRATOR" 'Resolve concrete ECI-duty deviations through the responsible Worker and verify its correction; a technical mistake gets the role rule'
+  require_text "$TASK_ORCHESTRATOR" 'relay matching identity, scope, and index facts, plus any mistake notice the role rule requires'
+  require_text "$POLICY" '| stalled loop, technical choice | A loop-breaker returned `BLOCKED`'
+  require_text "$POLICY" '| stalled loop, user-owned choice |'
+  require_text "$POLICY" '| unstalled loop | A Step 2 critic is still within its bounce cap. The Orchestrator makes no stall decision'
+  require_text "$POLICY" '| own view in user update |'
+  require_text "$POLICY" 'Before that commit, the reply gives the matching rows and notifies that Producer'
   ! grep -Fq -- 'stating no consequence, risk, or impact of a finding' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded finding-content list: stating no consequence, risk, or impact of a finding"
-  ! grep -Fq -- 'or of your observations' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded observation-reading wording: or of your observations"
-  ! grep -Fq -- 'design-specific acceptance criterion, or [finding decision]' "$ECI" || fail "$ECI retains superseded role-rule list: design-specific acceptance criterion, or [finding decision]"
   ! grep -Fq -- 'They send their own unverified technical suspicion nowhere' "$ECI" || fail "$ECI retains superseded suspicion wording: They send their own unverified technical suspicion nowhere"
   ! grep -Fq -- 'Give your own observations as facts with sources, stating no' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded observation wording: Give your own observations as facts with sources, stating no"
-  ! grep -Fq -- 'appears in its source. Any other report' "$ECI" || fail "$ECI retains superseded summary wording: appears in its source. Any other report"
+  local role_rule_docs=("$ECI" "$ROOT/../skills/explore-critique-implement/references/"*.md "$ROOT/../skills/references/workflow-runtime/"*.md "$ROOT/../skills/references/review-investigation.md" "$ECI_BINDING_CONTRACT" "$ROOT/../RULES.md")
+  local restrictive
+  for restrictive in 'make no technical decision' 'never theirs to state' 'naming no action, order, or timing' 'it goes into no user update' 'adds no claim, risk, mitigation' 'state no treatment or impact of your own' 'state no scope, impact, or consequence of a finding' 'suggests no fix, not even as an example' 'The Supervisor states no treatment'; do
+    ! grep -Fq -- "$restrictive" "${role_rule_docs[@]}" || fail "superseded coordinator ban wording: $restrictive"
+  done
+  ! grep -Eiq -- 'executive decision|project lead|(^|[^[:alnum:]_])CTO([^[:alnum:]_]|$)|too high level|high level for that|notify the relevant workers|not forbidden from making technical decisions|jobs are progressing' "${role_rule_docs[@]}" ||
+    fail 'role-rule docs restate the user clarification wording'
   local forbidden
   for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
     if grep -Fq -- "$forbidden" "$COORDINATOR"; then
