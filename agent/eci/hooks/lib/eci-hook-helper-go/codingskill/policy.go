@@ -268,7 +268,7 @@ func decide(req Request) (Response, error) {
 	}
 	switch req.Action {
 	case resultAction:
-		if req.Tool == "read" && !req.IsError {
+		if req.Tool == "read" && !req.IsError { // TODO: flatten; this result branch nests three deep (switch, if, if); move result crediting into its own function with early returns.
 			skill := creditedSkill(req.Input, req.Details)
 			if skill != skillUnknown {
 				state.Reads.mark(skill)
@@ -336,7 +336,7 @@ func hydrate(
 		switch asString(message["role"]) {
 		case "assistant":
 			collectReadCalls(calls, mapsFrom(message["content"]))
-		case "toolResult":
+		case "toolResult": // TODO: flatten; these guards nest three deep (for, switch, if); move the toolResult pairing into its own function with early returns.
 			if asString(message["toolName"]) != "read" || asBool(message["isError"]) {
 				continue
 			}

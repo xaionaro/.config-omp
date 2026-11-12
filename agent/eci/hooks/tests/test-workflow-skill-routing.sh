@@ -196,6 +196,7 @@ assert_local_links_resolve() {
     [ -s "$file" ] || fail "missing or empty workflow document: $file"
     while IFS= read -r target; do
       target="${target#](}"
+      # TODO: anchors go unchecked: this drops each #fragment, and same-file links are skipped. Fix: check each fragment against the target's Markdown heading slugs instead of pinning headings one by one with require_line.
       target="${target%%#*}"
       case "$target" in
         ''|http://*|https://*|mailto:*) continue ;;

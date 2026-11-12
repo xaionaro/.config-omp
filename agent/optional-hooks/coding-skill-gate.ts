@@ -60,6 +60,7 @@ function skillReadHistory(ctx: ExtensionContext): unknown[] {
 		if (message.role === "assistant") {
 			const calls = message.content.filter(part => part.type === "toolCall" && part.name === "read" &&
 				typeof part.arguments.path === "string" && isSkillRead(part.arguments.path));
+			// TODO: flatten; this loop nests four deep (for, if, for, if); move assistant-call collection into its own function.
 			for (const call of calls) if (call.type === "toolCall") ids.add(call.id);
 			if (calls.length) history.push({type: "message", message: {role: "assistant", content: calls}});
 		} else if (message.role === "toolResult" && ids.has(message.toolCallId)) {
@@ -149,6 +150,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 			try {
 				described = await describe();
 			} catch (error) {
+				// TODO: flatten; this warning nests three deep (try, catch, if); describe before the outer try, or move the warning into its own function.
 				if (!describeWarned) {
 					describeWarned = true;
 					const message = `Coding skill gate is not checking writes: the eci-hook-helper description is unavailable or stale (${String(error)}). Rebuild with: bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-hook-helper`;

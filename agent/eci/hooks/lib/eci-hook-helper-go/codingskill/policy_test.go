@@ -255,10 +255,9 @@ func TestGateCatalogListsInstructionTargets(t *testing.T) {
 		text, after, ok := strings.Cut(rest, clause.end)
 		require.Truef(t, ok, "%s lacks %q after the previous instruction-target clause", catalogPath, clause.end)
 		var got []string
-		for i, part := range strings.Split(text, "`") {
-			if i%2 == 1 {
-				got = append(got, part)
-			}
+		// Odd-indexed parts lie between paired backticks.
+		for parts, i := strings.Split(text, "`"), 1; i < len(parts); i += 2 {
+			got = append(got, parts[i])
 		}
 		require.ElementsMatchf(t, clause.names, got, "%s: names before %q", catalogPath, clause.end)
 		rest = after
