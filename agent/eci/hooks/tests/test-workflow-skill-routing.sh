@@ -343,6 +343,7 @@ assert_reviewer_role_split() {
     'Report findings to the current Job owner only.'; do
     require_text "$REVIEW" "$required"
   done
+  require_text "$ECI" '4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required;'
 
   for forbidden in \
     'coordinator-runtime' \
@@ -1585,6 +1586,11 @@ assert_coordinator_role_boundary() {
   ! grep -Fq -- 'advice request is not a user update' "$ECI" || fail "$ECI retains superseded advice-answer wording"
   require_text "$COORDINATOR" 'state no treatment or impact of your own, and withhold acceptance until the critic decides it'
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
+  require_text "$ECI" 'design-specific acceptance criterion, technical concern, or [finding decision](#step-handoffs) of their own, including a finding'
+  require_text "$ECI" 'whether labeled a proposal, recommendation, example, evidence, risk, or `[INFERENCE]`. They send their own unverified technical suspicion nowhere; once they check it, they may send the result only as an observed fact with its source.'
+  require_text "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" 'Give your own observations as facts with sources, stating no consequence, risk, or impact of a finding; quote or cite findings with their authors. Tag your readings of the user'
+  ! grep -Fq -- 'or of your observations' "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" || fail "task-orchestrator.md retains superseded observation-reading wording: or of your observations"
+  ! grep -Fq -- 'design-specific acceptance criterion, or [finding decision]' "$ECI" || fail "$ECI retains superseded role-rule list: design-specific acceptance criterion, or [finding decision]"
   local forbidden
   for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
     if grep -Fq -- "$forbidden" "$COORDINATOR"; then
@@ -1601,16 +1607,21 @@ assert_finding_treatment_rules() {
   for forbidden in 'gets one treatment per part' "that the user's quoted answer accepts"; do
     ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $forbidden"
   done
+  require_text "$ECI_BINDING_CONTRACT" 'Without a case, do not admit the concern and record it only as a post-ECI follow-up. This does not decide a review finding about the requested outcome: a fresh Step 2 critic gives it one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`), and a missing use case is not evidence for any defer condition.'
+  ! grep -Fq -- 'keep the concern nonblocking' "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains superseded use-case wording: keep the concern nonblocking"
 }
 
 assert_user_set_order_rule() {
-  require_text "$ECI" 'In a user-set order, make no change that belongs to a step unless every step before it in the order is done and either still in effect or undone by another of those steps.'
+  local forbidden
+  require_text "$ECI" 'In a user-set order, make no change that belongs to a step unless every step before it in the order is done and the state that the earlier steps leave, applied in order, still holds.'
   require_text "$ECI" 'Read each step by its plain meaning; never narrow it to fit a better option, such as a shorter outage.'
-  require_text "$POLICY" 'A Fast Owner Producer that sees a shorter outage keeps the order, reports the alternative, and makes every logging edit, commit, and deploy while the hooks are disabled. A later change that belongs to the logging fix, such as a main-path revision, first disables them again. If the user adds a fourth step, "then deploy", the deploy follows the re-enable and runs with the hooks enabled.'
-  ! grep -Fq -- 'until the steps before it are done' "$ECI" || fail "$ECI retains superseded user-set order wording"
-  ! grep -Fq -- 'shorter disabled window' "$POLICY" || fail "$POLICY retains superseded user-set sequence wording"
-  ! grep -Fq -- 'unless the steps before it are done and still in effect' "$ECI" || fail "$ECI retains superseded user-set order wording"
-  ! grep -Fq -- 'A later logging change' "$POLICY" || fail "$POLICY retains superseded user-set sequence wording"
+  require_text "$POLICY" 'A Fast Owner Producer that sees a shorter outage keeps the order, reports the alternative, and makes every logging edit, commit, and deploy while the hooks are disabled. A later change that belongs to the logging fix, such as a main-path revision, first disables them again, then re-enables them. If the user adds a fourth step, "then deploy", the deploy belongs to that step instead: it follows the re-enable and runs with the hooks enabled, including after a revision.'
+  for forbidden in 'until the steps before it are done' 'unless the steps before it are done and still in effect' 'undone by another of those steps'; do
+    ! grep -Fq -- "$forbidden" "$ECI" || fail "$ECI retains superseded user-set order wording: $forbidden"
+  done
+  for forbidden in 'shorter disabled window' 'A later logging change' 'the deploy follows the re-enable and runs with the hooks enabled.'; do
+    ! grep -Fq -- "$forbidden" "$POLICY" || fail "$POLICY retains superseded user-set sequence wording: $forbidden"
+  done
 }
 
 assert_deferred_disposition_policy_contract_text() {
