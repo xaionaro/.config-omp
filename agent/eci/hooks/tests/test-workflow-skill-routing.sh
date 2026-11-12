@@ -1589,18 +1589,21 @@ assert_coordinator_role_boundary() {
   require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
   require_text "$FAST_PATH" 'which chooses its next bounded action'
   require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
-  require_text "$ECI" 'when every claim in the summary appears in its source. Any other report'
+  require_text "$ECI" 'when every claim in the summary appears in its source; the summary adds no claim, risk, mitigation, or `[INFERENCE]` of their own. Any other report'
   require_text "$ECI" "evidence for Steps 1–2. This bullet does not govern a direct answer to the user's advice request."
   require_text "$ECI" "which puts it to the user and returns the user's quoted answer to the Job owner for a fresh Step 2 critic."
   ! grep -Fq -- 'advice request is not a user update' "$ECI" || fail "$ECI retains superseded advice-answer wording"
   require_text "$COORDINATOR" 'state no treatment or impact of your own, and withhold acceptance until the critic decides it'
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
-  require_text "$ECI" 'design-specific acceptance criterion, technical concern, or [finding decision](#step-handoffs) of their own, including a finding'
-  require_text "$ECI" 'whether labeled a proposal, recommendation, example, evidence, risk, or `[INFERENCE]`. They send their own unverified technical suspicion nowhere; once they check it, they may send the result only as an observed fact with its source.'
-  require_text "$TASK_ORCHESTRATOR" 'Give your own observations as facts with sources, stating no scope, impact, or consequence of a finding; quote or cite findings with their authors. Tag your readings of the user'
+  require_text "$ECI" "design-specific acceptance criterion, technical concern, or [finding decision](#step-handoffs) of their own, including a finding's scope, impact, or consequence, whether labeled"
+  require_text "$ECI" "whether labeled a proposal, recommendation, example, evidence, risk, or \`[INFERENCE]\`. Two cases differ. A finding's scope, impact, or consequence is never theirs to state, checked or not. Their own observation about a Job's current or pending work is evidence they owe that Job: they send it to the Job's owner for its Step 2 critic, with its source, tagged \`[INFERENCE]\` where unchecked, and naming no action, order, or timing; it goes into no user update."
+  require_text "$TASK_ORCHESTRATOR" "Give your own observations about the Job's work as the role rule sets: facts with sources, tagged \`[INFERENCE]\` where unchecked, for the Job's Step 2 critic; state no scope, impact, or consequence of a finding; quote or cite findings with their authors. Tag your readings of the user's words \`[INFERENCE]\`."
   ! grep -Fq -- 'stating no consequence, risk, or impact of a finding' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded finding-content list: stating no consequence, risk, or impact of a finding"
   ! grep -Fq -- 'or of your observations' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded observation-reading wording: or of your observations"
   ! grep -Fq -- 'design-specific acceptance criterion, or [finding decision]' "$ECI" || fail "$ECI retains superseded role-rule list: design-specific acceptance criterion, or [finding decision]"
+  ! grep -Fq -- 'They send their own unverified technical suspicion nowhere' "$ECI" || fail "$ECI retains superseded suspicion wording: They send their own unverified technical suspicion nowhere"
+  ! grep -Fq -- 'Give your own observations as facts with sources, stating no' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded observation wording: Give your own observations as facts with sources, stating no"
+  ! grep -Fq -- 'appears in its source. Any other report' "$ECI" || fail "$ECI retains superseded summary wording: appears in its source. Any other report"
   local forbidden
   for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
     if grep -Fq -- "$forbidden" "$COORDINATOR"; then
