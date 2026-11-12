@@ -7978,6 +7978,7 @@ func isTruncateWriterOperand(argv []token, argumentIndex int) bool {
 	return ok
 }
 
+// TODO: treat yq/yq4 with -i/--inplace as a writer; context-ledger recommends "yq4 -i", which this check misses on another session's ledger.
 func isSourceWriter(name string, argv []token) bool {
 	switch name {
 	case "chmod", "chown", "cp", "dd", "install", "ln", "mv", "patch", "rm", "rsync", "rmdir", "shred", "srm", "tee", "touch", "truncate", "unlink":

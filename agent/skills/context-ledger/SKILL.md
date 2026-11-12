@@ -495,10 +495,13 @@ Edit YAML in place with mikefarah `yq` v4 (`yq4`; `yq4 --version` reports
 mikefarah v4): run `yq4 -i` on the canonical file and pass IDs and text through
 `strenv()`. Do not edit a temporary copy and swap it in. Never write YAML with
 the jq-based `yq` (version 3.x), which drops comments and quoting, or redirect a
-tool's output onto its input. Use a native selective text edit only when `yq4`
-is unavailable.
+tool's output onto its input. Use a native selective text edit instead when
+`yq4` is unavailable or its preview changes more than the diff rule below
+allows. For the [capture-and-prepare operation](requirement-assignment.md),
+express the changes as its exact native text replacements; do not run `yq4 -i`.
 
-`yq4 -i` creates missing paths instead of failing. Before an update or deletion
+`yq4 -i` creates missing paths instead of failing, so chain each write to its
+`yq4 -e` check with `&&`. Before an update or deletion
 (`del(.records[strenv(id)])`), check with `yq4 -e` that the ID exists and the
 ledger record’s `type` or forecast record’s `kind` matches; before an addition,
 check that the ID is absent and add a complete record. `yq4` keeps the quoting
@@ -512,18 +515,21 @@ session writer applies bounded worker proposals to the latest file.
 cd "$HOME/.agent/context/sessions/$SESSION_ID"
 f=project-understanding.yaml
 
-# Update an existing work record.
+# Update an existing work record. Each write runs only if its check passes.
 export id='work:receiver:clock' owner='worker-b'
 e='.records[strenv(id)].data.owner = strenv(owner)'
-yq4 -e '.records[strenv(id)].type == "work"' "$f" && yq4 "$e" "$f" | diff -u "$f" -
-yq4 -i "$e" "$f"  # after reviewing the preview
+check='.records[strenv(id)].type == "work"'
+yq4 -e "$check" "$f" && yq4 "$e" "$f" | diff -u "$f" -
+yq4 -e "$check" "$f" && yq4 -i "$e" "$f"  # after reviewing the preview
 
-# Add a record with a quoted key and strings.
-export id='guard:receiver:clock-source' rule='Keep a supplied setting distinct from a measurement'
-e='.records[strenv(id)] = {"section": "proof", "type": "guard", "data": {"rule": strenv(rule)}, "evidence": []}
+# Add a complete record with a quoted key and strings.
+export id='guard:receiver:clock-source' rule='Keep a supplied setting distinct from a measurement' \
+  reason='A supplied setting is not observed evidence'
+e='.records[strenv(id)] = {"section": "proof", "type": "guard", "data": {"rule": strenv(rule), "reason": strenv(reason)}, "evidence": []}
   | with(.records[strenv(id)]; (.. | select(tag == "!!str")) style="double" | key style="double")'
-yq4 -e '.records | has(strenv(id)) | not' "$f" && yq4 "$e" "$f" | diff -u "$f" -
-yq4 -i "$e" "$f"
+check='.records | has(strenv(id)) | not'
+yq4 -e "$check" "$f" && yq4 "$e" "$f" | diff -u "$f" -
+yq4 -e "$check" "$f" && yq4 -i "$e" "$f"
 ```
 
 Example fixture: [project-understanding.yaml](examples/project-understanding.yaml).

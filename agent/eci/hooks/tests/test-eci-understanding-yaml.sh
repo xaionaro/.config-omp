@@ -78,6 +78,7 @@ allowed() {
 denied() {
   run_bash_hook "$1" | jq -e '.hookSpecificOutput.permissionDecision=="deny"' >/dev/null
 }
+# TODO: context-ledger no longer publishes this snapshot cp/mv flow; exercise the own-session "yq4 -i" edit here and update the labels at lines 2 and 22.
 snapshot_tmp=$(mktemp "$session_dir/.understanding-snapshot.XXXXXX")
 allowed "cp '$session_dir/project-understanding.yaml' '$snapshot_tmp'"
 cp -- "$session_dir/project-understanding.yaml" "$snapshot_tmp"
