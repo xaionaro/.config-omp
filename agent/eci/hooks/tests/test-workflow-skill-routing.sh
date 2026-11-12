@@ -1326,13 +1326,9 @@ assert_fast_quality() {
 assert_fast_path_progress_wait_contract() {
   local eci_text="$1" fast_text="$2" wait_rule section
 
-  # TODO: dc6db33 reworded this binding-contract rule to "When advancing ECI outcomes, do not use or advance on
-  # evidence or agent results before delivery; park meanwhile; ...", so '^- Wait only for' matches nothing and the
-  # default suite fails here. Align this selector and pattern, and the assert_fast_path_progress_waits mutation, with
-  # the reworded rule, or restore the dependency-scoped wording if dc6db33 dropped it unintentionally.
-  wait_rule="$(grep '^- Wait only for' <<<"$eci_text" || true)"
+  wait_rule="$(grep '^- When advancing ECI outcomes' <<<"$eci_text" || true)"
   require_section_pattern "$wait_rule" 'dependency-scoped global waits' \
-    'Wait only for.*next action.*independent.*continue'
+    'before delivery.*park.*independently verify.*continue independent ready work'
   section="$(extract_h2_section <(printf '%s\n' "$fast_text") '## Progress waits')" ||
     fail 'missing cross-path wait section'
   require_section_pattern "$section" 'cross-path wait preserves verification and real dependencies' \
@@ -2033,7 +2029,7 @@ assert_fast_path_progress_waits() {
   eci_text="$(<"$ECI_BINDING_CONTRACT")"
   fast_text="$(<"$FAST_PATH")"
   assert_fast_path_progress_wait_contract "$eci_text" "$fast_text"
-  mutation="$(sed '/^- Wait only for/d' <<<"$eci_text")"
+  mutation="$(sed '/^- When advancing ECI outcomes/d' <<<"$eci_text")"
   if output="$(assert_fast_path_progress_wait_contract "$mutation" "$fast_text" 2>&1)"; then
     fail 'cross-path wait regression admitted the blanket global wait'
   fi
