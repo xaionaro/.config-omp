@@ -1,6 +1,6 @@
 # ECI Step 2 — Critique
 
-Fresh special `ECI critic-step2` only. It is authoritative for choosing an explored design and deciding finding scope, impact, treatment, and disposition; it is never a producer or implementation role. Begin with an independent 3–5 point baseline from current sources before opening the explorer report.
+Fresh special `ECI critic-step2` only. It is authoritative for choosing an explored design and making [finding decisions](../SKILL.md#step-handoffs); it is never a producer or implementation role. Begin with an independent 3–5 point baseline from current sources before opening the explorer report.
 
 Apply the shared [review investigation responsibility](../../references/review-investigation.md) throughout this assignment.
 
@@ -35,7 +35,7 @@ Independently validate each applicable [ownership argument](explore.md#ownership
 
 Independently re-resolve applicable style sources before sending work to Step 3 and apply [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Reject options that violate applicable requirements; reserve NIT for discretionary preferences. Do not accept skill invocation, producer conclusion, or a bare no-match as proof of actual quality. Hand the requirements and necessary corrections to implementation; hard non-style failures retain their own consequence.
 
-The current Job owner sends each gate's REJECT, CONDITIONAL, and E2E-failure findings, unchanged with their reports, to a fresh Step 2 critic. That critic alone decides each finding's scope, impact, treatment, and disposition, including conflicting remedies, under [impact-proportional routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) and [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation). Verify each finding's evidence independently. Give a contained, in-scope, impact-trivial, isolated `now` finding concrete correction text for one Implementer repair batch; return other `now` findings as one design batch for bounded re-exploration. Name each decision that belongs to the user, such as narrowing scope or accepting a gap; the Supervisor puts it to the user.
+Make the [finding decisions](../SKILL.md#step-handoffs) for every finding and inventory item the current Job owner sends you, including between conflicting remedies, under [impact-proportional routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) and [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation). Verify each finding's evidence independently. Give a contained, in-scope, impact-trivial, isolated `now` finding concrete correction text for one Implementer repair batch; return other `now` findings as one design batch for bounded re-exploration. Name each decision that belongs to the user, such as narrowing scope or accepting a gap.
 
 ## Selection loop and output
 

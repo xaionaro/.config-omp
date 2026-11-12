@@ -211,7 +211,7 @@ role_rows() {
   marker="$marker" awk 'index($0, ENVIRON["marker"]) == 1' "$file"
 }
 
-# An allowed module is one that row's role contract routes on purpose; every other coordinator-only module stays forbidden.
+# Control modules serve the Supervisor and Orchestrators; a row may route one only when its role contract allows it.
 assert_no_control_routes() {
   local file="$1" marker="$2" allowed="${3:-}" row forbidden
   row="$(role_rows "$file" "$marker")"
@@ -225,7 +225,7 @@ assert_no_control_routes() {
     'stop-recovery.md' \
     'policy-pressure-tests.md' \
     'review-policy.md'; do
-    [[ "$forbidden" == "$allowed" || "$row" != *"$forbidden"* ]] || fail "$marker routes to coordinator-only module: $forbidden"
+    [[ "$forbidden" == "$allowed" || "$row" != *"$forbidden"* ]] || fail "$marker routes to a control module outside its role contract: $forbidden"
   done
 }
 
@@ -1163,7 +1163,7 @@ assert_eci_ordinary_role_split() {
   require_text "$ECI_CRITIQUE" '`reroute: explorer-revision`'
   for forbidden in 'applicable policy'; do
     if grep -Fqi -- "$forbidden" "$ECI_CRITIQUE"; then
-      fail "ECI Step 2 critic carries coordinator-owned policy loading: $forbidden"
+      fail "ECI Step 2 critic carries superseded policy-loading wording: $forbidden"
     fi
   done
 }
@@ -1492,7 +1492,7 @@ assert_post_fast_critique_ownership_contract() {
   require_text <(printf '%s\n' "$text") \
     'before deciding exactly one canonical disposition for each in-scope inventory item'
   require_text <(printf '%s\n' "$text") \
-    "That critic alone decides each finding's scope, impact, treatment, and disposition, including conflicting remedies"
+    "Make the [finding decisions](../SKILL.md#step-handoffs) for every finding and inventory item the current Job owner sends you, including between conflicting remedies"
   require_text <(printf '%s\n' "$text") \
     "The critic emits issues and each item's disposition and treatment; it does not rewrite options or implement."
   [[ "$text" != *'Step 2 authority is limited to design-winner selection'* ]] ||
@@ -1505,9 +1505,11 @@ assert_post_fast_coordinator_ownership_contract() {
   local text="$1"
 
   require_text <(printf '%s\n' "$text") \
-    'Enforce ECI without deciding finding scope, impact, treatment, or disposition; a fresh Step 2 critic decides them under [Step 4](../SKILL.md#step-handoffs).'
+    'Enforce ECI without making [finding decisions](../SKILL.md#step-handoffs); a fresh Step 2 critic makes them.'
   require_text <(printf '%s\n' "$text") \
-    'check that the critic decided exactly one disposition for each finding and in-scope inventory item, with its required evidence'
+    'check that the critic decided one [treatment](../../references/workflow-runtime/review-policy.md#gate-evaluation) for each finding and exactly one disposition for each in-scope inventory item'
+  require_text <(printf '%s\n' "$text") \
+    'Check that cited evidence exists at its source, not whether it suffices'
   [[ "$text" != *'The Supervisor applies multiple canonical dispositions per in-scope inventory item.'* ]] ||
     fail 'coordinator ownership contradiction was admitted'
   [[ "$text" != *'The Supervisor owns final disposition application/treatment'* ]] ||
@@ -1530,7 +1532,9 @@ assert_post_fast_role_ownership() {
   require_text "$REVIEW" \
     'Review the final cumulative scoped state after the Step 2 critic decides exactly one canonical disposition per in-scope inventory item.'
   require_text "$ECI" \
-    'It sends every REJECT, CONDITIONAL, and E2E-failure finding, unchanged with its report, to a fresh Step 2 critic.'
+    'It sends every REJECT, CONDITIONAL, NIT, and E2E-failure finding, unchanged with its report, to a fresh Step 2 critic.'
+  require_text "$ECI" 'That critic makes the finding decisions under'
+  require_text "$REVIEW_POLICY" 'Each finding gets one treatment:'
   require_text "$ECI" 'without Supervisor confirmation'
   local file forbidden
   for file in "$ECI" "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" "$REVIEW_POLICY" "$COORDINATOR_RUNTIME" "$COORDINATOR"; do
@@ -1567,6 +1571,14 @@ assert_post_fast_role_ownership() {
   fi
   [[ "$output" == *'coordinator final-treatment contradiction'* ]] ||
     fail "unexpected coordinator final-treatment pressure failure: $output"
+}
+
+assert_coordinator_role_boundary() {
+  require_text "$ECI" 'including user updates, adds no mechanism'
+  require_text "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" 'quote or cite findings with their authors'
+  require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
+  require_text "$FAST_PATH" 'which chooses its next bounded action'
+  require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
 }
 
 assert_deferred_disposition_policy_contract_text() {
@@ -1783,6 +1795,13 @@ $step2_line}"
   fi
   [[ "$output" == *'post-Fast scope-screen must precede the Step 1 quality review'* ]] ||
     fail "unexpected post-Fast scope-order failure: $output"
+  mutation="${text/"$explorer_line"/}"
+  mutation="${mutation/"$scope_line"/"$scope_line"$'\n'"$explorer_line"}"
+  if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
+    fail 'post-Fast assignment-order mutation admitted the scope screen before the Step 1 assignment'
+  fi
+  [[ "$output" == *'post-Fast Step 1 assignment must precede the scope screen'* ]] ||
+    fail "unexpected post-Fast assignment-order failure: $output"
   step2_decision='decides exactly one canonical disposition for each in-scope inventory item'
   step2_decision_line='   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
   provenance='Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.'
@@ -3651,6 +3670,7 @@ assert_post_fast_completion
 assert_fast_treatment_now_contract
 assert_fast_lexer_fixtures
 assert_post_fast_role_ownership
+assert_coordinator_role_boundary
 assert_deferred_disposition_policy_contract
 assert_fast_path_progress_waits
 assert_concurrent_tasks

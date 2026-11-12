@@ -12,7 +12,7 @@ Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-comp
 Review the final cumulative scoped state after the Step 2 critic decides exactly one canonical disposition per in-scope inventory item.
 For post-Fast completion, independently review the final cumulative scoped state after the new exploration and design disposition, including unchanged retained code. Report missing final-state coverage; earlier reviews alone do not satisfy this assignment.
 
-Tag every factual claim. An untagged claim or unpromoted T5 is not review evidence. For every finding, state one disposition (`REJECT`, `CONDITIONAL`, `NIT`, or `PASS`), its impact, exact location, concrete evidence or repro/test output, and the condition that would resolve uncertainty. A behavior/interface mismatch is a hard finding, never a style deviation.
+Tag every factual claim. An untagged claim or unpromoted T5 is not review evidence. For every finding, state one classification (`REJECT`, `CONDITIONAL`, `NIT`, or `PASS`), its impact, exact location, concrete evidence or repro/test output, and the condition that would resolve uncertainty. A behavior/interface mismatch is a hard finding, never a style deviation.
 
 The current Job owner—its Orchestrator—assigns required workflow reviews for each outcome. The Supervisor retains acceptance. A reviewer may use Helpers for bounded support, but personally establishes its independent baseline, verifies evidence, supplies its required verdict, and performs its assigned required E2E run. A Helper cannot replace any of those duties or carry conclusions into another independent review.
 
