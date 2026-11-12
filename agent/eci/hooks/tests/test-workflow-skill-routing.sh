@@ -1579,6 +1579,17 @@ assert_coordinator_role_boundary() {
   require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
   require_text "$FAST_PATH" 'which chooses its next bounded action'
   require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
+  require_text "$ECI" 'when every claim in the summary appears in its source; a direct answer to the user'
+  require_text "$REVIEW_POLICY" '`user decision` for a decision the critic names as the user'
+  require_text "$REVIEW_POLICY" 'a finding with separable parts gets one treatment per part'
+  require_text "$COORDINATOR" 'state no treatment or impact of your own, and withhold acceptance until the critic decides it'
+  require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
+  local forbidden
+  for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
+    if grep -Fq -- "$forbidden" "$COORDINATOR"; then
+      fail "superseded coordinator acceptance wording: $forbidden"
+    fi
+  done
 }
 
 assert_deferred_disposition_policy_contract_text() {
