@@ -78,10 +78,10 @@ Reviewers report only. The assigned Implementer authors the TODO within the ordi
 
 ## Evidence can reopen design
 
-- The current Job owner independently verifies material Fast discoveries and gives the evidence to Explorer and fresh Step 2. The Supervisor retains cross-Job decisions and final acceptance.
-- When evidence invalidates a selected premise, obsoletes the design, or demonstrates a materially better in-scope approach, the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
+- The current Job owner sends Fast discoveries reported as bearing on the selected design, unchanged, to the Explorer and a fresh Step 2 critic, which verifies them. The Supervisor retains cross-Job decisions and final acceptance.
+- When that critic decides that the evidence invalidates a selected premise, obsoletes the design, or demonstrates a materially better in-scope approach, the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
 - The selected ECI design controls quality, and the within-outcome precedence above controls overlapping main/Fast edits. Neither rule dismisses contradictory evidence. The Fast Producer proposes alternatives; Step 2 selects the authoritative winner.
-- Route minor compatible corrections through the contained-fix path. Unsupported preferences and ordinary fast edits do not restart design.
+- The critic routes minor compatible corrections through the contained-fix path. Unsupported preferences and ordinary fast edits do not restart design.
 
 ## Adoption, review, and closure
 
@@ -125,9 +125,10 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
    - This complete inventory is review context, never a manifest, receipt, or admission/write gate.
    - Final acceptance requires every in-scope inventory item to have a disposition and evidence.
 2. Restart main ECI at a fresh Step 1.
-   - Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`. Keep only repairs necessary to meet or prove that outcome in scope.
+   - The current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion.
+   - The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope` and proposes only repairs necessary to meet or prove that outcome; the fresh Step 2 critic decides scope.
    - Keep every Fast-originated hunk in inventory/review context; do not expand authorization. An unadmitted separate-outcome finding stays a post-ECI observation/follow-up and creates no issue-specific repair, review, proof, or acceptance work. Allow only the TODO comment defined under [Main ECI quality responsibility](#main-eci-quality-responsibility) for an already-discovered code issue; include its hunk in ordinary current-diff review and keep the issue in inventory context only.
-   - Then the current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion. The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.
+   - The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.
    - The Explorer reviews each in-scope inventory item against original requirements and quality standards, alongside retained main-path changes. Reread current targets and relevant surrounding code. Prior exploration, diffs, and passing tests are context, not this new exploration.
 3. A fresh Step 2 critic independently assesses the current sources and Explorer's options.
    - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).

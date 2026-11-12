@@ -1,6 +1,6 @@
 # ECI Step 2 — Critique
 
-Fresh special `ECI critic-step2` only. It is authoritative for choosing an explored design, never a producer or implementation role. Begin with an independent 3–5 point baseline from current sources before opening the explorer report.
+Fresh special `ECI critic-step2` only. It is authoritative for choosing an explored design and deciding finding scope, impact, treatment, and disposition; it is never a producer or implementation role. Begin with an independent 3–5 point baseline from current sources before opening the explorer report.
 
 Apply the shared [review investigation responsibility](../../references/review-investigation.md) throughout this assignment.
 
@@ -19,7 +19,7 @@ For every material option, verify `exact user source → faithful requested outc
 
 Classify every in-scope issue: REJECT means wrong-shaped or unfixable without re-exploration; CONDITIONAL is a viable one-or-two-line concrete correction; NIT is optional. Do not rewrite options. Decide scope, debt/defer, and treatment under [Admission and treatment](#admission-and-treatment).
 
-If one option has zero remaining material REJECTs, select the highest-ranked survivor and emit its concrete text, necessary corrections, relevant style guidance, and NITs. If all options reject, return verbatim issues with `reroute: explorer-revision`. Stop after the recommendation. Unsupported load-bearing claims and missing required PoCs reject only the dependent design conclusion.
+If one option has zero remaining material REJECTs, select the highest-ranked survivor and emit its concrete text, necessary corrections, relevant style guidance, and NITs. If all options reject, return verbatim issues with `reroute: explorer-revision`. Stop after the decision. Unsupported load-bearing claims and missing required PoCs reject only the dependent design conclusion.
 
 ## Independent baseline and source discipline
 
@@ -33,13 +33,13 @@ Independently validate each applicable [ownership argument](explore.md#ownership
 
 ## Admission and treatment
 
-Independently re-resolve applicable style sources before recommending Step 3 and apply [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Reject options that violate applicable requirements; reserve NIT for discretionary preferences. Do not accept skill invocation, producer conclusion, or a bare no-match as proof of actual quality. Hand the requirements and necessary corrections to implementation; hard non-style failures retain their own consequence.
+Independently re-resolve applicable style sources before sending work to Step 3 and apply [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Reject options that violate applicable requirements; reserve NIT for discretionary preferences. Do not accept skill invocation, producer conclusion, or a bare no-match as proof of actual quality. Hand the requirements and necessary corrections to implementation; hard non-style failures retain their own consequence.
 
 The current Job owner sends each gate's REJECT, CONDITIONAL, and E2E-failure findings, unchanged with their reports, to a fresh Step 2 critic. That critic alone decides each finding's scope, impact, treatment, and disposition, including conflicting remedies, under [impact-proportional routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) and [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation). Verify each finding's evidence independently. Give a contained, in-scope, impact-trivial, isolated `now` finding concrete correction text for one Implementer repair batch; return other `now` findings as one design batch for bounded re-exploration. Name each decision that belongs to the user, such as narrowing scope or accepting a gap; the Supervisor puts it to the user.
 
 ## Selection loop and output
 
-Each issue attaches to one option and may carry the orthogonal `DUPLICATE-of-#N` marker. A single option gets the same adversarial treatment. If any survivor has zero remaining material REJECTs, select the highest-ranked survivor and return concrete winner text verbatim, necessary corrections, relevant guidance, and NITs. The critic emits issues and each item's disposition and treatment; it does not rewrite options or implement. If every option rejects, return verbatim REJECTs with `reroute: explorer-revision` in round one or `reroute: all-REJECT` in round two. Stop after the recommendation. Zero survivors is valid.
+Each issue attaches to one option and may carry the orthogonal `DUPLICATE-of-#N` marker. A single option gets the same adversarial treatment. If any survivor has zero remaining material REJECTs, select the highest-ranked survivor and return concrete winner text verbatim, necessary corrections, relevant guidance, and NITs. The critic emits issues and each item's disposition and treatment; it does not rewrite options or implement. If every option rejects, return verbatim REJECTs with `reroute: explorer-revision` in round one or `reroute: all-REJECT` in round two. Stop after the decision. Zero survivors is valid.
 
 ## Critic red flags
 

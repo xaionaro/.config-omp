@@ -210,8 +210,9 @@ role_rows() {
   marker="$marker" awk 'index($0, ENVIRON["marker"]) == 1' "$file"
 }
 
+# An allowed module is one that row's role contract routes on purpose; every other coordinator-only module stays forbidden.
 assert_no_control_routes() {
-  local file="$1" marker="$2" row forbidden
+  local file="$1" marker="$2" allowed="${3:-}" row forbidden
   row="$(role_rows "$file" "$marker")"
   [[ -n "$row" && "$row" != *$'\n'* ]] || fail "$file must contain exactly one role row: $marker"
   for forbidden in \
@@ -223,20 +224,23 @@ assert_no_control_routes() {
     'stop-recovery.md' \
     'policy-pressure-tests.md' \
     'review-policy.md'; do
-    [[ "$row" != *"$forbidden"* ]] || fail "$marker routes to coordinator-only module: $forbidden"
+    [[ "$forbidden" == "$allowed" || "$row" != *"$forbidden"* ]] || fail "$marker routes to coordinator-only module: $forbidden"
   done
 }
 
 assert_role_rows_are_local() {
-  local snitch_row eci_coordinator_row ate_coordinator_row
+  local snitch_row eci_coordinator_row ate_coordinator_row critic_row
   for marker in \
     '| `explorer` |' \
-    '| `critic-step2` |' \
     '| Producer (`implementer`) |' \
     '| Critic A/B/C, E2E |' \
     '| `fast-owner` (Fast Owner Producer) |'; do
     assert_no_control_routes "$ECI" "$marker"
   done
+  assert_no_control_routes "$ECI" '| `critic-step2` |' 'review-policy.md'
+  critic_row="$(role_rows "$ECI" '| `critic-step2` |')"
+  [[ "$critic_row" == *'[review policy](../references/workflow-runtime/review-policy.md) for scope, impact, and treatment decisions'* ]] ||
+    fail 'ECI critic-step2 row must route review policy for scope, impact, and treatment decisions'
   for marker in \
     '| Snitch |' \
     '| Explorer/researcher |' \
@@ -357,7 +361,6 @@ assert_reviewer_role_split() {
   for required in \
     '## Step 4 — Review coordination' \
     "Wait for each gate's required reviews and focused proof, plus E2E evidence when the central cadence calls for it. Final acceptance also requires the final E2E pair when a trigger applies." \
-    'The current Job owner sends the findings unchanged to a fresh Step 2 critic, which pre-routes them under the review policy.' \
     'Use the shared Supervisor/runtime policy for repair cycles, clean-pass, and limits.'; do
     require_text "$COORDINATOR" "$required"
   done
@@ -1155,9 +1158,9 @@ assert_eci_ordinary_role_split() {
     done
   done
 
-  require_text "$ECI_CRITIQUE" 'Stop after the recommendation.'
+  require_text "$ECI_CRITIQUE" 'Stop after the decision.'
   require_text "$ECI_CRITIQUE" '`reroute: explorer-revision`'
-  for forbidden in 'review policy' 'applicable policy'; do
+  for forbidden in 'applicable policy'; do
     if grep -Fqi -- "$forbidden" "$ECI_CRITIQUE"; then
       fail "ECI Step 2 critic carries coordinator-owned policy loading: $forbidden"
     fi
@@ -1345,9 +1348,9 @@ assert_post_fast_transition_contract() {
   local text="$1"
   local restart_directive scope_clause quality_clause explorer_directive step2_directive
   restart_directive='A genuine Fast completion restarts the normal path from a fresh Step 1.'
-  scope_clause='Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`. Keep only repairs necessary to meet or prove that outcome in scope.'
+  scope_clause='The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope` and proposes only repairs necessary to meet or prove that outcome; the fresh Step 2 critic decides scope.'
   quality_clause='The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.'
-  explorer_directive='Then the current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion. The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.'
+  explorer_directive='The current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion.'
   step2_directive="A fresh Step 2 critic independently assesses the current sources and Explorer's options."
   require_active_literal_directive "$text" 'post-Fast fresh Step 1 restart' "$restart_directive"
   require_section_pattern "$text" 'genuine Fast completion restarts from a fresh Step 1' \
@@ -1371,6 +1374,8 @@ assert_post_fast_transition_contract() {
   require_active_literal_directive "$text" 'post-Fast Step 2 critic directive' "$step2_directive"
   require_active_literal_order "$text" "$explorer_directive" "$step2_directive" ||
     fail 'post-Fast active Explorer directive must precede active Step 2'
+  require_order "$text" "$explorer_directive" "$scope_clause" ||
+    fail 'post-Fast Step 1 assignment must precede the scope screen'
   require_section_pattern "$text" 'Step 2 reviews every Fast finding and Fast-originated hunk' \
     'fresh Step 2 critic.*reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk.*decides exactly one canonical disposition'
   require_section_pattern "$text" 'implementer fixes or justifies retained Fast changes under winner' \
@@ -1396,10 +1401,10 @@ assert_post_fast_scope_and_disposition_contract() {
   local text="$1"
   local scope_clause explorer_directive inventory_directive final_acceptance_directive
   local defer_directive routing_directive repair_batch contained_now revise_replace other_dispositions
-  local recommendation_directive final_evidence final_now separate_outcome
+  local step2_decision_directive final_evidence final_now separate_outcome
 
-  scope_clause='Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`. Keep only repairs necessary to meet or prove that outcome in scope.'
-  explorer_directive='Then the current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion. The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.'
+  scope_clause='The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope` and proposes only repairs necessary to meet or prove that outcome; the fresh Step 2 critic decides scope.'
+  explorer_directive='The current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion.'
   inventory_directive='This complete inventory is review context, never a manifest, receipt, or admission/write gate.'
   final_acceptance_directive='Final acceptance requires every in-scope inventory item to have a disposition and evidence.'
   defer_directive='A policy-valid deferred-with-reason disposition is only for an in-scope, non-hard, impact-trivial, isolated finding; it requires evidence supporting each eligibility condition, plus a technical reason and revisit trigger; it never waives original criteria.'
@@ -1408,12 +1413,12 @@ assert_post_fast_scope_and_disposition_contract() {
   contained_now='Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.'
   revise_replace='A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.'
   other_dispositions='Other dispositions require evidence, not implementation.'
-  recommendation_directive='The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
+  step2_decision_directive='The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
   final_evidence='The final cumulative Step 4 verifies every in-scope inventory item has exactly one disposition and final evidence.'
   final_now='The final cumulative Step 4 leaves no unresolved in-scope `treatment: now` finding or failed-eligibility `revise`/`replace` needing implementation.'
   separate_outcome='Unadmitted separate-outcome observations remain outside acceptance; admitted child outcomes retain their own acceptance evidence.'
   require_section_pattern "$text" 'scope-screen covers every Fast finding and hunk' \
-    'Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`'
+    'The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`'
   require_section_pattern "$text" 'separate-outcome findings stay outside current work' \
     'An unadmitted separate-outcome finding stays a post-ECI observation/follow-up and creates no issue-specific repair, review, proof, or acceptance work'
   require_section_pattern "$text" 'Fast-originated hunks stay review context' \
@@ -1426,7 +1431,7 @@ assert_post_fast_scope_and_disposition_contract() {
   require_active_literal_directive "$text" 'post-Fast contained findings route once' "$contained_now"
   require_active_literal_directive "$text" 'post-Fast revise/replace mapping is explicit' "$revise_replace"
   require_active_literal_directive "$text" 'post-Fast non-now dispositions require evidence' "$other_dispositions"
-  require_active_literal_directive "$text" 'post-Fast Step 2 decision covers every disposition' "$recommendation_directive"
+  require_active_literal_directive "$text" 'post-Fast Step 2 decision covers every disposition' "$step2_decision_directive"
   require_active_literal_directive "$text" 'post-Fast defer policy is active' "$defer_directive"
   require_active_literal_directive "$text" 'post-Fast final evidence is active' "$final_evidence"
   require_active_literal_directive "$text" 'post-Fast unresolved-now rejection is active' "$final_now"
@@ -1496,9 +1501,9 @@ assert_post_fast_coordinator_ownership_contract() {
   local text="$1"
 
   require_text <(printf '%s\n' "$text") \
-    "A fresh Step 2 critic decides each finding's impact, treatment, and disposition under [critique](critique.md#admission-and-treatment)."
+    'Enforce ECI without deciding finding scope, impact, treatment, or disposition; a fresh Step 2 critic decides them under [Step 4](../SKILL.md#step-handoffs).'
   require_text <(printf '%s\n' "$text") \
-    'Enforce ECI without deciding them: verify that each in-scope item has exactly one disposition with its required evidence'
+    'check that the critic decided exactly one disposition for each finding and in-scope inventory item, with its required evidence'
   [[ "$text" != *'The Supervisor applies multiple canonical dispositions per in-scope inventory item.'* ]] ||
     fail 'coordinator ownership contradiction was admitted'
   [[ "$text" != *'The Supervisor owns final disposition application/treatment'* ]] ||
@@ -1520,6 +1525,25 @@ assert_post_fast_role_ownership() {
     'Provide evidence, not implementation, for other dispositions.'
   require_text "$REVIEW" \
     'Review the final cumulative scoped state after the Step 2 critic decides exactly one canonical disposition per in-scope inventory item.'
+  require_text "$ECI" \
+    'It sends every REJECT, CONDITIONAL, and E2E-failure finding, unchanged with its report, to a fresh Step 2 critic.'
+  require_text "$ECI" 'without Supervisor confirmation'
+  local file forbidden
+  for file in "$ECI" "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" "$REVIEW_POLICY" "$COORDINATOR_RUNTIME" "$COORDINATOR"; do
+    for forbidden in \
+      'final impact/treatment/disposition adjudication' \
+      'disposition recommendations' \
+      'retains final adjudication' \
+      'owns final disposition' \
+      "Supervisor's treatment" \
+      'Supervisor-applied' \
+      'decides whether closed-outcome evidence reopens'; do
+      ! grep -Fq -- "$forbidden" "$file" || fail "$file retains superseded finding ownership: $forbidden"
+    done
+  done
+  for forbidden in 'Stop after the recommendation' 'before recommending Step 3'; do
+    ! grep -Fq -- "$forbidden" "$ECI_CRITIQUE" || fail "$ECI_CRITIQUE retains superseded recommendation wording: $forbidden"
+  done
 
   pressure="$critique"$'\n\n''Step 2 authority is limited to design-winner selection; it does not apply treatment.'
   if output="$(assert_post_fast_critique_ownership_contract "$pressure" 2>&1)"; then
@@ -1592,11 +1616,11 @@ assert_deferred_disposition_policy_contract() {
 }
 
 assert_post_fast_inventory_contract() {
-  local text="$1" recommendation retained_fix scope_clause provenance
+  local text="$1" step2_decision retained_fix scope_clause provenance
 
-  recommendation='decides exactly one canonical disposition for each in-scope inventory item'
+  step2_decision='decides exactly one canonical disposition for each in-scope inventory item'
   retained_fix='The Implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings'
-  scope_clause='Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`'
+  scope_clause='The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`'
   provenance='Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.'
 
   assert_post_fast_completion_observation_contract "$text"
@@ -1643,10 +1667,10 @@ assert_post_fast_inventory_contract() {
     require_order "$text" "$scope_clause" \
       'The Explorer reviews each in-scope inventory item' &&
     require_order "$text" 'The Explorer reviews each in-scope inventory item' \
-      "$recommendation" &&
+      "$step2_decision" &&
     require_order "$text" "$provenance" \
-      "$recommendation" &&
-    require_order "$text" "$recommendation" \
+      "$step2_decision" &&
+    require_order "$text" "$step2_decision" \
       'Apply impact-proportional routing before implementation.' &&
     require_order "$text" 'Apply impact-proportional routing before implementation.' \
       'Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.' &&
@@ -1656,7 +1680,7 @@ assert_post_fast_inventory_contract() {
       'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' &&
     require_order "$text" 'A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.' \
       'Other dispositions require evidence, not implementation.' &&
-    require_order "$text" "$recommendation" \
+    require_order "$text" "$step2_decision" \
       "$retained_fix" &&
     require_order "$text" 'Other dispositions require evidence, not implementation.' \
       "$retained_fix" &&
@@ -1698,7 +1722,7 @@ assert_post_fast_completion_contract() {
 assert_post_fast_completion() {
   local text clause mutation output file pressure state dispositions replacement inventory_gate contradiction base
   local defer_clause defer_evidence_clause missing_defer missing_evidence observation report critique
-  local restart_line quality_clause scope_clause scope_line step2_directive step2_line step4_tail explorer_directive explorer_line recommendation recommendation_line retained_fix contained_now provenance provenance_line
+  local restart_line quality_clause quality_line scope_clause scope_line step2_directive step2_line step4_tail explorer_directive explorer_line step2_decision step2_decision_line retained_fix contained_now provenance provenance_line
   local inventory_line final_acceptance_line routing_line repair_batch_line contained_now_line revise_replace_line other_dispositions_line
   local defer_line final_evidence_line final_now_line separate_outcome_line
   text="$(awk '
@@ -1711,9 +1735,10 @@ assert_post_fast_completion() {
   assert_post_fast_completion_contract "$text"
   restart_line='A genuine Fast completion restarts the normal path from a fresh Step 1.'
   quality_clause='The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.'
-  scope_clause='Scope-screen every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope`. Keep only repairs necessary to meet or prove that outcome in scope.'
+  scope_clause='The Explorer scope-screens every Fast finding and every Fast-originated changed hunk against `exact user source → faithful requested outcome → bounded scope` and proposes only repairs necessary to meet or prove that outcome; the fresh Step 2 critic decides scope.'
   scope_line='   - '"$scope_clause"
-  explorer_directive='Then the current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion. The Explorer reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk for quality.'
+  quality_line='   - '"$quality_clause"
+  explorer_directive='The current Job owner assigns the reusable Explorer a new Step 1 exploration of the final shared scoped code, started after Fast completion.'
   explorer_line='   - '"$explorer_directive"
   inventory_line='   - This complete inventory is review context, never a manifest, receipt, or admission/write gate.'
   final_acceptance_line='   - Final acceptance requires every in-scope inventory item to have a disposition and evidence.'
@@ -1748,26 +1773,26 @@ $step2_line}"
   [[ "$output" == *'post-Fast active Explorer directive must precede active Step 2'* ]] ||
     fail "unexpected post-Fast active Explorer/Step 2 order failure: $output"
   mutation="${text/"$scope_line"/}"
-  mutation="${mutation/"$explorer_line"/"$explorer_line"$'\n'"$scope_line"}"
+  mutation="${mutation/"$quality_line"/"$quality_line"$'\n'"$scope_line"}"
   if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
     fail 'post-Fast scope-order mutation admitted quality review before scope screening'
   fi
   [[ "$output" == *'post-Fast scope-screen must precede the Step 1 quality review'* ]] ||
     fail "unexpected post-Fast scope-order failure: $output"
-  recommendation='decides exactly one canonical disposition for each in-scope inventory item'
-  recommendation_line='   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
+  step2_decision='decides exactly one canonical disposition for each in-scope inventory item'
+  step2_decision_line='   - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).'
   provenance='Inventory states retained, revised, non-retained, superseded, and reverted are provenance only, not canonical dispositions; no inventory state implies a disposition.'
   provenance_line='   - '"$provenance"
   retained_fix='The Implementer fixes every routed `treatment: now` finding and fixes or justifies every retained Fast finding and every retained Fast-originated change under that selected winner, including no-hunk findings.'
-  mutation="${text/"$recommendation_line"/}"
-  mutation="${mutation/"$contained_now"/"$contained_now"$'\n'"$recommendation_line"}"
+  mutation="${text/"$step2_decision_line"/}"
+  mutation="${mutation/"$contained_now"/"$contained_now"$'\n'"$step2_decision_line"}"
   if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
     fail 'post-Fast ownership-order mutation admitted Step 2 decision after treatment routing'
   fi
   [[ "$output" == *'post-Fast inventory and repair sequence is out of order'* ]] ||
     fail "unexpected post-Fast ownership-order failure: $output"
   mutation="${text/"$retained_fix"/}"
-  mutation="${mutation/"$recommendation_line"/"$retained_fix"$'\n'"$recommendation_line"}"
+  mutation="${mutation/"$step2_decision_line"/"$retained_fix"$'\n'"$step2_decision_line"}"
   if output="$(assert_post_fast_completion_contract "$mutation" 2>&1)"; then
     fail 'post-Fast ownership-order mutation admitted retained-fix before Step 2 decision'
   fi
@@ -1797,9 +1822,9 @@ $step2_line}"
     'fresh Step 2 critic independently assesses' 'even when no further edits are needed' \
     'normal path remains incomplete' 'Resumed Fast writes invalidate this sequence' \
     'never a clean pass or substitute Fast completion' \
-    'Scope-screen every Fast finding and every Fast-originated changed hunk' \
+    'The Explorer scope-screens every Fast finding and every Fast-originated changed hunk' \
     'exact user source → faithful requested outcome → bounded scope' \
-    'Keep only repairs necessary to meet or prove that outcome in scope' \
+    'proposes only repairs necessary to meet or prove that outcome' \
     'Apply impact-proportional routing before implementation' \
     'Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch' \
     'Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated' \
@@ -2503,12 +2528,12 @@ assert_forecast_source_contract() {
 assert_coordinator_progress_forecast_contract() {
   local source="$1" input="$2" section attached_lane_template attached_root_template
 
-  attached_lane_template='For[[:space:]]+every[[:space:]]+relevant[[:space:]]+Supervisor-to-user[[:space:]]+ECI[[:space:]]+progress[[:space:]]+update,[[:space:]]+report[[:space:]]+this[[:space:]]+standalone[[:space:]]+line[[:space:]]+for[[:space:]]+each[[:space:]]+executing[[:space:]]+lane:[[:blank:]]*'$'\n''[[:blank:]]*[-*][[:blank:]]*`[[:space:]]*Forecast[[:space:]]+deadline:[[:space:]]+<named[[:space:]]+lane/task[[:space:]]+outcome>[[:space:]]+will[[:space:]]+be[[:space:]]+finished[[:space:]]+by[[:space:]]+<UTC[[:space:]]+ISO8601>\.[[:space:]]*`'
+  attached_lane_template='For[[:space:]]+every[[:space:]]+major[[:space:]]+Supervisor-to-user[[:space:]]+ECI[[:space:]]+progress[[:space:]]+update,[[:space:]]+report[[:space:]]+this[[:space:]]+standalone[[:space:]]+line[[:space:]]+for[[:space:]]+each[[:space:]]+executing[[:space:]]+lane:[[:blank:]]*'$'\n''[[:blank:]]*[-*][[:blank:]]*`[[:space:]]*Forecast[[:space:]]+deadline:[[:space:]]+<named[[:space:]]+lane/task[[:space:]]+outcome>[[:space:]]+will[[:space:]]+be[[:space:]]+finished[[:space:]]+by[[:space:]]+<UTC[[:space:]]+ISO8601>\.[[:space:]]*`'
   attached_root_template='For[[:space:]]+each[[:space:]]+unrepresented[[:space:]]+active[[:space:]]+root-task[[:space:]]+outcome[[:space:]]+omitted[[:space:]]+by[[:space:]]+lane[[:space:]]+reports,[[:space:]]+include[[:space:]]+this[[:space:]]+standalone[[:space:]]+line:[[:space:]]+[-*][[:space:]]*`[[:space:]]*Root[[:space:]]+completion[[:space:]]+forecast:[[:space:]]+<named[[:space:]]+active[[:space:]]+root-task[[:space:]]+outcome>[[:space:]]+will[[:space:]]+be[[:space:]]+finished[[:space:]]+by[[:space:]]+<UTC[[:space:]]+ISO8601>\.[[:space:]]*`'
 
   section="$(extract_h2_section <(printf '%s\n' "$input") '## Engage and route')" ||
     fail "$source is missing forecast source contract: bounded Engage and route policy block"
-  require_forecast_source_multiline_pattern "$source" 'active Engage and route policy binds every relevant coordinator progress update to each executing lane deadline template' "$attached_lane_template" "$section"
+  require_forecast_source_multiline_pattern "$source" 'active Engage and route policy binds every major coordinator progress update to each executing lane deadline template' "$attached_lane_template" "$section"
   require_forecast_source_multiline_pattern "$source" 'active Engage and route policy binds each unrepresented root outcome to its root completion forecast template' "$attached_root_template" "$section"
 }
 
@@ -2600,9 +2625,9 @@ assert_coordinator_progress_forecast_contract_fixtures() {
   local source source_pair soft_wrapped_pair detached_pair history_rehomed soft_wrapped
 
   source="$(<"$COORDINATOR")"
-  source_pair=$'- For every relevant Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - `Forecast deadline: <named lane/task outcome> will be finished by <UTC ISO8601>.`\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - `Root completion forecast: <named active root-task outcome> will be finished by <UTC ISO8601>.`'
-  soft_wrapped_pair=$'- For every relevant Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - `Forecast deadline: <named lane/task outcome> will be finished by\n<UTC ISO8601>.`\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - `Root completion forecast: <named active root-task outcome> will be finished by\n<UTC ISO8601>.`'
-  detached_pair=$'- For every relevant Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - See the historical appendix.\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - See the historical appendix.'
+  source_pair=$'- For every major Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - `Forecast deadline: <named lane/task outcome> will be finished by <UTC ISO8601>.`\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - `Root completion forecast: <named active root-task outcome> will be finished by <UTC ISO8601>.`'
+  soft_wrapped_pair=$'- For every major Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - `Forecast deadline: <named lane/task outcome> will be finished by\n<UTC ISO8601>.`\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - `Root completion forecast: <named active root-task outcome> will be finished by\n<UTC ISO8601>.`'
+  detached_pair=$'- For every major Supervisor-to-user ECI progress update, report this standalone line for each executing lane:\n  - See the historical appendix.\n- For each unrepresented active root-task outcome omitted by lane reports, include this standalone line:\n  - See the historical appendix.'
   soft_wrapped="${source/"$source_pair"/"$soft_wrapped_pair"}"
   [ "$soft_wrapped" != "$source" ] || fail 'coordinator soft-wrap fixture did not replace the attached lane template'
   assert_coordinator_progress_forecast_contract 'soft-wrapped coordinator lane binding fixture' "$soft_wrapped"

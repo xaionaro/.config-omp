@@ -2,7 +2,7 @@
 
 Explorer-only. Treat each assignment as fresh: reread every referenced target and do not trust prior-turn summaries.
 
-Consume verified Fast owner discoveries under [evidence can reopen design](fast-path.md#evidence-can-reopen-design); independently check them against current sources when developing options.
+Consume Fast owner discoveries under [evidence can reopen design](fast-path.md#evidence-can-reopen-design); independently check them against current sources when developing options.
 
 Apply [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility): derive options from original requirements and quality needs; existing Fast code does not restrict exploration to its design.
 
