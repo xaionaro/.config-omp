@@ -133,6 +133,9 @@ test("retries a failed description at most once per minute", async () => {
 		rmSync(marker);
 		setSystemTime(new Date(start + 120_002));
 		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toEqual({block: true, reason: "missing skill"});
+		expect(await handlers.tool_call({toolName: "bash", input: {command: "true"}}, ctx)).toBeUndefined();
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toEqual({block: true, reason: "missing skill"});
+		expect(describeCount() - before).toBe(3);
 	} finally {
 		setSystemTime();
 		console.error = original;

@@ -3,6 +3,7 @@ package codingskill
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,19 @@ func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.block, verdict.Block, tc.reads)
+	}
+}
+
+// TestCLIRejectsMalformedReads names the state form that failed to decode.
+//
+// Example: {"reads":-1} fails as a bitset; {"reads":{"coding-common":1}} fails as a skill-name object.
+func TestCLIRejectsMalformedReads(t *testing.T) {
+	for reads, want := range map[string]string{
+		`-1`:                  "reads is not a bitset: json: cannot unmarshal number -1 into Go value of type uint64",
+		`{"coding-common":1}`: "reads is not a skill-name object: json: cannot unmarshal number into Go value of type bool",
+	} {
+		request := `{"state":{"reads":` + reads + `},"call":{"toolName":"write","input":{"path":"a.go"}}}`
+		require.EqualError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), io.Discard), want, reads)
 	}
 }
 

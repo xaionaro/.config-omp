@@ -1,6 +1,7 @@
 package codingskill
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -69,7 +70,7 @@ const (
 	skillEnd
 )
 
-// readSkillsFit fails compilation when supported skills outgrow ReadSkills' 64 bits.
+// This blank array's length turns negative, failing compilation, when supported skills outgrow ReadSkills' 64 bits.
 //
 // Example: a 64th supported skill breaks the build instead of losing its bit.
 var _ [64 - int(skillEnd)]struct{}
@@ -129,14 +130,18 @@ func (reads ReadSkills) has(skill Skill) bool {
 //
 // Example: bridges started before the bitset change still send {"coding-common":true}; it decodes to the skillCommon bit.
 func (reads *ReadSkills) UnmarshalJSON(data []byte) error {
-	var bits uint64
-	if err := json.Unmarshal(data, &bits); err == nil {
+	// TODO: drop the object form once no omp process started before the bitset helper (da346be) runs; its bridge resends that state until its next skill read.
+	if !bytes.HasPrefix(data, []byte("{")) {
+		var bits uint64
+		if err := json.Unmarshal(data, &bits); err != nil {
+			return fmt.Errorf("reads is not a bitset: %w", err)
+		}
 		*reads = ReadSkills(bits)
 		return nil
 	}
 	var legacy map[string]bool
 	if err := json.Unmarshal(data, &legacy); err != nil {
-		return fmt.Errorf("reads is neither a bitset nor a skill-name object: %w", err)
+		return fmt.Errorf("reads is not a skill-name object: %w", err)
 	}
 	*reads = 0
 	for skill := skillCommon; skill < skillEnd; skill++ {
@@ -224,7 +229,7 @@ var callTools = []string{"write", "edit", "task"}
 // Example: a completed read is recorded before a later write is checked.
 func decide(req Request) (Response, error) {
 	state := req.State
-	// Zero-valued flags represent an agent with no completed reads.
+	// A zero State has no credited reads; its first event hydrates it from any supplied transcript branch.
 	if !state.Hydrated {
 		hydrate(&state, req)
 		state.Hydrated = true

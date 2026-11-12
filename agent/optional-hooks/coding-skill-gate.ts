@@ -80,10 +80,9 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 	let retryAt = Infinity;
 	function describe(): Promise<Description> {
 		if (!cachedDescription || Date.now() >= retryAt) {
-			const pending = invoke("describe").then(description);
-			cachedDescription = pending;
+			cachedDescription = invoke("describe").then(description);
 			retryAt = Infinity;
-			pending.catch(() => { if (cachedDescription === pending) retryAt = Date.now() + describeRetryMs; });
+			cachedDescription.catch(() => { retryAt = Date.now() + describeRetryMs; });
 		}
 		return cachedDescription;
 	}
@@ -122,6 +121,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 		if (event.toolName !== "read" || typeof event.input.path !== "string" || !isSkillRead(event.input.path)) return;
 		const current = generation;
 		try {
+			// TODO: during describe backoff this drops skill-read results, so agents not hydrated from the transcript need a denial and re-read; reduce without describe(), since the filter above already selects skill reads, if that extra denial proves common.
 			if (!(await describe()).resultTools.includes(event.toolName)) return;
 			if (current !== generation) return;
 			await enqueue(ctx, slot => current === generation ? reduce(slot, ctx, [{ toolName: event.toolName, input: event.input, details: event.details, isError: event.isError }]) : Promise.resolve());

@@ -37,6 +37,15 @@ func TestOneDenialListsEveryMissingSkill(t *testing.T) {
 	got, err = decide(req)
 	require.NoError(t, err)
 	require.Equal(t, "Coding skill gate: writing b.py requires skill://coding-python. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
+	got, err = decide(Request{Action: resultAction, Tool: "read", Input: map[string]any{"path": "skill://coding-python"}, Details: completeRead(), State: req.State})
+	require.NoError(t, err)
+	req.State = got.State
+	got, err = decide(req)
+	require.NoError(t, err)
+	require.Empty(t, got.Reason)
+	got, err = decide(Request{Action: callAction, Tool: "edit", EditTargets: []string{"a.go", "a.go"}})
+	require.NoError(t, err)
+	require.Equal(t, "Coding skill gate: writing a.go requires skill://coding-common and skill://coding-go. Read each named skill without a line range and let the reads finish in an earlier tool batch. Then retry.", got.Reason)
 }
 
 // TestSupportedSkillsFitOneRead checks every gated skill exists and one selector-free read can show it whole.
