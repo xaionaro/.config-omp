@@ -345,7 +345,7 @@ func creditedSkill(
 	if !ok || details["summary"] != nil {
 		return skillUnknown
 	}
-	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>/, which the host resolves to the whole SKILL.md; trim a trailing "/" first.
+	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>[/SKILL.md]/[:raw], which the host resolves to the whole file; trim that "/" after ":raw" and before "/SKILL.md".
 	for skill := skillCommon; skill < skillEnd; skill++ {
 		if path == skill.name() {
 			return skill

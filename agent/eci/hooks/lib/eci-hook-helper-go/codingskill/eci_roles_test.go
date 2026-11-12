@@ -83,7 +83,7 @@ func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {
 		require.NoError(t, err)
 		return got.Reason
 	}
-	for _, router := range []string{eciRouterURI, eciRouterURI + "/SKILL.md", eciRouterURI + ":raw"} {
+	for _, router := range []string{eciRouterURI, eciRouterURI + "/SKILL.md", eciRouterURI + ":raw", eciRouterURI + "/SKILL.md:raw"} {
 		state := readAll(t, State{}, router, eciModuleURI("explore.md"))
 		require.Empty(t, call(state), router)
 	}

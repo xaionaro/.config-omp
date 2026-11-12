@@ -191,7 +191,7 @@ func TestSkillCreditRequiresSkillURIWithoutLineRange(t *testing.T) {
 	summarized := completeRead()
 	summarized["summary"] = map[string]any{"elided": float64(10)}
 	require.Equal(t, skillUnknown, creditedSkill(map[string]any{"path": "skill://coding-go"}, summarized))
-	for _, path := range []string{"skill://coding-go", "skill://coding-go/SKILL.md", "skill://coding-go:raw"} {
+	for _, path := range []string{"skill://coding-go", "skill://coding-go/SKILL.md", "skill://coding-go:raw", "skill://coding-go/SKILL.md:raw"} {
 		require.Equal(t, skillGo, creditedSkill(map[string]any{"path": path}, completeRead()), path)
 	}
 	truncated := completeRead()
