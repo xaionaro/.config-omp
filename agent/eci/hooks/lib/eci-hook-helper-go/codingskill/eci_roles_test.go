@@ -78,6 +78,10 @@ func TestECIRolesRequireTheirSkills(t *testing.T) {
 // Example: a filesystem-path or line-range read of the router earns no credit.
 func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {
 	agent := "eci-preset-explorer-anthropic-default"
+
+	// call checks a write to agent://O by the explorer holding state and returns the denial reason, empty when the write is allowed.
+	//
+	// Example: call(State{}) names the router and explore.md.
 	call := func(state State) string {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": "agent://O"}, AgentName: agent, State: state})
 		require.NoError(t, err)

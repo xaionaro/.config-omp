@@ -334,6 +334,7 @@ function requestsSince(before: number, mode: string): Record<string, any>[] {
 	return readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").slice(before).map(line => JSON.parse(line)).filter(request => request.mode === mode);
 }
 
+// Number of requests the fake engine has received so far, in every mode.
 function requestCount(): number {
 	return readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").length;
 }

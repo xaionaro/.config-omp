@@ -3671,15 +3671,16 @@ assert_impact_delivery() {
   [[ "$output" == *'security follow-up precedence missing'* ]] || fail "unexpected security mutation failure: $output"
 }
 
-# The router's rebuild step and the catalog's coding-skill row state one disable-switch rule; edit both together.
+# The router's Preset deployment section owns the coding-skill disable-switch rule; the gate catalog links to it instead of restating it.
 assert_coding_skill_switch_rule() {
   local text
   for text in \
     "create and commit the gate's disable switch \`agent/coding-skill-gate.disabled\` unless already committed" \
     'Remove the switch with `git rm` and commit only after the ECI Supervisor or the user confirms that no coding-skill gate change awaits review.'; do
     require_text "$ECI" "$text"
-    require_text "$GATE_CATALOG" "$text"
+    forbid_text "$GATE_CATALOG" "$text"
   done
+  require_text "$GATE_CATALOG" '[Preset deployment](../../skills/explore-critique-implement/SKILL.md#preset-deployment)'
 }
 
 # Focused policy checks avoid unrelated legacy failures without weakening the default suite.

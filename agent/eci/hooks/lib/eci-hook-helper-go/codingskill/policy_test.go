@@ -215,6 +215,29 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
+// TestGateCatalogListsInstructionTargets binds the instruction-target sentence of the gate catalog's coding-skill row to the gated names in both directions.
+//
+// Example: a name added to instructionFiles fails here until eci/hooks/gate-escape-hatches.md lists it.
+func TestGateCatalogListsInstructionTargets(t *testing.T) {
+	catalog, err := os.ReadFile(filepath.Join("..", "..", "..", "gate-escape-hatches.md"))
+	require.NoError(t, err)
+	_, sentence, ok := strings.Cut(string(catalog), "Instruction targets require ")
+	require.True(t, ok)
+	sentence, _, ok = strings.Cut(sentence, " Relative paths resolve")
+	require.True(t, ok)
+	want := []string{"skill://coding-common", "skill://harness-tuning", "~/.omp", "~/.omp/agent"}
+	for _, names := range [][]string{contextFileNames, instructionFiles, instructionExtensions, instructionDirs} {
+		want = append(want, names...)
+	}
+	var got []string
+	for i, part := range strings.Split(sentence, "`") {
+		if i%2 == 1 {
+			got = append(got, part)
+		}
+	}
+	require.ElementsMatch(t, want, got)
+}
+
 // TestSkillCreditRequiresSkillURIWithoutLineRange credits successful skill://<name>[/SKILL.md][:raw] reads, even when the host truncates them.
 //
 // Example: a line range or a host summary earns no credit; host truncation at the spill limit does.
