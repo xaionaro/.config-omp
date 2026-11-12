@@ -491,12 +491,14 @@ newline), `|` (one), `|+` (all trailing newlines), or quoted escapes. No
 directives, explicit/custom tags, anchors, aliases, merge keys or multiple
 documents. These are writing/quality rules, not runtime content permission gates.
 
-Use `yq` when available to select records and compute bounded candidate additions,
-updates or deletions, emitting only the affected subtree. For updates and
+Prefer mikefarah `yq` v4 (`yq4`; check `yq4 --version`) for bounded additions,
+updates or deletions: run `yq4 -i` on the owned temporary snapshot below, never
+on the canonical file. For updates and
 deletions, confirm the ID exists and the ledger record’s `type` or forecast record’s `kind` matches the intended record; if it is missing, add an
-explicit complete record only when an addition is intended. Apply the change to the latest
-snapshot with a native selective YAML text edit, then inspect the diff to preserve
-unrelated comments, order, quoting and multiline text. One canonical session
+explicit complete record only when an addition is intended. Then inspect the diff
+to preserve unrelated comments, order, quoting and multiline text; if `yq4` is
+unavailable or the diff changes unrelated text, use a native selective YAML text
+edit instead. One canonical session
 writer combines bounded worker proposals against the latest snapshot. Never
 serialize the whole document merely to change one value, redirect parser output
 onto its input, or publish a stale worker copy. For whole-snapshot publication,
@@ -510,7 +512,8 @@ set -e
 session_dir="$HOME/.agent/context/sessions/$SESSION_ID"
 snapshot_tmp=$(mktemp "$session_dir/.understanding-snapshot.XXXXXX")
 cp -- "$session_dir/project-understanding.yaml" "$snapshot_tmp"
-# Apply the bounded native edit to "$snapshot_tmp"; reconcile/check before publishing.
+# e.g. id='work:receiver:clock' yq4 -i 'with(.records[strenv(id)] | select(.type == "work"); .data.owner = "worker-b")' "$snapshot_tmp"
+# Diff against the canonical file; reconcile/check before publishing.
 # On successful editing, replace the own-session canonical regular file:
 mv -- "$snapshot_tmp" "$session_dir/project-understanding.yaml"
 )
