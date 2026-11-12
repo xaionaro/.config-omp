@@ -7978,11 +7978,16 @@ func isTruncateWriterOperand(argv []token, argumentIndex int) bool {
 	return ok
 }
 
+// isSourceWriter reports whether command name can modify a file named in argv:
+// the listed file mutators always can, and sed can only with an in-place
+// option.
+//
+// Example: `sed -i s/a/b/ file` is a writer; `sed s/a/b/ file` is not.
 func isSourceWriter(name string, argv []token) bool {
 	switch name {
 	case "chmod", "chown", "cp", "dd", "install", "ln", "mv", "patch", "rm", "rsync", "rmdir", "shred", "srm", "tee", "touch", "truncate", "unlink":
 		return true
-	// TODO: treat yq/yq4 with -i/--inplace as a writer; context-ledger recommends "yq4 -i", which this check misses on another session's ledger.
+	// TODO: treat yq/yq4 in-place writes (-i, yq4 --inplace, jq-based yq --in-place) as writers, selecting operands like isSedWriterOperand so the expression is not a target; context-ledger recommends "yq4 -i", which this check misses on another session's ledger.
 	case "sed":
 		for _, argument := range argv[1:] {
 			if argument.value == "-i" || argument.value == "--in-place" || strings.HasPrefix(argument.value, "-i") || strings.HasPrefix(argument.value, "--in-place=") {
