@@ -204,11 +204,16 @@ assert_local_links_resolve() {
   done
 }
 
+# A role row starts with its role cell; later cells, such as the spawn table's preset column, may name the same role.
+role_rows() {
+  local file="$1" marker="$2"
+  marker="$marker" awk 'index($0, ENVIRON["marker"]) == 1' "$file"
+}
+
 assert_no_control_routes() {
-  local file="$1" marker="$2" count row forbidden
-  count="$(grep -Fc -- "$marker" "$file" || true)"
-  [ "$count" -eq 1 ] || fail "$file must contain exactly one role row: $marker"
-  row="$(grep -F -- "$marker" "$file")"
+  local file="$1" marker="$2" row forbidden
+  row="$(role_rows "$file" "$marker")"
+  [[ -n "$row" && "$row" != *$'\n'* ]] || fail "$file must contain exactly one role row: $marker"
   for forbidden in \
     'references/coordinator.md' \
     'coordinator-runtime.md' \
@@ -242,15 +247,15 @@ assert_role_rows_are_local() {
     assert_no_control_routes "$ATE" "$marker"
   done
 
-  eci_coordinator_row="$(grep -F -- '| Supervisor |' "$ECI")"
+  eci_coordinator_row="$(role_rows "$ECI" '| Supervisor |')"
   [[ "$eci_coordinator_row" == *'review-policy.md'* ]] ||
     fail 'ECI coordinator row must retain review-policy routing'
-  ate_coordinator_row="$(grep -F -- '| Coordinator, Lead |' "$ATE")"
+  ate_coordinator_row="$(role_rows "$ATE" '| Coordinator, Lead |')"
   [[ "$ate_coordinator_row" == *'review-policy.md'* ]] ||
     fail 'ATE coordinator row must retain review-policy routing'
 
   grep -Fq -- '| Coordinator, Lead, Snitch |' "$ATE" && fail 'obsolete combined Coordinator, Lead, Snitch row remains'
-  snitch_row="$(grep -F -- '| Snitch |' "$ATE")"
+  snitch_row="$(role_rows "$ATE" '| Snitch |')"
   [[ "$snitch_row" == *'[snitch](references/snitch.md)'* && "$snitch_row" != *'../'* ]] ||
     fail 'Snitch is not routed only to its local module'
   require_text "$SNITCH" 'Audit assigned evidence and criteria asynchronously, then report reminders or gaps to coordinator/lead.'
@@ -261,7 +266,7 @@ assert_role_rows_are_local() {
 assert_debugging_role_routes() {
   local row route target
 
-  row="$(grep -F -- '| `explorer` |' "$ECI")"
+  row="$(role_rows "$ECI" '| `explorer` |')"
   route="$(grep -o -- '\[debugging-discipline\]([^)]*)' <<<"$row" | head -n 1)" || route=""
   [ -n "$route" ] || fail 'ECI explorer row must route to debugging-discipline'
   target="${route##*(}"
@@ -271,12 +276,12 @@ assert_debugging_role_routes() {
   grep -Fq -- "$route only for assigned " <<<"$row" ||
     fail 'ECI explorer debugging-discipline route must be conditional on assigned work'
 
-  row="$(grep -F -- '| Producer (`implementer`) |' "$ECI")"
+  row="$(role_rows "$ECI" '| Producer (`implementer`) |')"
   [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* &&
      "$row" == *'only for assigned code/debug work'* ]] ||
     fail 'ECI implementer row must conditionally route code/debug work to debugging-discipline'
 
-  row="$(grep -F -- '| `Executor` |' "$ATE")"
+  row="$(role_rows "$ATE" '| `Executor` |')"
   [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* &&
      "$row" == *'only for assigned bug, build-failure, flake, or performance-regression work'* ]] ||
     fail 'ATE Executor row must conditionally route debug work to debugging-discipline'
@@ -1321,6 +1326,10 @@ assert_fast_quality() {
 assert_fast_path_progress_wait_contract() {
   local eci_text="$1" fast_text="$2" wait_rule section
 
+  # TODO: dc6db33 reworded this binding-contract rule to "When advancing ECI outcomes, do not use or advance on
+  # evidence or agent results before delivery; park meanwhile; ...", so '^- Wait only for' matches nothing and the
+  # default suite fails here. Align this selector and pattern, and the assert_fast_path_progress_waits mutation, with
+  # the reworded rule, or restore the dependency-scoped wording if dc6db33 dropped it unintentionally.
   wait_rule="$(grep '^- Wait only for' <<<"$eci_text" || true)"
   require_section_pattern "$wait_rule" 'dependency-scoped global waits' \
     'Wait only for.*next action.*independent.*continue'
