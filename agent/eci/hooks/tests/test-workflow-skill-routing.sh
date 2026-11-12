@@ -24,6 +24,7 @@ ECI_CRITIQUE="$ROOT/../skills/explore-critique-implement/references/critique.md"
 IMPLEMENT="$ROOT/../skills/explore-critique-implement/references/implement.md"
 REVIEW="$ROOT/../skills/explore-critique-implement/references/review.md"
 COORDINATOR="$ROOT/../skills/explore-critique-implement/references/coordinator.md"
+TASK_ORCHESTRATOR="$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md"
 COORDINATOR_RUNTIME="$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
 REVIEW_POLICY="$ROOT/../skills/references/workflow-runtime/review-policy.md"
 GATE_CATALOG="$ROOT/hooks/gate-escape-hatches.md"
@@ -344,6 +345,11 @@ assert_reviewer_role_split() {
     require_text "$REVIEW" "$required"
   done
   require_text "$ECI" '4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required;'
+  require_text "$REVIEW_POLICY" 'use fresh blind Critic A (coding requirements), Critic B (correctness/fidelity), and fresh special Critic C (long-term health) in parallel.'
+  require_text "$REVIEW_POLICY" 'Critic A checks applicable coding requirements and never lets style downgrade a hard contract.'
+  for forbidden in 'Critic A (style)' 'Critic A checks applicable style guidance'; do
+    ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded Critic A lane name: $forbidden"
+  done
 
   for forbidden in \
     'coordinator-runtime' \
@@ -1538,7 +1544,7 @@ assert_post_fast_role_ownership() {
   require_text "$REVIEW_POLICY" 'Each finding gets one treatment:'
   require_text "$ECI" 'without Supervisor confirmation'
   local file forbidden
-  for file in "$ECI" "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" "$REVIEW_POLICY" "$COORDINATOR_RUNTIME" "$COORDINATOR"; do
+  for file in "$ECI" "$TASK_ORCHESTRATOR" "$REVIEW_POLICY" "$COORDINATOR_RUNTIME" "$COORDINATOR"; do
     for forbidden in \
       'final impact/treatment/disposition adjudication' \
       'disposition recommendations' \
@@ -1546,7 +1552,9 @@ assert_post_fast_role_ownership() {
       'owns final disposition' \
       "Supervisor's treatment" \
       'Supervisor-applied' \
-      'decides whether closed-outcome evidence reopens'; do
+      'decides whether closed-outcome evidence reopens' \
+      'after that adjudication' \
+      'ECI Supervisor alone adjudicates'; do
       ! grep -Fq -- "$forbidden" "$file" || fail "$file retains superseded finding ownership: $forbidden"
     done
   done
@@ -1576,7 +1584,7 @@ assert_post_fast_role_ownership() {
 
 assert_coordinator_role_boundary() {
   require_text "$ECI" 'including user updates, adds no mechanism'
-  require_text "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" 'quote or cite findings with their authors'
+  require_text "$TASK_ORCHESTRATOR" 'quote or cite findings with their authors'
   require_text "$COORDINATOR" 'Steps 1–2 decide whether the correction is wording-only'
   require_text "$FAST_PATH" 'which chooses its next bounded action'
   require_text "$FAST_PATH" 'sends each Fast report, unchanged, to the Explorer'
@@ -1588,8 +1596,9 @@ assert_coordinator_role_boundary() {
   require_text "$COORDINATOR" 'final applicable E2E evidence, and no remaining `now` issue.'
   require_text "$ECI" 'design-specific acceptance criterion, technical concern, or [finding decision](#step-handoffs) of their own, including a finding'
   require_text "$ECI" 'whether labeled a proposal, recommendation, example, evidence, risk, or `[INFERENCE]`. They send their own unverified technical suspicion nowhere; once they check it, they may send the result only as an observed fact with its source.'
-  require_text "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" 'Give your own observations as facts with sources, stating no consequence, risk, or impact of a finding; quote or cite findings with their authors. Tag your readings of the user'
-  ! grep -Fq -- 'or of your observations' "$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md" || fail "task-orchestrator.md retains superseded observation-reading wording: or of your observations"
+  require_text "$TASK_ORCHESTRATOR" 'Give your own observations as facts with sources, stating no scope, impact, or consequence of a finding; quote or cite findings with their authors. Tag your readings of the user'
+  ! grep -Fq -- 'stating no consequence, risk, or impact of a finding' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded finding-content list: stating no consequence, risk, or impact of a finding"
+  ! grep -Fq -- 'or of your observations' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded observation-reading wording: or of your observations"
   ! grep -Fq -- 'design-specific acceptance criterion, or [finding decision]' "$ECI" || fail "$ECI retains superseded role-rule list: design-specific acceptance criterion, or [finding decision]"
   local forbidden
   for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
@@ -1607,7 +1616,8 @@ assert_finding_treatment_rules() {
   for forbidden in 'gets one treatment per part' "that the user's quoted answer accepts"; do
     ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $forbidden"
   done
-  require_text "$ECI_BINDING_CONTRACT" 'Without a case, do not admit the concern and record it only as a post-ECI follow-up. This does not decide a review finding about the requested outcome: a fresh Step 2 critic gives it one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`), and a missing use case is not evidence for any defer condition.'
+  require_text "$ECI_BINDING_CONTRACT" 'Without a case, do not admit the concern and record it only as a post-ECI follow-up. The use-case requirement does not apply to a review finding about the requested outcome; a fresh Step 2 critic gives that finding one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`). A missing use case is not evidence for any defer condition.'
+  ! grep -Fq -- 'This does not decide a review finding' "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains superseded use-case wording: This does not decide a review finding"
   ! grep -Fq -- 'keep the concern nonblocking' "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains superseded use-case wording: keep the concern nonblocking"
 }
 
@@ -3424,7 +3434,6 @@ assert_least_restriction_contract() {
 
 assert_implementer_iteration_checkpoint_contract() {
   local handoff verification dispatch clause
-  local orchestrator="$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md"
   handoff='3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then commits its checked scope during handoff.'
   verification='Before Step 4 or dependent work on another implementation iteration, the Supervisor independently verifies the Producer’s immutable parent-to-commit range.'
   dispatch='4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration'
@@ -3444,8 +3453,8 @@ assert_implementer_iteration_checkpoint_contract() {
 
   require_text "$IMPLEMENT" 'Commit your checked scoped work during handoff. Do not declare the outcome accepted/complete, publish a manifest, or tear down ECI.'
   require_text "$IMPLEMENT" 'Helpers do not commit.'
-  require_text "$orchestrator" 'Helpers do not contact peers or negotiate.'
-  require_text "$orchestrator" 'A Producer commit is a provisional checkpoint, not acceptance. Make repairs in a separate commit; do not amend or erase the earlier checkpoint.'
+  require_text "$TASK_ORCHESTRATOR" 'Helpers do not contact peers or negotiate.'
+  require_text "$TASK_ORCHESTRATOR" 'A Producer commit is a provisional checkpoint, not acceptance. Make repairs in a separate commit; do not amend or erase the earlier checkpoint.'
   require_text "$ECI" "$handoff"
   require_text "$ECI" "$verification"
   require_order "$(<"$ECI")" "$handoff" "$verification" &&
@@ -3562,7 +3571,7 @@ assert_recursive_job_contract() {
 
 assert_recursive_jobs() {
   local text clause output mutation
-  text="$(<"$ROOT/../skills/explore-critique-implement/references/task-orchestrator.md")"
+  text="$(<"$TASK_ORCHESTRATOR")"
   assert_recursive_job_contract "$text"
   require_text "$ECI" 'Job dispatch only after its designated publisher publishes ownership'
   require_text "$FAST_PATH" 'including a child-Job outcome'
