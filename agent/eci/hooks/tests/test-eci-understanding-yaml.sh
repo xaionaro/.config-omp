@@ -60,6 +60,7 @@ mkdir -p -- "$session_dir" "$proof_root/$session_id" "$proof_root/other" "$cwd"
 run_current() {
   (cd -- "$cwd"; ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID="$session_id" "$ROOT/bin/eci-active" "$@")
 }
+# TODO: the test exits here: this HOME has no .omp, so eci-active fails with "ECI runtime not found", and its "on" verb is retired (ECI_LIFECYCLE_RETIRED; TEST-DISPOSITION.md). Write the own-session eci_active marker directly, as done below for "other", and give eci-active a HOME that contains .omp.
 run_current on 'YAML understanding fixture' >/dev/null
 cp -- "$example" "$session_dir/project-understanding.yaml"
 cp -- "$example" "$proof_root/other/project-understanding.yaml"

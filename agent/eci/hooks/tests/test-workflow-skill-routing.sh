@@ -2977,8 +2977,8 @@ assert_yaml_understanding_contract() {
   require_text "$LEDGER" 'Review the whole snapshot at existing QA/verdict, handoff, and shutdown checkpoints.'
   require_text "$LEDGER" 'Between checkpoints, review affected subjects and linked contradictions rather than rescanning unrelated state for every event.'
   require_text "$LEDGER" 'run `yq4 -i` on the canonical file'
-  # TODO: either chained example write satisfies this, so dropping the yq4 -e check from one still passes; add forbid_pattern "$LEDGER" '^yq4 -i' to catch an unchained write.
   require_text "$LEDGER" 'yq4 -e "$check" "$f" && yq4 -i "$e" "$f"'
+  forbid_pattern "$LEDGER" '^yq4 -i'
   require_text "$LEDGER" 'set -o pipefail'
   forbid_text "$LEDGER" 'project-understanding.md'
   forbid_text "$LEDGER" 'Put every fact under a heading whose subject covers it.'
