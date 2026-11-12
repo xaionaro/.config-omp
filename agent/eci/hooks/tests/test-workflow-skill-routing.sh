@@ -1622,7 +1622,7 @@ assert_coordinator_role_boundary() {
   for restrictive in 'make no technical decision' 'never theirs to state' 'naming no action, order, or timing' 'it goes into no user update' 'adds no claim, risk, mitigation' 'state no treatment or impact of your own' 'state no scope, impact, or consequence of a finding' 'suggests no fix, not even as an example' 'The Supervisor states no treatment'; do
     ! grep -Fq -- "$restrictive" "${role_rule_docs[@]}" || fail "superseded coordinator ban wording: $restrictive"
   done
-  ! grep -Eiq -- 'executive decision|project lead|(^|[^[:alnum:]_])CTO([^[:alnum:]_]|$)|too high level|high level for that|notify the relevant workers|not forbidden from making technical decisions|jobs are progressing' "${role_rule_docs[@]}" ||
+  ! grep -Eiq -- 'executive decision|project lead|(^|[^[:alnum:]_])CTO([^[:alnum:]_]|$)|too high level|high level for that|notify the relevant workers|not forbidden from making technical decisions|jobs are progressing|hand-off note|blockers themselves' "${role_rule_docs[@]}" ||
     fail 'role-rule docs restate the user clarification wording'
   local forbidden
   for forbidden in 'no remaining `now` REJECT/CONDITIONAL' 'Return an unresolved violation as a gap' 'violations and their resolutions yourself'; do
@@ -1637,6 +1637,14 @@ assert_finding_treatment_rules() {
   require_text "$REVIEW_POLICY" '`user decision` for a decision the critic names as the user'
   require_text "$REVIEW_POLICY" 'a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.'
   require_text "$REVIEW_POLICY" 'Treatments other than `now` and `user decision` are not clean-pass defects. A `user decision` holds final acceptance until a fresh Step 2 critic decides the finding again from the user'
+  require_text "$ECI_BINDING_CONTRACT" "A decision is the user's only when it needs intent, requirements, or facts only the user holds"
+  require_text "$ECI_BINDING_CONTRACT" 'When an authorized option that keeps every requirement avoids that need, take it instead.'
+  require_text "$ECI_BINDING_CONTRACT" 'label does not settle ownership; check it against the definition above.'
+  require_text "$ECI" 'It checks each user decision the critic names against [user-owned decisions](../../eci-binding-contract.md#decisions)'
+  require_text "$COORDINATOR" 'is [user-owned](../../../eci-binding-contract.md#decisions) before it reaches the user; one that is not is a gap.'
+  require_text "$ECI_CRITIQUE" 'only when it is [user-owned](../../../eci-binding-contract.md#decisions); state each authorized remedy you ruled out and why.'
+  ! grep -Fq -- 'such as narrowing scope or accepting a gap' "$ECI_CRITIQUE" || fail "$ECI_CRITIQUE retains superseded user-decision wording: such as narrowing scope or accepting a gap"
+  ! grep -Fq -- "names as the user's reaches the user" "$COORDINATOR" || fail "$COORDINATOR retains superseded user-decision wording: names as the user's reaches the user"
   for forbidden in 'gets one treatment per part' "that the user's quoted answer accepts"; do
     ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $forbidden"
   done
