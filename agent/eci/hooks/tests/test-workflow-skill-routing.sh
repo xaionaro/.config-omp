@@ -1590,6 +1590,8 @@ assert_coordinator_role_boundary() {
       fail "superseded coordinator acceptance wording: $forbidden"
     fi
   done
+  require_text "$ECI" 'In a user-set order, make no change that belongs to a step until the steps before it are done.'
+  require_text "$ECI" 'Read each step by its plain meaning; never narrow it to fit a better option, such as a shorter outage.'
 }
 
 assert_deferred_disposition_policy_contract_text() {
@@ -3638,6 +3640,17 @@ assert_impact_delivery() {
   [[ "$output" == *'security follow-up precedence missing'* ]] || fail "unexpected security mutation failure: $output"
 }
 
+# The router's rebuild step and the catalog's coding-skill row state one disable-switch rule; edit both together.
+assert_coding_skill_switch_rule() {
+  local text
+  for text in \
+    "create and commit the gate's disable switch \`agent/coding-skill-gate.disabled\` unless already committed" \
+    'Remove the switch with `git rm` and commit only after the ECI Supervisor or the user confirms that no coding-skill gate change awaits review.'; do
+    require_text "$ECI" "$text"
+    require_text "$GATE_CATALOG" "$text"
+  done
+}
+
 # Focused policy checks avoid unrelated legacy failures without weakening the default suite.
 if [[ "${1:-}" == '--eci-hierarchy-contract' ]]; then
   assert_recursive_jobs
@@ -3715,4 +3728,5 @@ assert_pause_resume_closure_contract
 assert_least_restriction_contract
 assert_eci_ordinary_role_split
 assert_implementer_iteration_checkpoint_contract
+assert_coding_skill_switch_rule
 printf '%s\n' 'workflow skill routing assertions: PASS'
