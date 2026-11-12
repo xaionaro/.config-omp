@@ -155,7 +155,7 @@ After changing `agent/eci/model-selection.yaml`, preset templates, or generator 
 (cd agent/eci/hooks/lib/eci-hook-helper-go && go test ./codingskill)
 ```
 
-That test binds template skill URIs to the coding-skill gate's `roleSkills` and checks every gated skill exists and fits one read; after changing either, rebuild with `bash agent/eci/hooks/build-native-binaries.sh eci-hook-helper`.
+That test binds template skill URIs to the coding-skill gate's `roleSkills` and checks every gated skill exists and fits one read. Also run it after renaming or moving this router, a role module, coding-common, coding-go, coding-python, or harness-tuning. After committing a `codingskill` change, rebuild with `bash agent/eci/hooks/build-native-binaries.sh eci-hook-helper` while `git status --short agent/eci/hooks/lib/eci-hook-helper-go` prints nothing: the build compiles the working tree, and every running omp session uses the new helper at once.
 
 The generator preflights owned files, stages output beside each target, and rechecks existing files before replacement or obsolete-file removal. New targets use no-clobber creation. A matching legacy output is upgraded only when byte-identical to the current generated legacy body. These checks are not race-free, and publication of the set is not atomic; on an I/O failure inspect and reconcile partial updates before rerunning. Never delete unverified files to force regeneration.
 
