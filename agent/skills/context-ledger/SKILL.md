@@ -512,7 +512,8 @@ wrapping, blank lines, comment spacing, sequence indentation). Make the preview
 and the write separate tool calls: write only after reading the preview. Run
 each call in a subshell that sets every variable it uses, so no ID or text
 carries into a later call. One canonical session writer applies bounded worker
-proposals to the latest file.
+proposals to the latest file. Run calls on one file one at a time, never two
+in one parallel batch: overlapping `yq4 -i` writes silently lose an update.
 
 ```sh
 # Update an existing work record. Each write runs only if its check passes.

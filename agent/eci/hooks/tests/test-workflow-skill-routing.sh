@@ -3000,6 +3000,7 @@ assert_yaml_understanding_contract() {
   require_text "$LEDGER" 'run `yq4 -i` on the canonical file'
   require_text "$LEDGER" 'yq4 -e "$check" "$f" && yq4 -i "$e" "$f"'
   require_text "$LEDGER" 'and the write separate tool calls: write only after reading the preview.'
+  require_pattern "$LEDGER" 'calls on one file run one at a time' 'Run[[:space:]]+calls[[:space:]]+on[[:space:]]+one[[:space:]]+file[[:space:]]+one[[:space:]]+at[[:space:]]+a[[:space:]]+time,[[:space:]]+never[[:space:]]+two[[:space:]]+in[[:space:]]+one[[:space:]]+parallel[[:space:]]+batch'
   forbid_pattern "$LEDGER" '^yq4 -i'
   require_text "$LEDGER" 'set -o pipefail'
   forbid_text "$LEDGER" 'project-understanding.md'
