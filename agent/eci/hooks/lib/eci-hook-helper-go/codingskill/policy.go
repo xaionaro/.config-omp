@@ -334,7 +334,7 @@ func collectReadCalls(
 	}
 }
 
-// creditedSkill returns the supported skill named by a successful skill:// read without a line range, or skillUnknown; host output truncation still credits, because no such read can show more, while a host summary does not, because a :raw read returns the verbatim skill.
+// creditedSkill returns the supported skill named by a successful read of exactly skill://<name>[/SKILL.md][:raw], or skillUnknown; host output truncation still credits, because no such read can show more, while a host summary does not, because a :raw read returns the verbatim skill.
 //
 // Example: skill://coding-go, skill://coding-go/SKILL.md and skill://coding-go:raw credit coding-go; skill://coding-go:1-20 and a filesystem path do not.
 func creditedSkill(
@@ -345,7 +345,7 @@ func creditedSkill(
 	if !ok || details["summary"] != nil {
 		return skillUnknown
 	}
-	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md")
+	path = strings.TrimSuffix(strings.TrimSuffix(path, ":raw"), "/SKILL.md") // TODO: also credit skill://<name>/, which the host resolves to the whole SKILL.md; trim a trailing "/" first.
 	for skill := skillCommon; skill < skillEnd; skill++ {
 		if path == skill.name() {
 			return skill

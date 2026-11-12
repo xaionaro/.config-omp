@@ -73,7 +73,7 @@ func TestECIRolesRequireTheirSkills(t *testing.T) {
 	}
 }
 
-// TestECIReadsRequireSkillURIsWithoutLineRange credits skill:// reads without a line range, including host-truncated ones.
+// TestECIReadsRequireSkillURIsWithoutLineRange credits skill://<name>[/SKILL.md][:raw] reads of the router, including host-truncated ones.
 //
 // Example: a filesystem-path or line-range read of the router earns no credit.
 func TestECIReadsRequireSkillURIsWithoutLineRange(t *testing.T) {

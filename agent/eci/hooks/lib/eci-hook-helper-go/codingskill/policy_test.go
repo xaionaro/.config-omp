@@ -181,11 +181,11 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
-// TestSkillCreditRequiresSkillURIWithoutLineRange credits successful skill:// reads without a line range, even when the host truncates them.
+// TestSkillCreditRequiresSkillURIWithoutLineRange credits successful skill://<name>[/SKILL.md][:raw] reads, even when the host truncates them.
 //
 // Example: a line range or a host summary earns no credit; host truncation at the spill limit does.
 func TestSkillCreditRequiresSkillURIWithoutLineRange(t *testing.T) {
-	for _, path := range []string{"skill://coding-go:1-2", "skill://coding-go:raw:1-2", "/tmp/coding-go/SKILL.md"} {
+	for _, path := range []string{"skill://coding-go:1-2", "skill://coding-go:raw:1-2", "skill://coding-go:conflicts", "/tmp/coding-go/SKILL.md"} {
 		require.Equal(t, skillUnknown, creditedSkill(map[string]any{"path": path}, completeRead()), path)
 	}
 	summarized := completeRead()
