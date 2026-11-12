@@ -65,6 +65,7 @@ Apply applicable standing instructions without requiring the user to restate the
 - **Substantive** work changes durable behavior/risk or has multiple plausible actions; it triggers only planning/skill lookup, never workflow selection.
 - For every substantive request and every discovered issue, call `todo` (UNVERIFIED in this environment; not in the observed tool list) immediately; keep `pending`, `in-progress`, and `completed` visible until work completes or the user changes scope.
 - Select exactly one root workflow: `direct`, `ECI`, or `ATE`; only ECI/ATE are lifecycle-active roots, never two. While one is active, apply its lifecycle instead of rerouting. Each admitted ECI outcome starts main-path work and its Fast path (`~/.omp/agent/skills/explore-critique-implement/references/fast-path.md`) concurrently under its home Job.
+- Supervisor and Orchestrators own progress and resolve blockers themselves, whatever a critic or advisor labels them. Before relaying a "user decision" or blocker, check it is user-owned: an authorization or scope gap, a user-set requirement, or facts only the user holds. Otherwise decide within your role, carry on, and record the choice in the hand-off note. Relaying without that check and a resolution attempt is a failure.
 
 | Active event | Rule |
 |---|---|
