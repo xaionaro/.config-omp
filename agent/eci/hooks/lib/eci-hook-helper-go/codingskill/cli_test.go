@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,6 +39,34 @@ func TestCLIRoundTrip(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 	require.False(t, verdict.Block)
+}
+
+// TestCLICheckHonorsDisableFile lets running sessions turn the gate off without a restart.
+//
+// Example: with ~/.omp/agent/coding-skill-gate.disabled present, an unread Go write is allowed.
+func TestCLICheckHonorsDisableFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	request, err := json.Marshal(cliInput{Call: cliEvent{ToolName: "write", Input: map[string]any{"path": "a.go"}}})
+	require.NoError(t, err)
+
+	// check runs one check request and returns its block verdict.
+	//
+	// Example: an unread Go write returns true while the gate is enabled.
+	check := func() bool {
+		var output bytes.Buffer
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		var verdict struct {
+			Block bool `json:"block"`
+		}
+		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
+		return verdict.Block
+	}
+	require.True(t, check())
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".omp", "agent"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".omp", "agent", disableFileName), nil, 0o644))
+	require.False(t, check())
 }
 
 // TestCLIAcceptsLegacyReadsObject keeps running bridges that still hold object-form state working.

@@ -5,11 +5,21 @@ package codingskill
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 )
+
+// disableFileName names the file under ~/.omp/agent whose presence makes check allow every call.
+// The helper reads it per call, so creating it disables the gate in running sessions without a restart.
+//
+// Example: touch ~/.omp/agent/coding-skill-gate.disabled while the hook is being changed.
+const disableFileName = "coding-skill-gate.disabled"
 
 // cliEvent carries the host data required to evaluate a single tool event.
 //
@@ -68,6 +78,15 @@ func Run(
 	}
 	req := Request{State: in.State, Branch: in.Branch}
 	if args[0] == "check" {
+		disabled, err := gateDisabled()
+		if err != nil {
+			return err
+		}
+		if disabled {
+			return json.NewEncoder(output).Encode(struct {
+				Block bool `json:"block"`
+			}{})
+		}
 		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
 		req.EditTargets, req.Cwd, req.AgentName = in.Call.EditTargets, in.Call.Cwd, in.Call.AgentName
 		response, err := decide(req)
@@ -98,4 +117,23 @@ func Run(
 	return json.NewEncoder(output).Encode(struct {
 		State State `json:"state"`
 	}{State: req.State})
+}
+
+// gateDisabled reports whether ~/.omp/agent/coding-skill-gate.disabled exists.
+//
+// Example: check allows the call when gateDisabled returns true.
+func gateDisabled() (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", disableFileName, err)
+	}
+	_, err = os.Stat(filepath.Join(home, ".omp", "agent", disableFileName))
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, fmt.Errorf("checking %s: %w", disableFileName, err)
+	}
 }
