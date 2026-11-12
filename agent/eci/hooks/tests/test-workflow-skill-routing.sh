@@ -1324,11 +1324,11 @@ assert_fast_quality() {
 }
 
 assert_fast_path_progress_wait_contract() {
-  local eci_text="$1" fast_text="$2" wait_rule section
+  local eci_text="$1" fast_text="$2" park_rule section
 
-  wait_rule="$(grep '^- When advancing ECI outcomes' <<<"$eci_text" || true)"
-  require_section_pattern "$wait_rule" 'dependency-scoped global waits' \
-    'before delivery.*park.*independently verify.*continue independent ready work'
+  park_rule="$(grep '^- When advancing ECI outcomes' <<<"$eci_text" || true)"
+  require_section_pattern "$park_rule" 'dependency-scoped global parking' \
+    'do not use or advance on .*before delivery.*block only the actions that need them.*continue independent ready work, then park'
   section="$(extract_h2_section <(printf '%s\n' "$fast_text") '## Progress waits')" ||
     fail 'missing cross-path wait section'
   require_section_pattern "$section" 'cross-path wait preserves verification and real dependencies' \
@@ -2029,11 +2029,11 @@ assert_fast_path_progress_waits() {
   eci_text="$(<"$ECI_BINDING_CONTRACT")"
   fast_text="$(<"$FAST_PATH")"
   assert_fast_path_progress_wait_contract "$eci_text" "$fast_text"
-  mutation="$(sed '/^- When advancing ECI outcomes/d' <<<"$eci_text")"
+  mutation="$(sed 's/; undelivered results block only the actions that need them//' <<<"$eci_text")"
   if output="$(assert_fast_path_progress_wait_contract "$mutation" "$fast_text" 2>&1)"; then
-    fail 'cross-path wait regression admitted the blanket global wait'
+    fail 'cross-path wait regression admitted unscoped global parking'
   fi
-  [[ "$output" == *'dependency-scoped global waits'* ]] || fail "unexpected mutation failure: $output"
+  [[ "$output" == *'dependency-scoped global parking'* ]] || fail "unexpected mutation failure: $output"
   mutation="$(sed "s/ and the next action's dependencies are satisfied//" <<<"$fast_text")"
   if output="$(assert_fast_path_progress_wait_contract "$eci_text" "$mutation" 2>&1)"; then
     fail 'cross-path wait regression admitted unfinished required evidence'
