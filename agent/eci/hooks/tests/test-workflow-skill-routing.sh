@@ -2887,16 +2887,17 @@ assert_yaml_understanding_contract() {
     require_text "$LEDGER" "| $record_type |"
   done
   require_text "$LEDGER" '| context, constraint |'
-  require_text "$LEDGER" '.understanding-snapshot.XXXXXX'
+  require_text "$LEDGER" 'Do not edit a temporary copy and swap it in.'
   require_text "$LEDGER" 'stringKeys:true'
   require_text "$LEDGER" 'Review the whole snapshot at existing QA/verdict, handoff, and shutdown checkpoints.'
   require_text "$LEDGER" 'Between checkpoints, review affected subjects and linked contradictions rather than rescanning unrelated state for every event.'
-  require_pattern "$LEDGER" 'native edits preserve the whole document' 'never[[:space:]]+serialize[[:space:]]+the[[:space:]]+whole[[:space:]]+document[[:space:]]+merely'
-  require_pattern "$LEDGER" 'publication copies latest state' 'copy[[:space:]]+the[[:space:]]+latest[[:space:]]+snapshot[[:space:]]+to[[:space:]]+an[[:space:]]+owned'
+  require_text "$LEDGER" 'run `yq4 -i` on the canonical file'
+  require_text "$LEDGER" 'yq4 -e "$check" "$f" && yq4 -i "$e" "$f"'
   require_text "$LEDGER" 'set -o pipefail'
   forbid_text "$LEDGER" 'project-understanding.md'
   forbid_text "$LEDGER" 'Put every fact under a heading whose subject covers it.'
   forbid_text "$LEDGER" 'Include a rendered, unfenced Markdown example'
+  forbid_text "$LEDGER" '.understanding-snapshot.'
 }
 
 assert_yaml_understanding_contract_mutation() {
