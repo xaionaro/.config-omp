@@ -66,6 +66,7 @@ require_order() {
   [ "${#before_first}" -lt "${#before_second}" ]
 }
 
+# TODO: the "retains an ordinary-work gate" failure label here and in forbid_pattern misdescribes most callers (forbidden names, removed prose); use a neutral label such as "retains forbidden text".
 forbid_text() {
   local file="$1" text="$2"
   ! grep -Fq -- "$text" "$file" || fail "$file retains an ordinary-work gate: $text"
@@ -2917,6 +2918,7 @@ assert_yaml_understanding_contract() {
   require_text "$LEDGER" 'Review the whole snapshot at existing QA/verdict, handoff, and shutdown checkpoints.'
   require_text "$LEDGER" 'Between checkpoints, review affected subjects and linked contradictions rather than rescanning unrelated state for every event.'
   require_text "$LEDGER" 'run `yq4 -i` on the canonical file'
+  # TODO: either chained example write satisfies this, so dropping the yq4 -e check from one still passes; add forbid_pattern "$LEDGER" '^yq4 -i' to catch an unchained write.
   require_text "$LEDGER" 'yq4 -e "$check" "$f" && yq4 -i "$e" "$f"'
   require_text "$LEDGER" 'set -o pipefail'
   forbid_text "$LEDGER" 'project-understanding.md'
