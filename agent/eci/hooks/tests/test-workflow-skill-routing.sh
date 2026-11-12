@@ -3342,7 +3342,7 @@ assert_least_restriction_contract() {
   require_text "$ECI_BINDING_CONTRACT" 'Every enabled denial names a documented bounded legitimate-work escape path in'
   require_text "$GATE_CATALOG" 'If a future gate has no bounded legitimate path, disable that gate until one exists.'
   require_text "$GATE_CATALOG" 'owner-scoped dependency work'
-  require_text "$GATE_CATALOG" 'repository-allow-on'
+  require_text "$GATE_CATALOG" 'Native Git and scripts remain available in any repository'
 
   forbid_text "$ECI_COVERAGE" 'Baseline source SHA-256:'
   forbid_text "$PAUSE" 'fails closed'
