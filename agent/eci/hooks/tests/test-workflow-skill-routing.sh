@@ -3690,6 +3690,7 @@ assert_coding_skill_switch_rule() {
     forbid_text "$GATE_CATALOG" "$text"
   done
   require_text "$GATE_CATALOG" '[Preset deployment](../../skills/explore-critique-implement/SKILL.md#preset-deployment)'
+  require_line "$ECI" '### Preset deployment'
 }
 
 # Focused policy checks avoid unrelated legacy failures without weakening the default suite.

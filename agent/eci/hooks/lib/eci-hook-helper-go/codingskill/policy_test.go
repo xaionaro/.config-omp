@@ -230,27 +230,39 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
-// TestGateCatalogListsInstructionTargets binds the instruction-target sentence of the gate catalog's coding-skill row to the gated names in both directions.
+// TestGateCatalogListsInstructionTargets binds each clause of the instruction-target sentence in the gate catalog's coding-skill row to the gate value it names, in both directions.
 //
-// Example: a name added to instructionFiles fails here until eci/hooks/gate-escape-hatches.md lists it.
+// Example: moving WATCHDOG.md from instructionFiles to contextFileNames fails here until the catalog lists it among the files named anywhere under ~/.omp.
 func TestGateCatalogListsInstructionTargets(t *testing.T) {
-	catalog, err := os.ReadFile(filepath.Join("..", "..", "..", "gate-escape-hatches.md"))
+	catalogPath := filepath.Join("..", "..", "..", "gate-escape-hatches.md")
+	catalog, err := os.ReadFile(catalogPath)
 	require.NoError(t, err)
-	_, sentence, ok := strings.Cut(string(catalog), "Instruction targets require ")
-	require.True(t, ok)
-	sentence, _, ok = strings.Cut(sentence, " Relative paths resolve")
-	require.True(t, ok)
-	want := []string{"skill://coding-common", "skill://harness-tuning", "~/.omp", "~/.omp/agent"}
-	for _, names := range [][]string{contextFileNames, instructionFiles, instructionExtensions, instructionDirs} {
-		want = append(want, names...)
-	}
-	var got []string
-	for i, part := range strings.Split(sentence, "`") {
-		if i%2 == 1 {
-			got = append(got, part)
+	_, rest, ok := strings.Cut(string(catalog), "Instruction targets require ")
+	require.Truef(t, ok, "%s lacks the coding-skill row's instruction-target sentence", catalogPath)
+	ompHome := "~/" + ompDirName
+	for _, clause := range []struct {
+		names []string
+		end   string
+	}{
+		{[]string{skillScheme + skillCommon.name(), skillScheme + skillHarness.name()}, ": files named "},
+		{contextFileNames, " anywhere under "},
+		{[]string{ompHome}, ", and under "},
+		{[]string{ompHome + "/" + agentDirName}, " the files "},
+		{instructionFiles, ", plus "},
+		{instructionExtensions, " files under "},
+		{instructionDirs, " Relative paths resolve"},
+	} {
+		text, after, ok := strings.Cut(rest, clause.end)
+		require.Truef(t, ok, "%s lacks %q after the previous instruction-target clause", catalogPath, clause.end)
+		var got []string
+		for i, part := range strings.Split(text, "`") {
+			if i%2 == 1 {
+				got = append(got, part)
+			}
 		}
+		require.ElementsMatchf(t, clause.names, got, "%s: names before %q", catalogPath, clause.end)
+		rest = after
 	}
-	require.ElementsMatch(t, want, got)
 }
 
 // TestSkillCreditRequiresSkillURIWithoutLineRange credits successful skill://<name>[/SKILL.md][:raw] reads, even when the host truncates them.
