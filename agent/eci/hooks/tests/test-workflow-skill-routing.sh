@@ -1641,7 +1641,7 @@ assert_finding_treatment_rules() {
   require_text "$ECI_BINDING_CONTRACT" 'When an authorized option that keeps every requirement avoids that need, take it instead.'
   require_text "$ECI_BINDING_CONTRACT" 'label does not settle ownership; check it against the definition above.'
   require_text "$ECI_BINDING_CONTRACT" 'Before sending a blocker or question toward the user, try to clear it: get missing facts with tools or Workers'
-  require_text "$ECI_BINDING_CONTRACT" "Put only what remains the user's to the user in one concise question, with your attempts and recommendation, and continue answer-independent work."
+  require_text "$ECI_BINDING_CONTRACT" "Put only what remains the user's to the user in one concise question, with your attempts and recommendation. If you can keep working while awaiting the answer, send it now and continue answer-independent work; otherwise, finish that work first."
   require_text "$ECI" 'It checks each user decision the critic names against [user-owned decisions](../../eci-binding-contract.md#decisions)'
   require_text "$COORDINATOR" 'is [user-owned](../../../eci-binding-contract.md#decisions) before it reaches the user; one that is not is a gap.'
   require_text "$ECI_CRITIQUE" 'only when it is [user-owned](../../../eci-binding-contract.md#decisions); state each authorized remedy you ruled out and why.'
