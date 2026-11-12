@@ -137,7 +137,7 @@ func TestWriteRequirementsByExtension(t *testing.T) {
 	require.Empty(t, got.Reason)
 }
 
-// TestInstructionWritesRequireHarnessTuning covers ~/.omp/agent instruction targets.
+// TestInstructionWritesRequireHarnessTuning covers instruction targets in ~/.omp.
 //
 // Example: a SKILL.md write needs coding-common and harness-tuning; a session log needs nothing.
 func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
@@ -190,6 +190,10 @@ func TestInstructionWritesRequireHarnessTuning(t *testing.T) {
 		{"agent/AGENTS.md", home, false},
 		{filepath.Join(home, ".ompx", "AGENTS.md"), "", false},
 		{"local://AGENTS.md", omp, false},
+		{"vault://AGENTS.md", omp, false},
+		{"RULES.md", omp, false},
+		{"agent/eci/XAGENTS.md", omp, false},
+		{"agent/eci/agents.md", omp, false},
 		{"agent/skills/x/SKILL.md", "", false},
 	} {
 		got, err := decide(Request{Action: callAction, Tool: "write", Input: map[string]any{"path": tc.path}, Cwd: tc.cwd})

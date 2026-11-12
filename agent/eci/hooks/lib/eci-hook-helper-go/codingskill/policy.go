@@ -383,7 +383,7 @@ var instructionExtensions = []string{".dot", ".md", ".mdc", ".tmpl", ".yml", ".y
 // Example: ~/.omp/agent/AGENTS.md, ~/.omp/agent/eci/AGENTS.md, and x/.claude/CLAUDE.md are instruction files.
 var contextFileNames = []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md", "copilot-instructions.md"}
 
-// internalURL recognizes an omp internal URL such as local://; writable ones address session artifacts or the vault, never loaded instructions.
+// internalURL recognizes an omp internal URL such as local://; file-backed ones (local://, vault://) address session artifacts or the vault, and omp refuses unknown schemes.
 //
 // Example: local://AGENTS.md is a session artifact, not an instruction file.
 var internalURL = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
