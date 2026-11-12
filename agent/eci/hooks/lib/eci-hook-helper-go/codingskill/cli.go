@@ -76,31 +76,67 @@ func Run(
 			"gatedExtensions":    extensions,
 			"gatedAgentPrefixes": []string{eciPresetPrefix},
 		})
-	case "reduce", "check":
+	case "check":
+		return checkCall(input, output)
+	case "reduce":
+		return reduceResults(input, output)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+// checkCall answers one check request with a checkVerdict.
+// While the gate is disabled it allows the call without decoding the request, so a running session keeps working even if a changed helper cannot read its state.
+//
+// Example: an unread Go write gets {"block":true,"reason":"Coding skill gate: ..."}; with the disable file present it gets {"block":false}.
+func checkCall(
+	input io.Reader,
+	output io.Writer,
+) error {
+	disabled, err := gateDisabled()
+	if err != nil {
+		return err
+	}
+	if disabled {
+		// Read to EOF anyway: the bridge writes the whole request, and a helper that exits first breaks that pipe, which the bridge reports as a block.
+		if _, err := io.Copy(io.Discard, input); err != nil {
+			return err
+		}
+		return json.NewEncoder(output).Encode(checkVerdict{})
 	}
 	var in cliInput
 	if err := json.NewDecoder(input).Decode(&in); err != nil {
 		return err
 	}
-	req := Request{State: in.State, Branch: in.Branch}
-	if args[0] == "check" {
-		disabled, err := gateDisabled()
-		if err != nil {
-			return err
-		}
-		if disabled {
-			return json.NewEncoder(output).Encode(checkVerdict{})
-		}
-		req.Action, req.Tool, req.Input = callAction, in.Call.ToolName, in.Call.Input
-		req.EditTargets, req.Cwd, req.AgentName = in.Call.EditTargets, in.Call.Cwd, in.Call.AgentName
-		response, err := decide(req)
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(output).Encode(checkVerdict{Block: response.Reason != "", Reason: response.Reason})
+	response, err := decide(Request{
+		Action:      callAction,
+		Tool:        in.Call.ToolName,
+		Input:       in.Call.Input,
+		EditTargets: in.Call.EditTargets,
+		Cwd:         in.Call.Cwd,
+		AgentName:   in.Call.AgentName,
+		Branch:      in.Branch,
+		State:       in.State,
+	})
+	if err != nil {
+		return err
 	}
+	return json.NewEncoder(output).Encode(checkVerdict{Block: response.Reason != "", Reason: response.Reason})
+}
+
+// reduceResults folds one reduce request's read results into the agent state and replies with that state.
+// A request without results hydrates the state from its transcript branch.
+//
+// Example: a completed skill://coding-go read result replies with a state that credits coding-go.
+func reduceResults(
+	input io.Reader,
+	output io.Writer,
+) error {
+	var in cliInput
+	if err := json.NewDecoder(input).Decode(&in); err != nil {
+		return err
+	}
+	req := Request{State: in.State, Branch: in.Branch}
 	if len(in.Results) == 0 {
 		req.Action = hydrateAction
 		response, err := decide(req)
@@ -126,7 +162,7 @@ func Run(
 //
 // Example: check allows the call when gateDisabled returns true.
 func gateDisabled() (bool, error) {
-	// TODO: with HOME unset this fails every gated check, while the TS bridge's hookAgentRoot falls back to the account home; resolve the agent root the same way on both sides if omp ever runs without HOME.
+	// TODO: when HOME is unset or relative, the TS bridge's hookAgentRoot uses the account home, but here an unset HOME fails every gated check and a relative one resolves against the helper's cwd; resolve the agent root like the bridge, here and in isInstructionPath, if omp ever runs that way.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, fmt.Errorf("locating ~/.omp/agent for %s: %w", disableFileName, err)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,58 @@ func TestCLICheckHonorsDisableFile(t *testing.T) {
 		require.NoError(t, os.Remove(disableFile))
 		require.Contains(t, check(), `"block":true`, call.ToolName)
 	}
+}
+
+// TestCLICheckIgnoresRequestWhileDisabled allows a call whose state a changed helper cannot decode, and reads the whole request so the bridge's write cannot hit a closed pipe.
+//
+// Example: with the disable file present, {"state":{"reads":-1},...} gets {"block":false}.
+func TestCLICheckIgnoresRequestWhileDisabled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	disableFile := filepath.Join(home, ".omp", "agent", "coding-skill-gate.disabled")
+	require.NoError(t, os.MkdirAll(filepath.Dir(disableFile), 0o755))
+	require.NoError(t, os.WriteFile(disableFile, nil, 0o644))
+	request := strings.NewReader(`{"state":{"reads":-1},"call":{"toolName":"write","input":{"path":"a.go","content":"` + strings.Repeat("x", 1<<20) + `"}}}`)
+	var output bytes.Buffer
+	require.NoError(t, Run([]string{"check"}, request, &output))
+	require.JSONEq(t, `{"block":false}`, output.String())
+	require.Zero(t, request.Len())
+}
+
+// TestCLIReduceCreditsReadsWhileDisabled keeps recording skill reads while the gate is disabled, so they still count after it is re-enabled.
+//
+// Example: coding-common and coding-go read while disabled allow a Go write after the disable file is deleted; a Python write still blocks.
+func TestCLIReduceCreditsReadsWhileDisabled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	disableFile := filepath.Join(home, ".omp", "agent", "coding-skill-gate.disabled")
+	require.NoError(t, os.MkdirAll(filepath.Dir(disableFile), 0o755))
+	require.NoError(t, os.WriteFile(disableFile, nil, 0o644))
+	request, err := json.Marshal(cliInput{Results: []cliEvent{
+		{ToolName: "read", Input: map[string]any{"path": "skill://coding-common"}, Details: completeRead()},
+		{ToolName: "read", Input: map[string]any{"path": "skill://coding-go"}, Details: completeRead()},
+	}})
+	require.NoError(t, err)
+	var output bytes.Buffer
+	require.NoError(t, Run([]string{"reduce"}, bytes.NewReader(request), &output))
+	var reduced struct {
+		State State `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &reduced))
+	require.NoError(t, os.Remove(disableFile))
+
+	// check runs one check of a write to path with the reduced state and returns its raw reply.
+	//
+	// Example: check("a.go") replies {"block":false} once coding-common and coding-go are credited.
+	check := func(path string) string {
+		request, err := json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": path}}})
+		require.NoError(t, err)
+		output.Reset()
+		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
+		return output.String()
+	}
+	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
 }
 
 // TestCLICheckFailsWhenDisableFileIsUnknown fails the check when the disable file's presence cannot be determined, so the bridge blocks instead of guessing.
