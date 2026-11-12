@@ -9,9 +9,9 @@ Three required records, one conditional current forecast record, and one audit-o
 
 | File | Role | Edit mode |
 |------|------|-----------|
-| `project-understanding.yaml` (the ledger) | Current project/task records and forecast locators | Selective native YAML edits; stale records deleted |
+| `project-understanding.yaml` (the ledger) | Current project/task records and forecast locators | Selective in-place `yq4` edits; stale records deleted |
 | `high_level_log.jsonl` (the log) | Append-only history of every material change | Append only; never edit, never delete past entries |
-| `forecasts.yaml` | Sole current source for lane/root forecast records; create when a forecast first applies | Selective native YAML edits; never copy its values into the ledger |
+| `forecasts.yaml` | Sole current source for lane/root forecast records; create when a forecast first applies | Selective in-place `yq4` edits; never copy its values into the ledger |
 | `latest-status-report.yaml` (the report) | Latest structured status projection per `writing-status-reports` | Update stale or changed YAML fields; preserve unaffected content. Write the whole file only on first creation. |
 | `forecast-target-history.tsv` | Audit-only root-task forecast-target history | Append only; corrections add a new target row |
 
@@ -491,56 +491,52 @@ newline), `|` (one), `|+` (all trailing newlines), or quoted escapes. No
 directives, explicit/custom tags, anchors, aliases, merge keys or multiple
 documents. These are writing/quality rules, not runtime content permission gates.
 
-Prefer mikefarah `yq` v4 (`yq4`; check `yq4 --version`) for bounded additions,
-updates or deletions: run `yq4 -i` on the owned temporary snapshot below, never
-on the canonical file. For updates and
-deletions, confirm the ID exists and the ledger record’s `type` or forecast record’s `kind` matches the intended record; if it is missing, add an
-explicit complete record only when an addition is intended. Then inspect the diff
-to preserve unrelated comments, order, quoting and multiline text; if `yq4` is
-unavailable or the diff changes unrelated text, use a native selective YAML text
-edit instead. One canonical session
-writer combines bounded worker proposals against the latest snapshot. Never
-serialize the whole document merely to change one value, redirect parser output
-onto its input, or publish a stale worker copy. For whole-snapshot publication,
-copy the latest snapshot to an owned
-same-directory temporary, edit that copy, then replace only the canonical regular
-file under existing ownership. Rename is publication, not concurrency control.
+Edit YAML in place with mikefarah `yq` v4 (`yq4`; `yq4 --version` reports
+mikefarah v4): run `yq4 -i` on the canonical file and pass IDs and text through
+`strenv()`. Do not edit a temporary copy and swap it in. Never write YAML with
+the jq-based `yq` (version 3.x), which drops comments and quoting, or redirect a
+tool's output onto its input. Use a native selective text edit only when `yq4`
+is unavailable.
+
+`yq4 -i` creates missing paths instead of failing. Before an update or deletion
+(`del(.records[strenv(id)])`), check with `yq4 -e` that the ID exists and the
+ledger record’s `type` or forecast record’s `kind` matches; before an addition,
+check that the ID is absent and add a complete record. `yq4` keeps the quoting
+of existing scalars but writes new keys and strings unquoted; set
+`style="double"` on them. Preview each change as a diff before applying it: only
+the intended records may change, apart from one-time layout normalization (line
+wrapping, blank lines, comment spacing, sequence indentation). One canonical
+session writer applies bounded worker proposals to the latest file.
 
 ```sh
-(
-set -e
-session_dir="$HOME/.agent/context/sessions/$SESSION_ID"
-snapshot_tmp=$(mktemp "$session_dir/.understanding-snapshot.XXXXXX")
-cp -- "$session_dir/project-understanding.yaml" "$snapshot_tmp"
-# e.g. id='work:receiver:clock' yq4 -i 'with(.records[strenv(id)] | select(.type == "work"); .data.owner = "worker-b")' "$snapshot_tmp"
-# Diff against the canonical file; reconcile/check before publishing.
-# On successful editing, replace the own-session canonical regular file:
-mv -- "$snapshot_tmp" "$session_dir/project-understanding.yaml"
-)
+cd "$HOME/.agent/context/sessions/$SESSION_ID"
+f=project-understanding.yaml
+
+# Update an existing work record.
+export id='work:receiver:clock' owner='worker-b'
+e='.records[strenv(id)].data.owner = strenv(owner)'
+yq4 -e '.records[strenv(id)].type == "work"' "$f" && yq4 "$e" "$f" | diff -u "$f" -
+yq4 -i "$e" "$f"  # after reviewing the preview
+
+# Add a record with a quoted key and strings.
+export id='guard:receiver:clock-source' rule='Keep a supplied setting distinct from a measurement'
+e='.records[strenv(id)] = {"section": "proof", "type": "guard", "data": {"rule": strenv(rule)}, "evidence": []}
+  | with(.records[strenv(id)]; (.. | select(tag == "!!str")) style="double" | key style="double")'
+yq4 -e '.records | has(strenv(id)) | not' "$f" && yq4 "$e" "$f" | diff -u "$f" -
+yq4 -i "$e" "$f"
 ```
 
 Example fixture: [project-understanding.yaml](examples/project-understanding.yaml).
 Its source/values are explicitly synthetic; adapt subjects and sections to the
 project instead of treating it as a fixed domain template.
 
-For example, jq-based `yq` can emit a candidate work record without editing the
-fixture; this fails if the ID is missing or has another type:
-
-```sh
-yq -e --arg id 'work:receiver:clock' \
-  'if (.records | has($id)) and .records[$id].type == "work" then .records[$id] | .data.owner = "worker-b" else error("missing or mistyped work record") end' \
-  ~/.omp/agent/skills/context-ledger/examples/project-understanding.yaml
-```
-
 ### Read-only queries
 
-Use `yq` when available to select and inspect ledger records before a bounded
-edit. Check `yq --version` and its help: implementations have different syntax
-and preservation behavior. If `yq` is unavailable or unsuitable, use native
-text inspection and edits. For the jq-based `yq`, a read-only query is:
+Use `yq4` to select and inspect records before a bounded edit; if it is
+unavailable, use native text inspection. For example:
 
 ```sh
-yq '.records | to_entries[] | select(.value.type == "requirement") | {id:.key,source:.value.data.source_text,acceptance:.value.data.acceptance}' project-understanding.yaml
+yq4 '.records | to_entries[] | select(.value.type == "requirement") | {"id": .key, "source": .value.data.source_text, "acceptance": .value.data.acceptance}' project-understanding.yaml
 ```
 
 Node's existing `yaml` package can also parse for read-only queries; check
