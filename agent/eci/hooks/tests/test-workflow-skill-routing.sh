@@ -1600,7 +1600,7 @@ assert_coordinator_role_boundary() {
   require_text "$ECI" "their own design idea goes to the Job's Steps 1–2 as such input, never into a brief's targets or criteria."
   require_text "$ECI" "When they see a technical mistake in a Job's work, they promptly notify the Worker whose work it concerns, before any dependent action such as its commit, and the owner or fresh Step 2 critic whose decision it affects (for a child Job, through its parent owner); the notice states the mistake and its source, and the receiver decides the remedy."
   require_text "$COORDINATOR" '### Stall decisions'
-  require_text "$COORDINATOR" "the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls."
+  require_text "$COORDINATOR" "the BRP route ends with options but no Step 2 selection, the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls."
   require_text "$COORDINATOR" 'A stall decision waives no original criterion, takes no user-owned decision, which goes to hard escalation, and never settles for good enough'
   require_text "$COORDINATOR" 'A technical choice still open after BRP gets a [stall decision](#stall-decisions); hard escalation remains for user-owned decisions'
   require_text "$TASK_ORCHESTRATOR" "Attribute your own observations, views, and mistake notices as the role rule sets; quote or cite findings with their authors. Tag your readings of the user's words \`[INFERENCE]\`."
@@ -1608,7 +1608,7 @@ assert_coordinator_role_boundary() {
   require_text "$TASK_ORCHESTRATOR" 'relay matching identity, scope, and index facts, plus any mistake notice the role rule requires'
   require_text "$POLICY" '| stalled loop, technical choice | A loop-breaker returned `BLOCKED`'
   require_text "$POLICY" '| stalled loop, user-owned choice |'
-  require_text "$POLICY" '| unstalled loop | A Step 2 critic is still within its bounce cap. The Orchestrator makes no stall decision'
+  require_text "$POLICY" '| unstalled loop | A Step 2 critic returned a second all-REJECT, and no loop-breaker has returned `BLOCKED`. The Orchestrator makes no stall decision; any preference of its own goes to Steps 1–2 as attributed input.'
   require_text "$POLICY" '| own view in user update |'
   require_text "$POLICY" 'Before that commit, the reply gives the matching rows and notifies that Producer'
   ! grep -Fq -- 'stating no consequence, risk, or impact of a finding' "$TASK_ORCHESTRATOR" || fail "$TASK_ORCHESTRATOR retains superseded finding-content list: stating no consequence, risk, or impact of a finding"

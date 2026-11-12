@@ -118,7 +118,7 @@ Have the current Job owner dispatch one fresh loop-breaker per change when three
 
 ### Stall decisions
 
-When a loop-breaker returns `BLOCKED` and the BRP route ends with options but no Step 2 selection, or a Step 2 critic cannot decide a finding within its bounce cap, the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls. Choose only among options and findings on record; record the decision as yours, with its basis, and report it to the affected Workers, the Job owner, and the Supervisor. A stall decision waives no original criterion, takes no user-owned decision, which goes to hard escalation, and never settles for good enough; required reviews, E2E, and acceptance still apply.
+When a loop-breaker returns `BLOCKED` and the BRP route ends with options but no Step 2 selection, the Job's Orchestrator decides the technical choice that unblocks the loop. The Supervisor decides it for a Job without a published Orchestrator, a choice spanning Jobs, or an Orchestrator's decision that itself stalls. Choose only among options and findings on record; record the decision as yours, with its basis, and report it to the affected Workers, the Job owner, and the Supervisor. A stall decision waives no original criterion, takes no user-owned decision, which goes to hard escalation, and never settles for good enough; required reviews, E2E, and acceptance still apply.
 
 ## Teardown certificate
 
