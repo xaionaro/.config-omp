@@ -5,7 +5,7 @@
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
 # scope: all, so subagent transcripts reach checks 1, 4, 9 and the Code commit row. Cost grows with subagent count (OPEN).
-# tools: [read, grep, glob]; grep and glob are used only on Rule files paths.
+# tools: [read, grep, glob]; grep and glob are used only on Rule files paths and the ECI session ledger directory.
 # reviewMode turn + reviewInterval 5: every 5th turn [unverified: whether tool-loop continuations count].
 # reviewInterval schema text: "Skipped updates are sent with the next scheduled review." [unverified]
 # includeReasoning false: see instructions, Cadence.
@@ -58,7 +58,7 @@ advisors:
       Apply every matching row. If no row matches, emit nothing unless spawns, edits, commits, or completion claims show an unclassified active state; then emit one nit to the Supervisor: `unclassified active state: <evidence>`.
 
       ## Rule files
-      A matching skill is a file in this table whose Read when cell holds for the transcript. Read only paths in this table. Use grep and glob only on these paths.
+      A matching skill is a file in this table whose Read when cell holds for the transcript. Read only paths in this table, plus files under `~/.agent/context/sessions/` when the ECI row matches. Use grep and glob only on these paths.
 
       | File | Canonical path | Read when |
       |---|---|---|
@@ -98,8 +98,8 @@ advisors:
       | Harness | Apply harness-tuning to changed text; flag contradictions, duplicates, unverified claims, and no-op text. |
       | Bug diagnosis | Apply debugging-discipline `## Hypothesis Discipline` when the cause is uncertain. Flag absence as a concern. |
 
-      ## Some random examples
-      Treat these rows as illustrations, not a checklist. Check the full text of each matching skill, not only these rows. Resolve `references/` paths from the ECI router directory.
+      ## Known violation patterns
+      Check every row each review; then check the full text of each matching skill, not only these rows. Resolve `references/` paths from the ECI router directory.
 
       | Rule file and section | Transcript evidence |
       |---|---|
@@ -120,7 +120,9 @@ advisors:
       | context-ledger `## Update Points` | Material change without a same-turn log entry and status-report refresh; project or task fact change without a same-turn ledger edit. |
       | context-ledger `## Storage` | ECI or ATE ledger, forecasts, or log edited or written outside `$HOME/.agent/context/sessions/$SESSION_ID/`, such as a cache directory. |
       | writing-status-reports `## Format Rules`, context-ledger `## Storage`, `## Latest Status Report`, `## Update Points` | After first creation, `latest-status-report.yaml` is rewritten from scratch, such as by a full-content `write`, instead of edited only at stale or changed fields; or it is written when no field is stale or changed. |
-      | `eci-binding-contract.md` `## Decisions` | Supervisor asks the user to choose a design or approach instead of running Explore and Step 2 critique on it; intent or authorization questions are exempt. |
+      | `eci-binding-contract.md` `## Decisions`, router `## Activation and invariants` | Supervisor or owner presents an authorized choice to the user instead of acting or routing it to its role: "Should I…?", offering follow-up options, or asking how to treat a finding or which design/approach to use. Intent, authorization, and direct advice requests are exempt. |
+      | context-ledger `## Storage`, `## Update Points` | ECI is active but this session's `project-understanding.yaml` is absent (glob `~/.agent/context/sessions/*/project-understanding.yaml` and match the session ID from ledger paths or `eci-active` output), or any `ledger-append` output reports `status refresh failed` without same-turn repair. |
+      | `references/task-orchestrator.md` `## Job hold and tool errors`, coordinator `## Open-Job owner reuse` | A Worker result shows `aborted`, failed, or cancelled (or `Operation aborted`) and its owner parks or stays idle without reading `proc://`, reviving, or reporting it; or the Supervisor leaves an open Job with no running Worker and a parked owner unaddressed. Flag the stall as a concern. |
       | `eci-binding-contract.md` `### Work estimates` | Work package started or assigned without an estimated elapsed duration in its plan, assignment, or update. |
       | `eci-binding-contract.md` `### ECI Supervisor repository-edit routing` | Agent starts substantive work, including writing a brief, before loading every installed skill its task matches. |
       | `eci-binding-contract.md` `### Clean system and repair` | Agent reads, or sends workers, a duplicate skill copy instead of the router-linked path. |
