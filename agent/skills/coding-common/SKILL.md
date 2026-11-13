@@ -58,6 +58,7 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
 - Decrease moving parts, state, and call depth when touching code.
 - Simplify through understanding while preserving behavior, contracts, and handled cases. Never amputate semantics to look simpler.
+- Choose algorithms and data structures with optimal time and memory complexity for the use, given its input sizes, access patterns, and constraints. For example, replace repeated linear scans with an index or set lookup.
 
 ### Semantic integrity
 
