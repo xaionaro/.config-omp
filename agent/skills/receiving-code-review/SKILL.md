@@ -11,6 +11,8 @@ Code review requires technical evaluation, not emotional performance.
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
+**Within ECI**, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#activation-and-invariants): implement and test an iteration's fixes together, not one at a time. The one-at-a-time steps below apply outside ECI.
+
 ## The Response Pattern
 
 ```

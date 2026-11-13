@@ -3481,8 +3481,7 @@ assert_implementer_iteration_checkpoint_contract() {
   require_text "$ECI_BINDING_CONTRACT" 'Stage only exact iteration paths or hunks. Never stage a whole dirty path or tree merely to capture one hunk.'
   require_text "$ECI_BINDING_CONTRACT" 'Exclude user-owned, other-Producer, and in-flight content unless every contributing Producer explicitly includes its own checked contribution in an agreed joint checkpoint.'
   require_text "$ECI_BINDING_CONTRACT" 'If an ECI contribution boundary remains ambiguous, preserve the worktree and have the responsible Producers resolve it directly; Helpers report through their parents and follow their Producer’s agreement.'
-  require_text "$ECI_BINDING_CONTRACT" 'A repair is a separate commit. Do not amend or erase an earlier checkpoint.'
-  require_text "$ECI_BINDING_CONTRACT" 'A later repair is a separate iteration and commit. Do not amend or delay the prior checkpoint.'
+  require_text "$ECI_BINDING_CONTRACT" 'A repair is a separate commit. Do not amend, erase, or delay an earlier checkpoint.'
   require_text "$ECI_BINDING_CONTRACT" 'Normal targeted Git coordination needs no approval artifact, receipt, hash, canonical spelling, or command-shape prerequisite.'
   forbid_text "$ECI_BINDING_CONTRACT" 'Implementers never commit.'
   forbid_text "$ECI_BINDING_CONTRACT" 'Hold commits until stable.'
@@ -3494,6 +3493,8 @@ assert_implementer_iteration_checkpoint_contract() {
   require_text "$TASK_ORCHESTRATOR" 'A Producer commit is a provisional checkpoint, not acceptance. Make repairs in a separate commit; do not amend or erase the earlier checkpoint.'
   require_text "$ECI" "$handoff"
   require_text "$ECI" "$verification"
+  require_text "$ECI" "Focused tests/proof and Step 4 review cover the Job's work, skipping only work that earlier tests and reviews cover and this iteration does not affect."
+  require_text "$ECI" "Never split the Job's main path into separately designed, implemented, tested, or reviewed stages or per-fix rounds."
   require_order "$(<"$ECI")" "$handoff" "$verification" &&
     require_order "$(<"$ECI")" "$verification" "$dispatch" ||
     fail 'Producer handoff commit and Supervisor range verification must precede Job-owner review dispatch'

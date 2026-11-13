@@ -75,9 +75,9 @@ Use blocker-resolution-protocol only after normal handling cannot resolve a stal
 
 ## Clean pass and teardown
 
-Complete the Job's normal path for each outcome and submit that outcome to the Supervisor for acceptance only after its post-Fast sequence and required evidence pass. Keep the root lifecycle and unfinished Jobs active after an individual outcome clean pass or cancellation; apply [Job-owner closure and report drain](task-orchestrator.md#publication-transfer-and-report-drain), and run root teardown only when every owned outcome is accepted or explicitly cancelled and its Writers have stopped.
+Submit each outcome to the Supervisor for acceptance only after the Job's normal path completes that outcome's work and the outcome's post-Fast sequence and required evidence pass. Keep the root lifecycle and unfinished Jobs active after an individual outcome clean pass or cancellation; apply [Job-owner closure and report drain](task-orchestrator.md#publication-transfer-and-report-drain), and run root teardown only when every owned outcome is accepted or explicitly cancelled and its Writers have stopped.
 
-An iteration is Step 1 explore → Step 2 critique → Step 3 implement → Step 4 parallel review over all the Job's remaining work. Do not advance the change until its gate is clean. Each iteration needs focused proof and independent review; E2E follows the central cadence. Final acceptance needs every original criterion, final applicable E2E evidence, and no remaining `now` issue.
+An iteration is Step 1 explore → Step 2 critique → Step 3 implement → Step 4 parallel review under the [router's iteration rule](../SKILL.md#activation-and-invariants). Do not advance the change until its gate is clean. Each iteration needs focused proof and independent review; E2E follows the central cadence. Final acceptance needs every original criterion, final applicable E2E evidence, and no remaining `now` issue.
 
 On root clean pass or root user closure: apply [both-producer closure](fast-path.md#adoption-review-and-closure); write the disengage report; request final implementer confirmation from each implementer's last published Job owner (for a child Job, through its parent owner), which relays it; record role state without closing terminal agents; then complete ordinary teardown and [native goal synchronization](#native-goal-lifecycle). The report contains exactly one `clean-pass:` or `user-closed:` certificate, Stop-checklist walkthrough, and incomplete-compliance analysis. Teardown failure leaves the lifecycle unfinished.
 
@@ -126,7 +126,7 @@ The disengage report has `## ECI completion certificate` with exactly one `clean
 
 ## Coordinator red flags
 
-- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or fixes, or a main-path iteration skips any of Steps 1–4.
+- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or per-fix rounds, or a main-path iteration skips any of Steps 1–4.
 - A critic prompt lacks lineage/full chain, original requirements, concrete winner text, or applies a defer/debt as implementation.
 - A fresh critic is replaced by a producer, a same-role followup, or serial review.
 - A known bug is sent to BRP before debugging discipline/attempt record.

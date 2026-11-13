@@ -38,7 +38,7 @@ When combined phase outputs exceed 6000 words, main thread summarizes before spa
 | 5b | Plan critic agent | Porting plan + all prior outputs | Approved/rejected plan |
 | 5 | Loop 5a→5b | Until plan critic passes or 3 iterations | Final plan |
 | 6 | Main thread | Final plan → user | User-approved plan |
-| 7 | Per-task | `explore-critique-implement` per porting task | Landed changes |
+| 7 | `explore-critique-implement` | User-approved tasks | Landed changes |
 
 ## Phase 0: Establish plan
 
@@ -211,15 +211,15 @@ Proceed only with user-approved tasks.
 
 ## Phase 7: Implementation
 
-Route each approved task through ECI's full explore→critique→implement→review loop as a separate iteration. If ECI is the outer workflow, use that workflow. If ATE is outer, ATE routes each bounded task through ECI and remains outer.
+Route the approved tasks through ECI's full explore→critique→implement→review loop. Tasks in one ECI Job share its iterations under ECI's [iteration rule](../explore-critique-implement/SKILL.md#activation-and-invariants); do not give each task its own iteration. A task admitted as a [child Job](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure) runs its own full pipeline. If ECI is the outer workflow, use that workflow. If ATE is outer, ATE routes each bounded task through ECI and remains outer.
 
-Per-task prompt must include:
+Each ECI brief for these tasks must include:
 
 - Original user requirements verbatim.
-- Specific task from porting plan (Task ID, features, approach, files, risks).
+- Each covered task from the porting plan (Task ID, features, approach, files, risks).
 - Source file paths relevant to the feature being ported.
 - Target file paths from the porting plan.
-- Dependencies on prior completed tasks and their outcomes.
+- Dependencies between tasks, and the outcomes of tasks already completed.
 - "This is a porting task. Read the source implementation before exploring options."
 
 `explore-critique-implement` handles coding skill loading per its own prerequisites.
@@ -256,7 +256,7 @@ When ATE is outer, it may run independent tasks in parallel while routing each b
 
 | Skill | Relationship |
 |-------|-------------|
-| `explore-critique-implement` | Each Phase 7 task is a full ECI iteration. Under ATE, ECI is bounded and nested. |
+| `explore-critique-implement` | Runs Phase 7 tasks under its Job and iteration rules. Under ATE, ECI is bounded and nested. |
 | `agent-teams-execution` | Starts only on explicit user request; when already outer, routes each bounded Phase 7 task through ECI and remains outer. |
 | `harness-tuning` | Apply when the porting target is a skill file, system prompt, or AGENTS.md. |
 | `brainstorming` | Use before this skill if user intent is unclear (what to port, why). |
