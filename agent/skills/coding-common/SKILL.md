@@ -52,12 +52,15 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Use canonical sources for licenses, ignore templates, and configuration schemas instead of generating them from memory.
 - Satisfy all applicable linters.
 
-### Complexity
+### Design complexity
 
 - Whenever you design or modify code, you MUST eliminate compensating complexity and patchwork by correcting the underlying design. First establish the domain model, invariants, and responsibilities from domain semantics and contracts, without assuming the existing structure is correct. Use that model to derive or validate a coherent design that solves the problem directly, then implement it and remove the code and mechanisms it makes unnecessary. A sounder design may be more general or flexible.
 - Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
 - Decrease moving parts, state, and call depth when touching code.
 - Simplify through understanding while preserving behavior, contracts, and handled cases. Never amputate semantics to look simpler.
+
+### Computational complexity
+
 - Choose algorithms and data structures with optimal time and memory complexity for the use, given its input sizes, access patterns, and constraints. For example, replace repeated linear scans with an index or set lookup.
 
 ### Semantic integrity
