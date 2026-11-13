@@ -345,7 +345,7 @@ assert_reviewer_role_split() {
     'Report findings to the current Job owner only.'; do
     require_text "$REVIEW" "$required"
   done
-  require_text "$ECI" '4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required;'
+  require_text "$ECI" '4. The current Job owner dispatches fresh A/B/C critics in parallel for every iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required;'
   require_text "$REVIEW_POLICY" 'use fresh blind Critic A (coding requirements), Critic B (correctness/fidelity), and fresh special Critic C (long-term health) in parallel.'
   require_text "$REVIEW_POLICY" 'Critic A checks applicable coding requirements and never lets style downgrade a hard contract.'
   for forbidden in 'Critic A (style)' 'Critic A checks applicable style guidance'; do
@@ -873,8 +873,8 @@ assert_eci_e2e_cadence_contract() {
   require_line "$ECI" '## E2E cadence, scope, and timing'
   section="$(extract_h2_section "$ECI" '## E2E cadence, scope, and timing')" ||
     fail "$ECI lacks a bounded E2E cadence/timing section"
-  require_section_pattern "$section" 'focused checks, diff verification, checkpoints, and independent reviews remain per iteration' \
-    'each implementation iteration.*focused tests/proof.*checked scoped producer commit during handoff.*independent supervisor verification.*immutable range.*independent code review'
+  require_section_pattern "$section" 'focused checks and independent review run each iteration; commits and range verification stay per handoff' \
+    'each implementation iteration.*focused tests/proof.*independent code review.*producers commit their checked scope during handoff.*one commit per fix if useful.*supervisor independently verifies each handed-off range'
   require_text "$ECI" 'Do not run routine E2E between iterations.'
   require_section_pattern "$section" 'only concrete failures or integration uncertainty permit early E2E' \
     'early e2e is allowed only.*concrete failure or integration uncertainty.*shortest faithful real-path scenario.*early evidence does not replace final e2e'
@@ -917,7 +917,7 @@ assert_e2e_policy_consumer_pointers() {
 
   require_line "$IMPLEMENT" 'E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).'
   require_line "$REVIEW" 'E2E cadence, scope, timing, and triggers: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).'
-  require_line "$COORDINATOR" 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for each outcome under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains acceptance and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.'
+  require_line "$COORDINATOR" 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for the Job under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains acceptance and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.'
   require_line "$FAST_PATH" 'Fast Producer E2E follows the [central ECI policy](../SKILL.md#e2e-cadence-scope-and-timing), including per-run timestamps, comparable-run regression checks, and parallel optimization when a material regression appears.'
   require_text "$REVIEW_POLICY" 'cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing)'
   require_text "$COORDINATOR_RUNTIME" 'E2E cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing)'
@@ -3472,8 +3472,8 @@ assert_least_restriction_contract() {
 assert_implementer_iteration_checkpoint_contract() {
   local handoff verification dispatch clause
   handoff='3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then commits its checked scope during handoff.'
-  verification='Before Step 4 or dependent work on another implementation iteration, the Supervisor independently verifies the Producer’s immutable parent-to-commit range.'
-  dispatch='4. The current Job owner dispatches fresh A/B/C critics in parallel for every outcome iteration'
+  verification='Before Step 4 or other work that depends on a handoff, the Supervisor independently verifies the Producer’s immutable parent-to-commit range.'
+  dispatch='4. The current Job owner dispatches fresh A/B/C critics in parallel for every iteration'
 
   require_text "$ECI_BINDING_CONTRACT" 'Within ECI, Producers commit their own checked, agreed scope during handoff.'
   require_text "$ECI_BINDING_CONTRACT" 'Before dependent review or work, the Supervisor independently verifies that exact range.'
@@ -3497,15 +3497,15 @@ assert_implementer_iteration_checkpoint_contract() {
   require_order "$(<"$ECI")" "$handoff" "$verification" &&
     require_order "$(<"$ECI")" "$verification" "$dispatch" ||
     fail 'Producer handoff commit and Supervisor range verification must precede Job-owner review dispatch'
-  require_text "$COORDINATOR" 'Each Producer commits its checked scope during handoff. Before Step 4 or dependent work in another implementation iteration, the Supervisor independently verifies the exact immutable parent-to-commit range.'
-  require_order "$(<"$COORDINATOR")" 'Each Producer commits its checked scope during handoff.' 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for each outcome' ||
+  require_text "$COORDINATOR" 'Each Producer commits its checked scope during handoff. Before Step 4 or other work that depends on a handoff, the Supervisor independently verifies the exact immutable parent-to-commit range.'
+  require_order "$(<"$COORDINATOR")" 'Each Producer commits its checked scope during handoff.' 'The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for the Job' ||
     fail 'Supervisor range verification must precede Job-owner reviewer dispatch'
   require_text "$REVIEW" 'Check scope fidelity and least restriction against `exact user source → faithful requested outcome → bounded scope`.'
   require_text "$REVIEW" 'Assume bots are non-malicious.'
   require_text "$REVIEW" 'Require every enabled gate to name a bounded legitimate-work escape path; if it has none, recommend disabling it.'
   require_text "$COORDINATOR_RUNTIME" 'The ECI Supervisor independently verifies each Producer’s exact immutable parent-to-commit range before dependent review or work.'
   require_text "$REVIEW" 'The `current diff` is the named immutable parent-to-Producer-commit range verified by the Supervisor.'
-  require_text "$COORDINATOR_RUNTIME" 'Reviewers receive that range and explicit exclusions; exclude later ambient changes.'
+  require_text "$COORDINATOR_RUNTIME" 'Reviewers receive the verified ranges in the iteration'\''s review scope and explicit exclusions; exclude later ambient changes.'
   for clause in 'Respect explicit exclusions and exclude later ambient worktree changes.' 'This is review scope, not admission proof.'; do
     require_text "$REVIEW" "$clause"
     require_text "$REVIEW_POLICY" "$clause"

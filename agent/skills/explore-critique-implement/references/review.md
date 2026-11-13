@@ -14,7 +14,7 @@ For post-Fast completion, independently review the final cumulative scoped state
 
 Tag every factual claim. An untagged claim or unpromoted T5 is not review evidence. For every finding, state one classification (`REJECT`, `CONDITIONAL`, `NIT`, or `PASS`), its impact, exact location, concrete evidence or repro/test output, and the condition that would resolve uncertainty. A behavior/interface mismatch is a hard finding, never a style deviation.
 
-The current Job owner—its Orchestrator—assigns required workflow reviews for each outcome. The Supervisor retains acceptance. A reviewer may use Helpers for bounded support, but personally establishes its independent baseline, verifies evidence, supplies its required verdict, and performs its assigned required E2E run. A Helper cannot replace any of those duties or carry conclusions into another independent review.
+The current Job owner—its Orchestrator—assigns the Job's required workflow reviews. The Supervisor retains acceptance. A reviewer may use Helpers for bounded support, but personally establishes its independent baseline, verifies evidence, supplies its required verdict, and performs its assigned required E2E run. A Helper cannot replace any of those duties or carry conclusions into another independent review.
 
 ## Critic A — coding requirements
 

@@ -40,7 +40,7 @@ Examples: a changed persistence model, ownership rule, public contract, or data/
 
 ## Three-critic review
 
-For ECI outcome-level review dispatch and evidence coordination, follow the [Job Orchestrator contract](../../explore-critique-implement/references/task-orchestrator.md#worker-and-helper-boundaries). The current Job owner dispatches required reviews for each outcome; a fresh Step 2 critic decides ECI finding treatment, and the ECI Supervisor retains acceptance. The outer Coordinator/Lead retains review assignments and acceptance for the outer workflow.
+For ECI Job-level review dispatch and evidence coordination, follow the [Job Orchestrator contract](../../explore-critique-implement/references/task-orchestrator.md#worker-and-helper-boundaries). The current Job owner dispatches the Job's required reviews; a fresh Step 2 critic decides ECI finding treatment, and the ECI Supervisor retains acceptance. The outer Coordinator/Lead retains review assignments and acceptance for the outer workflow.
 
 For governed code, use fresh blind Critic A (coding requirements), Critic B (correctness/fidelity), and fresh special Critic C (long-term health) in parallel. Name at least one critic to check that controls prevent accidental mistakes without treating bots as malicious. ECI E2E follows the [router's cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing).
 

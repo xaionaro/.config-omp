@@ -15,7 +15,7 @@ A missing record, receipt, hash, marker, or coordination detail does not deny a 
 
 For code/debug work, load test-driven-development, debugging-discipline, and every matching coding skill. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
 
-Before submission, perform the iteration's required focused unit/proof checks on the whole Job's change, never per fix. When several Producers contribute to the iteration, they agree which one runs them. Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
+Before submission, perform the iteration's required focused unit/proof checks. When several Producers contribute to the iteration, they agree which one runs them. Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
 
 E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).
 
