@@ -47,13 +47,13 @@ The Supervisor owns native goal calls; Workers and shell hooks do not create or 
 
 ## Step 4 — Review coordination
 
-Each Producer commits its checked scope during handoff. Before Step 4 or dependent work in another implementation iteration, the Supervisor independently verifies the exact immutable parent-to-commit range. The review packet gives each reviewer that range and explicit exclusions; excluded baseline and later ambient changes remain outside review scope. A Producer checkpoint is not acceptance.
+Each Producer commits its checked scope during handoff. Before Step 4 or other work that depends on a handoff, the Supervisor independently verifies the exact immutable parent-to-commit range. The review packet gives each reviewer the verified ranges of the whole Job's change and explicit exclusions; excluded baseline and later ambient changes remain outside review scope. A Producer checkpoint is not acceptance.
 
 Apply the [fast-path adoption boundary](fast-path.md#adoption-review-and-closure) for write-yields, additional cumulative review targets, and final-state coverage. An intermediate review does not complete the normal path; schedule the mandatory post-Fast sequence after Fast finishes and its write-capable tools stop.
 Follow the normative [post-Fast completion sequence](fast-path.md#post-fast-completion).
 Enforce ECI without making [finding decisions](../SKILL.md#step-handoffs); a fresh Step 2 critic makes them, except a [stall decision](#stall-decisions). Alongside dependent work and again before acceptance, check that the critic decided one [treatment](../../references/workflow-runtime/review-policy.md#gate-evaluation) for each finding and exactly one disposition for each in-scope inventory item; that each decision cites its evidence and each defer cites evidence for each eligibility condition; that no original criterion is waived; and that each decision the critic names as the user's is [user-owned](../../../eci-binding-contract.md#decisions) before it reaches the user; one that is not is a gap. Check that cited evidence exists at its source; evidence you see as insufficient gets the [role rule's](../SKILL.md#activation-and-invariants) mistake notice, and the critic decides sufficiency. State each gap as missing evidence and quote its source. Return the gap to the current Job owner for a fresh Step 2 critic (for a child Job, through its parent owner) and withhold acceptance, not dispatch, until it is resolved.
 
-The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews for each outcome under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains acceptance and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.
+The current Job owner alone assigns fresh Step 2, A/B/C, and required independent E2E reviews covering all the Job's outcomes under the [Job Orchestrator contract](task-orchestrator.md#worker-and-helper-boundaries). The Supervisor verifies each Producer range before dependent review/work and retains acceptance and protected operations. E2E follows the [central cadence, scope, and timing policy](../SKILL.md#e2e-cadence-scope-and-timing), including its early-run condition and final independent run.
 
 E2E triggers: [Configuration E2E contract](../SKILL.md#configuration-e2e-contract) and [Runtime E2E policy](../SKILL.md#runtime-e2e-policy).
 
@@ -77,7 +77,7 @@ Use blocker-resolution-protocol only after normal handling cannot resolve a stal
 
 Complete each outcome's normal path and submit it to the Supervisor for acceptance only after its post-Fast sequence and required evidence pass. Keep the root lifecycle and unfinished Jobs active after an individual outcome clean pass or cancellation; apply [Job-owner closure and report drain](task-orchestrator.md#publication-transfer-and-report-drain), and run root teardown only when every owned outcome is accepted or explicitly cancelled and its Writers have stopped.
 
-An iteration is Step 1 explore → Step 2 critique → Step 3 implement → Step 4 parallel review. Do not advance the change until its gate is clean. Each iteration needs focused proof and independent review; E2E follows the central cadence. Final acceptance needs every original criterion, final applicable E2E evidence, and no remaining `now` issue.
+An iteration is Step 1 explore → Step 2 critique → Step 3 implement → Step 4 parallel review over the Job's whole scope. Do not advance the change until its gate is clean. Each iteration needs focused proof and independent review; E2E follows the central cadence. Final acceptance needs every original criterion, final applicable E2E evidence, and no remaining `now` issue.
 
 On root clean pass or root user closure: apply [both-producer closure](fast-path.md#adoption-review-and-closure); write the disengage report; request final implementer confirmation from each implementer's last published Job owner (for a child Job, through its parent owner), which relays it; record role state without closing terminal agents; then complete ordinary teardown and [native goal synchronization](#native-goal-lifecycle). The report contains exactly one `clean-pass:` or `user-closed:` certificate, Stop-checklist walkthrough, and incomplete-compliance analysis. Teardown failure leaves the lifecycle unfinished.
 
@@ -126,7 +126,7 @@ The disengage report has `## ECI completion certificate` with exactly one `clean
 
 ## Coordinator red flags
 
-- Two dependent changes in one task are implemented before a new critique, or a main-path iteration skips any of Steps 1–4.
+- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or fixes, or a main-path iteration skips any of Steps 1–4.
 - A critic prompt lacks lineage/full chain, original requirements, concrete winner text, or applies a defer/debt as implementation.
 - A fresh critic is replaced by a producer, a same-role followup, or serial review.
 - A known bug is sent to BRP before debugging discipline/attempt record.
