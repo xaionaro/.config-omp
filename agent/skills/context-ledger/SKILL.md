@@ -178,8 +178,7 @@ Add a `details.status_update` closing a report task only when the report has a
 task for that leaf, targeting that task's own ID. Correct a leaf with a
 `correction` event whose `details` holds `corrects`, the one-based line of the
 event it replaces, and the full corrected `leaf_completion` under the same key
-and execution; the table replaces by key and execution and sums a leaf's
-executions.
+and execution; the table replaces by key and execution.
 
 ```sh
 "$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf_completion":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
@@ -347,10 +346,10 @@ scenario data into a rendered report. Omit an active target when inactive.
 `base_case` contains `endpoint` and a `packages` list with one entry per node of
 the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
-leaf the work tree must explain and `multiplier`, such as `"0–1"`, for one that
-may run zero or several times; a child's `id` is its parent's `id` plus `.`
+leaf the work tree must explain; a child's `id` is its parent's `id` plus `.`
 and a segment, such as `1.2`. Write each `duration` as a range, such as
-`"10–20 minutes"`; a package with a `multiplier` gives one execution's. Each
+`"10–20 minutes"`; for a leaf with a multiplier, write one execution's range
+followed by the multiplier, such as `"15–30 minutes ×0–2"`. Each
 scenario contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
