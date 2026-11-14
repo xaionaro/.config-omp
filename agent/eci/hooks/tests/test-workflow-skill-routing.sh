@@ -41,7 +41,7 @@ heading_anchors() {
 assert_local_links_resolve() {
   local file link path target fragment
   local -A anchors=()
-  # Every Markdown file of the workflow skills, so a new module is checked without editing this list.
+  # Every Markdown file of these workflow skills, so a new module is checked without editing this list.
   local -a documents=(
     "$ROOT"/../skills/{explore-critique-implement,agent-teams-execution,context-ledger,debugging-discipline,writing-status-reports}/**/*.md
     "$ROOT"/../skills/references/**/*.md
