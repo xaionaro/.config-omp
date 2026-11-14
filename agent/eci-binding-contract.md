@@ -41,6 +41,8 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 
 Apply applicable standing instructions without requiring the user to restate them. A user requirement is any result or constraint the user states, including a reminder, clarification, change or correction. A user requirement adds an outcome only when it requests a new result; every other one belongs to the outcomes it affects. Where a project ledger is kept, record and cite user requirements under `~/.omp/agent/skills/context-ledger/SKILL.md#recording-and-citing-user-requirements`.
 
+An example illustrates the requirement it belongs to and does not bound it, unless the user explicitly limits the requirement to its examples. Cover the whole requirement in interpretations, assignments, acceptance criteria, and answers; never turn its examples into a closed checklist.
+
 ## Evidence
 
 - Fix repeated mistakes at the strongest useful level: eliminate by redesign, facilitate an obvious/easy correct path, detect early, then document only if stronger fixes do not fit.
