@@ -586,12 +586,15 @@ func hookPrefixAcknowledged(
 }
 
 // hookGitDirectory resolves the directory the planner treats as the start of Git's
-// relative paths: the callback directory, changed by -C and --work-tree in original
-// order. --git-dir selects only the repository; Git then treats the current directory
-// as the worktree top unless the repository sets core.worktree. It never substitutes
-// the callback directory for an unknown child directory.
+// relative paths: the callback directory, changed by -C in original order. Git resolves
+// the last --work-tree after every -C, then starts relative paths at the current
+// directory when it lies inside that tree, otherwise at the tree's top. In an unknown
+// directory, an absolute --work-tree gives its top. --git-dir selects only the
+// repository, so the current directory stays the worktree top. GIT_DIR, GIT_WORK_TREE
+// and core.worktree are not modeled. It never substitutes the callback directory for
+// an unknown child directory.
 //
-// Example: git -C /project -C subdir add file selects /project/subdir.
+// Example: git -C /project/sub --work-tree=.. add file selects /project/sub.
 func hookGitDirectory(
 	record ShellCommandRecord,
 	argv []token,
@@ -601,6 +604,7 @@ func hookGitDirectory(
 	if record.CWDKnown {
 		directory = record.CWD
 	}
+	workTree := ""
 	for index := 1; index < verbIndex; index++ {
 		value := argv[index].value
 		target := ""
@@ -617,20 +621,16 @@ func hookGitDirectory(
 			}
 			target = strings.TrimPrefix(value, "-C")
 		case value == "--work-tree":
-			// TODO: Git starts relative paths at the current directory when it lies inside
-			// the --work-tree target, and resolves a relative target after every -C. From
-			// sub, git --work-tree=.. reset file is falsely denied; resolve the repository
-			// root and prefix, as hookGitWholePathspec needs, and use them here.
 			index++
 			if index >= verbIndex || !hookArgumentKnown(record, argv[index].offset) {
 				return ""
 			}
-			target = argv[index].value
+			workTree = argv[index].value
 		case strings.HasPrefix(value, "--work-tree="):
 			if !hookArgumentKnown(record, argv[index].offset) {
 				return ""
 			}
-			_, target, _ = strings.Cut(value, "=")
+			_, workTree, _ = strings.Cut(value, "=")
 		case isGitSplitContextOption(value):
 			// Another option's separate value, such as --git-dir's, selects no directory.
 			index++
@@ -648,7 +648,23 @@ func hookGitDirectory(
 		}
 		directory = resolvePathIdentity(filepath.Join(directory, target))
 	}
-	return directory
+	if workTree == "" {
+		return directory
+	}
+	if !filepath.IsAbs(workTree) {
+		if directory == "" {
+			return ""
+		}
+		workTree = filepath.Join(directory, workTree)
+	}
+	top := resolvePathIdentity(workTree)
+	// TODO: after cd <dir> &&, Git starts at <dir> when it lies inside the tree, so
+	// cd hooks && git --work-tree=<top> rm validate-bash.sh is unchecked; check every CWD
+	// candidate, as hookGitResetLoneRevision needs.
+	if directory != "" && pathWithin(resolvePathIdentity(directory), top) {
+		return directory
+	}
+	return top
 }
 
 // inspectHookGit checks concrete broad Git effects.
@@ -721,6 +737,8 @@ func inspectHookGitBroad(
 	default:
 		return nil
 	}
+	// TODO: in an unknown working directory, directory is empty, so the reason ends in
+	// ": " and Path is empty; name the unknown directory instead.
 	diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "Git "+verb+" selects the whole repository index or worktree: "+directory,
 		record.Segment, argv[verbIndex].offset, argv[verbIndex], route, "git-broad-effect")
 	diagnostic.Path = directory
@@ -730,7 +748,8 @@ func inspectHookGitBroad(
 // hookGitAddCleanWhole reports a git add or clean that selects the whole worktree: add
 // with -A or -u, or clean with a force, directory or ignored-file option, and no path
 // other than a whole pathspec. Previews, help, unknown options and unknown operands
-// stay advisory.
+// stay advisory, except that an operand after -- that may expand to nothing narrows
+// nothing.
 //
 // Example: git add -A and git clean -fdx are whole; git add -A -- owned.txt is not.
 func hookGitAddCleanWhole(
@@ -789,9 +808,10 @@ func hookGitWholePathspec(
 	value string,
 	directory string,
 ) bool {
-	// TODO: from a subdirectory, . and the directory select only that subdirectory, and ..
-	// can select the whole tree. Resolve the repository root to classify both, for add and
-	// reset alike; until then cd sub && git reset -- . is falsely denied.
+	// TODO: from a subdirectory, . and the directory select only that subdirectory, while ..
+	// or the top's own path can select the whole tree. Resolve the repository root to
+	// classify both, for add and reset alike; until then cd sub && git reset -- . is
+	// falsely denied and git -C sub --work-tree=<top> reset <top> is unchecked.
 	cleaned := filepath.Clean(value)
 	return cleaned == "." || value == ":/" || cleaned == directory
 }
@@ -857,7 +877,7 @@ func hookGitResetWhole(
 	return hookGitResetLoneRevision(last, directory)
 }
 
-// hookGitResetLoneRevision reports that Git may read the lone operand of a mode-less
+// hookGitResetLoneRevision reports that Git may read the lone operand of a mixed
 // reset without -- as a revision. Git reads an operand that exists in the working
 // directory as a path, or refuses it when it also names a revision. A missing operand
 // is a revision, a wildcard pathspec, or an error; the planner resolves no revision,
@@ -876,6 +896,9 @@ func hookGitResetLoneRevision(
 		// CWD candidate.
 		return hookHeadRevision(operand)
 	}
+	// TODO: Git reads a lone :/<path> as a path from the repository root when that path
+	// exists, so git reset :/owned.txt is falsely denied; look it up there once the root
+	// is resolved. A lone :!<path> or :^<path> resets every other path and stays checked.
 	path := operand
 	if !filepath.IsAbs(path) {
 		path = joinLiteralPath(directory, path)

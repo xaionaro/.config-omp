@@ -20,9 +20,10 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	// These paths exist so that Git reads a lone operand of that name as a path:
-	// HEADER.md and HEAD~2 bound the HEAD rule, meta/HEAD shows that --git-dir moves no
-	// lookup, and the file owned.txt makes owned.txt/x a missing path.
+	// These paths exist so that, in a known directory, Git reads a lone operand of that
+	// name as a path, even the HEAD-shaped HEAD~2; meta/HEAD shows that --git-dir moves no
+	// lookup, and the file owned.txt makes owned.txt/x a missing path. After cd sub the
+	// directory is unknown, so no lookup runs and the HEAD rule alone decides.
 	for _, path := range []string{"owned.txt", "HEADER.md", "HEAD~2", "sub/owned.txt", "meta/HEAD"} {
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0o700))
 		require.NoError(t, os.WriteFile(filepath.Join(root, path), nil, 0o600))
@@ -36,6 +37,7 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		{command: "git add -A", remediation: addRoute},
 		{command: "ECI_WHOLE_TREE_RESET=1 git add -A", remediation: addRoute},
 		{command: "git add -A ./", remediation: addRoute},
+		{command: "git add -A -- $F", remediation: addRoute},
 		{command: "git reset --hard", remediation: resetRoute},
 		{command: "git reset --hard HEAD", remediation: resetRoute},
 		{command: "git reset --keep HEAD~1", remediation: resetRoute},
@@ -66,6 +68,7 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		{command: "git reset owned.txt/x", remediation: resetRoute},
 		{command: "git reset " + root + "/missing", remediation: resetRoute},
 		{command: "cd sub && git reset HEAD", remediation: resetRoute},
+		{command: "cd sub && git reset @^", remediation: resetRoute},
 		{command: "git reset -- owned.txt"},
 		{command: "git reset --soft HEAD~1"},
 		{command: "git reset --hard --soft"},
@@ -83,6 +86,11 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		// A lookup failure other than a missing path, here a name too long, stays advisory.
 		{command: "git reset " + strings.Repeat("x", 256)},
 		{command: "cd sub && git reset owned.txt"},
+		{command: "cd sub && git reset HEADER.md"},
+		{command: "cd sub && git reset HEAD~x"},
+		// A relative --work-tree in an unknown directory leaves the directory unknown.
+		{command: "cd sub && git --work-tree=.. reset owned.txt"},
+		{command: "git add -A $F"},
 		{command: "git restore --staged -- owned.txt"},
 		{command: "git add -- owned.txt"},
 		{command: "git status"},
@@ -105,6 +113,8 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 //
 // Example: git worktree add next is an ordinary native Worker command, not a typed-route denial.
 func TestHookWorkerGitWorktreeAddStaysNative(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	for _, command := range []string{"git worktree add next", "git worktree add --detach next HEAD"} {
 		t.Run(command,
@@ -507,6 +517,11 @@ func TestHookGitLiveGateRemoval(t *testing.T) {
 		{"git rm -r -- agent/eci/hooks", true},
 		{"git mv agent/eci/hooks/validate-bash.sh saved", true},
 		{"git -C agent/eci mv hooks/validate-bash.sh saved", true},
+		{"git -C agent/eci/hooks --work-tree=../../.. rm validate-bash.sh", true},
+		{"git -C agent/eci/hooks --work-tree ../../.. mv validate-bash.sh saved", true},
+		{"git -C agent/eci/hooks --work-tree='" + repo + "' rm validate-bash.sh", true},
+		{"git --work-tree=../.. -C agent/eci rm hooks/validate-bash.sh", true},
+		{"git -C '" + dependency + "' --git-dir='" + repo + "/.git' --work-tree='" + repo + "' rm agent/eci/hooks/validate-bash.sh", true},
 		{"git rm --cached agent/eci/hooks/validate-bash.sh", false},
 		{"git rm -n agent/eci/hooks/validate-bash.sh", false},
 		{"git rm -rn -- agent/eci/hooks", false},

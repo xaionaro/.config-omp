@@ -1256,6 +1256,8 @@ func isGitCloneLaunchContextCandidate(argv []token) bool {
 			return index > 1
 		}
 		switch {
+		// TODO: this repeats Git's global-option lists in isGitSplitContextOption and
+		// isGitContextOption; reuse them so each option is listed once.
 		case value == "-C" || value == "-c" || value == "--config-env" ||
 			value == "--git-dir" || value == "--work-tree" || value == "--exec-path" ||
 			value == "--namespace" || value == "--super-prefix":
@@ -7843,6 +7845,8 @@ func gitSubcommandIndex(argv []token) int {
 // merely because its context value uses split spelling.
 func isGitSplitContextOption(value string) bool {
 	switch value {
+	// TODO: --exec-path takes its value only after =; bare --exec-path prints the path
+	// and exits, so it must not consume the next word.
 	case "-C", "-c", "--config-env", "--git-dir", "--work-tree", "--exec-path", "--namespace", "--super-prefix":
 		return true
 	default:
