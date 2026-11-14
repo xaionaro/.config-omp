@@ -198,6 +198,10 @@ func ParseDenial(raw []byte) (Denial, error) {
 		return Denial{}, &TelemetryReductionError{Reason: "diagnostic identity rejected"}
 	}
 	code := TelemetryCode(codeMatches[1])
+	// TODO: the Bash callback codes ECI_LIVE_BASH_GATE_REMOVAL_DENIED,
+	// ECI_MAKE_MEMORY_CAP_REQUIRED and ECI_WORKER_SESSIONS_ROOT_DENIED are unregistered, so
+	// permissive mode records them as ECI_OTHER_DENIAL; add them to contract.go and
+	// telemetryCodeRegistry.
 	if _, ok := telemetryCodeRegistry[code]; !ok {
 		code = TelemetryCodeOther
 	}

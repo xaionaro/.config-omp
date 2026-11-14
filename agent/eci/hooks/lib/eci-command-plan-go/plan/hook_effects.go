@@ -590,9 +590,9 @@ func hookPrefixAcknowledged(
 // the last --work-tree after every -C, then starts relative paths at the current
 // directory when it lies inside that tree, otherwise at the tree's top. In an unknown
 // directory, an absolute --work-tree gives its top. --git-dir selects only the
-// repository, so the current directory stays the worktree top. GIT_DIR, GIT_WORK_TREE
-// and core.worktree are not modeled. It never substitutes the callback directory for
-// an unknown child directory.
+// repository; without --work-tree, the current directory is the worktree top. GIT_DIR,
+// GIT_WORK_TREE and core.worktree are not modeled. It never substitutes the callback
+// directory for an unknown child directory.
 //
 // Example: git -C /project/sub --work-tree=.. add file selects /project/sub.
 func hookGitDirectory(
@@ -646,6 +646,10 @@ func hookGitDirectory(
 		if directory == "" {
 			return ""
 		}
+		// TODO: filepath.Join cancels .. textually, while Git resolves it from the physical
+		// directory, so from a CWD reached through a symlink, git -C .. rm
+		// hooks/validate-bash.sh is unchecked; resolve this join and the relative
+		// --work-tree join below with resolvePhysicalDirectory, as physical cd does.
 		directory = resolvePathIdentity(filepath.Join(directory, target))
 	}
 	if workTree == "" {
@@ -659,8 +663,9 @@ func hookGitDirectory(
 	}
 	top := resolvePathIdentity(workTree)
 	// TODO: after cd <dir> &&, Git starts at <dir> when it lies inside the tree, so
-	// cd hooks && git --work-tree=<top> rm validate-bash.sh is unchecked; check every CWD
-	// candidate, as hookGitResetLoneRevision needs.
+	// cd hooks && git --work-tree=<top> rm validate-bash.sh is unchecked, as is
+	// cd sub && git --work-tree=<top> reset side when side is a branch and a path only at
+	// the top; check every CWD candidate, as hookGitResetLoneRevision needs.
 	if directory != "" && pathWithin(resolvePathIdentity(directory), top) {
 		return directory
 	}
@@ -813,6 +818,9 @@ func hookGitWholePathspec(
 	// classify both, for add and reset alike; until then cd sub && git reset -- . is
 	// falsely denied and git -C sub --work-tree=<top> reset <top> is unchecked.
 	cleaned := filepath.Clean(value)
+	// TODO: this comparison is textual, so a symlinked spelling of directory, such as
+	// git -C . reset <top> from a symlinked path, is unchecked; compare resolved path
+	// identities.
 	return cleaned == "." || value == ":/" || cleaned == directory
 }
 
