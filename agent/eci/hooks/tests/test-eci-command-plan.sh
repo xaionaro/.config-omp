@@ -309,7 +309,8 @@ for provider in eci kimi; do
   # Native Git families remain available to Workers without marker authority.
   assert_allowed "$provider" worker active 'git rebase topic'
   assert_allowed "$provider" worker active 'git worktree add /tmp/eci-worker-tree HEAD'
-  assert_allowed "$provider" worker active 'git reset --hard HEAD'
+  assert_denied "$provider" worker active 'git reset --hard HEAD' ECI_BROAD_DESTRUCTIVE_DENIED
+  assert_allowed "$provider" worker active 'ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD'
 
   proof_root="$TMP_ROOT/$provider-worker-active-proof"
   if [ "$provider" = kimi ]; then

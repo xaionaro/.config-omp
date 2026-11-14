@@ -109,11 +109,13 @@ assert_allowed "git ci -m 'ordinary alias spelling'"
 # Git itself owns an unresolved repository diagnostic; it is not an ECI denial.
 assert_allowed "git -C $NON_REPO add -- file.txt"
 
-# Repository selection and reset stay native; broad staging remains checked.
+# Repository selection stays native; whole-tree reset and broad staging remain
+# checked, and an acknowledged whole-tree reset stays native.
 assert_allowed "git -C $FOREIGN_REPO branch topic"
 assert_allowed "printf ready | git -C $FOREIGN_REPO add -- file.txt"
-assert_allowed "git -C $REPO reset --hard"
-assert_allowed "env GIT_DIR=$REPO/.git /usr/bin/git reset --hard"
+assert_denied_code "git -C $REPO reset --hard" ECI_BROAD_DESTRUCTIVE_DENIED
+assert_denied_code "env GIT_DIR=$REPO/.git /usr/bin/git reset --hard" ECI_BROAD_DESTRUCTIVE_DENIED
+assert_allowed "ECI_WHOLE_TREE_RESET=1 git -C $REPO reset --hard"
 assert_denied_code "git -C $REPO add -A" ECI_BROAD_DESTRUCTIVE_DENIED
 
 printf '%s\n' 'validate-bash Git normalization: PASS'

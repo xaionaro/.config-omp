@@ -975,6 +975,19 @@ assert_git_whole_worktree_staging_denied() {
     return 1
   }
 }
+# A whole-tree reset denial is the broad Git denial plus the acknowledged route.
+assert_git_whole_reset_denied() {
+  local command="$1" runner="${2:-run_hook}" output
+  assert_git_whole_worktree_staging_denied "$command" "$runner" || return 1
+  output="$("$runner" "$command")"
+  jq -e '
+    .hookSpecificOutput.permissionDecisionReason | contains("ECI_WHOLE_TREE_RESET=1")
+  ' "$output" >/dev/null || {
+    printf 'Git whole-tree reset route mismatch: command=%q output=%s\n' "$command" "$output" >&2
+    [ ! -e "$output" ] || cat -- "$output" >&2
+    return 1
+  }
+}
 # Removing or relocating a live Bash-gate file blocks every later Bash call; the
 # denial names the in-place, index-only and acknowledged routes.
 assert_live_gate_removal_denied() {
@@ -1240,11 +1253,20 @@ run_hook_matrix_parallel python-script-required coordinator-python-direct \
   "python3 -" \
   "env -S python3 -m pytest tests"
 
-# Ordinary commits and reset do not infer ownership from legacy markers.
+# Ordinary commits do not infer ownership from legacy markers. A whole-tree
+# reset is checked and names its acknowledged route; path-scoped, --soft and
+# acknowledged resets stay native.
 run_hook_matrix_parallel allowed coordinator-git-commit \
   "git commit -m 'checkpoint'"
-run_hook_matrix_parallel allowed coordinator-git-reset \
-  "git reset --hard"
+run_matrix_parallel coordinator assert_git_whole_reset_denied coordinator-git-reset \
+  "git reset --hard" \
+  "git reset" \
+  "git reset HEAD" \
+  "git reset -- ."
+run_hook_matrix_parallel allowed coordinator-git-reset-scoped \
+  "git reset -- hooks/validate-bash.sh" \
+  "git reset --soft HEAD" \
+  "ECI_WHOLE_TREE_RESET=1 git reset --hard"
 
 if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
   [ -f "$kimi_root/bin/eci-active" ] && [ ! -L "$kimi_root/bin/eci-active" ]; then
@@ -2294,6 +2316,8 @@ run_subagent_matrix_parallel allowed worker-instruction-reads \
   "cat $subagent_eci_home/skills/test/not-a-source.fifo"
 run_subagent_matrix_parallel allowed worker-native-git \
   "git commit --amend -m checkpoint" \
+  "ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD"
+run_matrix_parallel worker assert_git_whole_reset_denied worker-git-reset \
   "git reset --hard HEAD"
 run_matrix_parallel worker-root-owner assert_allowed worker-protected-git \
   "git checkout -- hooks/validate-bash.sh"

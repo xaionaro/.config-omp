@@ -1421,7 +1421,7 @@ run_worker_git_cli_matrix() {
   assert_allowed "git -C $FOREIGN_REPO status --short" worker
   assert_allowed 'git add -- file.txt' coordinator
   assert_denied_code 'git add -A' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
-  assert_allowed 'git reset --hard' coordinator
+  assert_denied_code 'git reset --hard' ECI_BROAD_DESTRUCTIVE_DENIED coordinator
   for command in 'git rebase topic' 'git merge topic' 'git checkout -- file.txt' 'git rm -- file.txt' 'git mv file.txt next.txt' 'git diff && env git add -- file.txt'; do
     assert_allowed "$command" worker
   done
@@ -1525,16 +1525,17 @@ run_effect_aware_git_target() {
 case "${NORMAL_GIT_ADMISSION_TARGET:-full}" in
   git-run-once)
     for role in coordinator worker; do
-      assert_allowed "git -C $REPO reset --hard" "$role"
+      assert_denied_code "git -C $REPO reset --hard" ECI_BROAD_DESTRUCTIVE_DENIED "$role"
+      assert_allowed "ECI_WHOLE_TREE_RESET=1 git -C $REPO reset --hard" "$role"
       command="\"$RUNTIME_ROOT/bin/eci-worker-git\" --repo \"$REPO\" run-once --reason 'user approved fixture reset' --user-authorized -- reset --hard"
       assert_allowed "$command" "$role"
-      assert_allowed "$command; git -C $REPO reset --hard" "$role"
+      assert_denied_code "$command; git -C $REPO reset --hard" ECI_BROAD_DESTRUCTIVE_DENIED "$role"
       assert_allowed "$command; rm $FOREIGN_TIMEOUT_CONTROL_INNER/eci_active" "$role"
       printf 'modified\n' >"$REPO/file.txt"
       HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \
         "$RUNTIME_ROOT/bin/eci-worker-git" --repo "$REPO" run-once --reason 'user approved fixture reset' --user-authorized -- reset --hard
       [ "$(cat -- "$REPO/file.txt")" = base ]
-      assert_allowed "git -C $REPO reset --hard" "$role"
+      assert_denied_code "git -C $REPO reset --hard" ECI_BROAD_DESTRUCTIVE_DENIED "$role"
     done
     printf 'unchanged\n' >"$REPO/file.txt"
     if HOME="$HOME_ROOT" ECI_HOME="$RUNTIME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" \

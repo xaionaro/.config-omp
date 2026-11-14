@@ -17,6 +17,11 @@ import (
 // Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
 const hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROOT_DENIED"
 
+// hookWholeResetAcknowledgment is the prefix assignment that admits one intended whole-tree reset.
+//
+// Example: ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD~1.
+const hookWholeResetAcknowledgment = "ECI_WHOLE_TREE_RESET=1"
+
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
 //
@@ -60,7 +65,7 @@ func inspectHookEffects(
 		if diagnostic := inspectHookGit(request, record, child); diagnostic != nil {
 			return diagnostic
 		}
-		if diagnostic := inspectHookLiveGateRemoval(record, argv, child); diagnostic != nil {
+		if diagnostic := inspectHookLiveGateRemoval(record, child); diagnostic != nil {
 			return diagnostic
 		}
 		childRequest := request
@@ -582,6 +587,36 @@ func hookArgumentKnown(
 		!slices.Contains(record.UnknownCardinalityArguments, index)
 }
 
+// hookPrefixAcknowledged reports a known prefix assignment equal to acknowledgment
+// before the command word, including after env.
+//
+// Example: ECI_WHOLE_TREE_RESET=1 git reset --hard acknowledges one whole-tree reset.
+func hookPrefixAcknowledged(
+	record ShellCommandRecord,
+	child []token,
+	acknowledgment string,
+) bool {
+	for index, value := range record.Argv[:child[0].offset] {
+		if value == acknowledgment && hookArgumentKnown(record, index) {
+			return true
+		}
+	}
+	return false
+}
+
+// hookHeadRevision reports a reset operand Git always reads as a revision: HEAD or @
+// with optional ~ and ^ steps. A same-named path makes Git refuse the reset as
+// ambiguous, so the operand never selects a path.
+//
+// Example: HEAD~1 and @^ qualify; owned.txt and HEADS do not.
+func hookHeadRevision(value string) bool {
+	name, steps := value, ""
+	if index := strings.IndexAny(value, "~^"); index >= 0 {
+		name, steps = value[:index], value[index:]
+	}
+	return (name == "HEAD" || name == "@") && strings.Trim(steps, "~^0123456789") == ""
+}
+
 // hookGitDirectory resolves explicit Git directory selection in original order.
 // It never substitutes the callback directory for an unknown child directory.
 //
@@ -694,7 +729,7 @@ func inspectHookGitBroad(
 	if verb != "add" && verb != "reset" && verb != "clean" {
 		return nil
 	}
-	whole := verb == "reset" && verbIndex+1 == len(argv)
+	whole := false
 	paths := 0
 	options := true
 	revision := false
@@ -732,11 +767,12 @@ func inspectHookGitBroad(
 			continue
 		}
 		if verb == "reset" && options && !revision {
-			if !whole {
+			if !whole && !hookHeadRevision(value) {
 				// Without an explicit reset mode or --, this literal may be
 				// a path rather than a revision. That identity stays advisory.
 				return nil
 			}
+			whole = true
 			revision = true
 			continue
 		}
@@ -744,14 +780,21 @@ func inspectHookGitBroad(
 			paths++
 		}
 	}
+	if verb == "reset" && options && !revision {
+		// Only mode or quiet options were given, so Git resets the whole index to HEAD.
+		whole = true
+	}
 	if !whole || paths > 0 {
 		return nil
 	}
 	route := "use native Git with exact owned repository-relative paths; preserve unrelated work"
 	if verb == "reset" {
+		if hookPrefixAcknowledged(record, argv, hookWholeResetAcknowledgment) {
+			return nil
+		}
 		// A whole-index reset clears other Producers' staging and --hard
 		// overwrites live files; this route keeps every effect path-scoped.
-		route = "unstage with git reset -- <owned paths>; discard with git restore [--staged] -- <owned paths>; move HEAD with git reset --soft <rev>, then restore owned paths"
+		route = "unstage with git reset -- <owned paths>; discard with git restore --staged --worktree -- <owned paths>; move HEAD with git reset --soft <rev>, then restore owned paths; for an intended whole-tree reset after git status shows only your own staged and uncommitted work, prefix this command with " + hookWholeResetAcknowledgment
 	}
 	diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "Git "+verb+" selects the whole repository index or worktree: "+directory,
 		record.Segment, argv[verbIndex].offset, argv[verbIndex], route, "git-broad-effect")
@@ -982,17 +1025,14 @@ var liveBashGateRelativePaths = [...]string{
 // Example: rm hooks/validate-bash.sh is denied; ECI_LIVE_HOOK_REMOVAL=1 rm hooks/validate-bash.sh is not.
 func inspectHookLiveGateRemoval(
 	record ShellCommandRecord,
-	argv []token,
 	child []token,
 ) *Diagnostic {
 	name, base, targets := hookRemovalTargets(record, child)
 	if len(targets) == 0 {
 		return nil
 	}
-	for _, prefix := range argv[:child[0].offset] {
-		if prefix.value == hookLiveRemovalAcknowledgment && hookArgumentKnown(record, prefix.offset) {
-			return nil
-		}
+	if hookPrefixAcknowledged(record, child, hookLiveRemovalAcknowledgment) {
+		return nil
 	}
 	for _, argument := range targets {
 		lexical := argument.value
