@@ -29,6 +29,9 @@ func inspectHookEffects(
 	if result.ShellAnalysis == nil {
 		return nil
 	}
+	// TODO: diagnostics returned here leave RejectedSegment empty, so every
+	// hook-effects denial prints "rejected segment=;". Fill it from the denied
+	// record's argv, shell-escaped as classifier.go rejectedSegment does.
 	for _, record := range result.ShellAnalysis.Commands {
 		if !hookRecordRuns(record) {
 			continue
