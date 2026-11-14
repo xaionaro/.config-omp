@@ -17,7 +17,12 @@ import (
 // Example: a whole-index add or reset is denied with its route, while exact-path
 // and soft resets remain native as the bounded route.
 func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
+	// These paths exist so that Git reads a lone operand of that name as a path:
+	// HEADER.md and HEAD~2 bound the HEAD rule, meta/HEAD shows that --git-dir moves no
+	// lookup, and the file owned.txt makes owned.txt/x a missing path.
 	for _, path := range []string{"owned.txt", "HEADER.md", "HEAD~2", "sub/owned.txt", "meta/HEAD"} {
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0o700))
 		require.NoError(t, os.WriteFile(filepath.Join(root, path), nil, 0o600))
@@ -30,6 +35,7 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 	}{
 		{command: "git add -A", remediation: addRoute},
 		{command: "ECI_WHOLE_TREE_RESET=1 git add -A", remediation: addRoute},
+		{command: "git add -A ./", remediation: addRoute},
 		{command: "git reset --hard", remediation: resetRoute},
 		{command: "git reset --hard HEAD", remediation: resetRoute},
 		{command: "git reset --keep HEAD~1", remediation: resetRoute},
@@ -53,6 +59,13 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		{command: "git reset 0123abc", remediation: resetRoute},
 		{command: "git --git-dir=meta reset HEAD", remediation: resetRoute},
 		{command: `ECI_WHOLE_TREE_RESET="$X" git reset --hard`, remediation: resetRoute},
+		{command: "git reset --merge", remediation: resetRoute},
+		{command: "git reset ./", remediation: resetRoute},
+		{command: "git reset -- ./", remediation: resetRoute},
+		{command: "git reset " + root + "/", remediation: resetRoute},
+		{command: "git reset owned.txt/x", remediation: resetRoute},
+		{command: "git reset " + root + "/missing", remediation: resetRoute},
+		{command: "cd sub && git reset HEAD", remediation: resetRoute},
 		{command: "git reset -- owned.txt"},
 		{command: "git reset --soft HEAD~1"},
 		{command: "git reset --hard --soft"},
@@ -66,6 +79,10 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		{command: "git reset sub"},
 		{command: "ECI_WHOLE_TREE_RESET=1 git reset --hard"},
 		{command: "env ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD~1"},
+		{command: "git reset " + root + "/owned.txt"},
+		// A lookup failure other than a missing path, here a name too long, stays advisory.
+		{command: "git reset " + strings.Repeat("x", 256)},
+		{command: "cd sub && git reset owned.txt"},
 		{command: "git restore --staged -- owned.txt"},
 		{command: "git add -- owned.txt"},
 		{command: "git status"},
@@ -106,6 +123,8 @@ func TestHookWorkerGitWorktreeAddStaysNative(t *testing.T) {
 //
 // Example: exact file additions remain distinct from whole-worktree additions.
 func TestHookCoordinatorGitTargets(t *testing.T) {
+	t.Parallel()
+
 	root := t.TempDir()
 	foreign := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o600))

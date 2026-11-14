@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 )
 
 // hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
@@ -584,11 +585,11 @@ func hookPrefixAcknowledged(
 	return false
 }
 
-// hookGitDirectory resolves the directory Git's relative paths start from: the callback
-// directory, changed by -C and --work-tree in original order. --git-dir selects only the
-// repository; Git then treats the current directory as the worktree top unless the
-// repository sets core.worktree. It never substitutes the callback directory for an
-// unknown child directory.
+// hookGitDirectory resolves the directory the planner treats as the start of Git's
+// relative paths: the callback directory, changed by -C and --work-tree in original
+// order. --git-dir selects only the repository; Git then treats the current directory
+// as the worktree top unless the repository sets core.worktree. It never substitutes
+// the callback directory for an unknown child directory.
 //
 // Example: git -C /project -C subdir add file selects /project/subdir.
 func hookGitDirectory(
@@ -604,9 +605,6 @@ func hookGitDirectory(
 		value := argv[index].value
 		target := ""
 		switch {
-		case value == "-c" || value == "--config-env" || value == "--exec-path" || value == "--namespace" || value == "--super-prefix" || value == "--git-dir":
-			index++
-			continue
 		case value == "-C":
 			index++
 			if index >= verbIndex || !hookArgumentKnown(record, argv[index].offset) {
@@ -619,6 +617,10 @@ func hookGitDirectory(
 			}
 			target = strings.TrimPrefix(value, "-C")
 		case value == "--work-tree":
+			// TODO: Git starts relative paths at the current directory when it lies inside
+			// the --work-tree target, and resolves a relative target after every -C. From
+			// sub, git --work-tree=.. reset file is falsely denied; resolve the repository
+			// root and prefix, as hookGitWholePathspec needs, and use them here.
 			index++
 			if index >= verbIndex || !hookArgumentKnown(record, argv[index].offset) {
 				return ""
@@ -629,6 +631,10 @@ func hookGitDirectory(
 				return ""
 			}
 			_, target, _ = strings.Cut(value, "=")
+		case isGitSplitContextOption(value):
+			// Another option's separate value, such as --git-dir's, selects no directory.
+			index++
+			continue
 		}
 		if target == "" {
 			continue
@@ -741,7 +747,7 @@ func hookGitAddCleanWhole(
 		value := argument.value
 		operand := !options || !strings.HasPrefix(value, "-")
 		switch {
-		case !known && !options && whole && slices.Contains(record.MayDisappearArguments, argument.offset):
+		case !known && !options && slices.Contains(record.MayDisappearArguments, argument.offset):
 			// An operand that may expand to nothing narrows nothing.
 			continue
 		case !known:
@@ -775,9 +781,10 @@ func hookGitAddCleanWhole(
 }
 
 // hookGitWholePathspec reports a pathspec that selects the whole tree from the Git
-// working directory: ., :/ or that directory.
+// working directory: ., :/ or that directory, in any spelling that cleans to . or the
+// directory, such as ./ or a trailing slash.
 //
-// Example: the . in git reset -- . selects every index entry.
+// Example: the . in git reset -- . and the ./ in git add -A ./ select every entry.
 func hookGitWholePathspec(
 	value string,
 	directory string,
@@ -785,14 +792,15 @@ func hookGitWholePathspec(
 	// TODO: from a subdirectory, . and the directory select only that subdirectory, and ..
 	// can select the whole tree. Resolve the repository root to classify both, for add and
 	// reset alike; until then cd sub && git reset -- . is falsely denied.
-	return value == "." || value == ":/" || value == directory
+	cleaned := filepath.Clean(value)
+	return cleaned == "." || value == ":/" || cleaned == directory
 }
 
 // hookGitResetWhole reports a git reset that resets the whole index, and with --hard,
 // --merge or --keep the whole worktree. It follows Git's argument rules: options may
 // follow operands, the last mode option wins, and -- ends options. --soft resets
 // neither. A mixed reset is whole when no path remains or a whole pathspec is among
-// its paths. Unknown options and unknown operands before -- stay advisory; an operand
+// its paths. Unknown options and unknown operands stay advisory, except that an operand
 // after -- that may expand to nothing narrows nothing.
 //
 // Example: git reset main --hard, git reset origin/main and git reset -- owned.txt . are whole.
@@ -802,7 +810,8 @@ func hookGitResetWhole(
 	directory string,
 ) bool {
 	mode := hookGitResetMixed
-	separator := -1
+	// operandsBeforeSeparator counts the operands before --; -1 means no -- yet.
+	operandsBeforeSeparator := -1
 	operands := 0
 	last := ""
 	wholePath := false
@@ -810,13 +819,13 @@ func hookGitResetWhole(
 		known := hookArgumentKnown(record, argument.offset)
 		value := argument.value
 		switch {
-		case !known && separator >= 0 && slices.Contains(record.MayDisappearArguments, argument.offset):
+		case !known && operandsBeforeSeparator >= 0 && slices.Contains(record.MayDisappearArguments, argument.offset):
 			// An operand after -- that may expand to nothing narrows nothing.
 		case !known:
 			return false
-		case separator < 0 && value == "--":
-			separator = operands
-		case separator >= 0 || !strings.HasPrefix(value, "-"):
+		case operandsBeforeSeparator < 0 && value == "--":
+			operandsBeforeSeparator = operands
+		case operandsBeforeSeparator >= 0 || !strings.HasPrefix(value, "-"):
 			wholePath = wholePath || hookGitWholePathspec(value, directory)
 			last = value
 			operands++
@@ -828,6 +837,8 @@ func hookGitResetWhole(
 			mode = hookGitResetWorktree
 		case value != "-q" && value != "--quiet":
 			// Other options, such as --patch or --pathspec-from-file, change what resets.
+			// TODO: -N, --[no-]refresh and --[no-]recurse-submodules narrow nothing, yet they
+			// leave the reset unchecked; treat them as -q is treated.
 			return false
 		}
 	}
@@ -836,10 +847,10 @@ func hookGitResetWhole(
 		return false
 	case mode == hookGitResetWorktree || operands == 0 || wholePath:
 		return true
-	case separator == 1:
+	case operandsBeforeSeparator == 1:
 		// In git reset <rev> -- <paths>, no path leaves the whole index.
 		return operands == 1
-	case separator == 0 || operands > 1:
+	case operandsBeforeSeparator == 0 || operands > 1:
 		// Git reads every operand after a leading -- or after its first operand as a path.
 		return false
 	}
@@ -850,8 +861,9 @@ func hookGitResetWhole(
 // reset without -- as a revision. Git reads an operand that exists in the working
 // directory as a path, or refuses it when it also names a revision. A missing operand
 // is a revision, a wildcard pathspec, or an error; the planner resolves no revision,
-// such as HEAD^{/fix*}, so all three count as a revision. An unknown directory or a
-// lookup failure other than a missing path stays advisory.
+// such as HEAD^{/fix*}, so all three count as a revision. In an unknown directory only
+// a hookHeadRevision operand counts. A lookup failure other than a missing path stays
+// advisory.
 //
 // Example: git reset origin/main names a revision unless a path origin/main exists.
 func hookGitResetLoneRevision(
@@ -859,14 +871,31 @@ func hookGitResetLoneRevision(
 	directory string,
 ) bool {
 	if directory == "" {
-		return false
+		// TODO: after cd <dir> &&, the directory is unknown, so git reset origin/main is
+		// unchecked there; count the operand as a revision when it is missing from every
+		// CWD candidate.
+		return hookHeadRevision(operand)
 	}
 	path := operand
 	if !filepath.IsAbs(path) {
 		path = joinLiteralPath(directory, path)
 	}
 	_, err := os.Lstat(path)
-	return errors.Is(err, os.ErrNotExist)
+	// Git's is_missing_file_error also counts ENOTDIR, a file in place of a directory.
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// hookHeadRevision reports HEAD or @ with optional ~ and ^ steps. Git reads it as a
+// revision whenever it resolves and refuses it when a same-named path also exists, so
+// it needs no directory lookup.
+//
+// Example: HEAD~1 and @^ qualify; HEADER.md does not.
+func hookHeadRevision(value string) bool {
+	name, steps := value, ""
+	if index := strings.IndexAny(value, "~^"); index >= 0 {
+		name, steps = value[:index], value[index:]
+	}
+	return (name == "HEAD" || name == "@") && strings.Trim(steps, "~^0123456789") == ""
 }
 
 // inspectHookSessionsWriter protects the runtime's session transcript directory.
@@ -1080,8 +1109,8 @@ var liveBashGateRelativePaths = [...]string{
 
 // inspectHookLiveGateRemoval protects existing live Bash-gate files from removal or relocation.
 // Only rm, rmdir, unlink, shred, srm, mv sources and physical git rm/mv sources are checked.
-// Git checkout, restore and reset stay native; the Live Bash-gate removal row of
-// gate-escape-hatches.md records why.
+// This gate does not check Git checkout, restore or reset; the Live Bash-gate removal
+// row of gate-escape-hatches.md records why.
 // Paths outside the live provider roots, including clones and other repositories, are unaffected.
 //
 // Example: rm hooks/validate-bash.sh is denied; ECI_LIVE_HOOK_REMOVAL=1 rm hooks/validate-bash.sh is not.
