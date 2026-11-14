@@ -86,11 +86,9 @@ include concrete impact and its score points. Priority labels group forecasts
 only; they do not rank work. Separately,
 give the estimated remaining work effort or elapsed duration with units and a
 range, explicitly identifying which it is and distinguishing it from agent
-reasoning effort. For every priority, attempt to decompose remaining work into
-packages estimated at 30 minutes or less, including required review, checks,
-repairs, and acceptance. If a package cannot reasonably be decomposed further,
-say why and retain its estimate. Estimate each package from evidence or a
-labeled educated guess. Report a completion estimate for each priority present,
+reasoning effort. Forecast each priority with the work tree defined in
+[Work estimates](../../eci-binding-contract.md#work-estimates), including
+required review, checks, repairs, and acceptance. Report a completion estimate for each priority present,
 including unscored items, and an overall completion estimate for all
 remaining in-scope work. Give each estimate's basis, material assumptions,
 uncertainty, and dependencies, including external waits. Combine serial
@@ -118,7 +116,7 @@ history. Never
 invent events or treat a commit as proof of acceptance. Timeline-only reports
 follow the forecast exception below.
 
-Calculate progress from the report YAML's leaf task statuses using the status report tool. Each known leaf is one estimated package from the best-effort half-hour breakdown; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Flag leaves whose upper estimate exceeds 30 minutes and explain why they cannot be split. Label the result an equal-package estimate, not elapsed-time progress; rebaseline when scope is added or split. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
+Calculate progress from the report YAML's leaf task statuses using the status report tool. The YAML task tree mirrors the forecast work tree; each known leaf is one estimated package; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Flag leaves whose upper estimate exceeds 30 minutes and explain why they cannot be split. Label the result an equal-package estimate, not elapsed-time progress; rebaseline when scope is added or split. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
 
 ## Lane forecasts
 

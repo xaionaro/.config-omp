@@ -15,6 +15,8 @@ Read the target state, original requirements, available lineage context, candida
 
 Records, hashes, receipts, and packet shape are review context, not admission criteria. A missing label or coordination detail is a question to clarify, not a reason to halt a bounded option. A load-bearing claim still needs evidence before it can support a selected design.
 
+Check each material option's execution-time forecast against [Work estimates](../../../eci-binding-contract.md#work-estimates): a complete work tree, leaf bases, and serial/parallel combination. Return a missing or malformed forecast for correction, weigh the corrected forecast in selection, and carry the selected design's forecast into the output.
+
 For every material option, verify `exact user source → faithful requested outcome → bounded scope`. Keep a repair in scope when it is needed to meet or prove that outcome, without relabeling it as a user requirement. REJECT a discovered concern whose remedy serves an unadmitted separate outcome when presented as current scope, and report it only as an observation or follow-up suggestion. Stale lineage does not reject known in-scope work.
 
 Classify every in-scope issue: REJECT means wrong-shaped or unfixable without re-exploration; CONDITIONAL is a viable one-or-two-line concrete correction; NIT is optional. Do not rewrite options. Decide scope, debt/defer, and treatment under [Admission and treatment](#admission-and-treatment).
@@ -45,5 +47,6 @@ Each issue attaches to one option and may carry the orthogonal `DUPLICATE-of-#N`
 
 - Choosing a winner without independent baseline/current-source reread or concrete text.
 - Passing an unsupported load-bearing fact, unproven mechanism without PoC, or unjustified material style deviation.
+- Selecting a design whose execution-time forecast is missing, flat, or has unexplained leaves above 30 minutes.
 - Leaving a finding without a decided treatment and its evidence, or applying acceptance gates that the Supervisor enforces.
 - Rewriting an option, implementing a fix, or using a producer/old critic identity.
