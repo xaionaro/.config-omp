@@ -253,7 +253,7 @@ func TestRunHookWorkerRemovalDiagnostics(t *testing.T) {
 // TestRunHookMarkerFreeMultipleRepositories keeps bounded native Git requests
 // available without treating a retired marker as repository authorization.
 //
-// Example: dependency add and reset remain native without a legacy marker.
+// Example: a dependency add is allowed while a whole-tree reset is denied.
 func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 	home := t.TempDir()
 	primary := filepath.Join(home, "primary")
@@ -277,7 +277,7 @@ func TestRunHookMarkerFreeMultipleRepositories(t *testing.T) {
 		{command: "git -C '" + dependency + "' add -- file"},
 		{command: "git -C '" + dependency + "' commit -m checkpoint"},
 		{command: "bash '" + script + "'"},
-		{command: "git -C '" + dependency + "' reset --hard"},
+		{command: "git -C '" + dependency + "' reset --hard", denied: true},
 		{command: "git -C '" + dependency + "' checkout -- check.sh"},
 		{command: "git -C '" + dependency + "' rm -- check.sh"},
 		{command: "git -C '" + dependency + "' mv check.sh renamed.sh"},
