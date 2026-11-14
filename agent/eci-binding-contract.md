@@ -39,7 +39,7 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 
 ## Project requirements
 
-Apply applicable standing instructions without requiring the user to restate them. Project requirements add project-specific outcomes or constraints to that baseline. Interpret follow-ups in context: a correction, explanation, implementation direction or check does not automatically add a project requirement. Separate any new project-specific requirement in mixed feedback from reminders and corrective work. Keep corrective work linked to the existing outcome and applicable instruction; preserve the user's source separately from inferred implementation and verification.
+Apply applicable standing instructions without requiring the user to restate them. Project requirements add project-specific outcomes or constraints to that baseline. Interpret follow-ups in context: a correction, explanation, implementation direction or check does not automatically add a project requirement. Separate any new project-specific requirement in mixed feedback from reminders and corrective work. Keep corrective work linked to the existing outcome and applicable instruction; preserve the user's source separately from inferred implementation and verification. Never attribute an unstated requirement to the user or an instruction; a default you choose is your decision under Decisions, recorded as yours, not a question for the user.
 
 ## Evidence
 
