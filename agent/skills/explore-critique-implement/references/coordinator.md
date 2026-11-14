@@ -81,7 +81,7 @@ An iteration is Step 1 explore → Step 2 critique → Step 3 implement → Step
 
 On root clean pass or root user closure: apply [both-producer closure](fast-path.md#adoption-review-and-closure); write the disengage report; request final implementer confirmation from each implementer's last published Job owner (for a child Job, through its parent owner), which relays it; record role state without closing terminal agents; then complete ordinary teardown and [native goal synchronization](#native-goal-lifecycle). The report contains exactly one `clean-pass:` or `user-closed:` certificate, Stop-checklist walkthrough, and incomplete-compliance analysis. Teardown failure leaves the lifecycle unfinished.
 
-Status uses human-readable role/lane names and parent-child trees for nested Helpers, and fills `Lane requirement context` under `writing-status-reports`; ECI records `Stage: normal` with main-path and Fast progress under the same outcome and Job. The ledger carries the full edge chain. Direct work with inactive lineage does not fabricate requirement IDs. Use `<role label> (<runtime name>)` in every status, wait, or close update. Lineage failures are routing risks, never fake `PAUSED`/`BLOCKED` states.
+Status uses human-readable role/lane names and parent-child trees for nested Helpers, and fills `Lane requirement context` under `writing-status-reports`; ECI records `Stage: normal` with main-path and Fast progress under the same outcome and Job. The ledger carries the full edge chain. Use `<role label> (<runtime name>)` in every status, wait, or close update. Lineage failures are routing risks, never fake `PAUSED`/`BLOCKED` states.
 
 ## Provider coordination
 

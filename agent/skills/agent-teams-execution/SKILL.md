@@ -9,7 +9,7 @@ ATE coordinates multi-workstream work when explicitly requested: research, desig
 
 ## Activation and invariants
 
-Start only when the user explicitly asks to use ATE or `agent-teams-execution`, subject to omp lifecycle routing. Task size, parallel work, descriptive mentions, and skill-document maintenance alone do not activate ATE. Loading this router alone does not start the team. Once explicitly active, ATE retains its lifecycle until normal closure. Maintain active lineage and a project-understanding ledger; every durable normal route has an admitted lane, assignment, ownership, and full requirement chain. Apply [Recording and citing user requirements](../context-ledger/SKILL.md#recording-and-citing-user-requirements) to every claimed user requirement.
+Start only when the user explicitly asks to use ATE or `agent-teams-execution`, subject to omp lifecycle routing. Task size, parallel work, descriptive mentions, and skill-document maintenance alone do not activate ATE. Loading this router alone does not start the team. Once explicitly active, ATE retains its lifecycle until normal closure. Maintain active lineage and a project-understanding ledger; every durable normal route has an admitted lane, assignment, ownership, and full requirement chain. Apply [Recording and citing user requirements](../context-ledger/SKILL.md#recording-and-citing-user-requirements).
 
 - Every worker reads this router plus only its exact role module and named conditional modules. Unknown role, predicate, or link returns to coordinator before work.
 - Coordinator/lead alone load lifecycle, prompt/model admission, blocker, pause, stop, required-critic, shutdown, and pressure-policy modules.
