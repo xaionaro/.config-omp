@@ -167,6 +167,25 @@ Extract one worker's v1 progress directly:
 jq -r 'select(.schema == "eci-high-level-log/v1" and .event == "worker_progress" and .actor.id == "/root/implementer") | .summary' high_level_log.jsonl
 ```
 
+Record each leaf completion under
+[Work estimates](../../eci-binding-contract.md#work-estimates) in the `details`
+of one log event, which also closes the leaf's report task:
+
+```json
+{"leaf":{"id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"},"status_update":{"updates":[{"target":"task","id":"1.1","fields":{"status":"CLOSED","evidence":"Synthetic example: readings matched"}}]}}
+```
+
+`planned` is the initial estimate range. Replace a missing time with
+`evidence_gap` naming the missing read. The agent that answers the user appends
+the event on receipt, then lists the five most recent with measured minutes:
+
+```sh
+jq -sc '[.[].details.leaf // empty] | .[-5:] | reverse[]
+  | .measured = if .started_at and .completed_at
+    then "\((.completed_at | fromdate) - (.started_at | fromdate) | . / 60 | floor) minutes"
+    else "unknown: \(.evidence_gap)" end' high_level_log.jsonl
+```
+
 ## Latest Status Report
 
 `latest-status-report.yaml` holds the single most recent status report as structured YAML. It is the handoff snapshot the next agent or user reads first. Render user-facing reports per `writing-status-reports`.
@@ -318,11 +337,7 @@ the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
 leaf the work tree must explain; a child's `id` is its parent's `id` plus `.`
 and a segment, such as `1.2`. Write each `duration` as a range, such as
-`"10–20 minutes"`. A completed leaf's `duration` holds its initial estimate,
-and the leaf adds `completed_at` (quoted UTC) and `measured` (elapsed, such as
-`"17 minutes"`) for the completed-leaf table in
-[Work estimates](../../eci-binding-contract.md#work-estimates). Each scenario
-contains `name`, `trigger`,
+`"10–20 minutes"`. Each scenario contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
 is unsupported. Add fields needed for combinations, external waits, or other
