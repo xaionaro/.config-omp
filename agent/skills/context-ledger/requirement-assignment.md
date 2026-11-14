@@ -2,7 +2,7 @@
 
 Applicability follows [Update Points](SKILL.md#update-points). Run `"$HOME/.omp/agent/eci/bin/eci-active" requirement-assignment --request <JSON-file>` from the intended working directory with explicit `ECI_SESSION_ID` (or `ECI_THREAD_ID` when unset). It uses that session’s existing `project-understanding.yaml`; it does not send messages or update the status report.
 
-Classify the input under [Project requirements](../../eci-binding-contract.md#project-requirements); reuse saved requirements when only corrective or operational work changes.
+Classify the input under [User requirements](../../eci-binding-contract.md#user-requirements); reuse saved requirements when the input adds no user requirement.
 
 1. Apply the existing [affected-record and native-edit rules](SKILL.md#update-points). Represent the resulting changes as exact native text replacements; `edits: []` selects no-write reuse.
 2. Put the request in a JSON file. Each `old` must occur exactly once when its edit is applied, in listed order. Include adequate surrounding text to distinguish the intended record. There is no separately authored requirement-message field.

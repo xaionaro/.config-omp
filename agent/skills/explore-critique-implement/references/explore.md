@@ -19,7 +19,7 @@ If a bug is assigned, load debugging-discipline and apply its direct-fix or unce
 
 ## Required assignment packet
 
-The coordinator gives the exact problem for this iteration in full context; active canonical requirement refs and alias map; register/state version; immutable lane and mutable assignment; complete path/edge evidence; derivation reason; admission binding; expanded requirement chain; existing related paths to reread; and all prior attempts, gate findings, changed files, and rejected reasons verbatim where applicable. Reject a proposed new material outcome that does not reach an active user requirement; reconcile missing lineage alongside known work.
+The coordinator gives the exact problem for this iteration in full context; active user requirement IDs; register/state version; immutable lane and mutable assignment; complete path/edge evidence; derivation reason; admission binding; expanded requirement chain; existing related paths to reread; and all prior attempts, gate findings, changed files, and rejected reasons verbatim where applicable. Reject a proposed new material outcome that does not reach an active user requirement; reconcile missing lineage alongside known work.
 
 Trace each material option as `exact user source → faithful requested outcome → bounded scope`. A repair needed to meet or prove that outcome stays in the lane and is not a new direct requirement. Return a concern whose remedy serves an unadmitted separate outcome only as a tagged observation or follow-up suggestion; do not turn it into an option or lane. Known in-scope work remains nonblocking while stale lineage is reconciled.
 

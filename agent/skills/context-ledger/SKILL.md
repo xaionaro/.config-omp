@@ -36,14 +36,14 @@ lineage alongside known work; do not block it.
 
 Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
 
-### User requirements
+### Recording and citing user requirements
 
-Apply [Project requirements](../../eci-binding-contract.md#project-requirements) before classifying material input. Record each user requirement, including each clarification or change of one, as its own `requirement` record, and link it from each outcome it affects. Its `source_text` holds only the user's exact words, with secrets redacted. Its `source_context` holds what a fresh reader needs to read those words as meant, such as their source message, what they answer, and the ID of any requirement they clarify or change. Wherever anything is claimed to be a user requirement, cite its requirement ID.
+Classify material input under [User requirements](../../eci-binding-contract.md#user-requirements). Record each user requirement as a separate `requirement` record, linked from each outcome it affects. Its `source_text` holds only the user's exact words, with secrets redacted. Its `source_context` holds what a fresh reader needs to read those words as meant, such as what they answer and the ID of any requirement they clarify or change; its `evidence` identifies the source message. Wherever anything is claimed to be a user requirement, cite its requirement ID.
 
-Preserve other exact attributed user passages and distinguish project-specific changes, instruction corrections, hypotheses and derived work using existing record types and links. Reuse the affected outcome for corrective work. Keep applicable instruction sources and unresolved inquiries with their owner and next action; do not attribute agent-derived checks to the user.
+Preserve other exact attributed user passages. Record hypotheses and derived work with their own record types and links. Keep applicable instruction sources and unresolved inquiries with their owner and next action.
 
 Ground each progress item in `high_level_log.jsonl` and `latest-status-report.yaml` in a
-user requirement cited by its ID. Explain how the change advances or
+user requirement. Explain how the change advances or
 verifies the requested outcome; for a blocker, state its effect on that outcome.
 For supporting work, state what it enables and whether the requested outcome
 remains open.
@@ -468,8 +468,7 @@ single-assertion string is allowed; pasted prose reports/chronology are not.
 Absent knowledge is an `unknown`, never fabricated zero/false/empty. Provisional
 inferences state their uncertainty, effect and resolution action in unknown records.
 
-Retain each requirement's exact source text, source context and acceptance; outcomes
-link their requirements and bounded scope, work links outcomes. Evidence strings
+Evidence strings
 resolve to accessible passages, retained exact user quotes or observed output;
 relative file references resolve from the canonical session directory. Extract
 the relevant current facts rather than only listing sources. Commands alone are
@@ -561,7 +560,7 @@ Use `yq4` to select and inspect records before a bounded edit; if it is
 unavailable, use native text inspection. For example:
 
 ```sh
-yq4 '.records | to_entries[] | select(.value.type == "requirement") | {"id": .key, "source": .value.data.source_text, "acceptance": .value.data.acceptance}' project-understanding.yaml
+yq4 '.records | to_entries[] | select(.value.type == "requirement") | {"id": .key, "source": .value.data.source_text, "context": .value.data.source_context, "acceptance": .value.data.acceptance}' project-understanding.yaml
 ```
 
 Node's existing `yaml` package can also parse for read-only queries; check
@@ -572,7 +571,7 @@ the full schema, allowed authoring subset, truth, freshness or completeness:
 ```sh
 set -o pipefail
 node -e 'const fs=require("fs"), YAML=require("yaml"); const value=YAML.parse(fs.readFileSync(process.argv[1],"utf8"),{uniqueKeys:true,stringKeys:true,maxAliasCount:0}); process.stdout.write(JSON.stringify(value));' project-understanding.yaml |
-jq '.records | to_entries[] | select(.value.type == "requirement") | {id:.key,source:.value.data.source_text,acceptance:.value.data.acceptance}'
+jq '.records | to_entries[] | select(.value.type == "requirement") | {id:.key,source:.value.data.source_text,context:.value.data.source_context,acceptance:.value.data.acceptance}'
 ```
 
 Parsing cannot detect semantic duplicate subjects or establish that useful

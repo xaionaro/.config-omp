@@ -11,13 +11,14 @@ Keep the current `project-understanding.yaml` ledger readable enough to answer:
 
 | Record | Purpose |
 | --- | --- |
-| User requirement | The user's exact words in its [requirement record](../context-ledger/SKILL.md#user-requirements). |
+| User requirement | Its [requirement record](../context-ledger/SKILL.md#recording-and-citing-user-requirements). |
+| Outcome | What outcome the user asked for, in concise faithful wording. |
 | Lane | What bounded work is being done. |
 | Reason | Why the lane helps that outcome. |
 | Parent or prerequisite | Earlier lane when it materially explains the relationship. |
 | Owner and evidence | Who owns it and the useful current proof or finding. |
 
-Use stable IDs or aliases when they make a multi-lane report easier to follow.
+Use stable lane IDs or aliases when they make a multi-lane report easier to follow.
 Do not create an ID, registry, graph, hash, receipt, or exact record layout
 solely to proceed with ordinary exploration, implementation, testing, review,
 or status reporting.
@@ -25,7 +26,7 @@ or status reporting.
 ## Trace material work
 
 For a material ECI task, record `exact user source → faithful requested outcome
-→ bounded scope`. Cite the source message and preserve the outcome's meaning;
+→ bounded scope`. Preserve the outcome's meaning;
 a reason, discovery, or inferred safeguard is never a substitute user
 requirement.
 

@@ -37,9 +37,9 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 - After each ECI compaction, refresh the structured YAML status report and print a proper status report to the user under `writing-status-reports`; compaction alone does not trigger queue-item critique. Resume safe work after reporting.
 - Treat short status queries and explicit requests for a status or progress report as requests for a current-state report. Load `writing-status-reports`; reconcile the YAML, validate, render, and publish the full rendered result. Include state, progress, decisions, blockers/risks, verification, next focus, and the multi-lane table when applicable. Correct known missing sections in the YAML and rerender; use its incomplete fallback only when structural failure prevents rendering.
 
-## Project requirements
+## User requirements
 
-Apply applicable standing instructions without requiring the user to restate them. Project requirements add project-specific outcomes or constraints to that baseline. Interpret follow-ups in context: a correction, explanation, implementation direction or check does not automatically add a project requirement. Separate any new project-specific requirement in mixed feedback from reminders and corrective work. Keep corrective work linked to the existing outcome and applicable instruction; preserve the user's source separately from inferred implementation and verification.
+Apply applicable standing instructions without requiring the user to restate them. A user requirement is any result or constraint the user states, including a reminder, clarification, change or correction. A user requirement adds an outcome only when it requests a new result; every other one belongs to the outcome it affects. Where a project ledger is kept, record and cite user requirements under `~/.omp/agent/skills/context-ledger/SKILL.md#recording-and-citing-user-requirements`.
 
 ## Evidence
 
