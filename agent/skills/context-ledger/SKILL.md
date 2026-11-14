@@ -169,26 +169,28 @@ jq -r 'select(.schema == "eci-high-level-log/v1" and .event == "worker_progress"
 
 Record each leaf completion under
 [Work estimates](../../eci-binding-contract.md#work-estimates) as one
-`lifecycle_change` event whose `details.leaf` holds `forecast`, `id`, `work`,
-`planned`, `started_at`, and `completed_at` (the close read); replace a
-missing or malformed `started_at` with `evidence_gap` naming why. Add a
-`details.status_update` closing a report task only when the report has a task
-for that leaf, targeting that task's own ID. Correct a leaf with a
-`correction` event whose `details` holds `corrects`, the one-based line of
-the event it replaces, and the full corrected `leaf`.
+`lifecycle_change` event whose `details.leaf_completion` holds `forecast`,
+`id`, `work`, `planned`, `started_at`, and `completed_at` (the close read);
+replace a missing or malformed `started_at` with `evidence_gap` naming why.
+Add a `details.status_update` closing a report task only when the report has a
+task for that leaf, targeting that task's own ID. Correct a leaf with a
+`correction` event whose `details` holds `corrects`, the one-based line of the
+event it replaces, and the full corrected `leaf_completion` under the same key;
+the table replaces by key.
 
 ```sh
-"$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
+"$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf_completion":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
 ```
 
-List the table's rows with measured minutes. It fails on a malformed line or
-leaf; correct a leaf as above.
+List the table's rows with measured minutes. It fails on a malformed line, a
+non-object leaf completion, or a malformed or missing time; correct a leaf as
+above.
 
 ```sh
-jq -sc '[.[].details | objects | .leaf // empty]
+jq -sc '[.[].details | objects | .leaf_completion // empty]
   | reduce .[] as $l ({}; .["\($l.forecast)/\($l.id)"] = $l) | [.[]]
   | sort_by(.completed_at | fromdate) | .[-5:] | reverse[]
-  | .measured = if .started_at then "\((.completed_at | fromdate) - (.started_at | fromdate) | . / 60 | floor) minutes"
+  | .measured = if .started_at then "\((.completed_at | fromdate) - (.started_at | fromdate) | . / 60 | floor) min"
     else "unknown: \(.evidence_gap // error("\(.forecast)/\(.id): no started_at or evidence_gap"))" end' high_level_log.jsonl
 ```
 
