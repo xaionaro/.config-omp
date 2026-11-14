@@ -26,7 +26,7 @@ Check correctness, safety, concrete requirements, interfaces, non-style boundari
 
 Verify [clean system and repair](../../../eci-binding-contract.md#clean-system-and-repair): repairs reach original consumers without creating competing authority. Check relevant duplicates within authorized scope, consumer routing and behavior verification before retirement, justified copy lifecycles, and preservation of unrelated work. Report other duplicates as follow-ups.
 
-Assume bots are non-malicious. Check that each control catches a concrete accidental broad, destructive, wrong-target, wrong-owner, or cross-scope effect without treating unfamiliar syntax, wrappers, metadata, receipts, hashes, or shell punctuation as an error by itself. Require every enabled gate to name a bounded legitimate-work escape path; if it has none, recommend disabling it. Preserve the legitimate owner and session; do not recommend rerouting owner-scoped dependency work.
+Assume bots are non-malicious. Check that each control catches a concrete accidental broad, destructive, wrong-target, wrong-owner, or cross-scope effect, or a bypass of a user-required route, without treating unfamiliar syntax, wrappers, metadata, receipts, hashes, or shell punctuation as an error by itself. Require every enabled gate to name a bounded legitimate-work escape path; if it has none, recommend disabling it. Preserve the legitimate owner and session; do not recommend rerouting owner-scoped dependency work.
 
 ## Critic C — long-term health
 

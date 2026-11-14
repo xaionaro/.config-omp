@@ -609,6 +609,14 @@ run_subagent_hook() {
   printf '%s\n' "$output"
 }
 
+# python_script_required_filter accepts a denial naming the Python script route
+# and its #!/usr/bin/python3 hatch.
+python_script_required_filter='
+  .hookSpecificOutput.permissionDecision == "deny" and
+  (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PYTHON_SCRIPT_REQUIRED]")) and
+  (.hookSpecificOutput.permissionDecisionReason | contains("#!/usr/bin/python3"))
+'
+
 # Run independent worker command matrices concurrently while retaining one
 # real validator process and one assertion per case.  The ordinary shell,
 # interpreter, and named-runtime matrices below are read-only policy probes;
@@ -665,11 +673,7 @@ run_subagent_matrix_parallel() {
           }
           ;;
         python-script-required)
-          jq -e '
-            .hookSpecificOutput.permissionDecision == "deny" and
-            (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PYTHON_SCRIPT_REQUIRED]")) and
-            (.hookSpecificOutput.permissionDecisionReason | contains("#!/usr/bin/python3"))
-          ' "$output" >/dev/null || {
+          jq -e "$python_script_required_filter" "$output" >/dev/null || {
             printf 'direct worker Python call was not denied ECI_PYTHON_SCRIPT_REQUIRED: %s\n' "$command" >&2
             cat -- "$output" >&2
             exit 1
@@ -731,11 +735,7 @@ run_hook_matrix_parallel() {
           }
           ;;
         python-script-required)
-          jq -e '
-            .hookSpecificOutput.permissionDecision == "deny" and
-            (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PYTHON_SCRIPT_REQUIRED]")) and
-            (.hookSpecificOutput.permissionDecisionReason | contains("#!/usr/bin/python3"))
-          ' "$output" >/dev/null || {
+          jq -e "$python_script_required_filter" "$output" >/dev/null || {
             printf 'direct coordinator Python call was not denied ECI_PYTHON_SCRIPT_REQUIRED: %s\n' "$command" >&2
             cat -- "$output" >&2
             exit 1

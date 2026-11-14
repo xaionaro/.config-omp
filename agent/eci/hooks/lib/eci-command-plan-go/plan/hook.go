@@ -43,6 +43,10 @@ func RunHook(
 	request.HookMode = true
 	request.CollectShellCommands = true
 	result := Classify(request)
+	// TODO: a mode-dependent Classify denial returns no ShellAnalysis, so the
+	// Python route check never runs and permissive mode lets `python3 x; rm -rf ~`
+	// start Python. Return records with Classify denials (including nested payload
+	// denials from inspectShellAnalysis) and run the Python pass before finalizing.
 	if result.Decision != DecisionDeny {
 		if diagnostic := inspectHookEffects(request, result); diagnostic != nil {
 			result = deniedResult(request, *diagnostic)

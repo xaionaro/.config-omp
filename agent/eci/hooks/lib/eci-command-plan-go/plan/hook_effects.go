@@ -1,13 +1,15 @@
 package plan
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 )
 
 // hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
@@ -27,7 +29,7 @@ func inspectHookEffects(
 		return nil
 	}
 	for _, record := range result.ShellAnalysis.Commands {
-		if record.Reachability == segmentUnreachable || len(record.Argv) == 0 {
+		if !hookRecordRuns(record) {
 			continue
 		}
 		// Every gate mode enforces the Python route, so check all records before
@@ -37,7 +39,7 @@ func inspectHookEffects(
 		}
 	}
 	for _, record := range result.ShellAnalysis.Commands {
-		if record.Reachability == segmentUnreachable || len(record.Argv) == 0 {
+		if !hookRecordRuns(record) {
 			continue
 		}
 		// The memory cap applies to every callback, not only active ECI scopes.
@@ -74,6 +76,14 @@ func inspectHookEffects(
 		}
 	}
 	return nil
+}
+
+// hookRecordRuns reports whether a shell record can start a command, so
+// callback checks inspect it.
+//
+// Example: the record after "false &&" is unreachable and returns false.
+func hookRecordRuns(record ShellCommandRecord) bool {
+	return record.Reachability != segmentUnreachable && len(record.Argv) > 0
 }
 
 // hookCodeMakeMemoryCapRequired identifies make without a finite memory cap.
@@ -114,10 +124,12 @@ func inspectHookMakeMemoryCapForOS(
 // Example: python3 -c 'print(1)' or /usr/bin/python3 tool.py selects this gate.
 const hookCodePythonScriptRequired DiagnosticCode = "ECI_PYTHON_SCRIPT_REQUIRED"
 
-// hookPythonName matches interpreter basenames such as python, python3, and python3.12.
+// hookPythonInterpreter reports whether path's basename names the Python runtime family.
 //
-// Example: hookPythonName.MatchString("python3.12") is true.
-var hookPythonName = regexp.MustCompile(`^python[0-9]*(\.[0-9]+)*$`)
+// Example: /usr/bin/python3.12 is Python, while python-tool is not.
+func hookPythonInterpreter(path string) bool {
+	return namedRuntimeFamily(filepath.Base(path)) == "python"
+}
 
 // hookPythonTarget is a direct Python interpreter launch. A memory cap does not clear it.
 // CWD resolves relative command paths and is empty when the command's directory is unknown.
@@ -129,12 +141,12 @@ type hookPythonTarget struct {
 
 // matchesCommand reports whether word names a Python interpreter, either by
 // basename or by resolving it through PATH (bare names), CWD (relative paths),
-// and symlinks. A relative path with unknown CWD and lookup failures fall back
-// to the basename alone.
+// and symlinks. A relative path with unknown CWD, or a word that resolves to no
+// runnable file, falls back to the basename alone.
 //
 // Example: python3, /usr/bin/python3, and ./py -> /usr/bin/python3 match.
 func (t hookPythonTarget) matchesCommand(word string) bool {
-	if hookPythonName.MatchString(filepath.Base(word)) {
+	if hookPythonInterpreter(word) {
 		return true
 	}
 	if strings.Contains(word, "/") && !filepath.IsAbs(word) {
@@ -143,15 +155,46 @@ func (t hookPythonTarget) matchesCommand(word string) bool {
 		}
 		word = filepath.Join(t.CWD, word)
 	}
+	resolved, ok := hookResolveCommand(word)
+	return ok && hookPythonInterpreter(resolved)
+}
+
+// hookResolveCommand resolves a command word through PATH and symlinks to its
+// physical file. A word that names no runnable file returns false; any other
+// lookup failure is also reported as a callback advisory, because an
+// unresolved word establishes no launch.
+//
+// Example: python3 returns /usr/bin/python3.12 when PATH reaches that symlink chain.
+func hookResolveCommand(word string) (string, bool) {
 	path, err := exec.LookPath(word)
-	if err != nil {
-		return false
+	if err == nil {
+		path, err = filepath.EvalSymlinks(path)
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return false
+	switch {
+	case err == nil:
+		return path, true
+	case hookCommandAbsent(err):
+		return "", false
+	default:
+		hookAdvisory("resolve command word", err)
+		return "", false
 	}
-	return hookPythonName.MatchString(filepath.Base(resolved))
+}
+
+// hookCommandAbsent reports a lookup failure meaning the word names no runnable
+// file, so the shell could not start it either.
+//
+// Example: exec.ErrNotFound for an unknown bare name, or ENOTDIR for ./file/x.
+func hookCommandAbsent(err error) bool {
+	for _, absent := range []error{
+		exec.ErrNotFound, fs.ErrNotExist, fs.ErrPermission,
+		syscall.ENOTDIR, syscall.EISDIR, syscall.ELOOP, syscall.ENAMETOOLONG,
+	} {
+		if errors.Is(err, absent) {
+			return true
+		}
+	}
+	return false
 }
 
 // honorsMemoryCap reports that no launcher option permits a direct interpreter call.
@@ -189,6 +232,7 @@ type hookLauncherSpec struct {
 	skipAssign bool
 	positional int
 	// capOption returns consumed argv words and whether this option imposes a cap.
+	// TODO: coding-go forbids stored function values; replace capOption with a named per-launcher cap-option parser type.
 	capOption func(tok string, next string, hasNext bool) (int, bool)
 }
 
@@ -313,7 +357,11 @@ func hookLaunchReaches(argv []string, target hookLaunchTarget) bool {
 				"-E": true, "--setenv": true, "--working-directory": true, "--service-type": true,
 				"--uid": true, "--gid": true, "--slice": true, "--description": true, "--nice": true,
 			},
-			capOption: func(tok, next string, hasNext bool) (int, bool) {
+			capOption:
+			// consumes one systemd-run -p/--property option and reports whether it sets a finite MemoryMax.
+			//
+			// Example: -p MemoryMax=1G consumes two words and reports a cap.
+			func(tok, next string, hasNext bool) (int, bool) {
 				var value string
 				var consumed int
 				switch {
@@ -334,7 +382,11 @@ func hookLaunchReaches(argv []string, target hookLaunchTarget) bool {
 	case "prlimit":
 		child, capped := hookLauncherChild(argv[1:], hookLauncherSpec{
 			values: map[string]bool{"-p": true, "--pid": true, "-o": true, "--output": true},
-			capOption: func(tok, next string, hasNext bool) (int, bool) {
+			capOption:
+			// consumes one prlimit -v/--as option and reports whether its limit is finite.
+			//
+			// Example: --as=1073741824 consumes one word and reports a cap.
+			func(tok, next string, hasNext bool) (int, bool) {
 				switch {
 				case (tok == "-v" || tok == "--as") && hasNext:
 					return 2, hookFiniteMemoryLimit(next)
@@ -639,12 +691,13 @@ func inspectHookGitBroad(
 	directory string,
 ) *Diagnostic {
 	verb := argv[verbIndex].value
-	if verb != "add" && verb != "clean" {
+	if verb != "add" && verb != "reset" && verb != "clean" {
 		return nil
 	}
-	whole := false
+	whole := verb == "reset" && verbIndex+1 == len(argv)
 	paths := 0
 	options := true
+	revision := false
 	for _, argument := range argv[verbIndex+1:] {
 		if !hookArgumentKnown(record, argument.offset) {
 			if !options && whole && slices.Contains(record.MayDisappearArguments, argument.offset) {
@@ -655,6 +708,9 @@ func inspectHookGitBroad(
 		value := argument.value
 		if options && value == "--" {
 			options = false
+			if verb == "reset" {
+				whole = true
+			}
 			continue
 		}
 		if options && strings.HasPrefix(value, "-") {
@@ -663,12 +719,25 @@ func inspectHookGitBroad(
 				return nil
 			case "-A", "--all", "-u", "--update":
 				whole = verb == "add"
+			case "--hard", "--mixed", "--merge", "--keep":
+				whole = verb == "reset"
+			case "--soft":
+				return nil
 			case "-f", "-d", "-x", "-X", "-fd", "-fdx", "-df", "-ff", "-ffdx":
 				whole = verb == "clean"
 			case "-q", "--quiet", "-v", "--verbose":
 			default:
 				return nil
 			}
+			continue
+		}
+		if verb == "reset" && options && !revision {
+			if !whole {
+				// Without an explicit reset mode or --, this literal may be
+				// a path rather than a revision. That identity stays advisory.
+				return nil
+			}
+			revision = true
 			continue
 		}
 		if value != "." && value != ":/" && value != directory {
@@ -678,8 +747,14 @@ func inspectHookGitBroad(
 	if !whole || paths > 0 {
 		return nil
 	}
+	route := "use native Git with exact owned repository-relative paths; preserve unrelated work"
+	if verb == "reset" {
+		// A whole-index reset clears other Producers' staging and --hard
+		// overwrites live files; this route keeps every effect path-scoped.
+		route = "unstage with git reset -- <owned paths>; discard with git restore [--staged] -- <owned paths>; move HEAD with git reset --soft <rev>, then restore owned paths"
+	}
 	diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "Git "+verb+" selects the whole repository index or worktree: "+directory,
-		record.Segment, argv[verbIndex].offset, argv[verbIndex], "use native Git with exact owned repository-relative paths; preserve unrelated work", "git-broad-effect")
+		record.Segment, argv[verbIndex].offset, argv[verbIndex], route, "git-broad-effect")
 	diagnostic.Path = directory
 	return diagnostic
 }

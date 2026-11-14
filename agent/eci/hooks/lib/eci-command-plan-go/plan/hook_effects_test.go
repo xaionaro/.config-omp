@@ -2,10 +2,12 @@ package plan
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +16,8 @@ import (
 // TestHookMarkerFreeConcreteGitEffects preserves broad Git safeguards without
 // inferring ECI lifecycle state from a retired marker.
 //
-// Example: a whole-index add is denied while an exact-path add remains native.
+// Example: a whole-index add or reset is denied while exact-path and soft
+// resets remain native as the bounded route.
 func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 	root := t.TempDir()
 	for _, current := range []struct {
@@ -22,10 +25,14 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 		denied  bool
 	}{
 		{command: "git add -A", denied: true},
-		{command: "git reset --hard"},
-		{command: "git reset --hard HEAD"},
-		{command: "git reset"},
-		{command: "git reset -- ."},
+		{command: "git reset --hard", denied: true},
+		{command: "git reset --hard HEAD", denied: true},
+		{command: "git reset --keep HEAD~1", denied: true},
+		{command: "git reset", denied: true},
+		{command: "git reset -- .", denied: true},
+		{command: "git reset -- owned.txt"},
+		{command: "git reset --soft HEAD~1"},
+		{command: "git restore --staged -- owned.txt"},
 		{command: "git add -- owned.txt"},
 		{command: "git status"},
 	} {
@@ -65,14 +72,14 @@ func TestHookCoordinatorGitTargets(t *testing.T) {
 	root := t.TempDir()
 	foreign := t.TempDir()
 	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleCoordinator, Marker: MarkerInactive, CWD: root, CollectShellCommands: true}
-	for _, command := range []string{"git add file", "git add -A file", "git reset -- file", "git reset file", "git reset --hard", "git reset", "git reset -- .", "git -C " + foreign + " diff --output=result"} {
+	for _, command := range []string{"git add file", "git add -A file", "git reset -- file", "git reset file", "git reset --soft HEAD", "git -C " + foreign + " diff --output=result"} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
 			require.Falsef(t, diagnostic != nil, "scoped/read-only command %s denied: %+v", command, diagnostic)
 		}
 	}
-	for _, command := range []string{"git add -A", "git add -A -- ."} {
+	for _, command := range []string{"git reset --hard", "git reset", "git reset -- .", "git add -A", "git add -A -- ."} {
 		request.Command = command
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
@@ -574,6 +581,8 @@ func TestHookPythonDirect(t *testing.T) {
 		{"timeout", "5", "python3", "foo.py"},
 		{"systemd-run", "--scope", "-p", "MemoryMax=1G", "python3"},
 		{"xargs", "python3"},
+		{"python3.12.1", "-V"},
+		{"python2", "-V"},
 		{"python3", "--version"},
 		{"python3", "-m", "pytest"},
 		{"find", ".", "-exec", "python3", "{}", ";"},
@@ -588,6 +597,7 @@ func TestHookPythonDirect(t *testing.T) {
 		{"command", "-v", "python3"},
 		{"pythonic"},
 		{"python3-config"},
+		{"python.3", "x"},
 		{"python-tool", "--module"},
 		{"git", "commit", "-m", "python3"},
 		{"which", "python3"},
@@ -622,4 +632,22 @@ func TestHookEffectsPythonPrecedesMakeCap(t *testing.T) {
 	diagnostic := inspectHookEffects(Request{}, result)
 	require.NotNil(t, diagnostic)
 	require.Equal(t, hookCodePythonScriptRequired, diagnostic.Code)
+}
+
+// TestHookCommandAbsent checks which lookup failures mean a word names no runnable file.
+//
+// Example: ENOTDIR from ./file/x is absent, while EIO is an unexpected failure.
+func TestHookCommandAbsent(t *testing.T) {
+	for _, err := range []error{
+		&exec.Error{Name: "python9", Err: exec.ErrNotFound},
+		&fs.PathError{Op: "stat", Path: "/missing", Err: syscall.ENOENT},
+		&fs.PathError{Op: "stat", Path: "/file/x", Err: syscall.ENOTDIR},
+		&fs.PathError{Op: "stat", Path: "/private", Err: syscall.EACCES},
+		&exec.Error{Name: "/tmp", Err: syscall.EISDIR},
+		&fs.PathError{Op: "lstat", Path: "/loop", Err: syscall.ELOOP},
+	} {
+		require.True(t, hookCommandAbsent(err), "%v", err)
+	}
+	require.False(t, hookCommandAbsent(&fs.PathError{Op: "stat", Path: "/disk", Err: syscall.EIO}))
+	require.False(t, hookCommandAbsent(&exec.Error{Name: "py", Err: exec.ErrDot}))
 }
