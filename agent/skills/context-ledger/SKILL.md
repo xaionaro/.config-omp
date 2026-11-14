@@ -591,7 +591,7 @@ For assignments affected by material user input, use the [capture-and-prepare op
 
 Reconcile the remaining records, append material changes to `high_level_log.jsonl`, and refresh `latest-status-report.yaml` in the same turn, before QA/verdicts, handoff, user-waiting stops, or shutdown. A status must reflect current facts; answering a due user response still comes first. A forecast-only change updates `forecasts.yaml` without rewriting the ledger. Keep this maintenance bounded to changed facts and their affected links; it never grants permission or creates a dispatch gate.
 
-Keep one `todo` item per active Job, owed duty, and follow-up. Update it at each state change, in the same turn as its ledger record. The item names its ledger record ID instead of restating its facts.
+Keep one `todo` item per active Job, promise or other owed action, and follow-up. Update it at each state change, no later than its ledger record. The item names its ledger record ID instead of restating its facts.
 
 For a project/task fact change, use this three-pass ledger edit:
 
