@@ -317,7 +317,12 @@ scenario data into a rendered report. Omit an active target when inactive.
 the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
 leaf the work tree must explain; a child's `id` is its parent's `id` plus `.`
-and a segment, such as `1.2`. Each scenario contains `name`, `trigger`,
+and a segment, such as `1.2`. Write each `duration` as a range, such as
+`"10–20 minutes"`. A completed leaf's `duration` holds its initial estimate,
+and the leaf adds `completed_at` (quoted UTC) and `measured` (elapsed, such as
+`"17 minutes"`) for the completed-leaf table in
+[Work estimates](../../eci-binding-contract.md#work-estimates). Each scenario
+contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
 is unsupported. Add fields needed for combinations, external waits, or other
