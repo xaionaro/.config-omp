@@ -844,7 +844,7 @@ assert_worker_fsck_lost_found_denied
 
 ## test-workflow-skill-routing.sh (Job PORT, absent-text pins)
 
-Withheld until the sentences exist in the named docs. See the matching TEST-DISPOSITION.md row.
+Retired: the routing test no longer pins prose (testing-discipline). Do not restore.
 
 ### 2f602d2 line 3309 (after: `'least restriction contract'` and the blank line)
 ```bash

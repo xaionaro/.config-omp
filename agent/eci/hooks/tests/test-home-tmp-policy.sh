@@ -20,6 +20,7 @@ assert_absent() {
   fi
 }
 
+# TODO: these assert_absent and bare-mktemp checks pin source text; replace each with a probe of the writer's actual scratch path, as run_helper_probe does for eci-tmp.sh.
 # These are active runtime writers.  Their private scratch defaults must not
 # turn a caller's ordinary named temporary path into a command denial.
 assert_absent '${TMPDIR:-/tmp}' "$ROOT/hooks/pre-commit-go-mod.sh"

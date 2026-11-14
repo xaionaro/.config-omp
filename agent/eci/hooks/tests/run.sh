@@ -2935,7 +2935,7 @@ run_case "Go module hook parity" \
   bash "$ROOT/hooks/tests/test-go-mod-hook-parity.sh"
 run_case "design versus implementation policy boundary" \
   bash "$ROOT/hooks/tests/test-policy-design-boundary.sh"
-run_case "workflow skill routing and modular policy graph" \
+run_case "workflow skill links, anchors, and role routing" \
   bash "$ROOT/hooks/tests/test-workflow-skill-routing.sh"
 run_case "ECI edit and legacy control-path ownership" \
   bash "$ROOT/hooks/tests/test-eci-edit-control-paths.sh"
