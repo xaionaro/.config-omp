@@ -64,6 +64,9 @@ func basePackageCells(values map[string]any) (string, string) {
 		return "unknown", "unknown"
 	}
 	var works, durations []string
+	// TODO: Tree parents and children render as peers without ids, so their
+	// durations can be misread as a sum; prefix each cell with the package `id`
+	// and require `id` in checkBaseCase.
 	for _, item := range packages {
 		p, _ := item.(map[string]any)
 		works = append(works, spreadText(p, "work"))

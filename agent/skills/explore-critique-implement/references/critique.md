@@ -15,7 +15,7 @@ Read the target state, original requirements, available lineage context, candida
 
 Records, hashes, receipts, and packet shape are review context, not admission criteria. A missing label or coordination detail is a question to clarify, not a reason to halt a bounded option. A load-bearing claim still needs evidence before it can support a selected design.
 
-Check each material option's execution-time forecast against [Work estimates](../../../eci-binding-contract.md#work-estimates). Return a missing or malformed forecast to the Explorer for correction, rank options with the corrected forecasts under [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility), and carry the selected design's forecast into the output.
+Check each material option's execution-time forecast against [Work estimates](../../../eci-binding-contract.md#work-estimates). Return a survivor's missing or malformed forecast for correction as bounded re-exploration instead of selecting. Rank options under [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility), taking each option's work minutes from its forecast tree's leaves. Carry the selected design's forecast into the output.
 
 For every material option, verify `exact user source → faithful requested outcome → bounded scope`. Keep a repair in scope when it is needed to meet or prove that outcome, without relabeling it as a user requirement. REJECT a discovered concern whose remedy serves an unadmitted separate outcome when presented as current scope, and report it only as an observation or follow-up suggestion. Stale lineage does not reject known in-scope work.
 
