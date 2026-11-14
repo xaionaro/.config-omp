@@ -38,7 +38,7 @@ Record authorized child Jobs with stable parent edges, their own outcomes and fu
 
 ### Recording and citing user requirements
 
-Classify material input under [User requirements](../../eci-binding-contract.md#user-requirements). Record each user requirement as a separate `requirement` record, linked from each outcome it affects. Its `source_text` holds only the user's exact words, with secrets redacted. Its `source_context` holds what a fresh reader needs to read those words as meant, such as what they answer and the ID of any requirement they clarify or change; its `evidence` identifies the source message. Wherever anything is claimed to be a user requirement, cite its requirement ID.
+Classify material input under [User requirements](../../eci-binding-contract.md#user-requirements). Record each user requirement as a separate `requirement` record, linked from each outcome it affects. Its `source_text` holds only the user's exact words, with secrets redacted. Its `source_context` holds what a fresh reader needs to read those words as meant, such as what they answer and the ID of any requirement they clarify or change. Its `evidence` identifies the source message. Wherever anything is claimed to be a user requirement, cite its requirement ID.
 
 Preserve other exact attributed user passages. Record hypotheses and derived work with their own record types and links. Keep applicable instruction sources and unresolved inquiries with their owner and next action.
 

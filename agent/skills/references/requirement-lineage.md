@@ -11,7 +11,7 @@ Keep the current `project-understanding.yaml` ledger readable enough to answer:
 
 | Record | Purpose |
 | --- | --- |
-| User requirement | Its [requirement record](../context-ledger/SKILL.md#recording-and-citing-user-requirements). |
+| User requirement | What the user stated, in its [requirement record](../context-ledger/SKILL.md#recording-and-citing-user-requirements). |
 | Outcome | What outcome the user asked for, in concise faithful wording. |
 | Lane | What bounded work is being done. |
 | Reason | Why the lane helps that outcome. |

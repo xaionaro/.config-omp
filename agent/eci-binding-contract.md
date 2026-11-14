@@ -39,7 +39,7 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 
 ## User requirements
 
-Apply applicable standing instructions without requiring the user to restate them. A user requirement is any result or constraint the user states, including a reminder, clarification, change or correction. A user requirement adds an outcome only when it requests a new result; every other one belongs to the outcome it affects. Where a project ledger is kept, record and cite user requirements under `~/.omp/agent/skills/context-ledger/SKILL.md#recording-and-citing-user-requirements`.
+Apply applicable standing instructions without requiring the user to restate them. A user requirement is any result or constraint the user states, including a reminder, clarification, change or correction. A user requirement adds an outcome only when it requests a new result; every other one belongs to the outcomes it affects. Where a project ledger is kept, record and cite user requirements under `~/.omp/agent/skills/context-ledger/SKILL.md#recording-and-citing-user-requirements`.
 
 ## Evidence
 
