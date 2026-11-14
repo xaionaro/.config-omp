@@ -472,6 +472,10 @@ func hookLaunchReaches(argv []string, target hookLaunchTarget) bool {
 				if index+1 >= len(argv) {
 					return false
 				}
+				// TODO: only the payload's first word is checked, so a launcher-wrapped
+				// compound payload such as timeout 5 bash -c 'cd /tmp && python3 x' is
+				// missed. Run the planner's shell analysis on the payload, as a direct
+				// bash -c already gets, and walk each resulting record.
 				return hookLaunchReaches(strings.Fields(argv[index+1]), target)
 			}
 		}

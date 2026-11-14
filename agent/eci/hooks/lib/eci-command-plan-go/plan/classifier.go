@@ -2361,34 +2361,63 @@ func conditionalBranchReachability(
 //
 // Example: ` then cd /tmp` returns then and `cd /tmp`.
 func conditionalSegmentKeyword(command string) (string, string, bool) {
-	words := strings.Fields(command)
-	if len(words) == 0 {
-		return "", "", false
-	}
-	switch words[0] {
+	word, body := leadingSegmentWord(command)
+	switch word {
 	case "if", "then", "elif", "else", "fi":
-		body := strings.TrimSpace(strings.TrimPrefix(command, words[0]))
-		return words[0], body, true
+		return word, body, true
 	default:
 		return "", "", false
 	}
 }
 
-// conditionalEffectSegment removes only a recognized leading conditional
-// prefix for effect inspection while retaining the original segment bytes in
-// PlanTopology. Condition bodies remain visible; a bare `fi` has no effect.
+// commandPrefixKeyword splits a leading loop keyword or pipeline negation,
+// after which the shell still starts the segment's command. Only effect
+// inspection removes these words; CWD tracking follows the if grammar alone.
 //
-// Example: ` then rm eci_active` is inspected as `rm eci_active`, while the
-// topology still serializes the original leading space and `then` keyword.
+// Example: `do python3 x` returns do and `python3 x`.
+func commandPrefixKeyword(command string) (string, string, bool) {
+	word, body := leadingSegmentWord(command)
+	switch word {
+	case "do", "while", "until", "!":
+		return word, body, true
+	default:
+		return "", "", false
+	}
+}
+
+// leadingSegmentWord splits a segment into its first word and the trimmed rest.
+//
+// Example: `while read -r line` returns while and `read -r line`.
+func leadingSegmentWord(command string) (string, string) {
+	trimmed := strings.TrimSpace(command)
+	words := strings.Fields(trimmed)
+	if len(words) == 0 {
+		return "", ""
+	}
+	return words[0], strings.TrimSpace(strings.TrimPrefix(trimmed, words[0]))
+}
+
+// conditionalEffectSegment repeatedly removes leading if-grammar keywords, loop
+// keywords, and pipeline negation for effect inspection, so `if ! cmd` and
+// `do ! cmd` expose cmd, while PlanTopology retains the original segment bytes.
+// Condition and loop bodies remain visible; a bare `fi` or keyword has no effect.
+//
+// Example: ` then rm eci_active` and ` do ! rm eci_active` are inspected as `rm eci_active`.
 func conditionalEffectSegment(current segment) (segment, bool) {
-	keyword, body, ok := conditionalSegmentKeyword(strings.TrimSpace(current.command))
-	if !ok {
-		return current, true
+	effect := current
+	for {
+		keyword, body, ok := conditionalSegmentKeyword(effect.command)
+		if !ok {
+			keyword, body, ok = commandPrefixKeyword(effect.command)
+		}
+		switch {
+		case !ok:
+			return effect, true
+		case keyword == "fi" || body == "":
+			return segment{}, false
+		}
+		effect = conditionalBranchSegment(effect, body)
 	}
-	if keyword == "fi" || body == "" {
-		return segment{}, false
-	}
-	return conditionalBranchSegment(current, body), true
 }
 
 // isConditionalReservedSegment detects an unsupported control-flow marker

@@ -633,6 +633,44 @@ func TestHookPythonDirect(t *testing.T) {
 	require.Contains(t, diagnostic.Remediation, "#!/usr/bin/python3")
 }
 
+// TestHookPythonCompoundCommands checks direct Python calls behind loop keywords
+// and negation, while words that only name python3 and dead branches stay allowed.
+//
+// Example: for f in a; do python3 "$f"; done is denied, while echo do python3 is not.
+func TestHookPythonCompoundCommands(t *testing.T) {
+	t.Setenv("PATH", "")
+	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: t.TempDir(), CWDKnown: true, CollectShellCommands: true}
+	for _, command := range []string{
+		`for f in a; do python3 "$f"; done`,
+		"while true; do /usr/bin/python3 x; break; done",
+		"while python3 x; do :; done",
+		"until python3 x; do :; done",
+		"select x in a; do python3 y; done",
+		"! python3 x",
+		"if ! python3 -c 'import yaml'; then echo missing; fi",
+		"for f in a; do ! python3 x; done",
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodePythonScriptRequired, "compound Python call allowed: %s: %+v", command, diagnostic)
+	}
+	for _, command := range []string{
+		"echo do python3",
+		"echo ! python3",
+		"for f in a; do echo python3; done",
+		"for python3 in a; do :; done",
+		"if false; then for f in a; do python3 x; done; fi",
+	} {
+		request.Command = command
+		diagnostic := hookTestDiagnostic(request)
+		require.Nilf(t, diagnostic, "command denied: %s: %+v", command, diagnostic)
+	}
+	// The strip is shared with the classifier's own effect checks.
+	request.Command = "for f in a; do rm -rf /; done"
+	diagnostic := hookTestDiagnostic(request)
+	require.Falsef(t, diagnostic == nil || diagnostic.Code != CodeBroadDestructiveDenied, "loop-body broad destructive allowed: %+v", diagnostic)
+}
+
 // TestHookEffectsPythonPrecedesMakeCap pins that the mode-independent Python
 // denial wins over an earlier mode-dependent make cap denial.
 //
