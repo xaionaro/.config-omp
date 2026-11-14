@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,10 +14,45 @@ import (
 // Example: echo x > $HOME/.omp/agent/sessions/slug/new.jsonl selects this gate.
 const hookCodeWorkerSessionsRootDenied DiagnosticCode = "ECI_WORKER_SESSIONS_ROOT_DENIED"
 
-// hookWholeResetAcknowledgment is the prefix assignment that admits one intended whole-tree reset.
+// hookAcknowledgment is a prefix assignment that admits one intended effect a gate would otherwise deny.
 //
-// Example: ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD~1.
-const hookWholeResetAcknowledgment = "ECI_WHOLE_TREE_RESET=1"
+// Example: ECI_WHOLE_TREE_RESET=1 before git reset --hard admits one whole-tree reset.
+type hookAcknowledgment string
+
+const (
+	// hookWholeResetAcknowledgment admits one intended whole-tree reset.
+	//
+	// Example: ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD~1.
+	hookWholeResetAcknowledgment hookAcknowledgment = "ECI_WHOLE_TREE_RESET=1"
+
+	// hookLiveRemovalAcknowledgment admits one intended removal or relocation of a live Bash-gate file.
+	//
+	// Example: ECI_LIVE_HOOK_REMOVAL=1 git rm hooks/validate-bash.sh.
+	hookLiveRemovalAcknowledgment hookAcknowledgment = "ECI_LIVE_HOOK_REMOVAL=1"
+)
+
+// hookGitResetMode is the effect class of a Git reset mode: what the reset rewrites
+// besides HEAD.
+//
+// Example: git reset --hard selects hookGitResetWorktree.
+type hookGitResetMode int
+
+const (
+	// hookGitResetMixed resets the index and no worktree file; it is Git's default mode.
+	//
+	// Example: git reset HEAD~1.
+	hookGitResetMixed hookGitResetMode = iota
+
+	// hookGitResetSoft moves HEAD only.
+	//
+	// Example: git reset --soft HEAD~1.
+	hookGitResetSoft
+
+	// hookGitResetWorktree resets the index and rewrites worktree files: --hard, --merge or --keep.
+	//
+	// Example: git reset --keep HEAD~1.
+	hookGitResetWorktree
+)
 
 // inspectHookEffects completes callback-owned checks on every reachable command.
 // Unknown shell values remain advisory unless a concrete effect is established.
@@ -531,38 +567,28 @@ func hookArgumentKnown(
 		!slices.Contains(record.UnknownCardinalityArguments, index)
 }
 
-// hookPrefixAcknowledged reports a known prefix assignment equal to acknowledgment
-// before the command word, including after env.
+// hookPrefixAcknowledged reports a known word equal to acknowledgment anywhere before
+// the command word: a prefix assignment, or an operand of a wrapper such as env.
 //
 // Example: ECI_WHOLE_TREE_RESET=1 git reset --hard acknowledges one whole-tree reset.
 func hookPrefixAcknowledged(
 	record ShellCommandRecord,
 	child []token,
-	acknowledgment string,
+	acknowledgment hookAcknowledgment,
 ) bool {
 	for index, value := range record.Argv[:child[0].offset] {
-		if value == acknowledgment && hookArgumentKnown(record, index) {
+		if value == string(acknowledgment) && hookArgumentKnown(record, index) {
 			return true
 		}
 	}
 	return false
 }
 
-// hookHeadRevision reports a reset operand Git always reads as a revision: HEAD or @
-// with optional ~ and ^ steps. A same-named path makes Git refuse the reset as
-// ambiguous, so the operand never selects a path.
-//
-// Example: HEAD~1 and @^ qualify; owned.txt and HEADS do not.
-func hookHeadRevision(value string) bool {
-	name, steps := value, ""
-	if index := strings.IndexAny(value, "~^"); index >= 0 {
-		name, steps = value[:index], value[index:]
-	}
-	return (name == "HEAD" || name == "@") && strings.Trim(steps, "~^0123456789") == ""
-}
-
-// hookGitDirectory resolves explicit Git directory selection in original order.
-// It never substitutes the callback directory for an unknown child directory.
+// hookGitDirectory resolves the directory Git's relative paths start from: the callback
+// directory, changed by -C and --work-tree in original order. --git-dir selects only the
+// repository; Git then treats the current directory as the worktree top unless the
+// repository sets core.worktree. It never substitutes the callback directory for an
+// unknown child directory.
 //
 // Example: git -C /project -C subdir add file selects /project/subdir.
 func hookGitDirectory(
@@ -578,7 +604,7 @@ func hookGitDirectory(
 		value := argv[index].value
 		target := ""
 		switch {
-		case value == "-c" || value == "--config-env" || value == "--exec-path" || value == "--namespace" || value == "--super-prefix":
+		case value == "-c" || value == "--config-env" || value == "--exec-path" || value == "--namespace" || value == "--super-prefix" || value == "--git-dir":
 			index++
 			continue
 		case value == "-C":
@@ -592,13 +618,13 @@ func hookGitDirectory(
 				return ""
 			}
 			target = strings.TrimPrefix(value, "-C")
-		case value == "--work-tree" || value == "--git-dir":
+		case value == "--work-tree":
 			index++
 			if index >= verbIndex || !hookArgumentKnown(record, argv[index].offset) {
 				return ""
 			}
 			target = argv[index].value
-		case strings.HasPrefix(value, "--work-tree=") || strings.HasPrefix(value, "--git-dir="):
+		case strings.HasPrefix(value, "--work-tree="):
 			if !hookArgumentKnown(record, argv[index].offset) {
 				return ""
 			}
@@ -659,10 +685,11 @@ func inspectHookGit(
 	return nil
 }
 
-// inspectHookGitBroad identifies explicit whole-index or whole-worktree effects.
-// Unknown option and scalar identity remains advisory; previews stay native.
+// inspectHookGitBroad identifies explicit whole-index or whole-worktree add, clean and
+// reset effects. Unknown option and scalar identity remains advisory; previews stay
+// native. A whole-tree reset prefixed with hookWholeResetAcknowledgment stays native.
 //
-// Example: git add -A -- file is narrow, whereas git add -A is whole-worktree.
+// Example: git add -A and git reset --hard are whole; git add -A -- file is narrow.
 func inspectHookGitBroad(
 	record ShellCommandRecord,
 	argv []token,
@@ -670,80 +697,176 @@ func inspectHookGitBroad(
 	directory string,
 ) *Diagnostic {
 	verb := argv[verbIndex].value
-	if verb != "add" && verb != "reset" && verb != "clean" {
-		return nil
-	}
-	whole := false
-	paths := 0
-	options := true
-	revision := false
-	for _, argument := range argv[verbIndex+1:] {
-		if !hookArgumentKnown(record, argument.offset) {
-			if !options && whole && slices.Contains(record.MayDisappearArguments, argument.offset) {
-				continue
-			}
-			return nil
-		}
-		value := argument.value
-		if options && value == "--" {
-			options = false
-			if verb == "reset" {
-				whole = true
-			}
-			continue
-		}
-		if options && strings.HasPrefix(value, "-") {
-			switch value {
-			case "--dry-run", "-n", "--help", "-h":
-				return nil
-			case "-A", "--all", "-u", "--update":
-				whole = verb == "add"
-			case "--hard", "--mixed", "--merge", "--keep":
-				whole = verb == "reset"
-			case "--soft":
-				return nil
-			case "-f", "-d", "-x", "-X", "-fd", "-fdx", "-df", "-ff", "-ffdx":
-				whole = verb == "clean"
-			case "-q", "--quiet", "-v", "--verbose":
-			default:
-				return nil
-			}
-			continue
-		}
-		if verb == "reset" && options && !revision {
-			if !whole && !hookHeadRevision(value) {
-				// Without an explicit reset mode or --, this literal may be
-				// a path rather than a revision. That identity stays advisory.
-				return nil
-			}
-			whole = true
-			revision = true
-			continue
-		}
-		if value != "." && value != ":/" && value != directory {
-			paths++
-		}
-	}
-	if verb == "reset" && options && !revision {
-		// Only mode or quiet options were given, so Git resets the whole index to HEAD.
-		whole = true
-	}
-	if !whole || paths > 0 {
-		return nil
-	}
+	arguments := argv[verbIndex+1:]
 	route := "use native Git with exact owned repository-relative paths; preserve unrelated work"
-	if verb == "reset" {
-		if hookPrefixAcknowledged(record, argv, hookWholeResetAcknowledgment) {
+	switch verb {
+	case "add", "clean":
+		if !hookGitAddCleanWhole(record, verb, arguments, directory) {
 			return nil
 		}
-		// A whole-index reset clears other Producers' staging and --hard
-		// overwrites live files; this route keeps every effect path-scoped.
-		route = "unstage with git reset -- <owned paths>; discard with git restore --staged --worktree -- <owned paths>; move HEAD with git reset --soft <rev>, then restore owned paths; for an intended whole-tree reset after git status shows only your own staged and uncommitted work, prefix this command with " + hookWholeResetAcknowledgment
+	case "reset":
+		if !hookGitResetWhole(record, arguments, directory) || hookPrefixAcknowledged(record, argv, hookWholeResetAcknowledgment) {
+			return nil
+		}
+		// A whole-index reset clears other Producers' staging, and --hard overwrites live files.
+		// Reset alone offers an acknowledgment: an intended whole-tree reset has no path-scoped
+		// equivalent, and gate-escape-hatches.md (Git destructive checks row) records that route.
+		route = "unstage with git reset -- <owned paths>; undo your own edits with Edit or Write, or git restore --staged --worktree -- <owned paths>; move HEAD with git reset --soft <rev>; for an intended whole-tree reset after git status shows only your own staged and uncommitted work, prefix this command with " + string(hookWholeResetAcknowledgment) + "; a workspace Git guard may still refuse worktree or HEAD changes in a shared checkout, so follow its route there"
+	default:
+		return nil
 	}
 	diagnostic := diagnosticForToken(CodeBroadDestructiveDenied, "Git "+verb+" selects the whole repository index or worktree: "+directory,
 		record.Segment, argv[verbIndex].offset, argv[verbIndex], route, "git-broad-effect")
 	diagnostic.Path = directory
 	return diagnostic
+}
+
+// hookGitAddCleanWhole reports a git add or clean that selects the whole worktree: add
+// with -A or -u, or clean with a force, directory or ignored-file option, and no path
+// other than a whole pathspec. Previews, help, unknown options and unknown operands
+// stay advisory.
+//
+// Example: git add -A and git clean -fdx are whole; git add -A -- owned.txt is not.
+func hookGitAddCleanWhole(
+	record ShellCommandRecord,
+	verb string,
+	arguments []token,
+	directory string,
+) bool {
+	whole := false
+	paths := 0
+	options := true
+	for _, argument := range arguments {
+		known := hookArgumentKnown(record, argument.offset)
+		value := argument.value
+		operand := !options || !strings.HasPrefix(value, "-")
+		switch {
+		case !known && !options && whole && slices.Contains(record.MayDisappearArguments, argument.offset):
+			// An operand that may expand to nothing narrows nothing.
+			continue
+		case !known:
+			return false
+		case options && value == "--":
+			options = false
+			continue
+		case operand && !hookGitWholePathspec(value, directory):
+			// TODO: a whole pathspec among other paths still selects the whole worktree, so
+			// git add -A owned.txt . is unchecked; count it as reset does.
+			paths++
+			continue
+		case operand:
+			continue
+		}
+		switch value {
+		case "--dry-run", "-n", "--help", "-h":
+			return false
+		case "-A", "--all", "-u", "--update":
+			whole = verb == "add"
+		// TODO: another verb's option clears whole, so git add -A -f is unchecked; let
+		// only the verb's own options change whole.
+		case "-f", "-d", "-x", "-X", "-fd", "-fdx", "-df", "-ff", "-ffdx":
+			whole = verb == "clean"
+		case "-q", "--quiet", "-v", "--verbose":
+		default:
+			return false
+		}
+	}
+	return whole && paths == 0
+}
+
+// hookGitWholePathspec reports a pathspec that selects the whole tree from the Git
+// working directory: ., :/ or that directory.
+//
+// Example: the . in git reset -- . selects every index entry.
+func hookGitWholePathspec(
+	value string,
+	directory string,
+) bool {
+	// TODO: from a subdirectory, . and the directory select only that subdirectory, and ..
+	// can select the whole tree. Resolve the repository root to classify both, for add and
+	// reset alike; until then cd sub && git reset -- . is falsely denied.
+	return value == "." || value == ":/" || value == directory
+}
+
+// hookGitResetWhole reports a git reset that resets the whole index, and with --hard,
+// --merge or --keep the whole worktree. It follows Git's argument rules: options may
+// follow operands, the last mode option wins, and -- ends options. --soft resets
+// neither. A mixed reset is whole when no path remains or a whole pathspec is among
+// its paths. Unknown options and unknown operands before -- stay advisory; an operand
+// after -- that may expand to nothing narrows nothing.
+//
+// Example: git reset main --hard, git reset origin/main and git reset -- owned.txt . are whole.
+func hookGitResetWhole(
+	record ShellCommandRecord,
+	arguments []token,
+	directory string,
+) bool {
+	mode := hookGitResetMixed
+	separator := -1
+	operands := 0
+	last := ""
+	wholePath := false
+	for _, argument := range arguments {
+		known := hookArgumentKnown(record, argument.offset)
+		value := argument.value
+		switch {
+		case !known && separator >= 0 && slices.Contains(record.MayDisappearArguments, argument.offset):
+			// An operand after -- that may expand to nothing narrows nothing.
+		case !known:
+			return false
+		case separator < 0 && value == "--":
+			separator = operands
+		case separator >= 0 || !strings.HasPrefix(value, "-"):
+			wholePath = wholePath || hookGitWholePathspec(value, directory)
+			last = value
+			operands++
+		case value == "--soft":
+			mode = hookGitResetSoft
+		case value == "--mixed":
+			mode = hookGitResetMixed
+		case value == "--hard" || value == "--merge" || value == "--keep":
+			mode = hookGitResetWorktree
+		case value != "-q" && value != "--quiet":
+			// Other options, such as --patch or --pathspec-from-file, change what resets.
+			return false
+		}
+	}
+	switch {
+	case mode == hookGitResetSoft:
+		return false
+	case mode == hookGitResetWorktree || operands == 0 || wholePath:
+		return true
+	case separator == 1:
+		// In git reset <rev> -- <paths>, no path leaves the whole index.
+		return operands == 1
+	case separator == 0 || operands > 1:
+		// Git reads every operand after a leading -- or after its first operand as a path.
+		return false
+	}
+	return hookGitResetLoneRevision(last, directory)
+}
+
+// hookGitResetLoneRevision reports that Git may read the lone operand of a mode-less
+// reset without -- as a revision. Git reads an operand that exists in the working
+// directory as a path, or refuses it when it also names a revision. A missing operand
+// is a revision, a wildcard pathspec, or an error; the planner resolves no revision,
+// such as HEAD^{/fix*}, so all three count as a revision. An unknown directory or a
+// lookup failure other than a missing path stays advisory.
+//
+// Example: git reset origin/main names a revision unless a path origin/main exists.
+func hookGitResetLoneRevision(
+	operand string,
+	directory string,
+) bool {
+	if directory == "" {
+		return false
+	}
+	path := operand
+	if !filepath.IsAbs(path) {
+		path = joinLiteralPath(directory, path)
+	}
+	_, err := os.Lstat(path)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // inspectHookSessionsWriter protects the runtime's session transcript directory.
@@ -944,11 +1067,6 @@ func hookSessionsOperandDiagnostic(
 // Example: rm hooks/validate-bash.sh in the live provider root selects this gate.
 const hookCodeLiveBashGateRemoval DiagnosticCode = "ECI_LIVE_BASH_GATE_REMOVAL_DENIED"
 
-// hookLiveRemovalAcknowledgment is the prefix assignment that admits one intended removal.
-//
-// Example: ECI_LIVE_HOOK_REMOVAL=1 git rm hooks/validate-bash.sh.
-const hookLiveRemovalAcknowledgment = "ECI_LIVE_HOOK_REMOVAL=1"
-
 // liveBashGateRelativePaths lists provider files every Bash callback executes.
 // Removing one blocks every later Bash call, including the shell repair route,
 // so the same actor could not restore it with Bash. Other hook files stay ordinary targets.
@@ -962,8 +1080,8 @@ var liveBashGateRelativePaths = [...]string{
 
 // inspectHookLiveGateRemoval protects existing live Bash-gate files from removal or relocation.
 // Only rm, rmdir, unlink, shred, srm, mv sources and physical git rm/mv sources are checked.
-// Git checkout and restore stay native: they rewrite a tracked hook with tracked content, so
-// the gate keeps running; discarding uncommitted edits follows ordinary preservation practice.
+// Git checkout, restore and reset stay native; the Live Bash-gate removal row of
+// gate-escape-hatches.md records why.
 // Paths outside the live provider roots, including clones and other repositories, are unaffected.
 //
 // Example: rm hooks/validate-bash.sh is denied; ECI_LIVE_HOOK_REMOVAL=1 rm hooks/validate-bash.sh is not.
@@ -1008,7 +1126,7 @@ func inspectHookLiveGateRemoval(
 				diagnostic := diagnosticForToken(hookCodeLiveBashGateRemoval,
 					name+" removes or relocates live Bash-gate file "+hook+" through "+target+"; afterwards every Bash call is blocked, including the shell repair route",
 					record.Segment, argument.offset, argument,
-					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; to remove or relocate it here intentionally, prefix this command with "+hookLiveRemovalAcknowledgment+" and restore the file with Write before the next Bash call",
+					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; to remove or relocate it here intentionally, prefix this command with "+string(hookLiveRemovalAcknowledgment)+" and restore the file with Write before the next Bash call",
 					"live-bash-gate-removal")
 				diagnostic.Path = target
 				return diagnostic

@@ -18,6 +18,7 @@ classifier_tmp_parent="$(eci_realpath_canonical "${ECI_TMPDIR:-${TMPDIR:-${HOME:
 mkdir -p -- "$classifier_tmp_parent"
 TMP_ROOT="$(mktemp -d "$classifier_tmp_parent/eci-classifier-${BASHPID}.XXXXXX")"
 classifier_hook_fixture="$(mktemp "$ROOT/hooks/.validate-bash-classifier.${BASHPID}.XXXXXX")"
+# TODO: this trap removes only the hook fixture. Also remove $TMP_ROOT, $session_temp_sibling, $session_temp_link and $isolated_manifest_source_dir, so runs leave no eci-classifier-*, eci-unbound-session-*, eci-session-link-* or isolated-manifest-source entries under $classifier_tmp_parent.
 trap 'rm -f -- "$classifier_hook_fixture"' EXIT
 cp -- "$ROOT/hooks/validate-bash.sh" "$classifier_hook_fixture"
 eci_sed_inplace '2{/^exit 0$/d;}' "$classifier_hook_fixture"
@@ -959,34 +960,28 @@ assert_unknown() {
   }
 }
 
-assert_git_whole_worktree_staging_denied() {
-  local command="$1" runner="${2:-run_hook}" output
+# A broad Git denial names the gate, the repository and a remediation. An
+# optional third argument is text that the reason must also contain.
+assert_git_broad_effect_denied() {
+  local command="$1" runner="${2:-run_hook}" required="${3:-}" output
   output="$("$runner" "$command")"
-  jq -e --arg repository "$ROOT" '
+  jq -e --arg repository "$ROOT" --arg required "$required" '
     .hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]")) and
     (.hookSpecificOutput.permissionDecisionReason | contains("operation=broad-destructive")) and
     (.hookSpecificOutput.permissionDecisionReason | contains("predicate=git-broad-effect")) and
     (.hookSpecificOutput.permissionDecisionReason | contains(("path=" + $repository + ","))) and
-    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:"))
+    (.hookSpecificOutput.permissionDecisionReason | contains("remediation:")) and
+    (.hookSpecificOutput.permissionDecisionReason | contains($required))
   ' "$output" >/dev/null || {
-    printf 'Git whole-worktree staging denial mismatch: command=%q output=%s\n' "$command" "$output" >&2
+    printf 'Git broad-effect denial mismatch: command=%q required=%q output=%s\n' "$command" "$required" "$output" >&2
     [ ! -e "$output" ] || cat -- "$output" >&2
     return 1
   }
 }
-# A whole-tree reset denial is the broad Git denial plus the acknowledged route.
+# A whole-tree reset denial also names its acknowledged route.
 assert_git_whole_reset_denied() {
-  local command="$1" runner="${2:-run_hook}" output
-  assert_git_whole_worktree_staging_denied "$command" "$runner" || return 1
-  output="$("$runner" "$command")"
-  jq -e '
-    .hookSpecificOutput.permissionDecisionReason | contains("ECI_WHOLE_TREE_RESET=1")
-  ' "$output" >/dev/null || {
-    printf 'Git whole-tree reset route mismatch: command=%q output=%s\n' "$command" "$output" >&2
-    [ ! -e "$output" ] || cat -- "$output" >&2
-    return 1
-  }
+  assert_git_broad_effect_denied "$1" "${2:-run_hook}" ECI_WHOLE_TREE_RESET=1
 }
 # Removing or relocating a live Bash-gate file blocks every later Bash call; the
 # denial names the in-place, index-only and acknowledged routes.
@@ -1253,20 +1248,31 @@ run_hook_matrix_parallel python-script-required coordinator-python-direct \
   "python3 -" \
   "env -S python3 -m pytest tests"
 
-# Ordinary commits do not infer ownership from legacy markers. A whole-tree
-# reset is checked and names its acknowledged route; path-scoped, --soft and
-# acknowledged resets stay native.
+# Ordinary commits do not infer ownership from legacy markers. A whole-index or
+# whole-tree reset is checked in any option order and names its acknowledged
+# route; path-scoped, --soft and acknowledged resets stay native.
 run_hook_matrix_parallel allowed coordinator-git-commit \
   "git commit -m 'checkpoint'"
 run_matrix_parallel coordinator assert_git_whole_reset_denied coordinator-git-reset \
   "git reset --hard" \
   "git reset" \
   "git reset HEAD" \
-  "git reset -- ."
+  "git reset -- ." \
+  "git reset main --hard" \
+  "git reset --soft --hard" \
+  "git reset ." \
+  "git reset :/" \
+  "git reset HEAD~1 -- ." \
+  "git reset -- hooks/validate-bash.sh ." \
+  "git reset origin/main"
 run_hook_matrix_parallel allowed coordinator-git-reset-scoped \
   "git reset -- hooks/validate-bash.sh" \
   "git reset --soft HEAD" \
-  "ECI_WHOLE_TREE_RESET=1 git reset --hard"
+  "ECI_WHOLE_TREE_RESET=1 git reset --hard" \
+  "git reset hooks/validate-bash.sh" \
+  "git reset --mixed hooks/validate-bash.sh" \
+  "git reset hooks/validate-bash.sh --mixed" \
+  "git reset --hard --soft"
 
 if [[ "$kimi_root" = /* ]] && [ -d "$kimi_root" ] && [ ! -L "$kimi_root" ] &&
   [ -f "$kimi_root/bin/eci-active" ] && [ ! -L "$kimi_root/bin/eci-active" ]; then
@@ -1652,7 +1658,7 @@ run_hook_matrix_parallel allowed coordinator-git-prep \
 run_matrix_parallel coordinator assert_allowed coordinator-git-prep-dot \
   "git add ."
 # ADDED: the explicit whole-worktree form both trees deny.
-run_matrix_parallel coordinator assert_git_whole_worktree_staging_denied coordinator-git-prep-unsafe-all \
+run_matrix_parallel coordinator assert_git_broad_effect_denied coordinator-git-prep-unsafe-all \
   "git add -A"
 run_matrix_parallel coordinator assert_live_gate_removal_denied coordinator-protected-git-target \
   "git rm -- hooks/validate-bash.sh" \

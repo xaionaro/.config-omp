@@ -14,29 +14,56 @@ import (
 // TestHookMarkerFreeConcreteGitEffects preserves broad Git safeguards without
 // inferring ECI lifecycle state from a retired marker.
 //
-// Example: a whole-index add or reset is denied while exact-path and soft
-// resets remain native as the bounded route.
+// Example: a whole-index add or reset is denied with its route, while exact-path
+// and soft resets remain native as the bounded route.
 func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 	root := t.TempDir()
+	for _, path := range []string{"owned.txt", "HEADER.md", "HEAD~2", "sub/owned.txt", "meta/HEAD"} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(root, path), nil, 0o600))
+	}
+	addRoute := []string{"exact owned repository-relative paths"}
+	resetRoute := []string{"git reset -- <owned paths>", "Edit or Write", "git reset --soft <rev>", string(hookWholeResetAcknowledgment), "Git guard"}
 	for _, current := range []struct {
-		command string
-		denied  bool
+		command     string
+		remediation []string
 	}{
-		{command: "git add -A", denied: true},
-		{command: "git reset --hard", denied: true},
-		{command: "git reset --hard HEAD", denied: true},
-		{command: "git reset --keep HEAD~1", denied: true},
-		{command: "git reset", denied: true},
-		{command: "git reset -- .", denied: true},
+		{command: "git add -A", remediation: addRoute},
+		{command: "ECI_WHOLE_TREE_RESET=1 git add -A", remediation: addRoute},
+		{command: "git reset --hard", remediation: resetRoute},
+		{command: "git reset --hard HEAD", remediation: resetRoute},
+		{command: "git reset --keep HEAD~1", remediation: resetRoute},
+		{command: "git reset main --hard", remediation: resetRoute},
+		{command: "git reset --soft --hard", remediation: resetRoute},
+		{command: "git reset", remediation: resetRoute},
+		{command: "git reset -q", remediation: resetRoute},
+		{command: "git reset --", remediation: resetRoute},
+		{command: "git reset -- .", remediation: resetRoute},
+		{command: "git reset .", remediation: resetRoute},
+		{command: "git reset :/", remediation: resetRoute},
+		{command: "git reset " + root, remediation: resetRoute},
+		{command: "git reset main -- .", remediation: resetRoute},
+		{command: "git reset -- owned.txt .", remediation: resetRoute},
+		{command: "git reset main --", remediation: resetRoute},
+		{command: "git reset -- $F", remediation: resetRoute},
+		{command: "git reset HEAD", remediation: resetRoute},
+		{command: "git reset @~1", remediation: resetRoute},
+		{command: "git reset HEAD~1", remediation: resetRoute},
+		{command: "git reset origin/main", remediation: resetRoute},
+		{command: "git reset 0123abc", remediation: resetRoute},
+		{command: "git --git-dir=meta reset HEAD", remediation: resetRoute},
+		{command: `ECI_WHOLE_TREE_RESET="$X" git reset --hard`, remediation: resetRoute},
 		{command: "git reset -- owned.txt"},
 		{command: "git reset --soft HEAD~1"},
-		{command: "git reset -q", denied: true},
-		{command: "git reset HEAD", denied: true},
-		{command: "git reset @~1", denied: true},
-		{command: "ECI_WHOLE_TREE_RESET=1 git add -A", denied: true},
+		{command: "git reset --hard --soft"},
+		{command: "git reset --mixed owned.txt"},
+		{command: "git reset owned.txt --mixed"},
 		{command: "git reset HEAD -- owned.txt"},
 		{command: "git reset HEAD owned.txt"},
 		{command: "git reset owned.txt"},
+		{command: "git reset HEADER.md"},
+		{command: "git reset HEAD~2"},
+		{command: "git reset sub"},
 		{command: "ECI_WHOLE_TREE_RESET=1 git reset --hard"},
 		{command: "env ECI_WHOLE_TREE_RESET=1 git reset --hard HEAD~1"},
 		{command: "git restore --staged -- owned.txt"},
@@ -45,16 +72,14 @@ func TestHookMarkerFreeConcreteGitEffects(t *testing.T) {
 	} {
 		request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: root, CWDKnown: true, Command: current.command, CollectShellCommands: true}
 		diagnostic := inspectHookEffects(request, Classify(request))
-		if current.denied {
-			require.NotNil(t, diagnostic, current.command)
-			require.Equal(t, CodeBroadDestructiveDenied, diagnostic.Code, current.command)
-			if current.command == "git reset --hard" {
-				for _, route := range []string{"git reset -- <owned paths>", "git reset --soft <rev>", hookWholeResetAcknowledgment} {
-					require.Contains(t, diagnostic.Remediation, route)
-				}
-			}
-		} else {
+		if current.remediation == nil {
 			require.Nil(t, diagnostic, current.command)
+			continue
+		}
+		require.NotNil(t, diagnostic, current.command)
+		require.Equal(t, CodeBroadDestructiveDenied, diagnostic.Code, current.command)
+		for _, route := range current.remediation {
+			require.Contains(t, diagnostic.Remediation, route, current.command)
 		}
 	}
 }
@@ -83,6 +108,7 @@ func TestHookWorkerGitWorktreeAddStaysNative(t *testing.T) {
 func TestHookCoordinatorGitTargets(t *testing.T) {
 	root := t.TempDir()
 	foreign := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o600))
 	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleCoordinator, Marker: MarkerInactive, CWD: root, CollectShellCommands: true}
 	for _, command := range []string{"git add file", "git add -A file", "git reset -- file", "git reset file", "git reset --soft HEAD", "ECI_WHOLE_TREE_RESET=1 git reset --hard", "git -C " + foreign + " diff --output=result"} {
 		request.Command = command
@@ -396,8 +422,8 @@ func TestHookCleanupTargets(t *testing.T) {
 		"rm -f generated.cache", "rm -rf bin/__pycache__", "rm -rf missing-directory", "rm -f " + alias,
 		"rm -f " + other, "rm -f " + clone, "rm -rf " + filepath.Dir(filepath.Dir(clone)),
 		"mv " + filepath.Join(provider, "new-hook") + " " + hook,
-		hookLiveRemovalAcknowledgment + " rm -f " + hook,
-		"env " + hookLiveRemovalAcknowledgment + " mv " + hook + " " + filepath.Join(provider, "saved-hook"),
+		string(hookLiveRemovalAcknowledgment) + " rm -f " + hook,
+		"env " + string(hookLiveRemovalAcknowledgment) + " mv " + hook + " " + filepath.Join(provider, "saved-hook"),
 		// Disabling the omp Bash adapter is the user's bridge and stays native.
 		"mkdir -p " + filepath.Join(home, ".omp", "agent", "hooks-disabled", "pre") + " && mv " + adapter + " " + filepath.Join(home, ".omp", "agent", "hooks-disabled", "pre") + "/",
 	} {
@@ -425,7 +451,7 @@ func TestHookCleanupTargets(t *testing.T) {
 		{
 			diagnostic := inspectHookEffects(request, Classify(request))
 			require.Falsef(t, diagnostic == nil || diagnostic.Code != hookCodeLiveBashGateRemoval, "live Bash-gate removal allowed: %s: %+v", command, diagnostic)
-			for _, hatch := range []string{"Edit or Write", "git rm --cached", hookLiveRemovalAcknowledgment} {
+			for _, hatch := range []string{"Edit or Write", "git rm --cached", string(hookLiveRemovalAcknowledgment)} {
 				require.Contains(t, diagnostic.Remediation, hatch, command)
 			}
 			for _, checkout := range []string{"clone", "worktree"} {
@@ -470,7 +496,7 @@ func TestHookGitLiveGateRemoval(t *testing.T) {
 		{"git mv saved agent/eci/hooks/validate-bash.sh", false},
 		{"git checkout -- agent/eci/hooks/validate-bash.sh", false},
 		{"git restore -- agent/eci/hooks/validate-bash.sh", false},
-		{hookLiveRemovalAcknowledgment + " git rm agent/eci/hooks/validate-bash.sh", false},
+		{string(hookLiveRemovalAcknowledgment) + " git rm agent/eci/hooks/validate-bash.sh", false},
 		{"git -C '" + dependency + "' rm agent/eci/hooks/validate-bash.sh", false},
 		{"git -C '" + dependency + "' mv agent/eci/hooks/validate-bash.sh saved", false},
 		{"git -C '" + dependency + "' checkout -- agent/eci/hooks/validate-bash.sh", false},
