@@ -548,3 +548,43 @@ func TestHookMakeMemoryCapPlatform(t *testing.T) {
 			})
 	}
 }
+
+// TestHookPythonDirect pins which launches call a Python interpreter directly.
+//
+// Example: python3 tool.py is denied while ./tool.py passes.
+func TestHookPythonDirect(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "py")
+	require.NoError(t, os.Symlink(filepath.Join(dir, "python3.12"), link))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "python3.12"), nil, 0o755))
+	t.Setenv("PATH", dir)
+
+	denied := [][]string{
+		{"python"},
+		{"python3", "-c", "print(1)"},
+		{"/usr/bin/python3", "foo.py"},
+		{"/usr/bin/python3.12", "foo.py"},
+		{"py", "foo.py"},
+		{link},
+		{"env", "python3", "foo.py"},
+		{"PYTHONPATH=.", "python3", "foo.py"},
+		{"bash", "-c", "python3 foo.py"},
+		{"timeout", "5", "python3", "foo.py"},
+		{"systemd-run", "--scope", "-p", "MemoryMax=1G", "python3"},
+		{"xargs", "python3"},
+	}
+	allowed := [][]string{
+		{"./foo.py"},
+		{"/tmp/tool.py", "arg"},
+		{"echo", "python3"},
+		{"command", "-v", "python3"},
+		{"pythonic"},
+		{"python3-config"},
+	}
+	for _, argv := range denied {
+		require.NotNil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected denied: %v", argv)
+	}
+	for _, argv := range allowed {
+		require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected allowed: %v", argv)
+	}
+}

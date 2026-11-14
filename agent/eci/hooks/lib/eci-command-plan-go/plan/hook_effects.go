@@ -2,7 +2,9 @@ package plan
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -30,6 +32,9 @@ func inspectHookEffects(
 		}
 		// The memory cap applies to every callback, not only active ECI scopes.
 		if diagnostic := inspectHookMakeMemoryCap(record); diagnostic != nil {
+			return diagnostic
+		}
+		if diagnostic := inspectHookPythonDirect(record); diagnostic != nil {
 			return diagnostic
 		}
 		argv := make([]token, len(record.Argv))
@@ -94,6 +99,67 @@ func inspectHookMakeMemoryCapForOS(
 		Token:       "make",
 		Reason:      "make must be run with a finite memory cap",
 		Remediation: "for example: systemd-run --scope -p MemoryMax=1G make ...",
+	}
+}
+
+// hookCodePythonScriptRequired identifies a direct Python interpreter call.
+//
+// Example: python3 -c 'print(1)' or /usr/bin/python3 tool.py selects this gate.
+const hookCodePythonScriptRequired DiagnosticCode = "ECI_PYTHON_SCRIPT_REQUIRED"
+
+// hookPythonName matches interpreter basenames such as python, python3, and python3.12.
+//
+// Example: hookPythonName.MatchString("python3.12") is true.
+var hookPythonName = regexp.MustCompile(`^python[0-9]*(\.[0-9]+)*$`)
+
+// hookPythonTarget is a direct Python interpreter launch. A memory cap does not clear it.
+//
+// Example: hookLaunchReaches([]string{"env", "python3"}, hookPythonTarget{}) is true.
+type hookPythonTarget struct{}
+
+// matchesCommand reports whether word names a Python interpreter, either by
+// basename or by resolving a bare or absolute command through PATH and symlinks.
+// Relative paths and lookup failures fall back to the basename alone.
+//
+// Example: python3, /usr/bin/python3, and a symlink py -> /usr/bin/python3 match.
+func (hookPythonTarget) matchesCommand(word string) bool {
+	if hookPythonName.MatchString(filepath.Base(word)) {
+		return true
+	}
+	if strings.Contains(word, "/") && !filepath.IsAbs(word) {
+		return false
+	}
+	path, err := exec.LookPath(word)
+	if err != nil {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	return hookPythonName.MatchString(filepath.Base(resolved))
+}
+
+// honorsMemoryCap reports that no launcher option permits a direct interpreter call.
+//
+// Example: systemd-run -p MemoryMax=1G python3 stays denied.
+func (hookPythonTarget) honorsMemoryCap() bool { return false }
+
+// inspectHookPythonDirect denies any direct Python interpreter call; the
+// allowed route runs a script file whose shebang selects the interpreter.
+//
+// Example: python3 tool.py is denied, while ./tool.py is not.
+func inspectHookPythonDirect(record ShellCommandRecord) *Diagnostic {
+	if !hookLaunchReaches(record.Argv, hookPythonTarget{}) {
+		return nil
+	}
+	return &Diagnostic{
+		Code:        hookCodePythonScriptRequired,
+		Operation:   "python-direct",
+		Segment:     record.Segment,
+		Token:       record.Argv[0],
+		Reason:      "direct Python interpreter calls are denied",
+		Remediation: "write the code to a script file with a #!/usr/bin/env python3 shebang, chmod +x it, and run it as ./script.py",
 	}
 }
 
@@ -169,22 +235,59 @@ func hookFiniteMemoryLimit(value string) bool {
 	return value != "" && value != "infinity" && value != "unlimited"
 }
 
+// hookLaunchTarget identifies a command that a launcher walk looks for.
+//
+// Example: hookMakeTarget matches make and lets a finite memory cap stop the walk.
+type hookLaunchTarget interface {
+	// matchesCommand reports whether one argv[0] word starts the target.
+	//
+	// Example: hookPythonTarget matches /usr/bin/python3.
+	matchesCommand(word string) bool
+	// honorsMemoryCap reports whether a finite launcher memory cap clears the target.
+	//
+	// Example: true for make, false for Python.
+	honorsMemoryCap() bool
+}
+
+// hookMakeTarget is the make launch that the memory-cap gate requires capped.
+//
+// Example: hookLaunchReaches(argv, hookMakeTarget{}) finds env make.
+type hookMakeTarget struct{}
+
+// matchesCommand reports whether word names make.
+//
+// Example: /usr/bin/make matches.
+func (hookMakeTarget) matchesCommand(word string) bool { return filepath.Base(word) == "make" }
+
+// honorsMemoryCap reports that a finite cap satisfies the make gate.
+//
+// Example: prlimit --as=1G make passes.
+func (hookMakeTarget) honorsMemoryCap() bool { return true }
+
 // hookMakeUncapped reports whether argv can start make without a finite cap.
-// Launcher grammar is consumed structurally; unknown grammar never proves a cap.
-// Each recursion strictly shortens the scanned text, so the walk terminates.
 //
 // Example: bash -c 'env make' is uncapped, while systemd-run -p MemoryMax=1G make is not.
 func hookMakeUncapped(argv []string) bool {
+	return hookLaunchReaches(argv, hookMakeTarget{})
+}
+
+// hookLaunchReaches reports whether argv can start target through recognized launchers.
+// Launcher grammar is consumed structurally; unknown grammar never proves a cap.
+// Each recursion strictly shortens the scanned text, so the walk terminates.
+//
+// Example: env python3 x.py reaches hookPythonTarget; printf python3 does not.
+func hookLaunchReaches(argv []string, target hookLaunchTarget) bool {
 	for len(argv) > 0 && hookAssignmentWord(argv[0]) {
 		argv = argv[1:]
 	}
 	if len(argv) == 0 {
 		return false
 	}
+	if target.matchesCommand(argv[0]) {
+		return true
+	}
 	name := filepath.Base(argv[0])
 	switch name {
-	case "make":
-		return true
 	case "systemd-run":
 		child, capped := hookLauncherChild(argv[1:], hookLauncherSpec{
 			values: map[string]bool{
@@ -209,7 +312,7 @@ func hookMakeUncapped(argv []string) bool {
 				return consumed, strings.EqualFold(key, "MemoryMax") && hookFiniteMemoryLimit(limit)
 			},
 		})
-		return !capped && hookMakeUncapped(child)
+		return !(capped && target.honorsMemoryCap()) && hookLaunchReaches(child, target)
 	case "prlimit":
 		child, capped := hookLauncherChild(argv[1:], hookLauncherSpec{
 			values: map[string]bool{"-p": true, "--pid": true, "-o": true, "--output": true},
@@ -225,7 +328,7 @@ func hookMakeUncapped(argv []string) bool {
 				return 0, false
 			},
 		})
-		return !capped && hookMakeUncapped(child)
+		return !(capped && target.honorsMemoryCap()) && hookLaunchReaches(child, target)
 	case "find":
 		for index := 1; index < len(argv); index++ {
 			switch argv[index] {
@@ -234,7 +337,7 @@ func hookMakeUncapped(argv []string) bool {
 				for end < len(argv) && argv[end] != ";" && argv[end] != "+" {
 					end++
 				}
-				if hookMakeUncapped(argv[index+1 : end]) {
+				if hookLaunchReaches(argv[index+1:end], target) {
 					return true
 				}
 				index = end
@@ -249,7 +352,7 @@ func hookMakeUncapped(argv []string) bool {
 				"--max-lines": true, "--max-chars": true, "--process-slot-var": true,
 			},
 		})
-		return hookMakeUncapped(child)
+		return hookLaunchReaches(child, target)
 	case "command":
 		for _, tok := range argv[1:] {
 			if !strings.HasPrefix(tok, "-") {
@@ -261,21 +364,21 @@ func hookMakeUncapped(argv []string) bool {
 			}
 		}
 		child, _ := hookLauncherChild(argv[1:], hookLauncherSpec{})
-		return hookMakeUncapped(child)
+		return hookLaunchReaches(child, target)
 	case "env":
 		for index := 1; index < len(argv) && strings.HasPrefix(argv[index], "-"); index++ {
 			if argv[index] == "-S" && index+1 < len(argv) {
-				return hookMakeUncapped(strings.Fields(argv[index+1]))
+				return hookLaunchReaches(strings.Fields(argv[index+1]), target)
 			}
 			if strings.HasPrefix(argv[index], "-S") && len(argv[index]) > 2 {
-				return hookMakeUncapped(strings.Fields(argv[index][2:]))
+				return hookLaunchReaches(strings.Fields(argv[index][2:]), target)
 			}
 		}
 		child, _ := hookLauncherChild(argv[1:], hookLauncherSpec{
 			values:     map[string]bool{"-u": true, "--unset": true, "-C": true, "--chdir": true},
 			skipAssign: true,
 		})
-		return hookMakeUncapped(child)
+		return hookLaunchReaches(child, target)
 	case "bash", "sh", "dash", "zsh", "ksh":
 		for index := 1; index < len(argv); index++ {
 			tok := argv[index]
@@ -294,7 +397,7 @@ func hookMakeUncapped(argv []string) bool {
 				if index+1 >= len(argv) {
 					return false
 				}
-				return hookMakeUncapped(strings.Fields(argv[index+1]))
+				return hookLaunchReaches(strings.Fields(argv[index+1]), target)
 			}
 		}
 		return false
@@ -307,7 +410,7 @@ func hookMakeUncapped(argv []string) bool {
 			values:     hookWrapperValues(name),
 			positional: positional,
 		})
-		return hookMakeUncapped(child)
+		return hookLaunchReaches(child, target)
 	}
 	return false
 }
