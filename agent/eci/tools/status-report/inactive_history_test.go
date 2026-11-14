@@ -22,6 +22,7 @@ type inactiveHistoryCase struct {
 //
 // Example: A targetless inactive forecast cannot claim unequal unchanged instants.
 func TestInactiveUnchangedHistory(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []inactiveHistoryCase{
 		{name: "unequal", prior: "2026-11-02T15:00:00Z", current: "2026-11-02T16:00:00Z", state: "unchanged", incomplete: true},
 		{name: "equivalent", prior: "2026-11-02T16:00:00+00:00", current: "2026-11-02T16:00:00Z", state: "unchanged"},

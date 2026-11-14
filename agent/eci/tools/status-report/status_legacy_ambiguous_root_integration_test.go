@@ -12,6 +12,7 @@ import (
 //
 // Example: Two identical same-line additions cannot identify an old pending entry.
 func TestLegacyAmbiguousRootOccurrenceStaysPending(t *testing.T) {
+	t.Parallel()
 	// saved is a legacy root completion without an occurrence ordinal.
 	//
 	// Example: Recover an older report after duplicate additions were appended.

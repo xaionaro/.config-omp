@@ -11,6 +11,7 @@ import (
 //
 // Example: Preserve an owner edit while applying a later lane reopening.
 func TestIndependentLaneOwnerConflict(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"owner":"projected"}}]}}}` + "\n"

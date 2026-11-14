@@ -13,6 +13,7 @@ import (
 //
 // Example: A manually edited estimate keeps both changes pending until restored.
 func TestPriorityRetirementRetriesAfterOwnerRestoresEstimate(t *testing.T) {
+	t.Parallel()
 	// report has one active task and one matching priority estimate.
 	//
 	// Example: Reprioritize the last task in the high group.

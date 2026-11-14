@@ -13,6 +13,7 @@ import (
 //
 // Example: A corrected closure stays pending until the source reaches its corrected time.
 func TestLaneCorrectionWaitsForCanonicalCompletionOnDisk(t *testing.T) {
+	t.Parallel()
 	// first is an early completion reported before canonical work finishes.
 	//
 	// Example: The historical time must not be published from an active source.

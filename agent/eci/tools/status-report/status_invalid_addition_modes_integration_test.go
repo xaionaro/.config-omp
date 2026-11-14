@@ -12,6 +12,7 @@ import (
 //
 // Example: A task cannot retire a forecast while a valid sibling update still applies.
 func TestInvalidAdditionModesDoNotBlockIndependentProgress(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, addition string }{
 		{"task retires forecast", `{"target":"task","retire_forecast":true,"record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}`},
 		{"review retires priority", `{"target":"review","retire_priority":"high","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}`},

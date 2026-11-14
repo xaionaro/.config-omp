@@ -12,6 +12,7 @@ import (
 //
 // Example: A later writer adds a separator and a second event after a prior refresh.
 func TestRefreshAppendsAfterCompleteUnterminatedLogRecord(t *testing.T) {
+	t.Parallel()
 	// first is a valid manually written event without a final newline.
 	//
 	// Example: A complete log entry is projected before the file is extended.

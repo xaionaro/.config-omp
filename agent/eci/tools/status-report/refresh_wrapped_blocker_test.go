@@ -13,6 +13,7 @@ import (
 //
 // Example: A wrapped plain risk retains its text and gains a separate diagnostic.
 func TestRefreshPreservesWrappedBlocker(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		Name  string
 		Block string
@@ -57,6 +58,7 @@ func TestRefreshPreservesWrappedBlocker(t *testing.T) {
 //
 // Example: Insert before a trailing comment without mixing CRLF line endings.
 func TestRefreshPreservesLastWrappedBlocker(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	report := strings.Replace(linkedReport, "blockers_risks: []\n", "", 1)

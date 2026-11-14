@@ -13,6 +13,7 @@ import (
 //
 // Example: A source update waits until an annotated projection can be replaced safely.
 func TestForecastProjectionRecoversAfterOwnerCommentResolution(t *testing.T) {
+	t.Parallel()
 	// event adds independent progress while the forecast projection is blocked.
 	//
 	// Example: Resolving the comment permits the retained event to apply once.

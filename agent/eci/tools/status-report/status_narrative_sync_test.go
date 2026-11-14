@@ -11,6 +11,7 @@ import (
 //
 // Example: An event updates its own subject while legacy bullets remain intact.
 func TestNarrativeSyncPreservesOwnerText(t *testing.T) {
+	t.Parallel()
 	original := []byte("progress: [legacy, {subject_ref: owner, text: 'owner text'}] # keep\n")
 	u := syncUpdate{Target: syncTargetProgress, ID: "work:one", Fields: map[string]string{"text": "Started"}}
 	require.True(t, validNarrativeSyncUpdate(u))
@@ -33,6 +34,7 @@ func TestNarrativeSyncPreservesOwnerText(t *testing.T) {
 //
 // Example: Evidence is attached only to a subject owned by the synchronizer.
 func TestNarrativeSyncEvidenceAndDuplicateSubjects(t *testing.T) {
+	t.Parallel()
 	u := syncUpdate{Target: syncTargetVerification, ID: "one", Fields: map[string]string{"evidence": "proof"}}
 	source := []byte("verification:\n  - subject_ref: one\n    text: checked\nnext_focus: [next]\n")
 	_, ok := applyNarrativeSyncField(source, u, "evidence", "proof", "", false, false)
@@ -50,6 +52,7 @@ func TestNarrativeSyncEvidenceAndDuplicateSubjects(t *testing.T) {
 //
 // Example: A block sequence gains a keyed item before the next section.
 func TestNarrativeSyncBlockAppend(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress:\n  - legacy\n# following\nverification: []\n")
 	u := syncUpdate{Target: syncTargetProgress, ID: "one", Fields: map[string]string{"text": "new"}}
 	got, ok := applyNarrativeSyncField(source, u, "text", "new", "", false, false)
@@ -61,6 +64,7 @@ func TestNarrativeSyncBlockAppend(t *testing.T) {
 //
 // Example: Owner changes to the text prevent evidence updates.
 func TestNarrativeSyncItemOwnedRejectsEditedText(t *testing.T) {
+	t.Parallel()
 	u := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	data := []byte("progress: [{subject_ref: one, text: changed}]\n")
 	require.False(t, narrativeSyncItemOwned(data, u, "original", true))
@@ -72,6 +76,7 @@ func TestNarrativeSyncItemOwnedRejectsEditedText(t *testing.T) {
 //
 // Example: An event repeating the current text does not remain pending.
 func TestNarrativeSyncSameValueIsApplied(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress: [{subject_ref: one, text: same}]\n")
 	u := syncUpdate{Target: syncTargetProgress, ID: "one", Fields: map[string]string{"text": "same"}}
 	got, ok := applyNarrativeSyncField(source, u, "text", "same", "same", true, true)
@@ -83,6 +88,7 @@ func TestNarrativeSyncSameValueIsApplied(t *testing.T) {
 //
 // Example: A corrected subject disappears while legacy text and comments remain.
 func TestRetractNarrativeSyncPreservesOtherEntries(t *testing.T) {
+	t.Parallel()
 	u := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	source := []byte("progress: [legacy, {subject_ref: one, text: done, evidence: proof}, other] # keep\n")
 	got, ok := retractNarrativeSync(source, u, "done", true, "proof", true)
@@ -101,6 +107,7 @@ func TestRetractNarrativeSyncPreservesOtherEntries(t *testing.T) {
 //
 // Example: A following section's comment survives retraction of the only keyed item.
 func TestRetractNarrativeSyncBlockList(t *testing.T) {
+	t.Parallel()
 	u := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	source := []byte("progress:\n  - subject_ref: one\n    text: done\n# next section\nverification: []\n")
 	got, ok := retractNarrativeSync(source, u, "done", true, "", false)
@@ -116,6 +123,7 @@ func TestRetractNarrativeSyncBlockList(t *testing.T) {
 //
 // Example: An owner text edit blocks a later automatic evidence update.
 func TestNarrativeEvidenceProtectsEditedText(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress: [{subject_ref: one, text: revised, evidence: proof}]\n")
 	update := syncUpdate{Target: syncTargetProgress, ID: "one", Fields: map[string]string{"evidence": "new"}}
 	got, ok := applyNarrativeSyncField(source, update, "evidence", "new", "proof", true, false)
@@ -127,6 +135,7 @@ func TestNarrativeEvidenceProtectsEditedText(t *testing.T) {
 //
 // Example: A comment added by an owner prevents automatic removal of the entry.
 func TestRetractNarrativePreservesInlineComment(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress: [{subject_ref: one, # owner comment\n text: done}]\n")
 	update := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	got, ok := retractNarrativeSync(source, update, "done", true, "", false)
@@ -138,6 +147,7 @@ func TestRetractNarrativePreservesInlineComment(t *testing.T) {
 //
 // Example: A value without an applied metadata entry remains owner-authored.
 func TestNarrativeOwnershipRequiresMembership(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress: [{subject_ref: one, text: same}]\n")
 	update := syncUpdate{Target: syncTargetProgress, ID: "one", Fields: map[string]string{"text": "new"}}
 	require.False(t, narrativeSyncItemOwned(source, update, "same", false))
@@ -152,6 +162,7 @@ func TestNarrativeOwnershipRequiresMembership(t *testing.T) {
 //
 // Example: A canonical record reference is not mistaken for a YAML comment.
 func TestRetractNarrativeAllowsHashInQuotedValues(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	for _, source := range []string{
 		"progress: [{subject_ref: one, text: done, evidence: 'ledger.yaml#/records/one'}]\n",
@@ -167,6 +178,7 @@ func TestRetractNarrativeAllowsHashInQuotedValues(t *testing.T) {
 //
 // Example: An inline comment makes automatic retraction wait for review.
 func TestRetractNarrativeBlockPreservesInlineComment(t *testing.T) {
+	t.Parallel()
 	source := []byte("progress:\n  - subject_ref: one\n    text: done # owner note\n")
 	update := syncUpdate{Target: syncTargetProgress, ID: "one"}
 	got, ok := retractNarrativeSync(source, update, "done", true, "", false)

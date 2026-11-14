@@ -13,6 +13,7 @@ import (
 //
 // Example: A root forecast remains pending while its source is classified as a lane.
 func TestRootForecastWaitsForCorrectCanonicalKind(t *testing.T) {
+	t.Parallel()
 	// root is active work that explicitly uses a root forecast.
 	//
 	// Example: Its linked forecast must have the matching canonical kind.

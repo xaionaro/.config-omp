@@ -13,6 +13,7 @@ import (
 //
 // Example: Equivalent UTC spellings identify the same target.
 func TestCanonicalRecalibrationConsistency(t *testing.T) {
+	t.Parallel()
 	src := map[string]any{"target": "2001-01-01T00:00:00Z", "recalibration": map[string]any{"status": "unchanged", "evidence": "basis", "prior": "2001-01-01T00:00:00+00:00"}}
 	require.Empty(t, validateCanonicalRecalibration(src))
 	src["recalibration"].(map[string]any)["prior"] = "2001-01-01T01:00:00Z"
@@ -25,6 +26,7 @@ func TestCanonicalRecalibrationConsistency(t *testing.T) {
 //
 // Example: A custom outcome ID is valid when it points to an outcome record.
 func TestOutcomeIdentityChecks(t *testing.T) {
+	t.Parallel()
 	records := map[string]sourceRecord{"custom": {Type: "outcome"}, "wrong": {Type: "work"}}
 	work := sourceRecord{Data: workData{State: workStateActive}, OutcomeRefs: []string{"custom"}}
 	require.Empty(t, validateWorkOutcomes("w", work, records))
@@ -41,6 +43,7 @@ func TestOutcomeIdentityChecks(t *testing.T) {
 //
 // Example: A symlink loop must not be silently treated as no forecast file.
 func TestForecastStatErrorIsVisible(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.Symlink("forecasts.yaml", filepath.Join(dir, "forecasts.yaml")))
 	var issues reconciliationIssues
@@ -53,6 +56,7 @@ func TestForecastStatErrorIsVisible(t *testing.T) {
 //
 // Example: A future estimate is disclosed when session context is unavailable.
 func TestFutureAnchorsWithoutSessionStayVisible(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	evaluation, err := parseUTC("2026-11-02T15:00:00Z")
@@ -67,6 +71,7 @@ func TestFutureAnchorsWithoutSessionStayVisible(t *testing.T) {
 //
 // Example: Each linked outcome must support the complete claim.
 func TestLaneProseNeedsCompleteCanonicalCorrespondence(t *testing.T) {
+	t.Parallel()
 	ledger := ledgerSource{Records: map[string]sourceRecord{"a": {Type: "outcome", Outcome: "Result"}, "b": {Type: "outcome", Outcome: "Result"}}}
 	work := sourceRecord{OutcomeRefs: []string{"a"}}
 	source := map[string]any{"outcome": "Result"}
@@ -80,6 +85,7 @@ func TestLaneProseNeedsCompleteCanonicalCorrespondence(t *testing.T) {
 //
 // Example: An old anchor can remain current if its endpoint has not elapsed.
 func TestHistoricalAnchorsAreEvaluatedAtCurrentTime(t *testing.T) {
+	t.Parallel()
 	reportText := strings.ReplaceAll(linkedReport, "2026-11-02T15:24:00Z", "2001-01-01T00:00:00Z")
 	reportText = strings.ReplaceAll(reportText, "2026-11-02T16:00:00Z", "2001-01-01T01:00:00Z")
 	reportText = strings.ReplaceAll(reportText, "2026-11-02T17:00:00Z", "2001-01-01T02:00:00Z")

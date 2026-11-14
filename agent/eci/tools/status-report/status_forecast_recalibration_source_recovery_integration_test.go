@@ -13,6 +13,7 @@ import (
 //
 // Example: A mismatched current time blocks publication until the source is repaired.
 func TestForecastRecalibrationRecoversAfterSourceCorrection(t *testing.T) {
+	t.Parallel()
 	// event records independent progress while canonical history is inconsistent.
 	//
 	// Example: Repairing the source permits this retained event to apply once.

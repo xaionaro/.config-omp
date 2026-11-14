@@ -36,6 +36,7 @@ func lifecycleResult(
 //
 // Example: A completed root cannot retain a projected active deadline.
 func TestTerminalRootForecastIsIncomplete(t *testing.T) {
+	t.Parallel()
 	report := linkedReport + `root_forecasts:
   - {forecast_ref: 'forecasts.yaml#/records/root', outcome: Root result, target: '2026-11-02T18:00:00Z', assessment: complete}
 `
@@ -62,6 +63,7 @@ func TestTerminalRootForecastIsIncomplete(t *testing.T) {
 //
 // Example: A direct work record cannot silently retain an unrepresented forecast reference.
 func TestRolelessForecastIsIncomplete(t *testing.T) {
+	t.Parallel()
 	ledger := strings.Replace(linkedLedger, "reporting_roles: [lane]", "reporting_roles: []", 1)
 	out := lifecycleResult(t, linkedReport, ledger, linkedForecasts)
 	require.Contains(t, out, "INCOMPLETE")
@@ -72,6 +74,7 @@ func TestRolelessForecastIsIncomplete(t *testing.T) {
 //
 // Example: A missing completion timestamp remains incomplete without a forecast reference.
 func TestClosedLaneWithoutForecastChecksCompletion(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "implementation_status: IN PROGRESS", "implementation_status: CLOSED\n    completed_at: '2026-11-02T15:00:00Z'", 1)
 	report = strings.Replace(report, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	ledger := strings.Replace(linkedLedger, "state: active, next_action: Finish, reporting_roles: [lane], forecast_ref: 'forecasts.yaml#/records/first'", "state: completed, next_action: none, reporting_roles: [lane]", 1)
@@ -88,6 +91,7 @@ func TestClosedLaneWithoutForecastChecksCompletion(t *testing.T) {
 //
 // Example: An open low-priority child inherits its root's work reference.
 func TestInheritedWorkPriorityExpiry(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "title: Root", "title: Root\n    work_refs: ['project-understanding.yaml#/records/work:direct']", 1)
 	report = strings.Replace(report, "status: unknown", "status: IN PROGRESS", 1)

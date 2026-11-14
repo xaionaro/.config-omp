@@ -13,6 +13,7 @@ import (
 //
 // Example: Clearing the final field keeps the forecast, comment, and second lane.
 func TestFlowLaneClearLastFieldPreservesNeighbors(t *testing.T) {
+	t.Parallel()
 	// lane is a compact lane whose final blocker contains a literal hash.
 	//
 	// Example: Clearing it retains the owner comment following the flow mapping.

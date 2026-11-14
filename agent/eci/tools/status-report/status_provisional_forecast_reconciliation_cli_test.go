@@ -15,6 +15,7 @@ import (
 //
 // Example: A provisional forecast is incomplete until its source and projection carry a basis.
 func TestProvisionalForecastNeedsCanonicalBasisInCLI(t *testing.T) {
+	t.Parallel()
 	// original identifies the first lane's complete forecast.
 	//
 	// Example: Make its assessment provisional while retaining all other fields.

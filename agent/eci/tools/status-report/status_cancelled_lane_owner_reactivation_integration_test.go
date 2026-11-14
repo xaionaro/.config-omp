@@ -13,6 +13,7 @@ import (
 //
 // Example: An owner-removed cancellation marker blocks the automatic reopening.
 func TestCancelledLaneReactivationWaitsForOwnerLifecycleRestoration(t *testing.T) {
+	t.Parallel()
 	// cancel projects cancellation while canonical work and forecast are terminal.
 	//
 	// Example: The resulting marker is owned by the projected event.

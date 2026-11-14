@@ -11,6 +11,7 @@ import (
 //
 // Example: A cancelled task is excluded from remaining work.
 func TestCancelledTaskLifecycle(t *testing.T) {
+	t.Parallel()
 	cancelled := strings.Replace(valid, "status: unknown\ntop_priorities:", "status: unknown\n    lifecycle: cancelled\n    evidence: user withdrew\ntop_priorities:", 1)
 	cancelled = strings.Replace(cancelled, `top_priorities: ["1.1"]`, `top_priorities: ["1.2"]`, 1)
 	r, err := parse([]byte(cancelled))
@@ -34,6 +35,7 @@ func TestCancelledTaskLifecycle(t *testing.T) {
 //
 // Example: An active child of a cancelled parent remains visible.
 func TestCancelledParentKeepsChildAndReportsContradiction(t *testing.T) {
+	t.Parallel()
 	doc := strings.Replace(valid, "status: IN PROGRESS\n  - id:", "status: unknown\n    lifecycle: cancelled\n    evidence: user withdrew\n  - id:", 1)
 	r, err := parse([]byte(doc))
 	require.NoError(t, err)

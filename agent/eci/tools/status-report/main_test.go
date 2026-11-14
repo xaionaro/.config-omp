@@ -71,6 +71,7 @@ const valid = validCore + estimates
 //
 // Example: Verify render progress and separate lists through the public behavior.
 func TestRenderProgressAndSeparateLists(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(valid))
 	if err != nil {
 		require.FailNow(t, fmt.Sprint(err))
@@ -87,6 +88,7 @@ func TestRenderProgressAndSeparateLists(t *testing.T) {
 //
 // Example: Verify reject invalid structures through the public behavior.
 func TestRejectInvalidStructures(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		strings.Replace(valid, `top_priorities: ["1.1"]`, `top_priorities: ["missing"]`, 1),
 		strings.Replace(valid, `parent_id: "1"`, `parent_id: "missing"`, 1),
@@ -106,6 +108,7 @@ func TestRejectInvalidStructures(t *testing.T) {
 //
 // Example: Verify zero known progress through the public behavior.
 func TestZeroKnownProgress(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "status: CLOSED\n    evidence: accepted test", "status: unknown", 1)
 	r, err := parse([]byte(input))
 	if err != nil {
@@ -128,6 +131,7 @@ func TestZeroKnownProgress(t *testing.T) {
 //
 // Example: Verify lane and unknown coverage through the public behavior.
 func TestLaneAndUnknownCoverage(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "lanes: []", "lanes:\n  - task_id: 'missing'\n    outcome: Test\n    required_environment: implementation\n    implementation_status: NEW\n    test_status: NEW\n    prod_status: NEW", 1)
 	if _, err := parse([]byte(input)); err == nil {
 		require.FailNow(t, fmt.Sprint("accepted lane referencing missing task"))
@@ -147,6 +151,7 @@ func TestLaneAndUnknownCoverage(t *testing.T) {
 //
 // Example: Verify lane forecast rendering through the public behavior.
 func TestLaneForecastRendering(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "lanes: []", `lanes:
   - task_id: '1'
     outcome: Finish work
@@ -179,6 +184,7 @@ func TestLaneForecastRendering(t *testing.T) {
 //
 // Example: Verify package and review validation through the public behavior.
 func TestPackageAndReviewValidation(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{
 		strings.Replace(valid, "max_minutes: 30, kind: elapsed, basis: guess", "max_minutes: 60, kind: elapsed, basis: guess", 1),
 		strings.Replace(valid, "min_minutes: 30, max_minutes: 30", "min_minutes: 40, max_minutes: 30", 1),
@@ -203,6 +209,7 @@ func TestPackageAndReviewValidation(t *testing.T) {
 //
 // Example: Verify empty timeline evidence through the public behavior.
 func TestEmptyTimelineEvidence(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(valid + "timeline_state: verified_empty\n"))
 	if err != nil {
 		require.FailNow(t, fmt.Sprint(err))
@@ -219,6 +226,7 @@ func TestEmptyTimelineEvidence(t *testing.T) {
 //
 // Example: Verify nested schema validation through the public behavior.
 func TestNestedSchemaValidation(t *testing.T) {
+	t.Parallel()
 	for _, replacement := range []string{
 		"lanes:\n  - {task_id: '1', outcome: X, required_environment: implementation, implementation_status: NEW, test_status: NEW, prod_status: NEW, forecast: 42}",
 		"lanes:\n  - {task_id: '1', outcome: X, required_environment: implementation, implementation_status: NEW, test_status: NEW, prod_status: NEW, forecast: {target: [bad]}}",
@@ -238,6 +246,7 @@ func TestNestedSchemaValidation(t *testing.T) {
 //
 // Example: Verify reject non finite effort through the public behavior.
 func TestRejectNonFiniteEffort(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{".nan", ".inf", "-.inf"} {
 		input := strings.Replace(valid, "min_minutes: 30", "min_minutes: "+value, 1)
 		if _, err := parse([]byte(input)); err == nil {
@@ -250,6 +259,7 @@ func TestRejectNonFiniteEffort(t *testing.T) {
 //
 // Example: Verify timeline parent chain consistency through the public behavior.
 func TestTimelineParentChainConsistency(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "timeline: []", "timeline:\n  - {job: X, parent_chain: A, start: '2026-11-02T13:54:00Z', end: '2026-11-02T14:24:00Z', fast: unknown, normal: unknown}\n  - {job: X, parent_chain: B, start: '2026-11-02T14:24:00Z', end: '2026-11-02T14:54:00Z', fast: unknown, normal: unknown}", 1)
 	if _, err := parse([]byte(input)); err == nil {
 		require.FailNow(t, fmt.Sprint("accepted inconsistent chain"))
@@ -260,6 +270,7 @@ func TestTimelineParentChainConsistency(t *testing.T) {
 //
 // Example: Verify lane scenario and root forecast output through the public behavior.
 func TestLaneScenarioAndRootForecastOutput(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "lanes: []", `lanes:
   - task_id: '1'
     outcome: Finish work
@@ -293,6 +304,7 @@ root_forecasts:
 //
 // Example: Verify partial timeline disclosure through the public behavior.
 func TestPartialTimelineDisclosure(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "timeline: []", "timeline_state: unavailable\ntimeline:\n  - {job: X, parent_chain: A, start: '2026-11-02T13:54:00Z', end: '2026-11-02T14:24:00Z', fast: unknown, normal: unknown}", 1)
 	r, err := parse([]byte(input))
 	if err != nil {
@@ -307,6 +319,7 @@ func TestPartialTimelineDisclosure(t *testing.T) {
 //
 // Example: Verify repair regression inputs through the public behavior.
 func TestRepairRegressionInputs(t *testing.T) {
+	t.Parallel()
 	lane := `lanes:
   - task_id: '1'
     outcome: Work
@@ -337,6 +350,7 @@ func TestRepairRegressionInputs(t *testing.T) {
 //
 // Example: Verify completion estimates through the public behavior.
 func TestCompletionEstimates(t *testing.T) {
+	t.Parallel()
 	input := validCore + `priority_estimates:
   - {priority: unknown, min_minutes: 10, max_minutes: 30, as_of: "2026-11-02T15:24:00Z", basis: educated guess, assumptions: review available, dependencies: none, critical_path: unknown}
   - priority: high
@@ -372,6 +386,7 @@ completion_estimate:
 //
 // Example: Verify timeline utcand lifecycle through the public behavior.
 func TestTimelineUTCAndLifecycle(t *testing.T) {
+	t.Parallel()
 	oldTZ := time.Local
 	time.Local = time.FixedZone("local", -5*3600)
 	base := strings.Replace(valid, "2026-11-02T15:24:00Z", "2026-11-02T00:15:00+00:00", 1)
@@ -405,6 +420,7 @@ func TestTimelineUTCAndLifecycle(t *testing.T) {
 //
 // Example: An unknown-priority task still needs a labeled educated estimate.
 func TestEstimateCoverageRejectsMissing(t *testing.T) {
+	t.Parallel()
 	if _, err := parse([]byte(validCore)); err == nil {
 		assert.Fail(t, fmt.Sprint("accepted missing estimates"))
 	}
@@ -418,6 +434,7 @@ func TestEstimateCoverageRejectsMissing(t *testing.T) {
 //
 // Example: A lane closed in its required environment cannot retain an active target.
 func TestClosedLifecycleRejectsContradictoryForecast(t *testing.T) {
+	t.Parallel()
 	closed := strings.Replace(valid, "status: IN PROGRESS\n  - id:", "status: CLOSED\n    evidence: accepted\n  - id:", 1)
 	lane := `lanes:
   - task_id: '1'
@@ -439,6 +456,7 @@ func TestClosedLifecycleRejectsContradictoryForecast(t *testing.T) {
 //
 // Example: A closed source package still has an active test lane forecast.
 func TestLaneRequiredEnvironmentSeparatesPackageProgress(t *testing.T) {
+	t.Parallel()
 	closed := strings.Replace(valid, "status: IN PROGRESS\n  - id:", "status: CLOSED\n    evidence: accepted\n  - id:", 1)
 	lane := `lanes:
   - task_id: '1'
@@ -484,6 +502,7 @@ func TestLaneRequiredEnvironmentSeparatesPackageProgress(t *testing.T) {
 //
 // Example: Unsupported fields are supplied as unknown rather than omitted.
 func TestScenarioFieldsAreExplicit(t *testing.T) {
+	t.Parallel()
 	prefix := "root_forecasts:\n  - outcome: Work\n    target: '2026-11-02T16:00:00Z'\n    assessment: complete\n    scenarios:\n"
 	for _, row := range []string{"      - {}\n", "      - {case: base}\n"} {
 		if _, err := parse([]byte(valid + prefix + row)); err == nil {
@@ -507,6 +526,7 @@ func TestScenarioFieldsAreExplicit(t *testing.T) {
 //
 // Example: A mapping cannot masquerade as an unknown task status.
 func TestStrictStatusRepair(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{"{}", "[]", "!custom unknown"} {
 		input := strings.Replace(valid, "status: unknown", "status: "+bad, 1)
 		if _, err := parse([]byte(input)); err == nil {
@@ -533,6 +553,7 @@ func TestStrictStatusRepair(t *testing.T) {
 //
 // Example: A 30-minute range beginning at midnight ends at 00:30 UTC.
 func TestCompletionEstimateAsOf(t *testing.T) {
+	t.Parallel()
 	input := valid
 	r, err := parse([]byte(input))
 	if err != nil {
@@ -551,6 +572,7 @@ func TestCompletionEstimateAsOf(t *testing.T) {
 //
 // Example: An empty mapping cannot select a lane environment or effort kind.
 func TestEnumNodeKinds(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ old, new string }{
 		{"status: unknown", "status: {}"}, {"status: unknown", "status: []"}, {"status: unknown", "status: !custom unknown"},
 		{"kind: elapsed", "kind: {}"}, {"kind: elapsed", "kind: !custom elapsed"},
@@ -568,6 +590,7 @@ func TestEnumNodeKinds(t *testing.T) {
 //
 // Example: Half a minute from midnight produces a 30-second endpoint.
 func TestEstimateDurationBoundaries(t *testing.T) {
+	t.Parallel()
 	e := completionEstimate{AsOf: "2026-11-01T23:59:45+00:00", MinMinutes: floatPointer(0.5), MaxMinutes: floatPointer(1.5)}
 	first, last, err := completionEndpoints(e)
 	require.NoError(t, err)
@@ -597,6 +620,7 @@ func floatPointer(value float64) *fractionalMinutes {
 //
 // Example: Task 1.2 cannot claim a missing or unrelated parent.
 func TestHierarchicalTaskIDsRejectMismatchedParents(t *testing.T) {
+	t.Parallel()
 	for _, replacement := range []string{"parent_id: ''", "parent_id: '1.2'", "parent_id: 'other'"} {
 		input := strings.Replace(valid, `parent_id: "1"`, replacement, 1)
 		_, err := parse([]byte(input))
@@ -608,6 +632,7 @@ func TestHierarchicalTaskIDsRejectMismatchedParents(t *testing.T) {
 //
 // Example: Validation and rendering work on stdin and fail on malformed input.
 func TestCLICommands(t *testing.T) {
+	t.Parallel()
 	var out, errOut strings.Builder
 	require.Equal(t, 1, testRun([]string{"validate"}, strings.NewReader(valid), &out, &errOut))
 	require.Contains(t, out.String(), "INCOMPLETE")
@@ -623,6 +648,7 @@ func TestCLICommands(t *testing.T) {
 //
 // Example: Paused and blocked packages remain incomplete in the progress bar.
 func TestStatusAndEstimateVariants(t *testing.T) {
+	t.Parallel()
 	for _, state := range []string{"NEW", "IN PROGRESS", "PAUSED", "BLOCKED", "CLOSED", "unknown"} {
 		input := strings.Replace(valid, "status: unknown", "status: "+state, 1)
 		if state == "CLOSED" {
@@ -647,6 +673,7 @@ func TestStatusAndEstimateVariants(t *testing.T) {
 //
 // Example: Missing basis or non-finite durations cannot validate.
 func TestEstimateValidationRejectsInvalidFields(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ old, new string }{
 		{"min_minutes: 20", "min_minutes: -1"}, {"max_minutes: 40", "max_minutes: .nan"},
 		{"basis: educated guess", "basis: ''"}, {"assumptions: review available", "assumptions: ''"},
@@ -663,6 +690,7 @@ func TestEstimateValidationRejectsInvalidFields(t *testing.T) {
 //
 // Example: Recalibration and nested evidence survive the rendered report.
 func TestRichDetailsAndForecastRendering(t *testing.T) {
+	t.Parallel()
 	report := valid + `details:
   evidence:
     - item: first
@@ -688,6 +716,7 @@ root_forecasts:
 //
 // Example: A custom enum tag cannot enter a task record.
 func TestInvalidEnumsRejected(t *testing.T) {
+	t.Parallel()
 	var err error
 	for _, replacement := range []string{"kind: null", "kind: bogus", "status: !x CLOSED"} {
 		old := "kind: elapsed"
@@ -703,6 +732,7 @@ func TestInvalidEnumsRejected(t *testing.T) {
 //
 // Example: A production-gated lane can pause follow-up while implementation is complete.
 func TestLaneStatusVariantsPreserveReadiness(t *testing.T) {
+	t.Parallel()
 	lane := `lanes:
   - task_id: '1'
     outcome: Work
@@ -736,6 +766,7 @@ func TestLaneStatusVariantsPreserveReadiness(t *testing.T) {
 //
 // Example: A YAML file with spaces in its name validates successfully.
 func TestCLIFileInput(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "report file.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(valid), 0o600))
 	var out, errOut strings.Builder
@@ -747,6 +778,7 @@ func TestCLIFileInput(t *testing.T) {
 //
 // Example: An RFC3339 daylight-saving offset is not a UTC timestamp.
 func TestUTCOffsetAtDaylightSavingBoundary(t *testing.T) {
+	t.Parallel()
 	_, err := parseUTC("2026-03-08T03:30:00-04:00")
 	require.Error(t, err)
 	utc, err := parseUTC("2026-03-08T07:30:00+00:00")
@@ -758,6 +790,7 @@ func TestUTCOffsetAtDaylightSavingBoundary(t *testing.T) {
 //
 // Example: A lane cannot use an unrecognized production acceptance boundary.
 func TestInvalidLaneEnumLabels(t *testing.T) {
+	t.Parallel()
 	lane := "lanes:\n  - {task_id: '1', outcome: Work, required_environment: prod, implementation_status: NEW, test_status: NEW, prod_status: NEW, root_task_status: FOLLOWUP}"
 	for _, change := range []struct{ old, new string }{{"required_environment: prod", "required_environment: staging"}, {"root_task_status: FOLLOWUP", "root_task_status: INVALID"}, {"implementation_status: NEW", "implementation_status: INVALID"}} {
 		input := strings.Replace(strings.Replace(valid, "lanes: []", lane, 1), change.old, change.new, 1)
@@ -770,6 +803,7 @@ func TestInvalidLaneEnumLabels(t *testing.T) {
 //
 // Example: Invalid data cannot produce a fabricated endpoint.
 func TestInvalidCompletionRenderFailsClosed(t *testing.T) {
+	t.Parallel()
 	var out strings.Builder
 	writeCompletionEstimate(&out, "Overall", completionEstimate{})
 	require.Contains(t, out.String(), "unknown (invalid estimate:")
@@ -779,6 +813,7 @@ func TestInvalidCompletionRenderFailsClosed(t *testing.T) {
 //
 // Example: A valid status inherited through a YAML merge behaves like a direct value.
 func TestResolvedEnumValuesTreatDirectAndMergedYAMLConsistently(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"NEW", "null"} {
 		direct := strings.Replace(valid, "status: IN PROGRESS", "status: "+value, 1)
 		_, err := parse([]byte(direct))
@@ -819,6 +854,7 @@ func TestResolvedEnumValuesTreatDirectAndMergedYAMLConsistently(t *testing.T) {
 //
 // Example: Missing test readiness still fails when inherited as null.
 func TestMergedEnumFieldsKeepTheirSemantics(t *testing.T) {
+	t.Parallel()
 	lane := `lanes:
   - task_id: '1'
     outcome: Work
@@ -859,6 +895,7 @@ func TestMergedEnumFieldsKeepTheirSemantics(t *testing.T) {
 //
 // Example: Null follow-up state is allowed, but null lane environment is not.
 func TestOptionalMergedStatusesAndRequiredNull(t *testing.T) {
+	t.Parallel()
 	lane := `lanes:
   - task_id: '1'
     outcome: Work
@@ -910,6 +947,7 @@ func (w *testWriter) Write(p []byte) (int, error) {
 //
 // Example: Both validate and render report an output failure.
 func TestCLIReportsWriteFailures(t *testing.T) {
+	t.Parallel()
 	for _, cmd := range []string{"validate", "render"} {
 		for _, short := range []bool{false, true} {
 			writer := &testWriter{short: short}
@@ -930,6 +968,7 @@ func TestCLIReportsWriteFailures(t *testing.T) {
 //
 // Example: Evidence without a baseline still appears once.
 func TestForecastEvidenceAndAsOfRemainVisible(t *testing.T) {
+	t.Parallel()
 	for _, metadata := range []string{"", "    prior: '2026-11-02T14:00:00Z'\n", "    baseline: '2026-11-02T14:00:00Z'\n"} {
 		root := "root_forecasts:\n  - outcome: Work\n    target: '2026-11-02T16:00:00Z'\n    assessment: provisional\n    reason: unique-reason\n    evidence: unique-evidence\n" + metadata
 		r, err := parse([]byte(valid + root))
@@ -945,6 +984,7 @@ func TestForecastEvidenceAndAsOfRemainVisible(t *testing.T) {
 //
 // Example: Two jobs can report work in the same half-hour interval.
 func TestTimelineGridAndDuplicateJobs(t *testing.T) {
+	t.Parallel()
 	row := "  - {job: '%s', parent_chain: '1', start: '2026-11-02T14:24:00Z', end: '2026-11-02T14:54:00Z', fast: unknown, normal: unknown}\n"
 	rows := fmt.Sprintf(row, "A") + fmt.Sprintf(row, "B")
 	_, err := parse([]byte(strings.Replace(valid, "timeline: []", "timeline:\n"+rows, 1)))
@@ -962,6 +1002,7 @@ func TestTimelineGridAndDuplicateJobs(t *testing.T) {
 //
 // Example: A later reported event cannot precede an earlier event in the table.
 func TestTimelineRowsRenderChronologically(t *testing.T) {
+	t.Parallel()
 	rows := `timeline:
   - {job: A, parent_chain: '1', start: '2026-11-02T14:54:00Z', end: '2026-11-02T15:24:00Z', fast: later-marker, normal: unknown}
   - {job: A, parent_chain: '1', start: '2026-11-02T13:54:00Z', end: '2026-11-02T14:24:00Z', fast: earlier-marker, normal: unknown}
@@ -978,6 +1019,7 @@ func TestTimelineRowsRenderChronologically(t *testing.T) {
 //
 // Example: The first and last half-hours fit the report's four-hour window.
 func TestTimelineWindowBoundaryAndEquivalentUTCOffsets(t *testing.T) {
+	t.Parallel()
 	rows := `timeline:
   - {job: A, parent_chain: '1', start: '2026-11-02T11:24:00Z', end: '2026-11-02T11:54:00Z', fast: first, normal: unknown}
   - {job: A, parent_chain: '1', start: '2026-11-02T14:54:00+00:00', end: '2026-11-02T15:24:00+00:00', fast: last, normal: unknown}
@@ -996,6 +1038,7 @@ func TestTimelineWindowBoundaryAndEquivalentUTCOffsets(t *testing.T) {
 //
 // Example: A legacy high label does not supply missing score inputs.
 func TestLegacyPriorityOrderCompatibility(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(valid + "priority_order: [high]\n"))
 	require.NoError(t, err)
 	require.Contains(t, render(r), "unscored:")
@@ -1005,6 +1048,7 @@ func TestLegacyPriorityOrderCompatibility(t *testing.T) {
 //
 // Example: Differing UTC offsets for the same instant remain unchanged.
 func TestForecastBaselineTruth(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ baseline, target, want string }{
 		{"2026-11-02T16:00:00+00:00", "2026-11-02T16:00:00Z", "Forecast recalibration: unchanged — baseline"},
 		{"2026-11-02T15:00:00Z", "2026-11-02T16:00:00Z", "Forecast baseline: 2026-11-02T15:00:00Z; current target: 2026-11-02T16:00:00Z; recalibration history unknown"},
@@ -1027,6 +1071,7 @@ func TestForecastBaselineTruth(t *testing.T) {
 //
 // Example: Duplicate and unknown labels are rejected.
 func TestLegacyPriorityOrderValidation(t *testing.T) {
+	t.Parallel()
 	for _, order := range []string{"[high, high]", "[high, unknown]", "[high, '']", "[high, UNKNOWN]"} {
 		_, err := parse([]byte(valid + "priority_order: " + order + "\n"))
 		require.Error(t, err, order)
@@ -1037,6 +1082,7 @@ func TestLegacyPriorityOrderValidation(t *testing.T) {
 //
 // Example: A missing prior never proves intermediate history was unchanged.
 func TestForecastPriorAndBaselineValidation(t *testing.T) {
+	t.Parallel()
 	for _, field := range []string{"prior", "baseline"} {
 		doc := valid + "root_forecasts:\n  - {outcome: Work, target: '2026-11-02T16:00:00Z', " + field + ": not-a-time, assessment: complete}\n"
 		_, err := parse([]byte(doc))
@@ -1055,6 +1101,7 @@ func TestForecastPriorAndBaselineValidation(t *testing.T) {
 //
 // Example: Equivalent UTC representations do not imply a changed deadline.
 func TestPriorForecastComparisonDoesNotInventMovement(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		prior, target, want string
 		moved               bool

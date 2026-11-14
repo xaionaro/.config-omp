@@ -12,6 +12,7 @@ import (
 //
 // Example: A cancelled lane cannot silently describe another outcome.
 func TestTerminalLaneOutcomeCorrespondence(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n"
 	for _, tc := range []struct {
 		name, laneState, workState string
@@ -42,6 +43,7 @@ func TestTerminalLaneOutcomeCorrespondence(t *testing.T) {
 //
 // Example: Missing ledger evidence cannot hide a future completion timestamp.
 func TestFutureActualCompletionWithoutSources(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "implementation_status: IN PROGRESS", "implementation_status: CLOSED\n    completed_at: '2026-11-02T16:00:00Z'", 1)
 	report = strings.Replace(report, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	at, err := parseUTC("2026-11-02T15:24:00Z")
@@ -64,6 +66,7 @@ func TestFutureActualCompletionWithoutSources(t *testing.T) {
 //
 // Example: Explicit null is not a cancellation state.
 func TestLaneLifecycleScalarValidation(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"null", "unknown", "42", "!custom cancelled"} {
 		doc := strings.Replace(linkedReport, "    required_environment: implementation", "    lifecycle: "+value+"\n    required_environment: implementation", 1)
 		_, err := parse([]byte(doc))
@@ -77,6 +80,7 @@ func TestLaneLifecycleScalarValidation(t *testing.T) {
 //
 // Example: One matching child does not represent a two-outcome root.
 func TestRootForecastOutcomeCorrespondence(t *testing.T) {
+	t.Parallel()
 	report := linkedReport + `root_forecasts:
   - {forecast_ref: 'forecasts.yaml#/records/root', outcome: Root result, target: '2026-11-02T18:00:00Z', assessment: complete, baseline: '2026-11-02T18:00:00Z', evidence: initial}
 `
@@ -112,6 +116,7 @@ func TestRootForecastOutcomeCorrespondence(t *testing.T) {
 //
 // Example: A completed root cannot claim an unrelated outcome.
 func TestRootCompletionOutcomeCorrespondence(t *testing.T) {
+	t.Parallel()
 	start := strings.Index(linkedReport, "  - task_id: '1'\n")
 	end := strings.Index(linkedReport, "  - task_id: '2'\n")
 	require.Greater(t, start, 0)

@@ -14,6 +14,7 @@ import (
 //
 // Example: A bracket inside a quoted risk is not the end of its flow sequence.
 func TestRefreshPreservesYAMLContent(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	for _, tc := range []struct {
 		name   string
@@ -71,6 +72,7 @@ func TestRefreshPreservesYAMLContent(t *testing.T) {
 //
 // Example: A comment inside a projection survives an unsafe rewrite.
 func TestRefreshRefusesCommentedProjection(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	block := "    forecast:\n      forecast_ref: 'forecasts.yaml#/records/first'\n      outcome: First result\n      target: '2026-11-02T16:00:00Z'\n      assessment: complete\n      baseline: '2026-11-02T16:00:00Z'\n      evidence: initial\n      source_projection:\n        target_basis: old # preserve this note"
 	report := strings.Replace(linkedReport, forecast, block, 1)

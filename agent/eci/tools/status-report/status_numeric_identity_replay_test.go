@@ -15,6 +15,7 @@ import (
 //
 // Example: Numeric-looking 1.10 and 1.1 remain distinct task identifiers.
 func TestNumericTaskIdentitiesReplayLexically(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "id: '1', title: First", "id: 1, title: First", 1)
 	report = strings.Replace(report, "id: '2', title: Second", "id: 1.1, parent_id: 1, title: Second", 1)
 	report = strings.Replace(report, "top_priorities: ['1', '2']", "  - {id: 1.10, parent_id: 1, title: Third, priority: high, impact: Useful, effort: {min_minutes: 10, max_minutes: 20, kind: elapsed, basis: guess}, status: IN PROGRESS, work_refs: ['project-understanding.yaml#/records/work:second']}\ntop_priorities: [1, 1.1, 1.10]", 1)
@@ -50,6 +51,7 @@ func TestNumericTaskIdentitiesReplayLexically(t *testing.T) {
 //
 // Example: Cancelling numeric task 1 removes only its own numeric priority entry.
 func TestNumericTopPriorityCancellation(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "id: '1', title: First", "id: 1, title: First", 1)
 	report = strings.Replace(report, "top_priorities: ['1', '2']", "top_priorities: [1, '2']", 1)
 	report = strings.Replace(report, "task_id: '1'", "task_id: 1", 1)
@@ -73,6 +75,7 @@ func TestNumericTopPriorityCancellation(t *testing.T) {
 //
 // Example: A task owner update cannot rewrite numeric priority 2 as a string.
 func TestVerificationRetainsTopPriorityRepresentation(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: 1, owner: old}, {id: 2, owner: keep}]\ntop_priorities: [1, 2]\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "1", Field: "owner", Value: "new", Operation: syncEffectSet}}
 	good := []byte("tasks: [{id: 1, owner: new}, {id: 2, owner: keep}]\ntop_priorities: [1, 2]\n")
@@ -85,6 +88,7 @@ func TestVerificationRetainsTopPriorityRepresentation(t *testing.T) {
 //
 // Example: A supplied list of string IDs may replace a numeric YAML list.
 func TestExplicitTopPriorityReplacementCanChangeStyles(t *testing.T) {
+	t.Parallel()
 	before := []byte("top_priorities: [1, 2]\n")
 	after := []byte("top_priorities: ['2']\n")
 	effects := []syncEffect{{Target: syncTargetReport, ID: "current", Field: "top_priorities", Value: json.RawMessage(`["2"]`), Operation: syncEffectSet}}
@@ -95,6 +99,7 @@ func TestExplicitTopPriorityReplacementCanChangeStyles(t *testing.T) {
 //
 // Example: Updating task 1 cannot silently rewrite another numeric ID as a string.
 func TestVerificationRetainsUnchangedIdentityRepresentation(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: 1, owner: old}, {id: 2, owner: keep}]\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "1", Field: "owner", Value: "new", Operation: syncEffectSet}}
 	good := []byte("tasks: [{id: 1, owner: new}, {id: 2, owner: keep}]\n")
@@ -107,6 +112,7 @@ func TestVerificationRetainsUnchangedIdentityRepresentation(t *testing.T) {
 //
 // Example: A numeric lane or review task ID matches its explicit string selector.
 func TestNumericLaneAndReviewSelectorsReplay(t *testing.T) {
+	t.Parallel()
 	base := strings.Replace(linkedReport, "id: '1', title: First", "id: 1, title: First", 1)
 	base = strings.Replace(base, "top_priorities: ['1', '2']", "top_priorities: [1, '2']", 1)
 	base = strings.Replace(base, "task_id: '1'", "task_id: 1", 1)
@@ -143,6 +149,7 @@ func TestNumericLaneAndReviewSelectorsReplay(t *testing.T) {
 //
 // Example: A task update cannot rewrite a lane or review ID's YAML type.
 func TestVerificationRetainsOtherSectionIdentityStyles(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: 1, owner: old}]\nlanes: [{task_id: 1, work_ref: work, required_environment: implementation}]\nreviews: [{task_id: 1, critic: B}]\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "1", Field: "owner", Value: "new", Operation: syncEffectSet}}
 	good := strings.Replace(string(before), "owner: old", "owner: new", 1)
@@ -157,6 +164,7 @@ func TestVerificationRetainsOtherSectionIdentityStyles(t *testing.T) {
 //
 // Example: Rewriting the first of two review IDs is still detected.
 func TestVerificationRetainsDuplicateReviewIdentityStyles(t *testing.T) {
+	t.Parallel()
 	before := strings.Replace(linkedReport, "id: '1', title: First", "id: '1', owner: old, title: First", 1)
 	before += "reviews: [{task_id: 1, reporter: A, critic: B, rounds: 1, estimate: checked, impact: checked, priority: checked, unresolved: none}, {task_id: '1', reporter: C, critic: D, rounds: 1, estimate: checked, impact: checked, priority: checked, unresolved: none}]\n"
 	_, err := parse([]byte(before))
@@ -170,6 +178,7 @@ func TestVerificationRetainsDuplicateReviewIdentityStyles(t *testing.T) {
 //
 // Example: Updating a task owner cannot replace a parent alias with a string.
 func TestVerificationRetainsParentAliasIdentity(t *testing.T) {
+	t.Parallel()
 	before := strings.Replace(linkedReport, "id: '1', title: First", "id: &id 1, owner: old, title: First", 1)
 	before = strings.Replace(before, "id: '2', title: Second", "id: '1.1', parent_id: *id, title: Second", 1)
 	before = strings.Replace(before, "task_id: '2'", "task_id: '1.1'", 1)
@@ -185,6 +194,7 @@ func TestVerificationRetainsParentAliasIdentity(t *testing.T) {
 //
 // Example: Cancelling 1.1 does not rewrite or remove numeric-looking 1.10.
 func TestNumericDottedPriorityCancellationPreservesSibling(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "id: '1', title: First", "id: 1, title: First", 1)
 	report = strings.Replace(report, "id: '2', title: Second", "id: 1.1, parent_id: 1, title: Second", 1)
 	report = strings.Replace(report, "top_priorities: ['1', '2']", "  - {id: 1.10, parent_id: 1, title: Third, priority: high, impact: Useful, effort: {min_minutes: 10, max_minutes: 20, kind: elapsed, basis: guess}, status: IN PROGRESS, work_refs: ['project-understanding.yaml#/records/work:second']}\ntop_priorities: [1, 1.1, 1.10]", 1)
@@ -211,6 +221,7 @@ func TestNumericDottedPriorityCancellationPreservesSibling(t *testing.T) {
 //
 // Example: A surviving tagged or anchored priority retains its original spelling.
 func TestCancellationRetainsDecoratedPrioritySurvivors(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, priority string
 		alias          bool
@@ -254,6 +265,7 @@ func TestCancellationRetainsDecoratedPrioritySurvivors(t *testing.T) {
 //
 // Example: A live review alias prevents removing its referenced priority anchor.
 func TestCancellationDoesNotDeleteReferencedPriorityAnchor(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "top_priorities: ['1', '2']", "top_priorities: [&owner '1', '2'] # owner note", 1)
 	report += "reviews: [{task_id: *owner, reporter: A, critic: B, rounds: 1, estimate: checked, impact: checked, priority: checked, unresolved: none}]\n"
 	_, err := parse([]byte(report))
@@ -283,6 +295,7 @@ func TestCancellationDoesNotDeleteReferencedPriorityAnchor(t *testing.T) {
 //
 // Example: An unrelated task edit cannot rename a surviving priority anchor.
 func TestVerificationProtectsPriorityAnchorIdentity(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: 1, owner: old}]\ntop_priorities: [&owner '1']\n")
 	after := []byte("tasks: [{id: 1, owner: new}]\ntop_priorities: [&other '1']\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "1", Field: "owner", Value: "new", Operation: syncEffectSet}}

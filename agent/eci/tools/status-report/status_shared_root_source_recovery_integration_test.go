@@ -13,6 +13,7 @@ import (
 //
 // Example: A shared root forecast waits until both work outcomes agree on disk.
 func TestSharedRootForecastRecoversAfterSourceRepair(t *testing.T) {
+	t.Parallel()
 	// event requests a forecast shared by two active root work records.
 	//
 	// Example: An inconsistent source must not be projected prematurely.

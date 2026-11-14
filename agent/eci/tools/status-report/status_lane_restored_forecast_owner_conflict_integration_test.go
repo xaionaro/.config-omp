@@ -13,6 +13,7 @@ import (
 //
 // Example: An owner edit to a restored forecast prevents a later closure from removing it.
 func TestReclosedLanePreservesOwnerEditedRestoredForecast(t *testing.T) {
+	t.Parallel()
 	// closeEvent retires the lane's forecast when its canonical work completes.
 	//
 	// Example: The same closure can later be recorded after a reopening.

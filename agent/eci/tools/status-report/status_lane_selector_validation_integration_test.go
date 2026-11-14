@@ -12,6 +12,7 @@ import (
 //
 // Example: A lane without a work reference cannot be queued under an ambiguous identity.
 func TestIncompleteLaneSelectorsAreDiagnosedWithoutBlockingProgress(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, record string }{
 		{"missing work reference", `{"task_id":"1","outcome":"Result","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW"}`},
 		{"empty work reference", `{"task_id":"1","work_ref":"","outcome":"Result","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW"}`},

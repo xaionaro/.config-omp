@@ -14,6 +14,7 @@ import (
 //
 // Example: Replace a historical four-hour timeline with a new complete snapshot.
 func TestSyncTimelineSnapshot(t *testing.T) {
+	t.Parallel()
 	input := []byte(linkedReport + "timeline_as_of: '2026-11-02T15:24:00Z'\ntimeline_state: present\ntimeline:\n  - {job: old, parent_chain: old, start: '2026-11-02T14:54:00Z', end: '2026-11-02T15:24:00Z', fast: old, normal: old}\n")
 	snapshot := syncTimelineSnapshot{AsOf: "2026-11-02T15:24:00Z", State: timelinePresent}
 	anchor, err := time.Parse(time.RFC3339, snapshot.AsOf)
@@ -58,6 +59,7 @@ func TestSyncTimelineSnapshot(t *testing.T) {
 //
 // Example: Reject an incomplete snapshot or a commented timeline layout.
 func TestSyncTimelineRejectsUnsupportedSnapshot(t *testing.T) {
+	t.Parallel()
 	input := []byte(linkedReport + "timeline_state: verified_empty\ntimeline: [] # owner comment\n")
 	snapshot := syncTimelineSnapshot{AsOf: "2026-11-02T15:24:00Z", State: timelineVerifiedEmpty}
 	got, ok := applySyncTimeline(input, snapshot)
@@ -81,6 +83,7 @@ func TestSyncTimelineRejectsUnsupportedSnapshot(t *testing.T) {
 //
 // Example: A parent_chain key survives decoding into the snapshot.
 func TestSyncTimelineJSON(t *testing.T) {
+	t.Parallel()
 	var snapshot syncTimelineSnapshot
 	require.NoError(t, json.Unmarshal([]byte(`{"as_of":"2026-11-02T15:24:00Z","state":"present","entries":[{"job":"root","parent_chain":"root","fast":"work","normal":"unknown"}]}`), &snapshot))
 	require.Equal(t, "root", snapshot.Entries[0].ParentChain)

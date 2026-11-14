@@ -14,6 +14,7 @@ import (
 //
 // Example: Later evidence does not prevent an earlier accepted task from closing.
 func TestSyncBatchReplayMatchesIncrementalClosure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted proof"}}]}}}` + "\n"
@@ -39,6 +40,7 @@ func TestSyncBatchReplayMatchesIncrementalClosure(t *testing.T) {
 //
 // Example: A saved field-wise assignment remains retryable after the upgrade.
 func TestSyncLegacyPendingSurvivesTransactionUpgrade(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
@@ -61,6 +63,7 @@ func TestSyncLegacyPendingSurvivesTransactionUpgrade(t *testing.T) {
 //
 // Example: A later proof revision follows an earlier accepted closure.
 func TestSyncSameEventTransactionsKeepSuppliedOrder(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	entry := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}},{"target":"task","id":"1","fields":{"evidence":"revised"}}]}}}` + "\n"
@@ -77,6 +80,7 @@ func TestSyncSameEventTransactionsKeepSuppliedOrder(t *testing.T) {
 //
 // Example: Update effort and a complete empty timeline without inferring facts.
 func TestSyncProjectsTypedTaskAndTimeline(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	entry := `{"event":"worker_progress","timestamp":"2026-11-02T15:24:00Z","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"effort":{"min_minutes":1,"max_minutes":2,"kind":"work","basis":"measured"}}}],"timeline":{"as_of":"2026-11-02T15:24:00Z","state":"verified_empty","entries":[]}}}}` + "\n"
@@ -94,6 +98,7 @@ func TestSyncProjectsTypedTaskAndTimeline(t *testing.T) {
 //
 // Example: A correction names the second update from one log entry.
 func TestSyncCorrectionUsesSameLineOrdinal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"first"}},{"target":"progress","id":"work","fields":{"text":"second"}}]}}}` + "\n"
@@ -110,6 +115,7 @@ func TestSyncCorrectionUsesSameLineOrdinal(t *testing.T) {
 //
 // Example: Task acceptance and its revised effort apply together.
 func TestSyncMixedTypedAndScalarFieldsStayAtomic(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	entry := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"},"values":{"effort":{"min_minutes":1,"max_minutes":2,"kind":"work","basis":"measured"}}}]}}}` + "\n"
@@ -126,6 +132,7 @@ func TestSyncMixedTypedAndScalarFieldsStayAtomic(t *testing.T) {
 //
 // Example: Resolve a blocker, then record a new blocker on the same lane.
 func TestSyncLaneClearThenSetKeepsOwnership(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	report := strings.Replace(linkedReport, "    outcome: First result\n", "    outcome: First result\n    blocker: Waiting\n", 1)
@@ -143,6 +150,7 @@ func TestSyncLaneClearThenSetKeepsOwnership(t *testing.T) {
 //
 // Example: An assignment correction waits until the missing task is added.
 func TestSyncCorrectionWaitsForItsPendingTarget(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"first"}}]}}}` + "\n"
@@ -162,6 +170,7 @@ func TestSyncCorrectionWaitsForItsPendingTarget(t *testing.T) {
 //
 // Example: A later complete snapshot replaces an earlier incomplete snapshot.
 func TestSyncNewTimelineSupersedesUnappliedSnapshot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"checkpoint","timestamp":"2026-11-02T15:24:00Z","details":{"status_update":{"timeline":{"as_of":"2026-11-02T15:24:00Z","state":"present","entries":[]}}}}` + "\n"
@@ -179,6 +188,7 @@ func TestSyncNewTimelineSupersedesUnappliedSnapshot(t *testing.T) {
 //
 // Example: Explicitly reopen a task that the projection previously cancelled.
 func TestSyncTaskCancellationCanBeReversed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"lifecycle":"cancelled","status":"unknown","evidence":"cancelled"}}]}}}` + "\n"
@@ -196,6 +206,7 @@ func TestSyncTaskCancellationCanBeReversed(t *testing.T) {
 //
 // Example: A newer evidence update supersedes an older text ordinal.
 func TestSyncRetractionUsesOrdinalOfLatestLine(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"report","id":"current","fields":{"state":"Updated"}},{"target":"progress","id":"work","fields":{"text":"managed"}}]}}}` + "\n"
@@ -213,6 +224,7 @@ func TestSyncRetractionUsesOrdinalOfLatestLine(t *testing.T) {
 //
 // Example: A task moves to a new priority with its supplied estimate.
 func TestSyncReprioritizationAddsItsEstimateAtomically(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	entry := `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"priority":"low"}}],"additions":[{"target":"priority_estimate","record":{"priority":"low","min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
@@ -234,6 +246,7 @@ func TestSyncReprioritizationAddsItsEstimateAtomically(t *testing.T) {
 //
 // Example: An old completion correction cannot target the pre-reopen version.
 func TestSyncReopenRecordsImplicitCompletionRemoval(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
@@ -258,6 +271,7 @@ func TestSyncReopenRecordsImplicitCompletionRemoval(t *testing.T) {
 //
 // Example: Replace the last high-priority estimate while moving its task to low.
 func TestSyncLastPriorityRetirementRequiresExactPrior(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	report := `timestamp: '2026-11-02T15:24:00Z'

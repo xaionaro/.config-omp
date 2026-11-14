@@ -13,6 +13,7 @@ import (
 //
 // Example: A duplicate or intervening same-work event prevents reconciliation.
 func TestLegacyAppliedRootCorrectionLineage(t *testing.T) {
+	t.Parallel()
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", Data: workData{Roles: []reportingRole{reportingRoleRoot}}}}}
 	firstRecord := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	secondRecord := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
@@ -49,6 +50,7 @@ func TestLegacyAppliedRootCorrectionLineage(t *testing.T) {
 //
 // Example: A forecast event between a completion and correction prevents clearing pending metadata.
 func TestLegacyCorrectionDoesNotSkipForecast(t *testing.T) {
+	t.Parallel()
 	first := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	next := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	log := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"done","record":` + first + `}]}}}` + "\n" + `{"event":"decision","details":{"status_update":{"additions":[{"target":"root_forecast","record":{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"working"}}]}}}` + "\n" + `{"event":"correction","details":{"corrects":1,"status_update":{"additions":[{"target":"root_completion","evidence":"corrected","expected_prior":` + first + `,"record":` + next + `}]}}}`

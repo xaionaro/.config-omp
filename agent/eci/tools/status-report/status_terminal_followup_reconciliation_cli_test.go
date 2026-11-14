@@ -15,6 +15,7 @@ import (
 //
 // Example: Terminal work cannot retain a followup marker, while active work can.
 func TestTerminalFollowupReconciliationInCLI(t *testing.T) {
+	t.Parallel()
 	// forecast is removed from report lanes whose canonical work is terminal.
 	//
 	// Example: A completed or cancelled lane has no active report forecast.

@@ -10,6 +10,7 @@ import (
 //
 // Example: A queued cancellation and reactivation preserve supplied details before closure.
 func TestLaneLifecycleChainComposesExplicitTransitions(t *testing.T) {
+	t.Parallel()
 	base := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation}
 	cancel := base
 	cancel.Evidence = "cancelled"
@@ -89,6 +90,7 @@ func TestLaneLifecycleChainComposesExplicitTransitions(t *testing.T) {
 //
 // Example: Two explicit cancellations and reactivations lead to one canonical closure.
 func TestLaneLifecycleChainRepeatedCancellation(t *testing.T) {
+	t.Parallel()
 	base := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation}
 	cancel := base
 	cancel.Evidence = "cancelled"
@@ -133,6 +135,7 @@ func TestLaneLifecycleChainRepeatedCancellation(t *testing.T) {
 //
 // Example: A historical closure's context survives a reopen and later final closure.
 func TestLaneLifecycleChainPreservesPriorClosureMetadata(t *testing.T) {
+	t.Parallel()
 	base := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation}
 	first := base
 	first.Evidence = "accepted first"

@@ -12,6 +12,7 @@ import (
 //
 // Example: An invalid scalar record stays diagnosed without blocking an unrelated root chain.
 func TestRootChainKeepsMalformedSiblingDiagnostic(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	later := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:10:00Z"}`

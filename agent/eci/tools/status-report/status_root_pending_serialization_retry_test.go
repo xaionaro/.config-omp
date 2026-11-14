@@ -13,6 +13,7 @@ import (
 //
 // Example: A pending completion survives an unchanged retry, then applies after source completion.
 func TestPendingRootCompletionRetryIsStableUntilSourceCompletes(t *testing.T) {
+	t.Parallel()
 	// root is the active source backing the pending completion.
 	//
 	// Example: The root cannot complete until its canonical state changes.

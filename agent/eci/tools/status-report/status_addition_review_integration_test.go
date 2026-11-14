@@ -13,6 +13,7 @@ import (
 //
 // Example: A new task with unknown status remains usable for later updates.
 func TestSyncAddedTaskAllowsNullStatus(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":null}}]}}}` + "\n"
@@ -36,6 +37,7 @@ func TestSyncAddedTaskAllowsNullStatus(t *testing.T) {
 //
 // Example: A later event does not replace a manually edited critic.
 func TestSyncAddedReviewPreservesOwnerEdit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"requester","critic":"reviewer","rounds":1,"estimate":"ten minutes","impact":"proof","priority":"high","unresolved":"none"}}]}}}` + "\n"
@@ -59,6 +61,7 @@ func TestSyncAddedReviewPreservesOwnerEdit(t *testing.T) {
 //
 // Example: An owner-edited lane coordinator survives a later assignment event.
 func TestSyncAddedLanePreservesOwnerEdit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"lane","record":{"task_id":"1","work_ref":"project-understanding.yaml#/records/w","outcome":"Result","owner":"initial","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW","forecast":{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}}}]}}}` + "\n"
@@ -84,6 +87,7 @@ func TestSyncAddedLanePreservesOwnerEdit(t *testing.T) {
 //
 // Example: A later estimate update cannot overwrite a manually revised basis.
 func TestSyncAddedPriorityEstimatePreservesOwnerEdit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"low","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}},{"target":"priority_estimate","record":{"priority":"low","min_minutes":1,"max_minutes":2,"as_of":"2026-11-02T15:24:00Z","basis":"initial basis","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
@@ -106,6 +110,7 @@ func TestSyncAddedPriorityEstimatePreservesOwnerEdit(t *testing.T) {
 //
 // Example: A revised estimate basis remains when a later event proposes another.
 func TestSyncReprioritizationEstimatePreservesOwnerEdit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"priority":"low"}}],"additions":[{"target":"priority_estimate","record":{"priority":"low","min_minutes":1,"max_minutes":2,"as_of":"2026-11-02T15:24:00Z","basis":"initial basis","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
@@ -128,6 +133,7 @@ func TestSyncReprioritizationEstimatePreservesOwnerEdit(t *testing.T) {
 //
 // Example: A task marked with a tilde can be moved into progress.
 func TestSyncExplicitNullStatusSpellings(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"null", "Null", "NULL", "~"} {
 		t.Run(value,
 			// Check one explicit YAML null spelling through replay.

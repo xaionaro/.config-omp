@@ -18,6 +18,7 @@ import (
 //
 // Example: A closed task stays intact while scope becomes incomplete.
 func TestRefreshRequirementChangePreservesReport(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	original := strings.Replace(linkedReport, "status: IN PROGRESS", "status: CLOSED, evidence: accepted", 1)
 	path := filepath.Join(dir, "latest-status-report.yaml")
@@ -40,6 +41,7 @@ func TestRefreshRequirementChangePreservesReport(t *testing.T) {
 //
 // Example: A malformed report is rejected before publication.
 func TestRefreshRejectsMissingOrInvalidReport(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.Error(t, refreshTestStatus(dir, "requirement_change"))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "latest-status-report.yaml"), []byte("scope_complete: nope\n"), 0600))
@@ -50,6 +52,7 @@ func TestRefreshRejectsMissingOrInvalidReport(t *testing.T) {
 //
 // Example: A concurrent edit survives and the refresh requests a retry.
 func TestRefreshDetectsConcurrentReportMutation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -73,6 +76,7 @@ func TestRefreshDetectsConcurrentReportMutation(t *testing.T) {
 //
 // Example: A linked lane receives the current canonical target.
 func TestRefreshProjectsLinkedForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -90,6 +94,7 @@ func TestRefreshProjectsLinkedForecast(t *testing.T) {
 //
 // Example: A concurrent forecast edit prevents stale publication.
 func TestForecastRefreshRejectsConcurrentSourceMutation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
 	forecastPath := filepath.Join(dir, "forecasts.yaml")
@@ -112,6 +117,7 @@ func TestForecastRefreshRejectsConcurrentSourceMutation(t *testing.T) {
 //
 // Example: A source outcome and target basis reach the report.
 func TestRefreshProjectsForecastDetails(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -130,6 +136,7 @@ func TestRefreshProjectsForecastDetails(t *testing.T) {
 //
 // Example: A block-style root forecast receives its source target.
 func TestRefreshProjectsRootAndBlockForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := linkedReport + "root_forecasts:\n  - forecast_ref: 'forecasts.yaml#/records/root'\n    outcome: Root result\n    target: '2026-11-02T16:00:00Z'\n    assessment: complete\n    baseline: '2026-11-02T16:00:00Z'\n    evidence: initial\n"
 	ledger := linkedLedger + "  work:root:\n    section: progress\n    type: work\n    data: {owner: lead, state: active, next_action: Finish, reporting_roles: [root], forecast_ref: 'forecasts.yaml#/records/root'}\n    evidence: []\n"
@@ -149,6 +156,7 @@ func TestRefreshProjectsRootAndBlockForecast(t *testing.T) {
 //
 // Example: An adjacent comment survives a projection update.
 func TestRefreshUpdatesExistingProjectionAndPreservesComment(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(linkedReport, "evidence: initial}", "evidence: initial, source_projection: {baseline_evidence: initial, target_basis: old}} # keep this comment", 1)
 	source := strings.Replace(linkedForecasts, "    baseline_evidence: initial\n", "    baseline_evidence: initial\n    target_basis: new basis\n", 1)
@@ -167,6 +175,7 @@ func TestRefreshUpdatesExistingProjectionAndPreservesComment(t *testing.T) {
 //
 // Example: A comment inside a projection requires manual refresh.
 func TestRefreshPersistsUnsupportedProjectionDiagnostic(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}", "    forecast:\n      forecast_ref: 'forecasts.yaml#/records/first'\n      outcome: First result\n      target: '2026-11-02T16:00:00Z'\n      assessment: complete\n      baseline: '2026-11-02T16:00:00Z'\n      evidence: initial\n      source_projection:\n        target_basis: old # retain this note", 1)
 	source := strings.Replace(linkedForecasts, "    baseline_evidence: initial\n", "    baseline_evidence: initial\n    target_basis: new\n", 1)
@@ -186,6 +195,7 @@ func TestRefreshPersistsUnsupportedProjectionDiagnostic(t *testing.T) {
 //
 // Example: Scope invalidation and forecast changes publish together.
 func TestRequirementChangeAtomicallyProjectsForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -204,6 +214,7 @@ func TestRequirementChangeAtomicallyProjectsForecast(t *testing.T) {
 //
 // Example: Direct work refreshes without a forecasts file.
 func TestRefreshDirectWorkWithoutForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "status: unknown", "status: IN PROGRESS", 1)
@@ -225,6 +236,7 @@ func TestRefreshDirectWorkWithoutForecast(t *testing.T) {
 //
 // Example: Missing linked work produces an incomplete diagnostic.
 func TestRefreshPersistsMissingWorkDiagnostic(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -243,6 +255,7 @@ func TestRefreshPersistsMissingWorkDiagnostic(t *testing.T) {
 //
 // Example: A source missing required forecast facts is rejected.
 func TestRefreshRejectsInvalidForecastSources(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, from, to, issue string }{
 		{"missing outcome", "    outcome: First result\n", "", "missing outcome"},
 		{"bad target", "target: '2026-11-02T16:00:00+00:00'", "target: invalid", "invalid target"},
@@ -279,6 +292,7 @@ func TestRefreshRejectsInvalidForecastSources(t *testing.T) {
 //
 // Example: Missing command arguments return a usage error.
 func TestRefreshCLIArgumentsAndFailures(t *testing.T) {
+	t.Parallel()
 	var errOut strings.Builder
 	require.Equal(t, 2, runRefresh(nil, &errOut))
 	require.Contains(t, errOut.String(), "usage")
@@ -297,6 +311,7 @@ func TestRefreshCLIArgumentsAndFailures(t *testing.T) {
 //
 // Example: Scenario event times and duration bases reconcile.
 func TestRefreshProjectsFullScenario(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	sourceProjection := "    base_case:\n      endpoint: '2026-11-02T15:45:00Z'\n      packages:\n        - {work: Finish, duration: 20 minutes, basis: guess}\n    scenarios:\n      - {name: Delay, trigger: review, affected_work: Finish, evidence: unknown, assumptions: none, added_duration: 15 minutes, event_time: '2026-11-02T15:45:00Z', endpoint: '2026-11-02T16:00:00Z', basis: guess}\n"
@@ -322,6 +337,7 @@ func TestRefreshProjectsFullScenario(t *testing.T) {
 //
 // Example: An indented blocker list retains its existing item.
 func TestInvalidatePreservesBlockListIndentation(t *testing.T) {
+	t.Parallel()
 	for _, indent := range []string{"", "  "} {
 		t.Run("indent_"+strconv.Itoa(len(indent)),
 			// Callback runs the named regression scenario.
@@ -346,6 +362,7 @@ func TestInvalidatePreservesBlockListIndentation(t *testing.T) {
 //
 // Example: A block-style projection receives the new target basis.
 func TestRefreshUpdatesBlockSourceProjection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}", "    forecast:\n      forecast_ref: 'forecasts.yaml#/records/first'\n      outcome: First result\n      target: '2026-11-02T16:00:00Z'\n      assessment: complete\n      baseline: '2026-11-02T16:00:00Z'\n      evidence: initial\n      source_projection:\n        baseline_evidence: initial\n        target_basis: old", 1)
 	source := strings.Replace(linkedForecasts, "    baseline_evidence: initial\n", "    baseline_evidence: initial\n    target_basis: new\n", 1)
@@ -366,6 +383,7 @@ func TestRefreshUpdatesBlockSourceProjection(t *testing.T) {
 //
 // Example: A symlink report is left untouched.
 func TestRefreshRejectsUnsafeOrMissingSources(t *testing.T) {
+	t.Parallel()
 	t.Run("symlink report",
 		// Callback runs the named regression scenario.
 		//
@@ -415,6 +433,7 @@ func TestRefreshRejectsUnsafeOrMissingSources(t *testing.T) {
 //
 // Example: A changed target retains its prior value and evidence.
 func TestRefreshProjectsRecalibration(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	source := strings.Replace(linkedForecasts, "target: '2026-11-02T16:00:00+00:00'", "target: '2026-11-02T16:30:00Z'", 1)
@@ -438,6 +457,7 @@ func TestRefreshProjectsRecalibration(t *testing.T) {
 //
 // Example: A missing root forecast is named in the diagnostic.
 func TestRefreshMissingRootForecastPersistsDiagnostic(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	report := linkedReport + "root_forecasts:\n  - {forecast_ref: 'forecasts.yaml#/records/root', outcome: Root, target: '2026-11-02T16:00:00Z', assessment: complete}\n"
@@ -456,6 +476,7 @@ func TestRefreshMissingRootForecastPersistsDiagnostic(t *testing.T) {
 //
 // Example: A deleted source prevents stale publication.
 func TestRefreshHandlesConcurrentReplacementAndDeletion(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		mutate func(
@@ -515,6 +536,7 @@ func TestRefreshHandlesConcurrentReplacementAndDeletion(t *testing.T) {
 //
 // Example: A stale reason is preserved for manual review.
 func TestRefreshRejectsStaleRecalibrationFields(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	report := strings.Replace(linkedReport, "evidence: initial}", "evidence: initial, reason: obsolete}", 1)
@@ -532,6 +554,7 @@ func TestRefreshRejectsStaleRecalibrationFields(t *testing.T) {
 //
 // Example: A bracket inside a quoted blocker remains intact.
 func TestInvalidateFlowListPreservesQuotedClosingBracket(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "blockers_risks: []", "blockers_risks: ['risk ] here', 'don''t ] split', \"quoted \\\" ] here\"]", 1)
 	updated, err := prepareInvalidation([]byte(original), refreshDiagnostic)
 	require.NoError(t, err)
@@ -547,6 +570,7 @@ func TestInvalidateFlowListPreservesQuotedClosingBracket(t *testing.T) {
 //
 // Example: An apostrophe in an outcome does not damage another lane.
 func TestRefreshChangesQuotedOutcomeWithoutDamagingOtherFields(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	report := strings.Replace(linkedReport, "outcome: First result, target:", "outcome: 'Worker''s {old}', target:", 1)
@@ -567,6 +591,7 @@ func TestRefreshChangesQuotedOutcomeWithoutDamagingOtherFields(t *testing.T) {
 //
 // Example: Restored links do not clear the scope review requirement.
 func TestRefreshDoesNotClearScopeOrPriorDiagnostic(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -587,6 +612,7 @@ func TestRefreshDoesNotClearScopeOrPriorDiagnostic(t *testing.T) {
 //
 // Example: A missing source produces both diagnostics in one publication.
 func TestRequirementChangeSourceFailurePublishesOnce(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -609,6 +635,7 @@ func TestRequirementChangeSourceFailurePublishesOnce(t *testing.T) {
 //
 // Example: An unsupported multiline outcome remains intact.
 func TestRefreshPreservesMultilineForecastScalar(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	old := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
@@ -628,6 +655,7 @@ func TestRefreshPreservesMultilineForecastScalar(t *testing.T) {
 //
 // Example: A brace inside a flow comment is not a closing delimiter.
 func TestRefreshPreservesFlowCommentWithClosingBrace(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	before := "forecast: {forecast_ref: 'forecasts.yaml#/records/first'"
@@ -650,6 +678,7 @@ func TestRefreshPreservesFlowCommentWithClosingBrace(t *testing.T) {
 //
 // Example: A multibyte character before a flow node preserves its offset.
 func TestLexerFlowBoundaryIgnoresCommentsAndUnicode(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"label: {# comment }\n key: 'text }', nested: [one, {two: three}]}\n", "label: {\n # comment }\n key: 'text }', nested: [one, {two: three}]}\n", "label: {clé: '😀 }', nested: [one, {two: three}]}\n"} {
 		var doc yaml.Node
 		require.NoError(t, yaml.Unmarshal([]byte(text), &doc))
@@ -670,6 +699,7 @@ func TestLexerFlowBoundaryIgnoresCommentsAndUnicode(t *testing.T) {
 //
 // Example: A changed task or removed comment prevents publication.
 func TestVerifyRefreshRejectsUnrelatedChangesAndCommentLoss(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "state: Working", "state: Working # preserve me", 1)
 	cases := []struct{ name, candidate, issue string }{
 		{"comment changed", strings.Replace(original, "# preserve me", "# damaged", 1), "comments"},
@@ -690,6 +720,7 @@ func TestVerifyRefreshRejectsUnrelatedChangesAndCommentLoss(t *testing.T) {
 //
 // Example: A target unsupported by the canonical source is rejected.
 func TestVerifyRefreshRejectsUnsupportedForecastChanges(t *testing.T) {
+	t.Parallel()
 	var ledger ledgerSource
 	var forecasts forecastSource
 	require.NoError(t, yaml.Unmarshal([]byte(linkedLedger), &ledger))
@@ -720,6 +751,7 @@ func TestVerifyRefreshRejectsUnsupportedForecastChanges(t *testing.T) {
 //
 // Example: Existing blockers cannot be replaced by a refresh.
 func TestVerifyRefreshPreservesBlockersAndLinkedFields(t *testing.T) {
+	t.Parallel()
 	var ledger ledgerSource
 	var forecasts forecastSource
 	require.NoError(t, yaml.Unmarshal([]byte(linkedLedger), &ledger))
@@ -746,6 +778,7 @@ func TestVerifyRefreshPreservesBlockersAndLinkedFields(t *testing.T) {
 //
 // Example: Unbalanced flow boundaries and bare carriage returns are rejected.
 func TestFlowLexerRejectsUnprovableBoundaries(t *testing.T) {
+	t.Parallel()
 	_, err := flowEnd([]byte("label: {a: [one}\n"), 7, token.MappingStartType)
 	require.Error(t, err)
 	end, err := flowEnd([]byte("label: {a: one}\r\n"), 7, token.MappingStartType)
@@ -761,6 +794,7 @@ func TestFlowLexerRejectsUnprovableBoundaries(t *testing.T) {
 //
 // Example: A single-line report retains its multibyte state text.
 func TestRequirementChangePreservesSingleLineReportWithUnicode(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	var object any
@@ -784,6 +818,7 @@ func TestRequirementChangePreservesSingleLineReportWithUnicode(t *testing.T) {
 //
 // Example: An unlinked forecast outcome cannot change.
 func TestVerifyRefreshRejectsUnlinkedForecastEdit(t *testing.T) {
+	t.Parallel()
 	changed := strings.Replace(linkedReport, "outcome: First result, target:", "outcome: Changed, target:", 1)
 	require.ErrorContains(t, verifyRefresh([]byte(linkedReport), []byte(changed), ledgerSource{}, forecastSource{}), "unprojected")
 }
@@ -792,6 +827,7 @@ func TestVerifyRefreshRejectsUnlinkedForecastEdit(t *testing.T) {
 //
 // Example: Existing diagnostic and comment text remains present.
 func TestVerifyRefreshRejectsDiagnosticAndCommentLoss(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "blockers_risks: []", "blockers_risks: [existing] # important note", 1)
 	cases := []struct{ name, text, issue string }{
 		{"diagnostic removed", strings.Replace(original, "[existing]", "[]", 1), "invalid diagnostic change"},
@@ -813,6 +849,7 @@ func TestVerifyRefreshRejectsDiagnosticAndCommentLoss(t *testing.T) {
 //
 // Example: Invalid UTF-8 cannot produce an offset.
 func TestYAMLPositionsRejectInvalidEncoding(t *testing.T) {
+	t.Parallel()
 	_, err := yamlByteOffset([]byte{0xff}, 1, 1)
 	require.ErrorContains(t, err, "UTF-8")
 	_, err = yamlByteOffset([]byte("line\n"), 3, 1)
@@ -823,6 +860,7 @@ func TestYAMLPositionsRejectInvalidEncoding(t *testing.T) {
 //
 // Example: A candidate cannot silently drop a lane.
 func TestVerifyRefreshRejectsDroppedLane(t *testing.T) {
+	t.Parallel()
 	original := linkedReport
 	offset := strings.Index(original, "  - task_id: '2'\n")
 	require.Greater(t, offset, 0)
@@ -834,6 +872,7 @@ func TestVerifyRefreshRejectsDroppedLane(t *testing.T) {
 //
 // Example: Nested braces and brackets retain distinct closing positions.
 func TestFlowDocumentCachesNestedPairs(t *testing.T) {
+	t.Parallel()
 	data := []byte("{outer: {inner: [one, two]}, other: [three]}\n")
 	doc := &flowDocument{data: data}
 	outer, err := doc.end(0, token.MappingStartType)
@@ -851,6 +890,7 @@ func TestFlowDocumentCachesNestedPairs(t *testing.T) {
 //
 // Example: An unterminated quoted value fails safely.
 func TestFlowDocumentRefusesInvalidTokenStreams(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		text  []byte
@@ -878,6 +918,7 @@ func TestFlowDocumentRefusesInvalidTokenStreams(t *testing.T) {
 //
 // Example: A malformed candidate cannot pass semantic verification.
 func TestVerifyRefreshRejectsMalformedCandidate(t *testing.T) {
+	t.Parallel()
 	malformed := strings.Replace(linkedReport, "state: Working", "state: 'unterminated", 1)
 	require.Error(t, verifyRefresh([]byte(linkedReport), []byte(malformed), ledgerSource{}, forecastSource{}))
 }
@@ -886,6 +927,7 @@ func TestVerifyRefreshRejectsMalformedCandidate(t *testing.T) {
 //
 // Example: A non-mapping lane cannot pass forecast verification.
 func TestVerifyForecastGroupRejectsNonMapping(t *testing.T) {
+	t.Parallel()
 	err := verifyForecastGroup(forecastGroupLanes, []any{"unexpected"}, []any{"unexpected"}, ledgerSource{}, forecastSource{}, nil)
 	require.ErrorContains(t, err, "unsupported forecast group")
 }
@@ -894,6 +936,7 @@ func TestVerifyForecastGroupRejectsNonMapping(t *testing.T) {
 //
 // Example: An invalid lexer stream cannot establish comment preservation.
 func TestYAMLCommentVerificationRejectsInvalidLexerStream(t *testing.T) {
+	t.Parallel()
 	_, err := yamlComments([]byte("state: 'unterminated\n"))
 	require.ErrorContains(t, err, "unsupported YAML token")
 }
@@ -902,6 +945,7 @@ func TestYAMLCommentVerificationRejectsInvalidLexerStream(t *testing.T) {
 //
 // Example: A comma or embedded hash in a block scalar is replaced in full.
 func TestRefreshProjectsPlainScalarPunctuation(t *testing.T) {
+	t.Parallel()
 	for _, old := range []string{"First, second", "issue#123"} {
 		t.Run(old,
 			// Callback runs a plain-scalar projection case.
@@ -939,6 +983,7 @@ func TestRefreshProjectsPlainScalarPunctuation(t *testing.T) {
 //
 // Example: A quoted outcome spanning lines remains available for manual review.
 func TestRefreshRefusesMultilineQuotedScalar(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	original := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
@@ -960,6 +1005,7 @@ func TestRefreshRefusesMultilineQuotedScalar(t *testing.T) {
 //
 // Example: A node value that differs from its lexer token cannot be replaced.
 func TestScalarSpanRejectsParserLexerDisagreement(t *testing.T) {
+	t.Parallel()
 	data := []byte("outcome: one\n")
 	var parsed yaml.Node
 	require.NoError(t, yaml.Unmarshal(data, &parsed))
@@ -983,6 +1029,7 @@ func (o testRefreshObserver) BeforePublish() { o.Action() }
 //
 // Example: A roleless work reference cannot authorize a lane forecast update.
 func TestRefreshDoesNotProjectUndeclaredForecastRole(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	ledger := strings.Replace(linkedLedger, "reporting_roles: [lane]", "reporting_roles: []", 1)
@@ -1003,6 +1050,7 @@ func TestRefreshDoesNotProjectUndeclaredForecastRole(t *testing.T) {
 //
 // Example: A root already represented by a lane keeps its existing projection.
 func TestRefreshDoesNotProjectRedundantRoot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	report := linkedReport + "root_forecasts:\n  - {forecast_ref: 'forecasts.yaml#/records/first', outcome: Root result, target: '2026-11-02T15:00:00Z', assessment: complete}\n"
@@ -1023,6 +1071,7 @@ func TestRefreshDoesNotProjectRedundantRoot(t *testing.T) {
 //
 // Example: A nonempty directory cannot be silently treated as a removed candidate.
 func TestRemoveUnpublishedReportsUnexpectedFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, removeUnpublished(filepath.Join(dir, "already-renamed")))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "child"), []byte("keep"), 0600))
@@ -1033,6 +1082,7 @@ func TestRemoveUnpublishedReportsUnexpectedFailure(t *testing.T) {
 //
 // Example: An expired target is marked incomplete without changing authored timestamps.
 func TestRefreshEvaluatesElapsedForecastsAtCapturedTime(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		Name       string
 		Evaluation time.Time
@@ -1073,6 +1123,7 @@ func TestRefreshEvaluatesElapsedForecastsAtCapturedTime(t *testing.T) {
 //
 // Example: A prior target differing from an unchanged current target is incomplete.
 func TestRefreshRejectsContradictoryUnchangedRecalibration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		Name, Prior string
 		Invalid     bool

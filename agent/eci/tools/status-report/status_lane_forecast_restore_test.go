@@ -14,6 +14,7 @@ import (
 //
 // Example: Closing and reopening a lane restores its canonical target.
 func TestLaneReopenRestoresCanonicalForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	closeEvent := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
@@ -53,6 +54,7 @@ func TestLaneReopenRestoresCanonicalForecast(t *testing.T) {
 //
 // Example: An inactive source or an owner-removed forecast leaves reopening pending.
 func TestLaneRestoreRejectsInvalidSourceAndPreservesOwnerForecast(t *testing.T) {
+	t.Parallel()
 	closed := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "    completed_at: '2026-11-02T15:25:00Z'\n", 1)
 	closed = strings.Replace(closed, "implementation_status: IN PROGRESS", "implementation_status: CLOSED", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"implementation_status": "IN PROGRESS"}}
@@ -71,6 +73,7 @@ func TestLaneRestoreRejectsInvalidSourceAndPreservesOwnerForecast(t *testing.T) 
 //
 // Example: A changed forecast stays visible and the closure remains pending.
 func TestLaneTerminalPreservesOwnerForecastEdit(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Evidence: "accepted", Fields: map[string]string{"implementation_status": "CLOSED", "completed_at": "2026-11-02T15:25:00Z"}}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "inactive"}}}
@@ -91,6 +94,7 @@ func TestLaneTerminalPreservesOwnerForecastEdit(t *testing.T) {
 //
 // Example: An owner name added after an empty baseline is not overwritten.
 func TestLaneEmptyPriorValuePreservesOwnerEdit(t *testing.T) {
+	t.Parallel()
 	edited := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    owner: owner-edit\n    implementation_status: IN PROGRESS", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"owner": "projected"}}
 	if _, _, ok := applyLaneSyncUpdate([]byte(edited), update, ledgerSource{}, forecastSource{}, map[string]string{"owner": ""}); ok {
@@ -106,6 +110,7 @@ func TestLaneEmptyPriorValuePreservesOwnerEdit(t *testing.T) {
 //
 // Example: A quoted null added after a null baseline stays untouched.
 func TestLaneClearDistinguishesNullFromLiteralText(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    blocker: null\n    implementation_status: IN PROGRESS", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"blocker"}}
 	if _, _, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncNullValue}); !ok {

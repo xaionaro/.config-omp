@@ -13,6 +13,7 @@ import (
 //
 // Example: An edited followup marker blocks closure until the owner restores its prior value.
 func TestLaneClosureWaitsForOwnerFollowupRestoration(t *testing.T) {
+	t.Parallel()
 	// followup records the managed marker on an active lane.
 	//
 	// Example: A later explicit clear owns the originally projected value.

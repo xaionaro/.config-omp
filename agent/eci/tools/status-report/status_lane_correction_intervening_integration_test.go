@@ -12,6 +12,7 @@ import (
 //
 // Example: A disjoint owner assignment survives while a malformed dependent update blocks closure.
 func TestLaneCorrectionAcrossInterveningUpdate(t *testing.T) {
+	t.Parallel()
 	// first is an old completion which does not match current canonical work.
 	//
 	// Example: Keep the old closure pending for an explicit correction.

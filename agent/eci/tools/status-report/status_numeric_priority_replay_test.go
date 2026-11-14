@@ -15,6 +15,7 @@ import (
 //
 // Example: Priorities 1.10 and 1.1 select distinct estimates.
 func TestNumericPriorityEstimateSelectorsRemainLexical(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "title: First, priority: high", "title: First, priority: 1.10", 1)
 	report = strings.Replace(report, "title: Second, priority: high", "title: Second, priority: 1.1", 1)
 	report = strings.Replace(report, "priority: high, min_minutes: 20", "priority: 1.10, min_minutes: 20", 1)
@@ -64,6 +65,7 @@ func TestNumericPriorityEstimateSelectorsRemainLexical(t *testing.T) {
 //
 // Example: An explicitly supplied string label can replace numeric YAML syntax.
 func TestExplicitPriorityValueMayChangeRepresentation(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: one, priority: 1}]\n")
 	after := []byte("tasks: [{id: one, priority: '1'}]\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "one", Field: "priority", Value: json.RawMessage(`"1"`), Operation: syncEffectSet}}
@@ -74,6 +76,7 @@ func TestExplicitPriorityValueMayChangeRepresentation(t *testing.T) {
 //
 // Example: An estimate update cannot rewrite another numeric label as text.
 func TestVerificationProtectsNumericPriorityLabels(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: one, priority: 1}]\npriority_estimates: [{priority: 1, basis: old}, {priority: 2, basis: keep}]\n")
 	effects := []syncEffect{{Target: syncTargetPriorityEstimate, ID: "1", Field: "basis", Value: "new", Operation: syncEffectSet}}
 	good := []byte("tasks: [{id: one, priority: 1}]\npriority_estimates: [{priority: 1, basis: new}, {priority: 2, basis: keep}]\n")
@@ -88,6 +91,7 @@ func TestVerificationProtectsNumericPriorityLabels(t *testing.T) {
 //
 // Example: A task update cannot rewrite a numeric priority order entry as text.
 func TestVerificationProtectsNumericPriorityOrder(t *testing.T) {
+	t.Parallel()
 	before := []byte("tasks: [{id: one, owner: old}]\npriority_order: [1.10, 1.1]\n")
 	after := []byte("tasks: [{id: one, owner: new}]\npriority_order: ['1.10', 1.1]\n")
 	effects := []syncEffect{{Target: syncTargetTask, ID: "one", Field: "owner", Value: "new", Operation: syncEffectSet}}
@@ -98,6 +102,7 @@ func TestVerificationProtectsNumericPriorityOrder(t *testing.T) {
 //
 // Example: A numeric destination or source label remains lexical through retirement.
 func TestNumericPriorityMergeRetiresExactEstimate(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, source, destination string }{
 		{"numeric destination", "high", "1.10"},
 		{"numeric source", "1.10", "low"},
@@ -140,6 +145,7 @@ func TestNumericPriorityMergeRetiresExactEstimate(t *testing.T) {
 //
 // Example: Boolean-looking and exponent labels remain their explicit ID strings.
 func TestStringDomainPriorityLabelsKeepYAMLLexemes(t *testing.T) {
+	t.Parallel()
 	for _, label := range []string{"1", "01", "0x10", "1e2", "true"} {
 		t.Run(label,
 			// Replay a selector against a valid scalar label without numeric coercion.
@@ -171,6 +177,7 @@ func TestStringDomainPriorityLabelsKeepYAMLLexemes(t *testing.T) {
 //
 // Example: A later owner edit from 1.1 to 1.10 cannot be mistaken for the same label.
 func TestNumericPriorityValueKeepsLexicalOwnership(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "title: First, priority: high", "title: First, priority: 1.10", 1)
 	report = strings.Replace(report, "title: Second, priority: high", "title: Second, priority: 1.1", 1)
 	report = strings.Replace(report, "top_priorities:", "  - {id: '3', title: Third, priority: 1.10, impact: Useful, effort: {min_minutes: 10, max_minutes: 20, kind: elapsed, basis: guess}, status: IN PROGRESS}\ntop_priorities:", 1)
@@ -210,6 +217,7 @@ func TestNumericPriorityValueKeepsLexicalOwnership(t *testing.T) {
 //
 // Example: A later 1.100 owner edit cannot be confused with projected 1.10.
 func TestNumericPriorityOrderOwnershipKeepsLexicalValues(t *testing.T) {
+	t.Parallel()
 	report := linkedReport + "priority_order: [1.1, 1.10]\n"
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
@@ -243,6 +251,7 @@ func TestNumericPriorityOrderOwnershipKeepsLexicalValues(t *testing.T) {
 //
 // Example: Numeric event values 1.10 and 1.1 remain distinct task IDs.
 func TestNumericTopPriorityValuesKeepLexicalIDs(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "id: '1', title: First", "id: 1, title: First", 1)
 	report = strings.Replace(report, "id: '2', title: Second", "id: 1.1, parent_id: 1, title: Second", 1)
 	report = strings.Replace(report, "top_priorities: ['1', '2']", "  - {id: 1.10, parent_id: 1, title: Third, priority: high, impact: Useful, effort: {min_minutes: 10, max_minutes: 20, kind: elapsed, basis: guess}, status: IN PROGRESS}\ntop_priorities: [1, 1.1, 1.10]", 1)
@@ -266,6 +275,7 @@ func TestNumericTopPriorityValuesKeepLexicalIDs(t *testing.T) {
 //
 // Example: JSON 1.10 matches a supplied estimate label "1.10" without coercion.
 func TestNumericPriorityValuePairedRetirementIsAtomic(t *testing.T) {
+	t.Parallel()
 	// prior is the exact source estimate explicitly authorized for retirement.
 	//
 	// Example: The last high-priority task moves into the 1.10 group.
@@ -322,6 +332,7 @@ func TestNumericPriorityValuePairedRetirementIsAtomic(t *testing.T) {
 //
 // Example: An event value 1.1 cannot authorize an estimate labelled 1.10.
 func TestPriorityRetirementRejectsDifferentNumericLexeme(t *testing.T) {
+	t.Parallel()
 	original := []byte("tasks: [{id: '1', priority: high}]\npriority_estimates: [{priority: 1.10}]\n")
 	addition := syncAddition{Target: syncTargetPriorityEstimate, RetirePriority: "high", Record: json.RawMessage(`{"priority":"1.10"}`)}
 	effects := []syncEffect{{Target: syncTargetPriorityEstimate, ID: "high", Value: addition, Operation: syncEffectRemove}, {Target: syncTargetTask, ID: "1", Field: "priority", Value: json.RawMessage(`1.1`), Operation: syncEffectSet}}

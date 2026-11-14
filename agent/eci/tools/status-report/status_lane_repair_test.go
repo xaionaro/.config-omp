@@ -41,6 +41,7 @@ func explorationProjection(
 //
 // Example: Completed canonical work closes its forecasted lane.
 func TestExplorationForecastedLaneCompletion(t *testing.T) {
+	t.Parallel()
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "inactive"}}}
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}`
@@ -54,6 +55,7 @@ func TestExplorationForecastedLaneCompletion(t *testing.T) {
 //
 // Example: Cancelled canonical work retires its forecast.
 func TestExplorationForecastedLaneCancellation(t *testing.T) {
+	t.Parallel()
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCancelled, ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "inactive"}}}
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"owner cancelled","fields":{"lifecycle":"cancelled"}}]}}}`
@@ -67,6 +69,7 @@ func TestExplorationForecastedLaneCancellation(t *testing.T) {
 //
 // Example: A corrected lane returns to in-progress status.
 func TestExplorationClosedLaneCorrection(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "    completed_at: '2026-11-02T15:25:00Z'\n", 1)
 	report = strings.Replace(report, "implementation_status: IN PROGRESS", "implementation_status: CLOSED", 1)
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"IN PROGRESS"}}]}}}`
@@ -80,6 +83,7 @@ func TestExplorationClosedLaneCorrection(t *testing.T) {
 //
 // Example: A root completion needs a completion time.
 func TestExtendedAdditionRequiresIdentityAndCompleteRecords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		target, record string
 		want           bool
@@ -102,6 +106,7 @@ func TestExtendedAdditionRequiresIdentityAndCompleteRecords(t *testing.T) {
 //
 // Example: An active forecast prevents closure.
 func TestLaneTransitionRequiresCanonicalIdentity(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Evidence: "accepted", Fields: map[string]string{"implementation_status": "CLOSED", "completed_at": "2026-11-02T15:25:00Z"}}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "inactive"}}}
@@ -142,6 +147,7 @@ func TestLaneTransitionRequiresCanonicalIdentity(t *testing.T) {
 //
 // Example: Reopening preserves an owner comment.
 func TestLaneTransitionPreservesCommentsAndOwnerCompletion(t *testing.T) {
+	t.Parallel()
 	closed := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "    completed_at: '2026-11-02T15:25:00Z' # owner note\n", 1)
 	closed = strings.Replace(closed, "implementation_status: IN PROGRESS", "implementation_status: CLOSED", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"implementation_status": "IN PROGRESS"}}
@@ -162,6 +168,7 @@ func TestLaneTransitionPreservesCommentsAndOwnerCompletion(t *testing.T) {
 //
 // Example: An owner edit prevents a conflicting clear.
 func TestLaneExplicitClearIsAtomicAndPreservesOwnership(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    blocker: waiting\n    next_action: retry\n    implementation_status: IN PROGRESS", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"blocker", "next_action"}}
 	got, effects, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": "waiting"})
@@ -184,6 +191,7 @@ func TestLaneExplicitClearIsAtomicAndPreservesOwnership(t *testing.T) {
 //
 // Example: Cancelled canonical work cannot reopen.
 func TestLaneClearCancellationRequiresActiveCanonicalWork(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    lifecycle: cancelled\n    implementation_status: IN PROGRESS", 1)
 	original = strings.Replace(original, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Evidence: "reopened", Clear: []string{"lifecycle"}}
@@ -205,6 +213,7 @@ func TestLaneClearCancellationRequiresActiveCanonicalWork(t *testing.T) {
 //
 // Example: A later owner addition is preserved.
 func TestLanePreviouslyClearedFieldProtectsOwner(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"blocker": "new"}}
 	if _, _, ok := applyLaneSyncUpdate([]byte(linkedReport), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncAbsentValue}); !ok {
 		require.FailNow(t, "assertion failed", "projected absence blocked update")

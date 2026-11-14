@@ -16,6 +16,7 @@ import (
 //
 // Example: A report with null sync state can publish its first progress event.
 func TestNullStatusSyncBootstrapReplays(t *testing.T) {
+	t.Parallel()
 	var mapping map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &mapping))
 	mapping["status_sync"] = nil
@@ -93,6 +94,7 @@ func TestNullStatusSyncBootstrapReplays(t *testing.T) {
 //
 // Example: A null root-completions alias cannot silently become sync metadata.
 func TestNullSyncAliasDoesNotOverwriteOwnerData(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "decisions: [Use YAML]", "status_sync: &owner null\nroot_completions: *owner\ndecisions: [Use YAML]", 1)
 	_, err := parse([]byte(input))
 	require.NoError(t, err)

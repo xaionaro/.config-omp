@@ -28,6 +28,7 @@ func writeLinkedSources(
 //
 // Example: Detect an inconsistent status projection.
 func TestOpenWorkRequiresRemainingCoverage(t *testing.T) {
+	t.Parallel()
 	reportText := strings.ReplaceAll(linkedReport, "status: IN PROGRESS, work_refs:", "status: CLOSED, evidence: accepted, work_refs:")
 	reportText = strings.Replace(reportText, "  - task_id: '1'", "  - task_id: '1'", 1)
 	r, err := parse([]byte(reportText))
@@ -48,6 +49,7 @@ func TestOpenWorkRequiresRemainingCoverage(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestCancelledLaneMayBeOmitted(t *testing.T) {
+	t.Parallel()
 	reportText := strings.Replace(linkedReport, "  - task_id: '1'", "  - task_id: '1'", 1)
 	r, err := parse([]byte(reportText))
 	require.NoError(t, err)
@@ -63,6 +65,7 @@ func TestCancelledLaneMayBeOmitted(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestCompletedRootHasOwnCompletionProjection(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes = r.Lanes[1:]
@@ -85,6 +88,7 @@ func TestCompletedRootHasOwnCompletionProjection(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestCancelledLaneRetainedHasNoCompletion(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes[0].Forecast = nil
@@ -101,6 +105,7 @@ func TestCancelledLaneRetainedHasNoCompletion(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestRootCompletionRequiresIdentityAndTimestamp(t *testing.T) {
+	t.Parallel()
 	for _, extra := range []string{
 		"root_completions: [{work_ref: '', outcome: Root, completed_at: '2026-11-02T15:00:00Z'}]\n",
 		"root_completions: [{work_ref: ref, outcome: '', completed_at: '2026-11-02T15:00:00Z'}]\n",
@@ -115,6 +120,7 @@ func TestRootCompletionRequiresIdentityAndTimestamp(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestCancelledLifecycleValidation(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	l := r.Lanes[0]
@@ -132,6 +138,7 @@ func TestCancelledLifecycleValidation(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestTerminalReportForecastIsIncomplete(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes = r.Lanes[1:]
@@ -145,6 +152,7 @@ func TestTerminalReportForecastIsIncomplete(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestRolelessWorkCannotClaimForecast(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes = r.Lanes[1:]
@@ -156,6 +164,7 @@ func TestRolelessWorkCannotClaimForecast(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestInheritedWorkPriorityUsesRemainingLeaves(t *testing.T) {
+	t.Parallel()
 	r := report{Tasks: []task{
 		{ID: "1", WorkRefs: []string{"project-understanding.yaml#/records/work:first"}},
 		{ID: "1.1", ParentID: "1", Priority: "high", Status: statusClosed},
@@ -173,6 +182,7 @@ func TestInheritedWorkPriorityUsesRemainingLeaves(t *testing.T) {
 //
 // Example: Reject a contradictory report projection.
 func TestLaneWorkMustMatchTaskScope(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
@@ -185,6 +195,7 @@ func TestLaneWorkMustMatchTaskScope(t *testing.T) {
 //
 // Example: Reject a contradictory report projection.
 func TestTerminalLaneCannotRetainFollowup(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes[0].Forecast = nil
@@ -203,6 +214,7 @@ func TestTerminalLaneCannotRetainFollowup(t *testing.T) {
 //
 // Example: Reject a contradictory report projection.
 func TestTaskScopeUsesOnlyRelatedBranches(t *testing.T) {
+	t.Parallel()
 	tasks := []task{{ID: "1", WorkRefs: []string{"project-understanding.yaml#/records/work:a"}}, {ID: "1.1", ParentID: "1"}, {ID: "2"}, {ID: "2.1", ParentID: "2", WorkRefs: []string{"project-understanding.yaml#/records/work:b"}}}
 	idx := buildTaskWorkIndex(tasks, map[string]sourceRecord{"work:a": {}, "work:b": {}})
 	require.True(t, idx.containsWork("1.1", "work:a"))
@@ -214,6 +226,7 @@ func TestTaskScopeUsesOnlyRelatedBranches(t *testing.T) {
 //
 // Example: Accepted work cannot still claim post-Fast follow-up.
 func TestCompletedLaneCannotRetainFollowup(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes[0].Forecast = nil
@@ -232,6 +245,7 @@ func TestCompletedLaneCannotRetainFollowup(t *testing.T) {
 //
 // Example: An active source lane may report FOLLOWUP.
 func TestActiveLaneMayRetainFollowup(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Lanes[0].RootTaskStatus = rootTaskFollowup
@@ -242,6 +256,7 @@ func TestActiveLaneMayRetainFollowup(t *testing.T) {
 //
 // Example: A sibling's work reference cannot cover a closed package.
 func TestScoredLeavesNeedTheirOwnInheritedWork(t *testing.T) {
+	t.Parallel()
 	tasks := []task{{ID: "1", WorkRefs: []string{"project-understanding.yaml#/records/a"}}, {ID: "1.1", ParentID: "1", Status: statusClosed}, {ID: "2", Status: statusInProgress}, {ID: "3", Status: statusUnknown}}
 	idx := buildTaskWorkIndex(tasks, map[string]sourceRecord{"a": {}})
 	issues := strings.Join(unlinkedScoredLeaves(tasks, idx), "\n")
@@ -254,6 +269,7 @@ func TestScoredLeavesNeedTheirOwnInheritedWork(t *testing.T) {
 //
 // Example: A new report leaf can keep a priority open after an earlier work record closed.
 func TestReportOpenWorkAffectsPriorityExpiry(t *testing.T) {
+	t.Parallel()
 	tasks := []task{{ID: "1", Priority: "high", Status: statusClosed}, {ID: "2", Priority: "low", Status: statusInProgress}}
 	idx := buildTaskWorkIndex(tasks, nil)
 	require.False(t, idx.priorityOpen("high", nil))
@@ -265,6 +281,7 @@ func TestReportOpenWorkAffectsPriorityExpiry(t *testing.T) {
 //
 // Example: No scored leaves means no leaf references are required.
 func TestEmptyTaskScopeNeedsNoInventedWorkReference(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Tasks = []task{}

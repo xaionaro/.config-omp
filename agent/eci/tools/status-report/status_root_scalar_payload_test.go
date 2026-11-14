@@ -12,6 +12,7 @@ import (
 //
 // Example: A scalar status update does not block a valid root lifecycle chain.
 func TestRootChainKeepsScalarPayloadDiagnostic(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":` + forecast + `,"record":` + completion + `}]}}}` + "\n"

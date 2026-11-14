@@ -13,6 +13,7 @@ import (
 //
 // Example: A withdrawn lane resumes only after its work and forecast reactivate.
 func TestCancelledLaneReactivationWaitsForSources(t *testing.T) {
+	t.Parallel()
 	// cancel records the owner's withdrawal of the lane.
 	//
 	// Example: The inactive canonical forecast is removed from the report.

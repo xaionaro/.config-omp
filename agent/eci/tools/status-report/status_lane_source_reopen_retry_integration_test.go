@@ -13,6 +13,7 @@ import (
 //
 // Example: A reopened work item remains closed until its forecast is reactivated.
 func TestLaneReopenWaitsForActiveForecastOnDisk(t *testing.T) {
+	t.Parallel()
 	// closeEvent records a completed lane whose canonical work and forecast are terminal.
 	//
 	// Example: Completion retires the report's active lane forecast.

@@ -10,6 +10,7 @@ import (
 //
 // Example: An empty roster does not claim that no agents are active.
 func TestEmptyRosterReportsUnavailable(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(valid))
 	require.NoError(t, err)
 	require.Contains(t, render(r), "Roster: unavailable (no roster evidence supplied).")

@@ -11,6 +11,7 @@ import (
 //
 // Example: A cancelled sibling cannot hide an open lane for a closed leaf.
 func TestCancelledLeavesDoNotHideRemainingAcceptance(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		cancelled bool
@@ -51,6 +52,7 @@ func TestCancelledLeavesDoNotHideRemainingAcceptance(t *testing.T) {
 //
 // Example: Accepted work and a withdrawn sibling need no remaining lane warning.
 func TestCancelledSiblingWithTerminalWorkKeepsCompleteProgress(t *testing.T) {
+	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
 	r.Tasks[0].Status = statusClosed

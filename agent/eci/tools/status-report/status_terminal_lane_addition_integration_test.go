@@ -15,6 +15,7 @@ import (
 //
 // Example: An early completion stays pending until both work and forecast close.
 func TestTerminalLaneAdditionRetriesAfterSourceCompletion(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// event is a complete lane accepted by the producer.
 	//
@@ -54,6 +55,7 @@ func TestTerminalLaneAdditionRetriesAfterSourceCompletion(t *testing.T) {
 //
 // Example: A later source completion lets a saved log event add its lane.
 func TestTerminalLaneAdditionRefreshCLIRecoversPendingEvent(t *testing.T) {
+	t.Parallel()
 	// event requests a source-backed completed lane.
 	//
 	// Example: The source initially remains active when the event arrives.

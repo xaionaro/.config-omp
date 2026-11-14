@@ -10,6 +10,7 @@ import (
 //
 // Example: Reject a completion whose expected forecast differs from its predecessor.
 func TestVerifyRootLifecycleChainRejectsBrokenLink(t *testing.T) {
+	t.Parallel()
 	f := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"working"}`
 	c := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	log := []byte(`{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":` + f + `,"record":` + c + `}]}}}` + "\n")
@@ -33,6 +34,7 @@ func TestVerifyRootLifecycleChainRejectsBrokenLink(t *testing.T) {
 //
 // Example: Complete and reopen without publishing the obsolete completion.
 func TestVerifyRootLifecycleChainReopen(t *testing.T) {
+	t.Parallel()
 	f1 := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"old"}`
 	f2 := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T17:00:00Z","assessment":"new"}`
 	c := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
@@ -61,6 +63,7 @@ func TestVerifyRootLifecycleChainReopen(t *testing.T) {
 //
 // Example: Apply a corrected completion without inventing its prior report record.
 func TestVerifyRootLifecycleChainUnpublishedCorrection(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	current := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	log := []byte(`{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"done","record":` + old + `}]}}}` + "\n" + `{"event":"correction","details":{"corrects":1,"status_update":{"additions":[{"target":"root_completion","evidence":"corrected","expected_prior":` + old + `,"record":` + current + `}]}}}` + "\n")
@@ -82,6 +85,7 @@ func TestVerifyRootLifecycleChainUnpublishedCorrection(t *testing.T) {
 //
 // Example: A malformed sibling does not hide an explicitly identified conflict.
 func TestRootChainIgnoresUnrelatedMalformedRecords(t *testing.T) {
+	t.Parallel()
 	locators := []rootLifecycleLocator{{Line: 1, Ordinal: 0, Target: syncTargetRootCompletion}, {Line: 1, Ordinal: 2, Target: syncTargetRootForecast}}
 	lines := [][]byte{[]byte(`{"details":{"status_update":{"additions":[{"target":"root_completion","record":{"work_ref":"w"}},{"target":"root_completion","record":42},{"target":"root_forecast","record":{"forecast_ref":"f"}}]}}}`)}
 	if err := verifyRootChainNoSkippedEvents(lines, locators, "w", "f"); err != nil {
@@ -97,6 +101,7 @@ func TestRootChainIgnoresUnrelatedMalformedRecords(t *testing.T) {
 //
 // Example: A bad evidence type cannot hide a matching work reference.
 func TestRootChainFindsIdentityInMalformedItem(t *testing.T) {
+	t.Parallel()
 	locators := []rootLifecycleLocator{{Line: 1, Ordinal: 0, Target: syncTargetRootCompletion}, {Line: 1, Ordinal: 2, Target: syncTargetRootForecast}}
 	lines := [][]byte{[]byte(`{"details":{"status_update":{"additions":[{"target":"root_completion","record":{"work_ref":"w"}},{"target":"root_completion","evidence":42,"record":{"work_ref":"w"}},{"target":"root_forecast","record":{"forecast_ref":"f"}}]}}}`)}
 	if err := verifyRootChainNoSkippedEvents(lines, locators, "w", "f"); err == nil {
@@ -108,6 +113,7 @@ func TestRootChainFindsIdentityInMalformedItem(t *testing.T) {
 //
 // Example: An invalid sibling collection cannot hide an identifiable root update.
 func TestRootChainIsolatesMalformedCollections(t *testing.T) {
+	t.Parallel()
 	locators := []rootLifecycleLocator{{Line: 1, Ordinal: 0, Target: syncTargetRootCompletion}}
 	lines := [][]byte{[]byte(`{"details":{"status_update":{"updates":7,"additions":[{"target":"root_completion","record":{"work_ref":"w"}}]}}}`)}
 	if err := verifyRootChainNoSkippedEvents(lines, locators, "w", "f"); err != nil {

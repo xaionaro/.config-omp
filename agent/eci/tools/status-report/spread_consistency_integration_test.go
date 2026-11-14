@@ -15,6 +15,7 @@ import (
 //
 // Example: A known scenario endpoint beyond the target makes the report incomplete.
 func TestForecastSpreadConsistency(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, base, scenario, second string
 		incomplete                   bool
@@ -78,6 +79,7 @@ func TestForecastSpreadConsistency(t *testing.T) {
 //
 // Example: A direct active forecast with no scenarios is not treated as incomplete.
 func TestForecastWithoutSpreadRemainsValid(t *testing.T) {
+	t.Parallel()
 	out := lifecycleResult(t, linkedReport, linkedLedger, linkedForecasts)
 	require.NotContains(t, out, "INCOMPLETE")
 }

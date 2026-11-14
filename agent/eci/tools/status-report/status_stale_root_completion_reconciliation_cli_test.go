@@ -15,6 +15,7 @@ import (
 //
 // Example: A stale completion must be replaced with the active root forecast.
 func TestStaleRootCompletionIsReportedInCLI(t *testing.T) {
+	t.Parallel()
 	// firstLane is the existing lane projection converted to a root in this fixture.
 	//
 	// Example: Remove it before adding the stale root completion.

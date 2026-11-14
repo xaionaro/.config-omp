@@ -13,6 +13,7 @@ import (
 //
 // Example: A scenario later than the target cannot replace the report's forecast.
 func TestRefreshForecastSpread(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		Name     string
 		Endpoint string

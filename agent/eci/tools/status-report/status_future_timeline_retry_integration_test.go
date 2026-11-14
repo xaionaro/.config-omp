@@ -12,6 +12,7 @@ import (
 //
 // Example: A future snapshot waits until a later event advances the report.
 func TestTimelineSnapshotRetriesWhenReportTimestampAdvances(t *testing.T) {
+	t.Parallel()
 	// first supplies a verified-empty snapshot newer than the report.
 	//
 	// Example: Keep the snapshot pending until its anchor is no longer in the future.

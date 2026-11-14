@@ -10,6 +10,7 @@ import (
 //
 // Example: A correction must name the actual earlier closure and preserve its fields.
 func TestVerifyPendingLaneCorrection(t *testing.T) {
+	t.Parallel()
 	lines := []string{
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"old","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","context":"result"}}]}}}`,
 		`{"event":"correction","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","corrects":1,"evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z","context":"result"}}]}}}`,

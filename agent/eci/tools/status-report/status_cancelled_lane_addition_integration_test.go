@@ -12,6 +12,7 @@ import (
 //
 // Example: A cancellation remains pending while the source still reports active work.
 func TestCancelledLaneAdditionWaitsForCancelledSource(t *testing.T) {
+	t.Parallel()
 	// event adds a cancelled lane with explicit evidence.
 	//
 	// Example: Record the owner's withdrawn implementation lane.

@@ -15,6 +15,7 @@ import (
 //
 // Example: Two lanes can share a task while each projects a different work record.
 func TestSharedTaskLanesRequireDistinctWorkReferences(t *testing.T) {
+	t.Parallel()
 	taskRef := "work_refs: ['project-understanding.yaml#/records/work:first']"
 	sharedTask := "work_refs: ['project-understanding.yaml#/records/work:first', 'project-understanding.yaml#/records/work:second']"
 	report := strings.Replace(linkedReport, taskRef, sharedTask, 1)

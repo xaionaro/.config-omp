@@ -15,6 +15,7 @@ import (
 //
 // Example: Cancelled work needs no lane or root projection until it resumes.
 func TestCancelledDualRoleWorkReconcilesWithoutProjection(t *testing.T) {
+	t.Parallel()
 	first := strings.Index(linkedReport, "  - task_id: '1'\n")
 	second := strings.Index(linkedReport, "  - task_id: '2'\n")
 	require.GreaterOrEqual(t, first, 0)

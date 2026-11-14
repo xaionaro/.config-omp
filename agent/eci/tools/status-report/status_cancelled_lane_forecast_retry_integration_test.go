@@ -13,6 +13,7 @@ import (
 //
 // Example: Cancelling work alone does not authorize a lane while its forecast is active.
 func TestCancelledLaneWaitsForForecastRetirementOnDisk(t *testing.T) {
+	t.Parallel()
 	// source is active canonical lane work with a linked forecast.
 	//
 	// Example: Both work and forecast must become terminal before replay applies.

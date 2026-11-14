@@ -12,6 +12,7 @@ import (
 //
 // Example: Reopening replaces a completed root with its forecast.
 func TestDelayedRootReopening(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`

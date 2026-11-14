@@ -13,6 +13,7 @@ import (
 //
 // Example: A manually paused lane cannot receive a completion time by itself.
 func TestLegacyLaneClosureRetriesAfterStatusConflict(t *testing.T) {
+	t.Parallel()
 	// saved contains a legacy closure and its owned status baseline.
 	//
 	// Example: Retry a saved status and completion-time pair after an upgrade.

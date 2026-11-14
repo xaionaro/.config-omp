@@ -15,6 +15,7 @@ import (
 //
 // Example: A deleted event log must not be mistaken for a fresh empty history.
 func TestRefreshRejectsMissingPreviouslyConsumedLog(t *testing.T) {
+	t.Parallel()
 	// first is already reflected in the saved report.
 	//
 	// Example: Project one event before its source log is removed.
@@ -58,6 +59,7 @@ func TestRefreshRejectsMissingPreviouslyConsumedLog(t *testing.T) {
 //
 // Example: A report with no synced events can refresh before a log exists.
 func TestMissingLogWithoutConsumedEventsRemainsOptional(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	result, logBytes, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)

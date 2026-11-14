@@ -15,6 +15,7 @@ import (
 //
 // Example: Production remains distinct from implementation through metadata.
 func TestSyncWireSelectorsRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"task", "lane", "report", "progress", "decisions", "blockers_risks", "verification", "review", "priority_estimate"} {
 		var target syncTarget
 		require.NoError(t, json.Unmarshal([]byte(`"`+name+`"`), &target))
@@ -49,6 +50,7 @@ func TestSyncWireSelectorsRoundTrip(t *testing.T) {
 //
 // Example: A later update cannot overwrite an owner's changed field.
 func TestSyncOwnerEditsAndNewerUpdates(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"first"}}]}}}` + "\n"
@@ -71,6 +73,7 @@ func TestSyncOwnerEditsAndNewerUpdates(t *testing.T) {
 //
 // Example: A retracted progress event never appears after a delayed refresh.
 func TestSyncPendingRetractionDoesNotInsertOldText(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"old"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"work","corrects":1,"retract":true}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
@@ -85,6 +88,7 @@ func TestSyncPendingRetractionDoesNotInsertOldText(t *testing.T) {
 //
 // Example: Removing one ID from a block list preserves its sibling.
 func TestSyncCancellationKeepsBlockPriorities(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "top_priorities: ['1', '2']", "top_priorities:\n  - '1'\n  - '2'", 1)
 	updated, ok := removeCancelledPriority([]byte(report), taskID("1"))
 	require.True(t, ok)
@@ -100,6 +104,7 @@ func TestSyncCancellationKeepsBlockPriorities(t *testing.T) {
 //
 // Example: Production completion requires a time and acceptance evidence.
 func TestSyncValidatesExplicitUpdates(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		update syncUpdate
 		valid  bool
@@ -128,6 +133,7 @@ func TestSyncValidatesExplicitUpdates(t *testing.T) {
 //
 // Example: An active forecast prevents a source-completed lane from closing.
 func TestSyncLaneTerminalChecksCanonicalFacts(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Evidence: "accepted", Fields: map[string]string{"completed_at": "2026-11-02T15:25:00Z"}}
 	work := sourceRecord{Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": work}}
@@ -150,6 +156,7 @@ func TestSyncLaneTerminalChecksCanonicalFacts(t *testing.T) {
 //
 // Example: A new report time leaves a historical timeline anchored to its original time.
 func TestSyncTimestampKeepsTimelineAnchor(t *testing.T) {
+	t.Parallel()
 	report := linkedReport + "timeline_state: present\ntimeline:\n  - {job: job, parent_chain: root, start: '2026-11-02T14:54:00Z', end: '2026-11-02T15:24:00Z', state: working}\n"
 	updated, err := advanceSyncTimestamp([]byte(report), "2026-11-02T15:34:00Z")
 	require.NoError(t, err)
@@ -166,6 +173,7 @@ func TestSyncTimestampKeepsTimelineAnchor(t *testing.T) {
 //
 // Example: An assignment is applied once its task record exists.
 func TestSyncRetriesAfterTaskAddition(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"worker"}}]}}}` + "\n"
@@ -188,6 +196,7 @@ func TestSyncRetriesAfterTaskAddition(t *testing.T) {
 //
 // Example: A lane coordinator changes without modifying a sibling lane.
 func TestSyncUpdatesDistinctLaneAndReportFields(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"owner":"coordinator","next_action":"review"}},{"target":"report","id":"current","fields":{"state":"Reviewing","next_focus":"Check evidence"}}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
@@ -206,6 +215,7 @@ func TestSyncUpdatesDistinctLaneAndReportFields(t *testing.T) {
 //
 // Example: Report and source forecast remain open until retirement is recorded.
 func TestSyncDefersTerminalLaneWithActiveForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))

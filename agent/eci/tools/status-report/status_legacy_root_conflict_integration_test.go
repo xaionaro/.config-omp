@@ -12,6 +12,7 @@ import (
 //
 // Example: An inconsistent saved predecessor stays pending while another update applies.
 func TestLegacyRootCorrectionWithAlteredPredecessorPreservesUnrelatedProgress(t *testing.T) {
+	t.Parallel()
 	// first is the original completed root event.
 	//
 	// Example: Publish the first accepted completion at 15:00.

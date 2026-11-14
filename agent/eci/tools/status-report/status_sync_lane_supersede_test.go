@@ -10,6 +10,7 @@ import (
 //
 // Example: Reopen active work without projecting its stale historical closure.
 func TestDelayedLaneReopen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600); err != nil {
@@ -34,6 +35,7 @@ func TestDelayedLaneReopen(t *testing.T) {
 //
 // Example: An older closure with an unrelated blocker cannot be discarded by reopening.
 func TestStaleLaneTransitionPreservesUnreplacedFields(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","blocker":"hold"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600); err != nil {
@@ -58,6 +60,7 @@ func TestStaleLaneTransitionPreservesUnreplacedFields(t *testing.T) {
 //
 // Example: Only the completion matching the current source is projected.
 func TestStaleLaneCompletionReplacedByCanonicalCompletion(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	next := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}` + "\n"
@@ -83,6 +86,7 @@ func TestStaleLaneCompletionReplacedByCanonicalCompletion(t *testing.T) {
 //
 // Example: Active work with explicit evidence supersedes an unapplied cancellation.
 func TestStaleLaneCancellationReplacedByReactivation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled"}}]}}}` + "\n"
 	next := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"resumed","clear":["lifecycle"],"fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"

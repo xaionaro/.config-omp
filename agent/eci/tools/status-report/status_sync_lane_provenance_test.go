@@ -10,6 +10,7 @@ import (
 //
 // Example: Reject an ordinal outside the logged updates.
 func TestLaneChainProvenanceRejectsForgedLogPosition(t *testing.T) {
+	t.Parallel()
 	u := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Evidence: "done", Fields: map[string]string{"implementation_status": "CLOSED", "completed_at": "2026-11-02T15:45:00Z"}}
 	encoded, err := encodeSyncGroup(u)
 	if err != nil {
@@ -36,6 +37,7 @@ func TestLaneChainProvenanceRejectsForgedLogPosition(t *testing.T) {
 //
 // Example: Reject a changed log payload or owner conflict.
 func TestLaneChainProvenanceChecksLogAndOwner(t *testing.T) {
+	t.Parallel()
 	raw := []string{
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled"}}]}}}`,
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"blocker":"waiting"},"clear":["lifecycle"]}]}}}`,
@@ -76,6 +78,7 @@ func TestLaneChainProvenanceChecksLogAndOwner(t *testing.T) {
 //
 // Example: A second cancellation and reactivation still retain the final supplied blocker.
 func TestLaneChainProvenanceRepeatedTransitions(t *testing.T) {
+	t.Parallel()
 	cancel := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled","context":"retained"}}]}}}`
 	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"blocker":"waiting"},"clear":["lifecycle"]}]}}}`
 	close := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}`
@@ -130,6 +133,7 @@ func TestLaneChainProvenanceRepeatedTransitions(t *testing.T) {
 //
 // Example: A reopening preserves context supplied by the preceding closure.
 func TestLaneChainProvenanceReclosed(t *testing.T) {
+	t.Parallel()
 	lines := []string{
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"first accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","context":"retained"}}]}}}`,
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"implementation_status":"PAUSED","blocker":"waiting"}}]}}}`,

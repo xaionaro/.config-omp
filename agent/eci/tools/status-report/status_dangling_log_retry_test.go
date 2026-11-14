@@ -12,6 +12,7 @@ import (
 //
 // Example: A stable dangling symlink is absent, but a newly created target triggers retry.
 func TestDanglingLogTargetUsesReadPresenceForPublication(t *testing.T) {
+	t.Parallel()
 	// event is the first record written when the dangling target appears.
 	//
 	// Example: A later refresh projects the event after retry.
@@ -73,6 +74,7 @@ func TestDanglingLogTargetUsesReadPresenceForPublication(t *testing.T) {
 //
 // Example: Creating a dangling symlink alone does not force a false retry.
 func TestAbsentLogBecomingDanglingStillHasNoReadableHistory(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
 	logPath := filepath.Join(dir, "high_level_log.jsonl")
@@ -97,6 +99,7 @@ func TestAbsentLogBecomingDanglingStillHasNoReadableHistory(t *testing.T) {
 //
 // Example: A new empty file, directory or symlink loop is no longer an absent log.
 func TestAbsentLogChangingToAnUnusableTargetRequiresRetry(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"empty file", "directory", "symlink loop"} {
 		t.Run(kind,
 			// Create one new target after the absent-log read.

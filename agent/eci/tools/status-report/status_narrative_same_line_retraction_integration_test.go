@@ -12,6 +12,7 @@ import (
 //
 // Example: Evidence at ordinal two must be named when retracting an earlier text item.
 func TestNarrativeRetractionUsesLatestSameLineOrdinal(t *testing.T) {
+	t.Parallel()
 	// first records state, narrative text, and its evidence in a single event.
 	//
 	// Example: The evidence is the latest version of the managed narrative item.

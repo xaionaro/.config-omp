@@ -15,6 +15,7 @@ import (
 //
 // Example: Two valid forecast references still fail when attached to the wrong lanes.
 func TestSwappedLaneForecastReferencesSurfaceInCLI(t *testing.T) {
+	t.Parallel()
 	swapped := strings.Replace(linkedReport, "forecast_ref: 'forecasts.yaml#/records/first'", "forecast_ref: 'forecasts.yaml#/records/temp'", 1)
 	swapped = strings.Replace(swapped, "forecast_ref: 'forecasts.yaml#/records/second'", "forecast_ref: 'forecasts.yaml#/records/first'", 1)
 	swapped = strings.Replace(swapped, "forecast_ref: 'forecasts.yaml#/records/temp'", "forecast_ref: 'forecasts.yaml#/records/second'", 1)

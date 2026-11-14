@@ -12,6 +12,7 @@ import (
 //
 // Example: A child and its later owner assignment apply after the parent is created.
 func TestChildAndAssignmentWaitForParentAcrossRefresh(t *testing.T) {
+	t.Parallel()
 	// child is a valid nested task whose parent does not yet exist.
 	//
 	// Example: Its addition remains pending until task 3 is present.

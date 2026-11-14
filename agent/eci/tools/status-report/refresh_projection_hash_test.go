@@ -13,6 +13,7 @@ import (
 //
 // Example: A quoted issue reference is data, while adjacent comments are retained.
 func TestRefreshProjectionAllowsQuotedHash(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	for _, tc := range []struct{ name, projection string }{
 		{"flow single", "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial, source_projection: {baseline_evidence: initial, target_basis: 'issue #42'}} # adjacent owner comment"},
@@ -46,6 +47,7 @@ func TestRefreshProjectionAllowsQuotedHash(t *testing.T) {
 //
 // Example: A source update remains pending rather than consuming an owner note.
 func TestRefreshProjectionKeepsRealInnerComment(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	replacement := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial, source_projection: {baseline_evidence: initial, # preserve inner note\n      target_basis: 'issue #42'}}"
 	report := strings.Replace(linkedReport, forecast, replacement, 1)

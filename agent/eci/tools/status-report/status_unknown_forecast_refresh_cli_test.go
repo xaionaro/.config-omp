@@ -15,6 +15,7 @@ import (
 //
 // Example: Refresh replaces an unknown deadline with the active canonical target.
 func TestUnknownForecastRefreshUsesCanonicalSource(t *testing.T) {
+	t.Parallel()
 	original := "target: '2026-11-02T16:00:00Z', assessment: complete"
 	report := strings.Replace(linkedReport, original, "target: unknown, assessment: complete", 1)
 	require.NotEqual(t, linkedReport, report)

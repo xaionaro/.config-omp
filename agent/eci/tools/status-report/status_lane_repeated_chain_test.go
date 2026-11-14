@@ -12,6 +12,7 @@ import (
 //
 // Example: Two cancellation and reactivation cycles end at a canonical closure.
 func TestLaneRepeatedCancellation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cancel := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled"}}]}}}` + "\n"
 	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"resumed","clear":["lifecycle"],"fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
@@ -35,6 +36,7 @@ func TestLaneRepeatedCancellation(t *testing.T) {
 //
 // Example: Preserve the supplied context and next action when canonical work later closes.
 func TestCancellationContextSurvivesDelayedReplay(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cancel := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled","context":"Paused by owner"}}]}}}` + "\n"
 	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"resumed","clear":["lifecycle"],"fields":{"implementation_status":"PAUSED","next_action":"retry"}}]}}}` + "\n"

@@ -14,6 +14,7 @@ import (
 //
 // Example: A cancelled task leaves its sibling open and exits the priority list.
 func TestLegacyTaskCancellationRecovery(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
 	// saved is the historical wire format retained across upgrades.
@@ -38,6 +39,7 @@ func TestLegacyTaskCancellationRecovery(t *testing.T) {
 //
 // Example: Closure waits for matching evidence and preserves a manual replacement.
 func TestLegacyTaskClosureRecoveryRequiresEvidence(t *testing.T) {
+	t.Parallel()
 	for _, evidence := range []string{"accepted", "manual replacement"} {
 		t.Run(evidence,
 			// Check one persisted evidence value.
@@ -75,6 +77,7 @@ func TestLegacyTaskClosureRecoveryRequiresEvidence(t *testing.T) {
 //
 // Example: A completed source closes the named lane and leaves another lane open.
 func TestLegacyLaneCompletionRecoveryRequiresCanonicalCompletion(t *testing.T) {
+	t.Parallel()
 	for _, completed := range []bool{true, false} {
 		t.Run(fmt.Sprint(completed),
 			// Check one canonical work state.
@@ -118,6 +121,7 @@ func TestLegacyLaneCompletionRecoveryRequiresCanonicalCompletion(t *testing.T) {
 //
 // Example: A verified-empty timeline keeps its supplied anchor during migration.
 func TestLegacyPendingTimelineRecovery(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
 	// saved is the historical wire format retained across upgrades.

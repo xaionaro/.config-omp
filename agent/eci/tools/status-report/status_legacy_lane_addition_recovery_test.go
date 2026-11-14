@@ -13,6 +13,7 @@ import (
 //
 // Example: Recover the full lane identity and preserve a later manual owner edit.
 func TestLegacyLaneAdditionRecoversSelectorAndOwner(t *testing.T) {
+	t.Parallel()
 	// saved is an older pending lane without explicit selector metadata.
 	//
 	// Example: Reconstruct identity from its complete original record.

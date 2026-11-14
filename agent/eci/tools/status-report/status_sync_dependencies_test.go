@@ -13,6 +13,7 @@ import (
 //
 // Example: Preserve an owner edit while accepting the same task with evidence.
 func TestSyncOwnerConflictDoesNotBlockDisjointTaskClosure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
@@ -38,6 +39,7 @@ func TestSyncOwnerConflictDoesNotBlockDisjointTaskClosure(t *testing.T) {
 //
 // Example: An owner-edited proof prevents a later closure from replacing it.
 func TestSyncEvidenceConflictBlocksDependentTaskClosure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"evidence":"projected"}}]}}}` + "\n"

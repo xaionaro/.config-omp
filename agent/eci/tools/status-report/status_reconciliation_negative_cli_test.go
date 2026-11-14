@@ -14,6 +14,7 @@ import (
 //
 // Example: Completed source work needs its matching lane completion in the report.
 func TestValidateDetectsMissingCompletedLane(t *testing.T) {
+	t.Parallel()
 	ledger := strings.Replace(linkedLedger, "state: active, next_action: Finish", "state: completed, completed_at: '2026-11-02T15:00:00Z'", 1)
 	forecasts := strings.Replace(linkedForecasts, "status: active", "status: inactive", 1)
 	dir := writeLinkedSources(t, ledger, forecasts)
@@ -48,6 +49,7 @@ func TestValidateDetectsMissingCompletedLane(t *testing.T) {
 //
 // Example: A repeated outcome is rejected until the source link is deduplicated.
 func TestValidateDetectsDuplicateOutcomeLinks(t *testing.T) {
+	t.Parallel()
 	duplicate := strings.Replace(linkedLedger, "outcomes: ['outcome:first']", "outcomes: ['outcome:first', 'outcome:first']", 1)
 	require.NotEqual(t, linkedLedger, duplicate)
 	dir := writeLinkedSources(t, duplicate, linkedForecasts)

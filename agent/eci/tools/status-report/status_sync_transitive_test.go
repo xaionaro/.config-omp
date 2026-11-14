@@ -13,6 +13,7 @@ import (
 //
 // Example: An owner conflict blocks an atomic owner and evidence update and its dependent closure.
 func TestReviewTransitiveDependency(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"

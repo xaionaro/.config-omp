@@ -12,6 +12,7 @@ import (
 //
 // Example: An interrupted older report publishes only the source-backed correction.
 func TestLegacyRootCorrectionRecovery(t *testing.T) {
+	t.Parallel()
 	// first records the original completion.
 	//
 	// Example: Accept the original result at 15:00.

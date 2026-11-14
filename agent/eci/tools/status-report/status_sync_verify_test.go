@@ -9,6 +9,7 @@ import (
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncEffectsRejectsCollateralChangeAndLostComment(t *testing.T) {
+	t.Parallel()
 	original := []byte("state: old # keep\nnext_focus: unchanged\n")
 	effect := syncEffect{Target: syncTargetReport, ID: "current", Field: "state", Value: "new", Operation: syncEffectSet}
 	for _, candidate := range []string{"state: new # keep\nnext_focus: changed\n", "state: new\nnext_focus: unchanged\n"} {
@@ -25,6 +26,7 @@ func TestVerifyStatusSyncEffectsRejectsCollateralChangeAndLostComment(t *testing
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncEffectsChecksIdentitiesAndAdditions(t *testing.T) {
+	t.Parallel()
 	original := []byte("tasks: [{id: a, status: NEW}, {id: b, status: NEW}]\nprogress: []\n")
 	effects := []syncEffect{
 		{Target: syncTargetTask, ID: "a", Field: "status", Value: "CLOSED", Operation: syncEffectSet},
@@ -48,6 +50,7 @@ func TestVerifyStatusSyncEffectsChecksIdentitiesAndAdditions(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncEffectsRetractionKeepsUnrelatedItem(t *testing.T) {
+	t.Parallel()
 	original := []byte("progress: [{subject_ref: a, text: old}, {subject_ref: b, text: keep}]\n")
 	effects := []syncEffect{{Target: syncTargetProgress, ID: "a", Operation: syncEffectRemove}}
 	if err := verifyStatusSyncEffects(original, []byte("progress: [{subject_ref: b, text: keep}]\n"), effects); err != nil {
@@ -62,6 +65,7 @@ func TestVerifyStatusSyncEffectsRetractionKeepsUnrelatedItem(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncEffectsChecksFullRecordAndMetadata(t *testing.T) {
+	t.Parallel()
 	original := []byte("tasks: []\ntop_priorities: [a, b]\n")
 	effects := []syncEffect{
 		{Target: syncTargetTask, ID: "c", Operation: syncEffectAdd, Value: json.RawMessage(`{"id":"c","effort":2}`)},
@@ -82,6 +86,7 @@ func TestVerifyStatusSyncEffectsChecksFullRecordAndMetadata(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncEffectsChecksAtomicTimeline(t *testing.T) {
+	t.Parallel()
 	original := []byte("other: keep\n")
 	effects := []syncEffect{{Operation: syncEffectTimeline, Value: syncTimelineSnapshot{AsOf: "2026-11-02T15:24:00Z", State: timelineVerifiedEmpty}}}
 	good := []byte("other: keep\ntimeline: []\ntimeline_state: verified_empty\ntimeline_as_of: '2026-11-02T15:24:00Z'\n")
@@ -98,6 +103,7 @@ func TestVerifyStatusSyncEffectsChecksAtomicTimeline(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncCanonicalEffectsRejectsActiveForecast(t *testing.T) {
+	t.Parallel()
 	ref := "project-understanding.yaml#/records/work:first"
 	original := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: 'IN PROGRESS', forecast: {forecast_ref: 'forecasts.yaml#/records/first'}}]\n")
 	candidate := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: CLOSED, completed_at: '2026-11-02T15:25:00Z'}]\n")
@@ -121,6 +127,7 @@ func TestVerifyStatusSyncCanonicalEffectsRejectsActiveForecast(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncCanonicalAddition(t *testing.T) {
+	t.Parallel()
 	effect := syncEffect{Target: syncTargetRootForecast, ID: "forecasts.yaml#/records/f", Operation: syncEffectAdd, Value: json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f","outcome":"x"}`)}
 	if err := verifyStatusSyncCanonicalEffects([]byte("{}"), []byte("{}"), []syncEffect{effect}, ledgerSource{}, forecastSource{}); err == nil {
 		t.Fatal("accepted missing canonical forecast")
@@ -131,6 +138,7 @@ func TestVerifyStatusSyncCanonicalAddition(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncLaneRemoval(t *testing.T) {
+	t.Parallel()
 	before := []byte("lanes: [{task_id: a, work_ref: w, required_environment: implementation, completed_at: old}]\n")
 	after := []byte("lanes: [{task_id: a, work_ref: w, required_environment: implementation}]\n")
 	effect := syncEffect{Target: syncTargetLane, ID: "a", WorkRef: "w", RequiredEnvironment: syncEnvironmentImplementation, Field: "completed_at", Operation: syncEffectRemove}
@@ -143,6 +151,7 @@ func TestVerifyStatusSyncLaneRemoval(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyStatusSyncCanonicalRootCompletion(t *testing.T) {
+	t.Parallel()
 	work := sourceRecord{Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:00:00Z", Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": work, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"status": "inactive", "kind": "root"}}}
@@ -160,6 +169,7 @@ func TestVerifyStatusSyncCanonicalRootCompletion(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyRootRemovalRequiresExplicitPrior(t *testing.T) {
+	t.Parallel()
 	original := []byte("root_forecasts: [{forecast_ref: 'forecasts.yaml#/records/f', outcome: Result}]\n")
 	candidate := []byte("root_forecasts: []\n")
 	add := syncAddition{Target: syncTargetRootCompletion, RetireForecast: true, ExpectedPrior: json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result"}`), Record: json.RawMessage(`{"work_ref":"project-understanding.yaml#/records/w"}`)}
@@ -178,6 +188,7 @@ func TestVerifyRootRemovalRequiresExplicitPrior(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyCanonicalRootRetirement(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result"}`
 	record := json.RawMessage(`{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`)
 	original := []byte("root_forecasts: [" + prior + "]\n")
@@ -200,6 +211,7 @@ func TestVerifyCanonicalRootRetirement(t *testing.T) {
 //
 // Example: Reject an unauthorized report change.
 func TestVerifyCanonicalRootReopening(t *testing.T) {
+	t.Parallel()
 	prior := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result"}`
 	record := json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result"}`)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
@@ -221,6 +233,7 @@ func TestVerifyCanonicalRootReopening(t *testing.T) {
 //
 // Example: Reject retirement when the supplied prior estimate differs.
 func TestVerifyPriorityRemovalRequiresExplicitPrior(t *testing.T) {
+	t.Parallel()
 	original := []byte("priority_estimates: [{priority: P1, basis: old}]\n")
 	candidate := []byte("priority_estimates: []\n")
 	addition := syncAddition{RetirePriority: "P1", ExpectedPrior: json.RawMessage(`{"priority":"P1","basis":"old"}`)}
@@ -245,6 +258,7 @@ func TestVerifyPriorityRemovalRequiresExplicitPrior(t *testing.T) {
 //
 // Example: Reject retirement when the selected task had another priority.
 func TestVerifyPriorityRetirementTransaction(t *testing.T) {
+	t.Parallel()
 	original := []byte("tasks: [{id: a, priority: P1}]\npriority_estimates: [{priority: P1, basis: old}]\n")
 	addition := syncAddition{Target: syncTargetPriorityEstimate, RetirePriority: "P1", ExpectedPrior: json.RawMessage(`{"priority":"P1","basis":"old"}`), Record: json.RawMessage(`{"priority":"P2","basis":"new"}`)}
 	effects := []syncEffect{{Target: syncTargetPriorityEstimate, ID: "P1", Operation: syncEffectRemove, Value: addition}, {Target: syncTargetPriorityEstimate, ID: "P2", Operation: syncEffectAdd, Value: addition.Record}, {Target: syncTargetTask, ID: "a", Field: "priority", Operation: syncEffectSet, Value: json.RawMessage(`"P2"`)}}
@@ -269,6 +283,7 @@ func TestVerifyPriorityRetirementTransaction(t *testing.T) {
 //
 // Example: Reject a restored forecast with a changed target.
 func TestVerifyLaneForecastRestore(t *testing.T) {
+	t.Parallel()
 	ref := "project-understanding.yaml#/records/w"
 	original := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: CLOSED}]\n")
 	candidate := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: 'IN PROGRESS', forecast: {forecast_ref: 'forecasts.yaml#/records/f', outcome: Result, target: '2026-11-02T16:00:00Z', assessment: progressing}}]\n")
@@ -290,6 +305,7 @@ func TestVerifyLaneForecastRestore(t *testing.T) {
 //
 // Example: Reject removal while canonical root work remains active.
 func TestVerifyCancelledRootForecastRetirement(t *testing.T) {
+	t.Parallel()
 	prior := json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result"}`)
 	original := []byte("root_forecasts: [" + string(prior) + "]\n")
 	candidate := []byte("root_forecasts: []\n")
@@ -326,6 +342,7 @@ func TestVerifyCancelledRootForecastRetirement(t *testing.T) {
 //
 // Example: Reject a correction that differs from canonical completion.
 func TestVerifyLaneCompletionTimeCorrectionChecksCanonicalWork(t *testing.T) {
+	t.Parallel()
 	ref := "project-understanding.yaml#/records/w"
 	original := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: CLOSED, completed_at: '2026-11-02T15:00:00Z'}]\n")
 	candidate := []byte("lanes: [{task_id: a, work_ref: '" + ref + "', required_environment: implementation, implementation_status: CLOSED, completed_at: '2026-11-02T15:05:00Z'}]\n")
@@ -352,6 +369,7 @@ func TestVerifyLaneCompletionTimeCorrectionChecksCanonicalWork(t *testing.T) {
 //
 // Example: Reject a correction with an owner-edited prior record.
 func TestVerifyRootCompletionCorrection(t *testing.T) {
+	t.Parallel()
 	ref := "project-understanding.yaml#/records/w"
 	prior := json.RawMessage(`{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`)
 	record := json.RawMessage(`{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`)

@@ -13,6 +13,7 @@ import (
 //
 // Example: An owner-edited completion is preserved until its exact prior is restored.
 func TestRootCorrectionWaitsForOwnerPriorRestoration(t *testing.T) {
+	t.Parallel()
 	// source is completed canonical work backing the original root completion.
 	//
 	// Example: Its completion time changes when the correction is accepted.

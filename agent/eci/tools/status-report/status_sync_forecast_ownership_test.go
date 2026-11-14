@@ -15,6 +15,7 @@ import (
 //
 // Example: A later closure preserves an owner's edit to a restored forecast.
 func TestSyncForecastOwnershipSurvivesRetireAndRestore(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	closeEvent := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
@@ -65,6 +66,7 @@ func TestSyncForecastOwnershipSurvivesRetireAndRestore(t *testing.T) {
 //
 // Example: A later closure recognizes a forecast changed by canonical refresh.
 func TestSyncForecastOwnershipTracksCanonicalRefresh(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	closeEvent := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"

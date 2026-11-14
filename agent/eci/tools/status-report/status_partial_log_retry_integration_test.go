@@ -13,6 +13,7 @@ import (
 //
 // Example: Completing a partial JSON line lets a later refresh project it.
 func TestRefreshRetriesIncompleteFinalLogEntry(t *testing.T) {
+	t.Parallel()
 	// prior is a complete event preceding the interrupted append.
 	//
 	// Example: Preserve already complete progress while deferring the final entry.
@@ -65,6 +66,7 @@ func TestRefreshRetriesIncompleteFinalLogEntry(t *testing.T) {
 //
 // Example: A complete JSON event without a newline projects immediately.
 func TestLogFinalLineCompatibility(t *testing.T) {
+	t.Parallel()
 	// complete is a valid event without a trailing newline.
 	//
 	// Example: Replay a manually supplied complete final record.
@@ -95,6 +97,7 @@ func TestLogFinalLineCompatibility(t *testing.T) {
 //
 // Example: A writer completing the tail prevents a stale diagnostic from publishing.
 func TestIncompleteTailCompletionDuringRefreshRetries(t *testing.T) {
+	t.Parallel()
 	// event is one status update completed at the publication boundary.
 	//
 	// Example: Append its suffix while refresh is preparing the report.

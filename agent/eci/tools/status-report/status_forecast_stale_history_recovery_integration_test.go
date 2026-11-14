@@ -13,6 +13,7 @@ import (
 //
 // Example: An owner removes obsolete recalibration fields before a retained event replays.
 func TestForecastUnchangedSourceWaitsForStaleHistoryResolution(t *testing.T) {
+	t.Parallel()
 	// event is independent progress retained while forecast history is unresolved.
 	//
 	// Example: A successful retry applies it once after manual reconciliation.

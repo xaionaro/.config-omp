@@ -13,6 +13,7 @@ import (
 //
 // Example: A closed task without an inherited work reference remains incomplete.
 func TestRefreshMarksUnlinkedScoredLeaf(t *testing.T) {
+	t.Parallel()
 	report := refreshCoverageReport("CLOSED", "evidence: accepted, ", "")
 	result, parsedBefore, parsedAfter := runCoverageRefresh(t, report, time.Date(2026, 11, 2, 15, 24, 0, 0, time.UTC))
 	require.False(t, *parsedAfter.ScopeComplete)
@@ -26,6 +27,7 @@ func TestRefreshMarksUnlinkedScoredLeaf(t *testing.T) {
 //
 // Example: A completed canonical record does not hide an open task's expired estimate.
 func TestRefreshMarksExpiredEstimateWithOpenReportWork(t *testing.T) {
+	t.Parallel()
 	report := refreshCoverageReport("IN PROGRESS", "", "work_refs: ['project-understanding.yaml#/records/work:done'], ")
 	cases := []struct {
 		Name       string

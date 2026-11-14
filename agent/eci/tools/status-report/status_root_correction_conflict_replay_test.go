@@ -15,6 +15,7 @@ import (
 //
 // Example: Owner edits, comments and changed source time prevent a replacement.
 func TestRootCorrectionReplayPreservesConflicts(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","record":` + old + `}]}}}` + "\n"
@@ -63,6 +64,7 @@ func TestRootCorrectionReplayPreservesConflicts(t *testing.T) {
 //
 // Example: An owner-deleted applied completion is not reinserted through legacy pending state.
 func TestLegacyPendingRootDoesNotUndoOwnerRemoval(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","record":` + old + `}]}}}` + "\n"
@@ -88,6 +90,7 @@ func TestLegacyPendingRootDoesNotUndoOwnerRemoval(t *testing.T) {
 //
 // Example: An intact previously applied completion can receive a valid correction.
 func TestLegacyPendingRootAllowsIntactPriorCorrection(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","record":` + old + `}]}}}` + "\n"
@@ -114,6 +117,7 @@ func TestLegacyPendingRootAllowsIntactPriorCorrection(t *testing.T) {
 //
 // Example: A current corrected completion remains eligible for a second explicit correction.
 func TestLegacyAppliedCorrectionAllowsNextCorrection(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	corrected := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	newest := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:10:00Z"}`
@@ -143,6 +147,7 @@ func TestLegacyAppliedCorrectionAllowsNextCorrection(t *testing.T) {
 //
 // Example: A valid historical correction cannot restore a record the owner removed.
 func TestLegacyAppliedCorrectionKeepsChangedCurrentRecord(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	corrected := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	newest := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:10:00Z"}`

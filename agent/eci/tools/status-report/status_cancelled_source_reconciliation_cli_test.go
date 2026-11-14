@@ -15,6 +15,7 @@ import (
 //
 // Example: Validate and render expose either lifecycle mismatch until the sources agree.
 func TestCancelledLaneSourceDiscrepanciesSurfaceInCLI(t *testing.T) {
+	t.Parallel()
 	// forecast is the first lane's active report deadline.
 	//
 	// Example: A cancelled lane has no active report forecast.

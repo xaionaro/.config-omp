@@ -14,6 +14,7 @@ import (
 //
 // Example: The last high-priority task moves into low while its unchanged estimate survives.
 func TestReprioritizeIntoExistingEstimateReplaysAtomically(t *testing.T) {
+	t.Parallel()
 	// estimate identifies the unchanged destination priority estimate.
 	//
 	// Example: Reuse the existing low-priority record.

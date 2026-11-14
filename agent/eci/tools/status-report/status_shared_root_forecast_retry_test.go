@@ -12,6 +12,7 @@ import (
 //
 // Example: Conflicting work outcomes keep a root forecast pending until reconciled.
 func TestSharedRootForecastWaitsForConsistentOutcomes(t *testing.T) {
+	t.Parallel()
 	// event supplies a root forecast shared by two active work records.
 	//
 	// Example: Add one common deadline after both outcomes agree.

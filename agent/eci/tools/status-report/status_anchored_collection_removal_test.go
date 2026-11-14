@@ -14,6 +14,7 @@ import (
 //
 // Example: A first forecast initialized from null can later be retired on completion.
 func TestAnchoredNullRootForecastRetires(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	first := `{"event":"forecast_change","details":{"status_update":{"additions":[{"target":"root_forecast","record":` + forecast + `}]}}}` + "\n"
@@ -53,6 +54,7 @@ func TestAnchoredNullRootForecastRetires(t *testing.T) {
 //
 // Example: An owner-edited forecast remains intact and a matching last item retires.
 func TestAnchoredCollectionRemovalProtectsOwners(t *testing.T) {
+	t.Parallel()
 	record := json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`)
 	original := []byte("root_forecasts: &owner null # owner note\n")
 	initialized, ok := insertSyncAddition(original, syncAddition{Target: syncTargetRootForecast, Record: record})
@@ -71,6 +73,7 @@ func TestAnchoredCollectionRemovalProtectsOwners(t *testing.T) {
 //
 // Example: A cancelled task is removed while its list anchor and comment survive.
 func TestAnchoredTopPrioritiesAllowCancellation(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "top_priorities: ['1', '2']", "top_priorities: &owner ['1', '2'] # owner note", 1)
 	out, ok := removeCancelledPriority([]byte(input), taskID("1"))
 	require.True(t, ok)
@@ -83,6 +86,7 @@ func TestAnchoredTopPrioritiesAllowCancellation(t *testing.T) {
 //
 // Example: Removing either forecast keeps the other forecast and owner note.
 func TestAnchoredFlowRemovalPreservesOtherRecords(t *testing.T) {
+	t.Parallel()
 	first := `{"forecast_ref":"forecasts.yaml#/records/f1","outcome":"First","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	second := `{"forecast_ref":"forecasts.yaml#/records/f2","outcome":"Second","target":"2026-11-02T17:00:00Z","assessment":"complete"}`
 	input := []byte("root_forecasts: &owner [" + first + ", " + second + "] # owner note\n")
@@ -105,6 +109,7 @@ func TestAnchoredFlowRemovalPreservesOtherRecords(t *testing.T) {
 //
 // Example: Replacing top priorities preserves the anchor and adjacent note.
 func TestAnchoredStructuredListReplacementKeepsAnchor(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "top_priorities: ['1', '2']", "top_priorities: &owner ['1', '2'] # owner note", 1)
 	out, ok := editStructuredField([]byte(input), syncUpdate{Target: syncTargetReport, ID: "current"}, "top_priorities", `["2"]`)
 	require.True(t, ok)

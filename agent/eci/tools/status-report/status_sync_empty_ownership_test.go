@@ -14,6 +14,7 @@ import (
 //
 // Example: An empty or null owner cannot be mistaken for unowned state.
 func TestSyncEmptyAndNullOwnersPreserveLaterEdits(t *testing.T) {
+	t.Parallel()
 	for _, owner := range []string{`""`, `null`} {
 		t.Run(owner,
 			// Check both unchanged and manually edited values for one representation.
@@ -49,6 +50,7 @@ func TestSyncEmptyAndNullOwnersPreserveLaterEdits(t *testing.T) {
 //
 // Example: A legacy pending assignment preserves an owner-added value.
 func TestSyncLegacyEmptyOwnerRemainsProtected(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
@@ -72,6 +74,7 @@ func TestSyncLegacyEmptyOwnerRemainsProtected(t *testing.T) {
 //
 // Example: An owner changing null to the string "null" retains that edit.
 func TestSyncNullOwnerAndLiteralNullAreDistinct(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW","owner":null}}]}}}` + "\n"
@@ -94,6 +97,7 @@ func TestSyncNullOwnerAndLiteralNullAreDistinct(t *testing.T) {
 //
 // Example: An owner changing the string "null" to null retains that edit.
 func TestSyncLiteralNullOwnerAndNullAreDistinct(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW","owner":"null"}}]}}}` + "\n"
@@ -116,6 +120,7 @@ func TestSyncLiteralNullOwnerAndNullAreDistinct(t *testing.T) {
 //
 // Example: A legacy "null" baseline cannot establish whether an owner edited its type.
 func TestSyncAmbiguousLegacyNullOwnerStaysPending(t *testing.T) {
+	t.Parallel()
 	for _, owner := range []string{`null`, `"null"`} {
 		t.Run(owner,
 			// Keep each ambiguous historical representation unchanged.

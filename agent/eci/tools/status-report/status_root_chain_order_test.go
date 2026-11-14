@@ -11,6 +11,7 @@ import (
 //
 // Example: A later reopening waits for an earlier unresolved retirement of its work.
 func TestEarlierPendingRootConflictPreservesOrder(t *testing.T) {
+	t.Parallel()
 	update := syncUpdate{Target: syncTargetRootForecast, ID: "forecasts.yaml#/records/f", WorkRef: "project-understanding.yaml#/records/w", Evidence: "cancelled", Values: map[string]json.RawMessage{"expected_prior": json.RawMessage(`{"forecast_ref":"forecasts.yaml#/records/f"}`)}, Clear: []string{"record"}}
 	encoded, err := encodeSyncGroup(update)
 	require.NoError(t, err)

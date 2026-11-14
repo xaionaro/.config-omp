@@ -12,6 +12,7 @@ import (
 //
 // Example: Cancelled work removes its matching inactive forecast, while a changed prior stays pending.
 func TestCancelledRootRetiresForecastReplay(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	original := []byte(valid + "root_forecasts: [" + prior + "]\n")
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCancelled, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
@@ -62,6 +63,7 @@ func TestCancelledRootRetiresForecastReplay(t *testing.T) {
 //
 // Example: A forecast with an inline owner comment remains unchanged.
 func TestCancelledRootRetirementPreservesComments(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	original := []byte(valid + "root_forecasts:\n  - " + prior + " # keep\n")
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCancelled, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
@@ -77,6 +79,7 @@ func TestCancelledRootRetirementPreservesComments(t *testing.T) {
 //
 // Example: A different recorded owner value blocks removal.
 func TestCancelledRootRetirementChecksSourceAndPrior(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	original := []byte(valid + "root_forecasts: [" + prior + "]\n")
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCancelled, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}

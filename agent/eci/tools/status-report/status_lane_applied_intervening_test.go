@@ -13,6 +13,7 @@ import (
 //
 // Example: A verified owner assignment can precede a later explicit reassignment and closure.
 func TestReviewCIndependentAppliedFieldBetweenTransitions(t *testing.T) {
+	t.Parallel()
 	base := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation}
 	cancel := base
 	cancel.Evidence = "cancelled"

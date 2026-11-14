@@ -11,6 +11,7 @@ import (
 //
 // Example: A first null lifecycle remains invalid despite a later valid default.
 func TestLaneLifecycleMergeSequenceRespectsPrecedence(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, merged string
 		valid        bool

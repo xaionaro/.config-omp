@@ -13,6 +13,7 @@ import (
 //
 // Example: A pending correction to an old claim leaves a newer claim intact.
 func TestLegacyStaleRetractionCannotRemoveNewerClaim(t *testing.T) {
+	t.Parallel()
 	// saved records a stale pending retraction and a later applied text version.
 	//
 	// Example: Resume older saved metadata after a newer claim was published.

@@ -13,6 +13,7 @@ import (
 //
 // Example: Accepting one task leaves its sibling open.
 func TestStatusSyncClosesOnlyExplicitTask(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "latest-status-report.yaml"), []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
@@ -33,6 +34,7 @@ func TestStatusSyncClosesOnlyExplicitTask(t *testing.T) {
 //
 // Example: A correction naming an old event cannot replace a newer value.
 func TestStatusSyncCorrectionDoesNotOverwriteNewerValue(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := strings.Join([]string{
 		`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"first"}}]}}}`,
@@ -54,6 +56,7 @@ func TestStatusSyncCorrectionDoesNotOverwriteNewerValue(t *testing.T) {
 //
 // Example: Status and completion time change together after source completion.
 func TestStatusSyncLaneCompletionIsAtomicAndSourceBacked(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
@@ -79,6 +82,7 @@ func TestStatusSyncLaneCompletionIsAtomicAndSourceBacked(t *testing.T) {
 //
 // Example: A task introduces a priority together with its estimate.
 func TestStatusSyncAddsTaskWithItsPriorityEstimate(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"low","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}},{"target":"priority_estimate","record":{"priority":"low","min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
@@ -98,6 +102,7 @@ func TestStatusSyncAddsTaskWithItsPriorityEstimate(t *testing.T) {
 //
 // Example: A cancelled task leaves its sibling open and unmodified.
 func TestStatusSyncCancelsOnlyNamedTask(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"lifecycle":"cancelled","status":"unknown","evidence":"cancelled by owner"}}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
@@ -115,6 +120,7 @@ func TestStatusSyncCancelsOnlyNamedTask(t *testing.T) {
 //
 // Example: Retracting one progress subject leaves legacy prose untouched.
 func TestStatusSyncRetractionDropsOnlyItsManagedEntry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"managed"}}]}}}` + "\n"
@@ -134,6 +140,7 @@ func TestStatusSyncRetractionDropsOnlyItsManagedEntry(t *testing.T) {
 //
 // Example: A task stays open when acceptance evidence is absent.
 func TestStatusSyncIgnoresClosureWithoutAcceptance(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "latest-status-report.yaml"), []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))

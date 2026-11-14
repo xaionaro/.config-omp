@@ -12,6 +12,7 @@ import (
 //
 // Example: An effort and impact change is published as one group.
 func TestStructuredGroupAtomicity(t *testing.T) {
+	t.Parallel()
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"task","id":"1.2","values":{"effort":{"min_minutes":5,"max_minutes":15,"kind":"elapsed","basis":"measured"},"impact":"Useful"}}`), &update))
 	require.True(t, validStructuredSyncUpdate(update))
@@ -35,6 +36,7 @@ func TestStructuredGroupAtomicity(t *testing.T) {
 //
 // Example: Reorder priorities without altering an owner's neighboring comment.
 func TestStructuredReportFieldsPreserveUnrelatedBytes(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, `top_priorities: ["1.1"]`, `top_priorities: ["1.1"] # owner note`, 1)
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"report","id":"current","values":{"top_priorities":["1.2"],"roster":{"lead":"A"}}}`), &update))
@@ -51,6 +53,7 @@ func TestStructuredReportFieldsPreserveUnrelatedBytes(t *testing.T) {
 //
 // Example: Preserve a comment inside an effort mapping.
 func TestStructuredCommentedValueRemainsPending(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "effort: {min_minutes: 10, max_minutes: 30, kind: elapsed, basis: educated guess}", "effort:\n      min_minutes: 10 # owner note\n      max_minutes: 30\n      kind: elapsed\n      basis: educated guess", 1)
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"task","id":"1.2","values":{"effort":{"min_minutes":5,"max_minutes":15,"kind":"elapsed","basis":"measured"}}}`), &update))
@@ -63,6 +66,7 @@ func TestStructuredCommentedValueRemainsPending(t *testing.T) {
 //
 // Example: Reopen a cancelled task by clearing lifecycle and supplying its new status.
 func TestStructuredCancellationReversalRequiresStatus(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "    status: unknown\ntop_priorities:", "    status: unknown\n    lifecycle: cancelled\n    evidence: withdrawn\ntop_priorities:", 1)
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"task","id":"1.2","fields":{"status":"IN PROGRESS","context":"resumed"},"clear":["lifecycle"]}`), &update))
@@ -81,6 +85,7 @@ func TestStructuredCancellationReversalRequiresStatus(t *testing.T) {
 //
 // Example: Reopen an inline cancelled task while preserving an owner's comment.
 func TestStructuredClearFlowMapping(t *testing.T) {
+	t.Parallel()
 	start := strings.Index(valid, "  - id: \"1.2\"")
 	end := strings.Index(valid, "top_priorities:")
 	require.Greater(t, end, start)
@@ -104,6 +109,7 @@ func TestStructuredClearFlowMapping(t *testing.T) {
 //
 // Example: Reopen a previously projected cancellation without overriding owner changes.
 func TestStructuredClearAcceptsPriorScalarOwnership(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "    status: unknown\ntop_priorities:", "    status: unknown\n    lifecycle: cancelled\n    evidence: withdrawn\ntop_priorities:", 1)
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"task","id":"1.2","fields":{"status":"IN PROGRESS"},"clear":["lifecycle"]}`), &update))
@@ -118,6 +124,7 @@ func TestStructuredClearAcceptsPriorScalarOwnership(t *testing.T) {
 //
 // Example: Replace an existing project record reference.
 func TestStructuredWorkRefsAcceptsHash(t *testing.T) {
+	t.Parallel()
 	var update syncUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"target":"task","id":"1","values":{"work_refs":["project-understanding.yaml#/records/work:second"]}}`), &update))
 	changed, ok := applyStructuredSyncUpdate([]byte(linkedReport), update, nil)

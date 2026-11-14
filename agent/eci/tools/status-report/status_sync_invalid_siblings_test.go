@@ -13,6 +13,7 @@ import (
 //
 // Example: A malformed target remains diagnosed while a later sibling closes its task.
 func TestMalformedStatusSiblingDoesNotDiscardValidClosure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	event := `{"event":"decision","details":{"status_update":{"updates":[{"target":42,"id":"bad","fields":{"owner":"x"}},{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted safe sibling"}}]}}}` + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
@@ -35,6 +36,7 @@ func TestMalformedStatusSiblingDoesNotDiscardValidClosure(t *testing.T) {
 //
 // Example: A partially decoded item is discarded while later valid additions retain their position.
 func TestMalformedStatusItemsRetainOrdinalsAndAtomicity(t *testing.T) {
+	t.Parallel()
 	var event syncEvent
 	raw := `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","owner":[1]}},{"target":"task","id":"2","fields":{"owner":"next"}}],"additions":[{"target":3,"record":{}},{"target":"task","record":{"id":"3"}}]}}}`
 	require.NoError(t, json.Unmarshal([]byte(raw), &event))

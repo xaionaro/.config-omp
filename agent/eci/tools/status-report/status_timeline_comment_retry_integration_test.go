@@ -13,6 +13,7 @@ import (
 //
 // Example: A commented timeline stays intact until the owner removes its annotation.
 func TestTimelineSnapshotWaitsForOwnerCommentResolution(t *testing.T) {
+	t.Parallel()
 	// event contains a complete four-hour timeline with source evidence.
 	//
 	// Example: A saved snapshot can be retried without appending a second event.

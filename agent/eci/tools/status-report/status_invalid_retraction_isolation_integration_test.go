@@ -13,6 +13,7 @@ import (
 //
 // Example: A retraction outside a correction event cannot remove an owned claim.
 func TestInvalidRetractionsPreserveClaimAndIndependentProgress(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, event, update string }{
 		{"wrong event", "decision", `{"target":"progress","id":"work:one","corrects":1,"retract":true}`},
 		{"missing predecessor", "correction", `{"target":"progress","id":"work:one","retract":true}`},

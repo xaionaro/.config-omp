@@ -11,6 +11,7 @@ import (
 //
 // Example: A mismatched outcome remains pending.
 func TestSourceBackedAdditionsReplay(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, entry string
 		work        sourceRecord
@@ -69,6 +70,7 @@ func TestSourceBackedAdditionsReplay(t *testing.T) {
 //
 // Example: A distinct work reference permits another lane.
 func TestLaneAdditionUsesCompleteSelector(t *testing.T) {
+	t.Parallel()
 	original := []byte(linkedReport)
 	addition := syncAddition{Target: syncTargetLane, Record: json.RawMessage(`{"task_id":"1","work_ref":"project-understanding.yaml#/records/work:third","outcome":"Third","required_environment":"test","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW"}`)}
 	got, ok := applySyncAddition(original, addition)

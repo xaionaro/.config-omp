@@ -13,6 +13,7 @@ import (
 //
 // Example: A withdrawn lane is added only after canonical work is cancelled.
 func TestCancelledLaneAdditionRecoversAfterSourceCancellation(t *testing.T) {
+	t.Parallel()
 	// source is a third active work record linked to its outcome.
 	//
 	// Example: Its later cancellation authorizes the pending lane addition.

@@ -13,6 +13,7 @@ import (
 //
 // Example: Detect an inconsistent status projection.
 func TestSourceReconciliationBoundaries(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, report, ledger, forecasts, diagnostic string }{
 		{"omitted active work", strings.Replace(linkedReport, "work_refs: ['project-understanding.yaml#/records/work:second']", "work_refs: []", 1), linkedLedger, linkedForecasts, "active work work:second missing"},
 		{"unknown role", linkedReport, strings.Replace(linkedLedger, "reporting_roles: [lane]", "reporting_roles: [mystery]", 1), linkedForecasts, "unknown reporting role"},
@@ -63,6 +64,7 @@ func TestSourceReconciliationBoundaries(t *testing.T) {
 //
 // Example: Detect an inconsistent status projection.
 func TestForecastStructureRejectsIncompleteDetail(t *testing.T) {
+	t.Parallel()
 	issues := forecastStructure(map[string]any{
 		"base_case": map[string]any{"packages": []any{map[string]any{"work": "work"}}},
 		"scenarios": []any{map[string]any{"name": "delay"}},

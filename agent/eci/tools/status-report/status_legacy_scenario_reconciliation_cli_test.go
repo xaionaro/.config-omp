@@ -15,6 +15,7 @@ import (
 //
 // Example: An unverified legacy scenario remains visible until its owner migrates it.
 func TestLegacyScenarioRequiresNativeProjectionInCLI(t *testing.T) {
+	t.Parallel()
 	// sourceSpread is the canonical native forecast spread.
 	//
 	// Example: The report's source projection must match these scenario details.

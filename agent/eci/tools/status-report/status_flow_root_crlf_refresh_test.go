@@ -15,6 +15,7 @@ import (
 //
 // Example: A logged closure and diagnostic retain comments, UTF-8 and line endings.
 func TestFlowRootCRLFRefreshPreservesContent(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["state"] = "Working λ"

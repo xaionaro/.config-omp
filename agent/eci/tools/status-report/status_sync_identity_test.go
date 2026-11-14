@@ -15,6 +15,7 @@ import (
 //
 // Example: A work reference cannot bypass protection of a task owner's edit.
 func TestSyncTaskRejectsIrrelevantSelector(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
@@ -36,6 +37,7 @@ func TestSyncTaskRejectsIrrelevantSelector(t *testing.T) {
 //
 // Example: A later typed assignment follows two thousand previously untyped events.
 func TestSyncLegacyBatchAdvancesCursor(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	legacy := strings.Repeat(`{"event":"checkpoint","summary":"legacy"}`+"\n", 2000)
@@ -86,6 +88,7 @@ func BenchmarkSyncLegacyBatch(b *testing.B) {
 //
 // Example: Previously recorded aliases cannot bypass later owner edits.
 func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
@@ -113,6 +116,7 @@ func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
 //
 // Example: Conflicting task aliases require reconciliation instead of guessing.
 func TestSyncLegacyAliasConflictDoesNotDiscardOwnership(t *testing.T) {
+	t.Parallel()
 	canonical := syncTargetKey(syncUpdate{Target: syncTargetTask, ID: "1"}, "owner")
 	encoded, err := json.Marshal([]string{"task", "1", "legacy work reference", ""})
 	require.NoError(t, err)
@@ -126,6 +130,7 @@ func TestSyncLegacyAliasConflictDoesNotDiscardOwnership(t *testing.T) {
 //
 // Example: A previously queued update retains its intent after alias migration.
 func TestSyncLegacyQueuedAliasUsesActualTaskIdentity(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("{}\n{}\n"), 0600))
@@ -152,6 +157,7 @@ func TestSyncLegacyQueuedAliasUsesActualTaskIdentity(t *testing.T) {
 //
 // Example: An owner-edited task impact is not replaced by a later event.
 func TestSyncAddedTaskPreservesLaterOwnerEdits(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Original","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"
@@ -174,6 +180,7 @@ func TestSyncAddedTaskPreservesLaterOwnerEdits(t *testing.T) {
 //
 // Example: A manually assigned owner is not replaced by a later event.
 func TestSyncAddedTaskPreservesOwnerAddedField(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Original","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"

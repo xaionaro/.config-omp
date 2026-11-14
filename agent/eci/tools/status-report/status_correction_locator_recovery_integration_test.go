@@ -14,6 +14,7 @@ import (
 //
 // Example: A self-referencing or future correction cannot block a later owner.
 func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, locator string
 	}{
@@ -52,6 +53,7 @@ func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
 //
 // Example: A previously saved impossible locator is diagnosed and removed.
 func TestPersistedSelfCorrectionDoesNotBlockRetry(t *testing.T) {
+	t.Parallel()
 	// saved is a previously persisted impossible correction and later assignment.
 	//
 	// Example: Retry removes the invalid group without discarding the assignment.
@@ -78,6 +80,7 @@ func TestPersistedSelfCorrectionDoesNotBlockRetry(t *testing.T) {
 //
 // Example: A second correction may name the first correction on the same line.
 func TestCorrectionCanNameEarlierSameLineOrdinal(t *testing.T) {
+	t.Parallel()
 	// log contains two ordered corrections in one canonical event.
 	//
 	// Example: The last correction names ordinal zero of its own line.
@@ -99,6 +102,7 @@ func TestCorrectionCanNameEarlierSameLineOrdinal(t *testing.T) {
 //
 // Example: A saved correction cannot authorize its own owner value.
 func TestLegacyFieldSelfCorrectionIsRejected(t *testing.T) {
+	t.Parallel()
 	// saved is a legacy field pending entry with a self-referencing locator.
 	//
 	// Example: The invalid correction must never be projected on retry.
@@ -125,6 +129,7 @@ func TestLegacyFieldSelfCorrectionIsRejected(t *testing.T) {
 //
 // Example: A uniquely identified later update can correct ordinal zero.
 func TestLegacySameLineCorrectionUsesUniqueSourceOrdinal(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, duplicate string
 		applies         bool
@@ -167,6 +172,7 @@ func TestLegacySameLineCorrectionUsesUniqueSourceOrdinal(t *testing.T) {
 //
 // Example: An invalid lifecycle correction cannot cancel a task through legacy pending state.
 func TestLegacyCancellationRejectsSelfCorrectionsBeforeAtomicReplay(t *testing.T) {
+	t.Parallel()
 	// log contains a cancellation whose correction names itself.
 	//
 	// Example: All three fields must remain unapplied.
@@ -202,6 +208,7 @@ func TestLegacyCancellationRejectsSelfCorrectionsBeforeAtomicReplay(t *testing.T
 //
 // Example: A different task or field cannot authorize an owner correction.
 func TestLegacySameLineCorrectionRequiresMatchingPriorField(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, prior string
 	}{
@@ -239,6 +246,7 @@ func TestLegacySameLineCorrectionRequiresMatchingPriorField(t *testing.T) {
 //
 // Example: A prior assignment to another task cannot authorize this correction.
 func TestLegacyEarlierCorrectionRequiresMatchingLatestPrior(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, prior, middle string
 		applies, pending    bool
@@ -291,6 +299,7 @@ func TestLegacyEarlierCorrectionRequiresMatchingLatestPrior(t *testing.T) {
 //
 // Example: A self-referencing correction does not supersede the real prior owner.
 func TestLegacyCorrectionIgnoresInvalidInterveningUpdates(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, event, update string
 	}{
@@ -331,6 +340,7 @@ func TestLegacyCorrectionIgnoresInvalidInterveningUpdates(t *testing.T) {
 //
 // Example: A valid withdrawal cannot be undone by correcting an older claim.
 func TestLegacyCorrectionRespectsInterveningRetraction(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, event, subject, locator string
 		withdraws                     bool
@@ -378,6 +388,7 @@ func TestLegacyCorrectionRespectsInterveningRetraction(t *testing.T) {
 //
 // Example: A retraction names later evidence rather than the older text update.
 func TestLegacyRetractionUsesLatestNarrativeEvidence(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, locator string
 		withdraws     bool
@@ -424,6 +435,7 @@ func TestLegacyRetractionUsesLatestNarrativeEvidence(t *testing.T) {
 //
 // Example: A task evidence correction cannot name an invalid task retraction.
 func TestLegacyTaskRetractionCannotAuthorizeCorrection(t *testing.T) {
+	t.Parallel()
 	// log names a task retraction, which is not an allowed narrative operation.
 	//
 	// Example: Fresh and legacy replay both retain the original evidence.
@@ -454,6 +466,7 @@ func TestLegacyTaskRetractionCannotAuthorizeCorrection(t *testing.T) {
 //
 // Example: A valid evidence correction does not hold an older text correction.
 func TestLegacyTextCorrectionAfterEvidenceCorrectionMatchesFreshReplay(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, withdrawal string
 		withdraws        bool
@@ -504,6 +517,7 @@ func TestLegacyTextCorrectionAfterEvidenceCorrectionMatchesFreshReplay(t *testin
 //
 // Example: A valid owner alongside an invalid status cannot authorize a correction.
 func TestLegacyInvalidBaseCannotAuthorizeCorrection(t *testing.T) {
+	t.Parallel()
 	// log contains one invalid mixed assignment and a later correction.
 	//
 	// Example: Both fresh and legacy replay preserve the absent owner.
@@ -533,6 +547,7 @@ func TestLegacyInvalidBaseCannotAuthorizeCorrection(t *testing.T) {
 //
 // Example: An invalid status prevents an otherwise valid owner correction.
 func TestLegacyCorrectionRequiresValidCurrentTransaction(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, fields string
 		applies      bool
@@ -579,6 +594,7 @@ func TestLegacyCorrectionRequiresValidCurrentTransaction(t *testing.T) {
 //
 // Example: An owner fragment cannot apply without its accompanying effort change.
 func TestLegacyCorrectionHoldsStructuredCompanions(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, companion string
 	}{

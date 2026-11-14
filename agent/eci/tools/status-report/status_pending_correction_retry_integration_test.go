@@ -12,6 +12,7 @@ import (
 //
 // Example: A correction waits across a restart until its missing task is created.
 func TestPendingCorrectionSurvivesRefreshUntilTaskExists(t *testing.T) {
+	t.Parallel()
 	// first assigns a task that has not been created yet.
 	//
 	// Example: An assignment reaches the log before its task definition.

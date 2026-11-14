@@ -13,6 +13,7 @@ import (
 //
 // Example: One ready root completes while a sibling waits for canonical completion.
 func TestIndependentRootCompletionWaitsForItsOwnSource(t *testing.T) {
+	t.Parallel()
 	// sources contain one completed and one still-active root.
 	//
 	// Example: The second source changes only after the first completion is published.

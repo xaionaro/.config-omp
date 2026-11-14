@@ -13,6 +13,7 @@ import (
 //
 // Example: A newly created event log cannot be omitted by a successful stale refresh.
 func TestRefreshRetriesWhenMissingLogAppearsBeforePublication(t *testing.T) {
+	t.Parallel()
 	// event is the first log entry, created after refresh reads the absent log.
 	//
 	// Example: A worker records progress during a forecast refresh.
@@ -48,6 +49,7 @@ func TestRefreshRetriesWhenMissingLogAppearsBeforePublication(t *testing.T) {
 //
 // Example: Appending to an existing empty log cannot publish a stale report.
 func TestRefreshRetriesWhenEmptyLogChanges(t *testing.T) {
+	t.Parallel()
 	// event is appended to a log that existed but was empty when read.
 	//
 	// Example: A first worker update arrives while refresh is preparing publication.

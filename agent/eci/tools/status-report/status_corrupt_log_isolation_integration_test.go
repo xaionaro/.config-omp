@@ -12,6 +12,7 @@ import (
 //
 // Example: Diagnose an interrupted JSON entry and retain later independent work.
 func TestMalformedLogEntryDoesNotDiscardFollowingProgress(t *testing.T) {
+	t.Parallel()
 	// broken is a partially written status event followed by a newline.
 	//
 	// Example: Preserve a diagnostic for an interrupted append.

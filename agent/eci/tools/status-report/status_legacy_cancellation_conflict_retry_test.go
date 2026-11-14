@@ -13,6 +13,7 @@ import (
 //
 // Example: An edited reason prevents cancellation until the owned value is restored.
 func TestLegacyCancellationWaitsForOwnerEvidenceResolution(t *testing.T) {
+	t.Parallel()
 	// saved is a historical field-wise cancellation and its evidence baseline.
 	//
 	// Example: Resume a cancellation that was interrupted before publication.

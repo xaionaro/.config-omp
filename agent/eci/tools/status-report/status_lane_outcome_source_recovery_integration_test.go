@@ -13,6 +13,7 @@ import (
 //
 // Example: A lane is added only after the linked outcome agrees with its event.
 func TestLaneAdditionWaitsForMatchingCanonicalOutcome(t *testing.T) {
+	t.Parallel()
 	// source links active lane work to an initially inconsistent outcome.
 	//
 	// Example: Correcting the canonical description permits the pending addition.

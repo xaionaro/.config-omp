@@ -13,6 +13,7 @@ import (
 //
 // Example: A completed log tail applies after the owner revises earlier progress.
 func TestIncompleteTailRecoveryPreservesIndependentOwnerEdit(t *testing.T) {
+	t.Parallel()
 	// prior creates managed progress before an interrupted append.
 	//
 	// Example: The owner may later revise this independently of the new event.

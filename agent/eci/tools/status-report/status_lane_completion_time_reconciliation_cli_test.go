@@ -15,6 +15,7 @@ import (
 //
 // Example: A report completion must agree with the canonical work timestamp.
 func TestLaneCompletionTimeMismatchSurfacesInCLI(t *testing.T) {
+	t.Parallel()
 	// forecast is retired from the report after the source work completes.
 	//
 	// Example: Terminal lane reconciliation compares actual completion times.

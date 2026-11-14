@@ -13,6 +13,7 @@ import (
 //
 // Example: A current completion corrects an unapplied historical completion.
 func TestDelayedDocumentedLaneCorrection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	next := `{"event":"correction","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","corrects":1,"evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}` + "\n"
@@ -38,6 +39,7 @@ func TestDelayedDocumentedLaneCorrection(t *testing.T) {
 //
 // Example: A correction naming the wrong ordinal cannot publish a completion.
 func TestPendingLaneCorrectionRequiresExactLocator(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	next := strings.Replace(old, "15:25:00Z", "15:45:00Z", 1)
@@ -65,6 +67,7 @@ func TestPendingLaneCorrectionRequiresExactLocator(t *testing.T) {
 //
 // Example: A corrected completion time retains the explicitly supplied context.
 func TestPendingLaneCorrectionPreservesContext(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","context":"verified result"}}]}}}` + "\n"
 	last := `{"event":"correction","details":{"corrects":1,"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","corrects":1,"evidence":"corrected actual time","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z","context":"verified result"}}]}}}` + "\n"

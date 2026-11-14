@@ -9,6 +9,7 @@ import (
 //
 // Example: A malformed update still identifies its lane without hiding a valid sibling.
 func TestLaneRawUpdatesIsolateMalformedSiblings(t *testing.T) {
+	t.Parallel()
 	line := []byte(`{"event":"checkpoint","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":42,"fields":{"blocker":"waiting"}},{"target":"task","id":"other","fields":{"owner":"x"}}]}}}`)
 	raw, ok := laneRawUpdates(line)
 	if !ok || len(raw) != 2 {

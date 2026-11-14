@@ -12,6 +12,7 @@ import (
 //
 // Example: Advancing a report cannot present yesterday's verified absence as current.
 func TestVerifiedEmptyTimelineRemainsHistorical(t *testing.T) {
+	t.Parallel()
 	input := linkedReport + "timeline_state: verified_empty\ntimeline: []\n"
 	updated, err := advanceSyncTimestamp([]byte(input), "2026-11-02T15:34:00Z")
 	require.NoError(t, err)
@@ -29,6 +30,7 @@ func TestVerifiedEmptyTimelineRemainsHistorical(t *testing.T) {
 //
 // Example: A missing timeline anchor remains missing when its state is unknown.
 func TestUnknownEmptyTimelineRemainsUnknown(t *testing.T) {
+	t.Parallel()
 	input := linkedReport + "timeline: []\n"
 	updated, err := advanceSyncTimestamp([]byte(input), "2026-11-02T15:34:00Z")
 	require.NoError(t, err)
@@ -43,6 +45,7 @@ func TestUnknownEmptyTimelineRemainsUnknown(t *testing.T) {
 //
 // Example: Unknown wire labels fail rather than becoming a valid state.
 func TestTimelineStateJSONPreservesLabels(t *testing.T) {
+	t.Parallel()
 	for _, state := range []timelineState{timelinePresent, timelineVerifiedEmpty} {
 		encoded, err := json.Marshal(state)
 		require.NoError(t, err)

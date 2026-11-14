@@ -13,6 +13,7 @@ import (
 //
 // Example: A cancelled root retains its report forecast while the source is still active.
 func TestCancelledRootWaitsForForecastRetirementOnDisk(t *testing.T) {
+	t.Parallel()
 	// root is cancelled work whose canonical forecast has not yet been retired.
 	//
 	// Example: The report forecast cannot be removed until both sources agree.

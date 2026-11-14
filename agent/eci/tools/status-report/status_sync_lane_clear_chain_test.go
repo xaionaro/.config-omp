@@ -11,6 +11,7 @@ import (
 //
 // Example: Clear a blocker while retaining a supplied context and final closure.
 func TestLaneClearBlockerChain(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	middle := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED","context":"resumed"},"clear":["blocker"]}]}}}` + "\n"

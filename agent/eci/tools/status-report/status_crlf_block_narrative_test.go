@@ -14,6 +14,7 @@ import (
 //
 // Example: A new progress entry retains the owner's comment and CRLF layout.
 func TestCRLFBlockNarrativeAppendPreservesLineEndings(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "progress: [Implementation started]\n", "progress:\n  - Implementation started\n# decisions note\n", 1)
 	require.NotEqual(t, linkedReport, input)
 	input = strings.ReplaceAll(input, "\n", "\r\n")
@@ -43,6 +44,7 @@ func TestCRLFBlockNarrativeAppendPreservesLineEndings(t *testing.T) {
 //
 // Example: Retracting the last managed entry keeps the report's CRLF layout.
 func TestCRLFBlockNarrativeRetractionPreservesLineEndings(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "progress: [Implementation started]\n", "progress:\n  - Implementation started\n# decisions note\n", 1)
 	require.NotEqual(t, linkedReport, input)
 	input = strings.ReplaceAll(input, "\n", "\r\n")
@@ -76,6 +78,7 @@ func TestCRLFBlockNarrativeRetractionPreservesLineEndings(t *testing.T) {
 //
 // Example: Appending to a final list without a newline does not introduce bare CR or LF.
 func TestCRLFBlockNarrativeAtEOFWithoutNewline(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "progress: [Implementation started]\n", "", 1)
 	require.NotEqual(t, linkedReport, input)
 	input = strings.ReplaceAll(input, "\n", "\r\n") + "progress:\r\n  - Implementation started"
@@ -100,6 +103,7 @@ func TestCRLFBlockNarrativeAtEOFWithoutNewline(t *testing.T) {
 //
 // Example: Removing a multiline final item preserves whether its last line was terminated.
 func TestCRLFMultilineNarrativeRetractionKeepsFinalBoundary(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, input, want string }{
 		{"unterminated", "progress:\r\n  - subject_ref: one\r\n    text: done", "progress:\r\n  []"},
 		{"terminated", "progress:\r\n  - subject_ref: one\r\n    text: done\r\n", "progress:\r\n  []\r\n"},
@@ -122,6 +126,7 @@ func TestCRLFMultilineNarrativeRetractionKeepsFinalBoundary(t *testing.T) {
 //
 // Example: Removing the final managed entry keeps the preceding legacy item intact.
 func TestCRLFRetractionOfLastEntryKeepsSurvivorBoundary(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, suffix, want string }{
 		{"unterminated", "", "progress:\r\n  - legacy\r\n"},
 		{"terminated", "\r\n", "progress:\r\n  - legacy\r\n"},
@@ -144,6 +149,7 @@ func TestCRLFRetractionOfLastEntryKeepsSurvivorBoundary(t *testing.T) {
 //
 // Example: A clipped literal retains its final newline after a later item is removed.
 func TestRetractionPreservesBlockScalarSurvivor(t *testing.T) {
+	t.Parallel()
 	for _, style := range []string{"|", ">", "|-", ">-"} {
 		t.Run(style,
 			// check compares the surviving scalar before and after retraction.
@@ -165,6 +171,7 @@ func TestRetractionPreservesBlockScalarSurvivor(t *testing.T) {
 //
 // Example: A clipped literal without a final newline remains unchanged when appending.
 func TestAppendAfterUnterminatedBlockScalarPreservesValue(t *testing.T) {
+	t.Parallel()
 	for _, style := range []string{"|", ">", "|+", ">+", "|-", ">-", "|2 # owner note", ">+2 # owner note", "&owner |", "!!str |", "&owner !!str |", "!!str &owner |", "!<tag:yaml.org,2002:str> |", "!!str &item |2+"} {
 		t.Run(style,
 			// check compares the existing value across the public projection.
@@ -196,6 +203,7 @@ func TestAppendAfterUnterminatedBlockScalarPreservesValue(t *testing.T) {
 //
 // Example: An anchor on the preceding line remains attached to the existing scalar.
 func TestAppendAfterScalarWithSeparatePropertiesPreservesOwnerData(t *testing.T) {
+	t.Parallel()
 	for _, property := range []string{"&owner", "!!str", "&owner !!str"} {
 		t.Run(property,
 			// check verifies the value, properties, and comments after appending.
@@ -223,6 +231,7 @@ func TestAppendAfterScalarWithSeparatePropertiesPreservesOwnerData(t *testing.T)
 //
 // Example: Keep-chomping retains blank body lines before a new progress item.
 func TestAppendAfterKeptScalarBlankLinesPreservesValue(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ style, tail string }{
 		{"|+", "\r\n    \r\n    "}, {">+", "\r\n    \r\n    "},
 		{"|+", "\r\n    legacy scalar\r\n\r\n"}, {">+", "\r\n    legacy scalar\r\n\r\n"},
@@ -249,6 +258,7 @@ func TestAppendAfterKeptScalarBlankLinesPreservesValue(t *testing.T) {
 //
 // Example: A decisions comment remains beside its field after a progress append.
 func TestAppendAfterKeptScalarBeforeFollowingField(t *testing.T) {
+	t.Parallel()
 	for _, suffix := range []string{"decisions: [keep]\r\n", "# decisions note\r\ndecisions: [keep]\r\n", "# trailing note\r\n"} {
 		t.Run(suffix,
 			// check compares the existing scalar and the following owner text.
@@ -271,6 +281,7 @@ func TestAppendAfterKeptScalarBeforeFollowingField(t *testing.T) {
 //
 // Example: An unterminated scalar header comment survives a progress append.
 func TestReplayEOFScalarCommentsAndIndent(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, scalar string }{
 		{"explicit indent", "|2\r\n    legacy scalar\r\n    "},
 		{"header comment", "|+ # owner note"},
@@ -306,6 +317,7 @@ func TestReplayEOFScalarCommentsAndIndent(t *testing.T) {
 //
 // Example: A new progress item follows an empty owner-authored block scalar.
 func TestReplayEmptyKeptScalarWithComment(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "progress: [Implementation started]\n", "", 1)
 	input = strings.ReplaceAll(input, "\n", "\r\n") + "progress:\r\n  - |+ # owner note\r\n"
 	// event records a separate progress item.
@@ -328,6 +340,7 @@ func TestReplayEmptyKeptScalarWithComment(t *testing.T) {
 //
 // Example: A changed comment after an empty scalar remains detectable.
 func TestEmptyKeptScalarCommentScanPreservesOrderedComments(t *testing.T) {
+	t.Parallel()
 	input := []byte("# first\nprogress:\n  - &owner |+ # scalar\n  - {subject_ref: one, text: '# text'} # item\n# last\n")
 	comments, err := yamlComments(input)
 	require.NoError(t, err)
@@ -342,6 +355,7 @@ func TestEmptyKeptScalarCommentScanPreservesOrderedComments(t *testing.T) {
 //
 // Example: An incomplete ledger can add a diagnostic while preserving an empty scalar.
 func TestRefreshEmptyKeptScalarWithReconciliation(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "progress: [Implementation started]\n", "", 1)
 	input = strings.ReplaceAll(input, "\n", "\r\n") + "progress:\r\n  - |+ # owner note\r\n"
 	// event records a separate progress item.
@@ -367,6 +381,7 @@ func TestRefreshEmptyKeptScalarWithReconciliation(t *testing.T) {
 //
 // Example: Appending and retracting a managed item preserves neighboring scalars.
 func TestReplayBesideEmptyKeptScalarPreservesExistingItems(t *testing.T) {
+	t.Parallel()
 	input := []byte("progress:\r\n  - |+ # empty owner\r\n  - | # last owner\r\n    legacy scalar")
 	var before, appended, retracted yaml.Node
 	require.NoError(t, yaml.Unmarshal(input, &before))
@@ -390,6 +405,7 @@ func TestReplayBesideEmptyKeptScalarPreservesExistingItems(t *testing.T) {
 //
 // Example: A forecast basis can update while an empty progress item retains its comment.
 func TestRefreshForecastProjectionBesideEmptyKeptScalar(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "evidence: initial}", "evidence: initial, source_projection: {baseline_evidence: initial, target_basis: old}}", 1)
 	input = strings.Replace(input, "progress: [Implementation started]\n", "progress:\n  - |+ # empty owner item\n  - Implementation started\n", 1)
 	forecasts := strings.Replace(linkedForecasts, "    baseline_evidence: initial\n", "    baseline_evidence: initial\n    target_basis: new basis\n", 1)

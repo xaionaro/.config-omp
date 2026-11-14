@@ -14,6 +14,7 @@ import (
 //
 // Example: A sibling's reference does not cover another task.
 func TestLeafWorkCoverage(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "status: unknown", "status: IN PROGRESS", 1)
 	ledger := `schema: project-understanding/v1
@@ -54,6 +55,7 @@ records:
 //
 // Example: A nonclosed child retains an elapsed-priority warning.
 func TestOpenReportedLeafExpiresEstimate(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "title: Root", "title: Root\n    work_refs: ['project-understanding.yaml#/records/work:one']", 1)
 	report = strings.Replace(report, "status: unknown", "status: IN PROGRESS", 1)

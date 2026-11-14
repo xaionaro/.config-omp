@@ -12,6 +12,7 @@ import (
 //
 // Example: Inserting the missing newline does not replay or skip either event.
 func TestCompleteUnterminatedEventThenAppendKeepsCursor(t *testing.T) {
+	t.Parallel()
 	// first is a valid JSON event stored without a trailing newline.
 	//
 	// Example: Refresh a manually supplied final entry before another append.

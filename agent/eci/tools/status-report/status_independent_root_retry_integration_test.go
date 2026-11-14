@@ -12,6 +12,7 @@ import (
 //
 // Example: A changed first forecast stays pending while a second root completes.
 func TestIndependentRootCompletionSurvivesOtherPriorConflict(t *testing.T) {
+	t.Parallel()
 	// first is an owner-edited forecast and second is the independent forecast.
 	//
 	// Example: Only the second forecast still matches its requested retirement.

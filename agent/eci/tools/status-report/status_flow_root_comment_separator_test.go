@@ -15,6 +15,7 @@ import (
 //
 // Example: A trailing comma before a comment is not duplicated during replay.
 func TestFlowRootReplayPreservesCommentsAroundSeparators(t *testing.T) {
+	t.Parallel()
 	// event supplies a status update and requires new sync metadata.
 	//
 	// Example: Replay a completed task in an annotated flow-style report.

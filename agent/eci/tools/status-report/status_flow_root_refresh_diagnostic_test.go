@@ -15,6 +15,7 @@ import (
 //
 // Example: A scope change preserves a commented flow root and applies logged progress.
 func TestFlowRootRefreshAddsDiagnosticWithMultilineComment(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["timeline_state"] = "verified_empty"

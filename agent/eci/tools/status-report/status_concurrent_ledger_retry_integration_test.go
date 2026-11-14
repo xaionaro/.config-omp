@@ -12,6 +12,7 @@ import (
 //
 // Example: A concurrent source edit prevents a stale log projection from publishing.
 func TestRefreshRetriesWhenLedgerChangesDuringLogReplay(t *testing.T) {
+	t.Parallel()
 	// event adds progress while refresh reads its canonical sources.
 	//
 	// Example: A retry must project the retained event exactly once.

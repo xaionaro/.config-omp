@@ -11,6 +11,7 @@ import (
 //
 // Example: A downside scenario displays its basis and endpoint.
 func TestNativeSpreadRenderingRetainsScenarioFacts(t *testing.T) {
+	t.Parallel()
 	f := forecast{Outcome: "Result", Assessment: "provisional", SourceProjection: map[string]any{"target_basis": "review pending", "base_case": map[string]any{"endpoint": "2030-01-01T01:00:00Z", "packages": []any{map[string]any{"work": "Finish", "duration": "20 minutes", "basis": "guess"}}}, "scenarios": []any{map[string]any{"name": "Delay", "trigger": "review", "affected_work": "Finish", "added_duration": "10 minutes", "basis": "guess", "evidence": "pending", "assumptions": "none", "endpoint": "2030-01-01T02:00:00Z", "evidence_gap": "unmeasured", "next_action": "measure", "event_time": "2030-01-01T01:00:00Z"}}}}
 	var b strings.Builder
 	renderForecastDetails(&b, f)
@@ -27,6 +28,7 @@ func TestNativeSpreadRenderingRetainsScenarioFacts(t *testing.T) {
 //
 // Example: A supplied scenario gap is used when target basis is absent.
 func TestProvisionalRiskUsesOnlySuppliedEvidence(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, "unknown risk", provisionalRisk(nil))
 	require.Equal(t, "unknown risk", provisionalRisk(map[string]any{"target_basis": "unknown "}))
 	require.Equal(t, "review timing", provisionalRisk(map[string]any{"scenarios": []any{map[string]any{"evidence_gap": "review timing"}}}))

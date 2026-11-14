@@ -12,6 +12,7 @@ import (
 //
 // Example: The second update requires ordinal one, while omission means zero.
 func TestLaneCorrectionRequiresCorrectOrdinalForSameLineUpdates(t *testing.T) {
+	t.Parallel()
 	// first contains an independent update before the original lane closure.
 	//
 	// Example: A lane completion at ordinal one follows another worker update.

@@ -13,6 +13,7 @@ import (
 //
 // Example: A matching entry changes while a manually edited entry remains pending.
 func TestLegacyNarrativeRecoveryPreservesOwnerChanges(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"old managed text", "manual edit"} {
 		t.Run(text,
 			// Check one current owner-visible narrative value.

@@ -15,6 +15,7 @@ import (
 //
 // Example: A new infrastructure scenario appears even when the deadline is unchanged.
 func TestScenarioSetChangeRefreshesWithoutTargetChange(t *testing.T) {
+	t.Parallel()
 	oldSpread := `    base_case: {endpoint: '2026-11-02T15:45:00Z', packages: [{work: Finish, duration: '20 minutes', basis: measured}]}
     scenarios: [{name: Review, trigger: review, affected_work: Finish, evidence: observed, assumptions: none, added_duration: '15 minutes', event_time: '2026-11-02T15:45:00Z', endpoint: '2026-11-02T16:00:00Z', basis: measured}]
 `

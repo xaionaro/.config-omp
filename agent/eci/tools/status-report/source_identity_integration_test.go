@@ -14,6 +14,7 @@ import (
 //
 // Example: A formerly future deadline becomes incomplete once evaluation passes it.
 func TestReportEvaluationTime(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
@@ -49,6 +50,7 @@ func TestReportEvaluationTime(t *testing.T) {
 //
 // Example: Two roots with only one common outcome cannot share a forecast.
 func TestSharedRootForecastOutcomeIdentity(t *testing.T) {
+	t.Parallel()
 	report := linkedReport + `root_forecasts:
   - {forecast_ref: 'forecasts.yaml#/records/root', outcome: Root result, target: '2026-11-02T18:00:00Z', assessment: complete, baseline: '2026-11-02T18:00:00Z', evidence: initial}
 `

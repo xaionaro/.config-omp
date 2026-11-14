@@ -14,6 +14,7 @@ import (
 //
 // Example: A changed reason blocks the whole cancellation until its owner restores it.
 func TestStructuredCancellationWaitsForOwnerEvidence(t *testing.T) {
+	t.Parallel()
 	// prior records the reason that sync owns before the cancellation.
 	//
 	// Example: A later owner edit to this reason must not be overwritten.

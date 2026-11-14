@@ -13,6 +13,7 @@ import (
 //
 // Example: A deleted proof prevents retraction until the owner restores it.
 func TestNarrativeRetractionWaitsForOwnerEvidenceRestoration(t *testing.T) {
+	t.Parallel()
 	// first publishes one managed claim with its supporting evidence.
 	//
 	// Example: Later removal requires both owned fields to remain intact.

@@ -13,6 +13,7 @@ import (
 //
 // Example: An active forecast needs both a target and outcome before reopening.
 func TestLaneReopenWaitsForCompleteForecastOnDisk(t *testing.T) {
+	t.Parallel()
 	// closeEvent retires the first lane's completed forecast.
 	//
 	// Example: The lane becomes eligible for a later explicit reopening.

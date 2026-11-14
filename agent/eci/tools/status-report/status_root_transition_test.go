@@ -9,6 +9,7 @@ import (
 )
 
 func TestRootTransitionPreservesComments(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	original := []byte(valid + "root_forecasts:\n  - " + prior + " # owner comment\n")
 	if _, ok := removeRootSyncRecord(original, syncTargetRootForecast, "forecasts.yaml#/records/f", json.RawMessage(prior)); ok {
@@ -17,6 +18,7 @@ func TestRootTransitionPreservesComments(t *testing.T) {
 }
 
 func TestRootRemovalHandlesBlockAndFlowLists(t *testing.T) {
+	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	other := `{"forecast_ref":"forecasts.yaml#/records/g","outcome":"Other","target":"2026-11-02T17:00:00Z","assessment":"complete"}`
 	for _, section := range []string{"root_forecasts:\n  - " + prior + "\n", "root_forecasts:\n  - " + prior + "\n  - " + other + "\n", "root_forecasts: [" + prior + ", " + other + "]\n", "root_forecasts: [" + other + ", " + prior + "]\n"} {
@@ -40,6 +42,7 @@ func TestRootRemovalHandlesBlockAndFlowLists(t *testing.T) {
 //
 // Example: Reopening requires matching prior completion and evidence.
 func TestRootTransitionsReplay(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	cases := []struct {
@@ -112,6 +115,7 @@ func TestRootTransitionsReplay(t *testing.T) {
 }
 
 func TestPriorityEstimateRemovalRequiresExactPrior(t *testing.T) {
+	t.Parallel()
 	prior := `{"priority":"high","min_minutes":20,"max_minutes":40,"as_of":"2026-11-02T15:24:00Z","basis":"educated guess","assumptions":"review available","dependencies":"review","critical_path":"latest parallel endpoint"}`
 	got, ok := removeRootSyncRecord([]byte(valid), syncTargetPriorityEstimate, "high", json.RawMessage(prior))
 	if !ok || strings.Contains(string(got), "priority: high, min_minutes") {
@@ -130,6 +134,7 @@ func TestPriorityEstimateRemovalRequiresExactPrior(t *testing.T) {
 //
 // Example: A corrected completion time replaces only the previously supplied record.
 func TestRootCompletionCorrectionReplay(t *testing.T) {
+	t.Parallel()
 	old := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:00:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}

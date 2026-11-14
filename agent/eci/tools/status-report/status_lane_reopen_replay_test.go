@@ -11,6 +11,7 @@ import (
 //
 // Example: A reopened lane can close again.
 func TestLaneCloseReopenCloseReplay(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
 	closeEvent := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
@@ -43,6 +44,7 @@ func TestLaneCloseReopenCloseReplay(t *testing.T) {
 //
 // Example: Closing a lane clears a supplied followup marker.
 func TestLaneCompletionClearsExplicitFollowup(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    root_task_status: FOLLOWUP\n    implementation_status: IN PROGRESS", 1)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "inactive"}}}
@@ -57,6 +59,7 @@ func TestLaneCompletionClearsExplicitFollowup(t *testing.T) {
 //
 // Example: Closing alone preserves an existing followup marker.
 func TestLaneFollowupProjectsOnlyExplicitValue(t *testing.T) {
+	t.Parallel()
 	event := `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"root_task_status":"FOLLOWUP_PAUSED"}}]}}}`
 	r := explorationProjection(t, linkedReport, event, ledgerSource{}, forecastSource{})
 	if r.Lanes[0].RootTaskStatus != rootTaskFollowupPaused {
@@ -76,6 +79,7 @@ func TestLaneFollowupProjectsOnlyExplicitValue(t *testing.T) {
 //
 // Example: A different actual completion time stays pending until the source agrees.
 func TestLaneCompletionTimeCorrectionRequiresCanonicalTime(t *testing.T) {
+	t.Parallel()
 	original := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "    completed_at: '2026-11-02T15:25:00Z'\n", 1)
 	original = strings.Replace(original, "implementation_status: IN PROGRESS", "implementation_status: CLOSED", 1)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z"}}}}

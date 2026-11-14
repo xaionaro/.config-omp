@@ -15,6 +15,7 @@ import (
 //
 // Example: A shortened event log cannot silently replay over the report's saved cursor.
 func TestRefreshRejectsTruncatedLogAndRecoversAfterRestore(t *testing.T) {
+	t.Parallel()
 	// first records a prior projected claim.
 	//
 	// Example: Append a claim before an accidental log truncation.

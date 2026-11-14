@@ -13,6 +13,7 @@ import (
 //
 // Example: Two Jobs with different histories render as separate tables.
 func TestWriteTimeline(t *testing.T) {
+	t.Parallel()
 	entries := []timelineEntry{
 		{Job: "1.1", ParentChain: "1 → 1.1", Start: "15:00", End: "15:30", Fast: "checkpoint", Normal: "unknown"},
 		{Job: "1.2", ParentChain: "1 → 1.2", Start: "15:30", End: "16:00", Fast: "—", Normal: "review"},
@@ -31,6 +32,7 @@ func TestWriteTimeline(t *testing.T) {
 //
 // Example: An omitted Fast history renders as unknown.
 func TestWriteTimelineUnknown(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	writeTimeline(&b, []timelineEntry{{Job: "1", Start: "15:00", End: "15:30"}})
 	if !strings.Contains(b.String(), "| 15:00 – 15:30 | unknown | unknown |") {
@@ -42,6 +44,7 @@ func TestWriteTimelineUnknown(t *testing.T) {
 //
 // Example: Uncertain attribution and its evidence appear beside their interval.
 func TestWriteTimelineExtraEvidence(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	writeTimeline(&b, []timelineEntry{{Job: "1", ParentChain: "1", Start: "15:00", End: "15:30", Fast: "checkpoint", Normal: "unknown", Evidence: "log entry", Uncertainty: "path uncertain"}})
 	for _, want := range []string{"log entry", "path uncertain"} {

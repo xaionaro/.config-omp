@@ -11,6 +11,7 @@ import (
 //
 // Example: A higher return moves past a lower one while an unscored slot remains fixed.
 func TestCalculatedPriority(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "tasks:\n", "impact_scale: '0-10 user benefit'\ntasks:\n", 1)
 	input = strings.Replace(input, "impact: Useful\n    effort: {min_minutes: 30, max_minutes: 30, kind: elapsed, basis: guess}", "impact: Useful\n    impact_points: 9\n    impact_basis: educated guess\n    effort: {min_minutes: 30, max_minutes: 30, kind: work, basis: guess}", 1)
 	input = strings.Replace(input, "impact: unknown\n    effort: {min_minutes: 10, max_minutes: 30, kind: elapsed, basis: educated guess}", "impact: unknown\n    impact_points: 3\n    impact_basis: guess\n    effort: {min_minutes: 10, max_minutes: 30, kind: work, basis: educated guess}", 1)
@@ -28,6 +29,7 @@ func TestCalculatedPriority(t *testing.T) {
 //
 // Example: Negative impact cannot be ranked.
 func TestPriorityScoreRejectsInvalidPoints(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"-1", ".nan", ".inf"} {
 		input := strings.Replace(valid, "impact: Useful", "impact: Useful\n    impact_points: "+value, 1)
 		_, err := parse([]byte(input))
@@ -39,6 +41,7 @@ func TestPriorityScoreRejectsInvalidPoints(t *testing.T) {
 //
 // Example: Zero impact is scored, while zero effort is unscored.
 func TestPriorityScoreBoundaries(t *testing.T) {
+	t.Parallel()
 	zero, one, two := impactPoints(0), impactPoints(1), impactPoints(2)
 	zeroMinutes := fractionalMinutes(0)
 	ten := fractionalMinutes(10)
@@ -66,6 +69,7 @@ func TestPriorityScoreBoundaries(t *testing.T) {
 //
 // Example: A lane displays its task's points per work-minute.
 func TestLaneCalculatedPriority(t *testing.T) {
+	t.Parallel()
 	points := impactPoints(6)
 	minutes := fractionalMinutes(20)
 	tasks := map[taskID]task{"1": {ImpactPoints: &points, ImpactBasis: "guess", Effort: estimate{MinMinutes: &minutes, MaxMinutes: &minutes, Kind: effortWork}}}
@@ -79,6 +83,7 @@ func TestLaneCalculatedPriority(t *testing.T) {
 //
 // Example: A huge impact divided by a tiny effort is reported as unscored.
 func TestPriorityOverflowIsUnscored(t *testing.T) {
+	t.Parallel()
 	points := impactPoints(1e308)
 	minutes := fractionalMinutes(1e-308)
 	item := task{ImpactPoints: &points, ImpactBasis: "guess", Effort: estimate{MinMinutes: &minutes, MaxMinutes: &minutes, Kind: effortWork}}
@@ -90,6 +95,7 @@ func TestPriorityOverflowIsUnscored(t *testing.T) {
 //
 // Example: High-scoring lanes move past low-scoring lanes around an unscored lane.
 func TestLanePriorityOrdering(t *testing.T) {
+	t.Parallel()
 	low, high := impactPoints(1), impactPoints(3)
 	minutes := fractionalMinutes(10)
 	effort := estimate{MinMinutes: &minutes, MaxMinutes: &minutes, Kind: effortWork}
@@ -107,6 +113,7 @@ func TestLanePriorityOrdering(t *testing.T) {
 //
 // Example: A later high-scoring child appears above a lower-scoring child.
 func TestSiblingPriorityOrdering(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(valid, "tasks:\n", "impact_scale: benefit\ntasks:\n", 1)
 	input = strings.Replace(input, "impact: Useful\n    effort: {min_minutes: 30, max_minutes: 30, kind: elapsed, basis: guess}", "impact: Useful\n    impact_points: 1\n    impact_basis: guess\n    effort: {min_minutes: 30, max_minutes: 30, kind: work, basis: guess}", 1)
 	input = strings.Replace(input, "impact: unknown\n    effort: {min_minutes: 10, max_minutes: 30, kind: elapsed, basis: educated guess}", "impact: unknown\n    impact_points: 9\n    impact_basis: guess\n    effort: {min_minutes: 10, max_minutes: 30, kind: work, basis: educated guess}", 1)
@@ -120,6 +127,7 @@ func TestSiblingPriorityOrdering(t *testing.T) {
 //
 // Example: A lane without context asks for reconciliation in the report.
 func TestLaneRequirementContextFallback(t *testing.T) {
+	t.Parallel()
 	minutes := fractionalMinutes(10)
 	effort := estimate{MinMinutes: &minutes, MaxMinutes: &minutes, Kind: effortWork}
 	tasks := map[taskID]task{"1": {Effort: effort}, "2": {Effort: effort}, "3": {Effort: effort}}

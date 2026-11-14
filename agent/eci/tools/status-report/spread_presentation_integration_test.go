@@ -14,6 +14,7 @@ import (
 //
 // Example: Lane and root forecasts each show a seven-column spread table.
 func TestCanonicalSpreadPresentation(t *testing.T) {
+	t.Parallel()
 	projection := `source_projection:
         target_basis: conditional on review
         base_case:
@@ -89,6 +90,7 @@ func assertSpreadRow(
 //
 // Example: An unsupported scenario field is not invented.
 func TestSpreadPresentationMissingAndLegacy(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	report := strings.Replace(linkedReport, forecast, strings.TrimSuffix(forecast, "}")+", source_projection: {base_case: {endpoint: unknown}, scenarios: [{name: Gap, endpoint: unknown, extra: preserve-me}]}}", 1)
 	var out, errOut bytes.Buffer
@@ -110,6 +112,7 @@ func TestSpreadPresentationMissingAndLegacy(t *testing.T) {
 //
 // Example: An unverified legacy scenario remains visible beside the native spread.
 func TestNativeSpreadRetainsLegacy(t *testing.T) {
+	t.Parallel()
 	forecast := "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}"
 	report := strings.Replace(linkedReport, forecast, strings.TrimSuffix(forecast, "}")+", source_projection: {base_case: {endpoint: unknown}}, scenarios: [{case: legacy, trigger: legacy-only-proof-42, affected_work: legacy-work-42, duration_basis: legacy-duration-42, evidence_assumptions: legacy-evidence-42, endpoint: legacy-endpoint-42, evidence_gap_next_action: legacy-next-42}]}", 1)
 	var out, errOut bytes.Buffer

@@ -13,6 +13,7 @@ import (
 //
 // Example: A source-updated forecast remains eligible for retirement on a later close.
 func TestReopenedLaneTracksCanonicalForecastBeforeLaterClosure(t *testing.T) {
+	t.Parallel()
 	// closeEvent completes the lane against the canonical terminal work.
 	//
 	// Example: The forecast is retired each time the lane closes.

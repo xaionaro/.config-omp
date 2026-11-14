@@ -26,6 +26,7 @@ const (
 //
 // Example: A self-referential alias must fail rather than loop indefinitely.
 func TestYAMLCyclesTerminate(t *testing.T) {
+	t.Parallel()
 	binary := filepath.Join(t.TempDir(), "status-report")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	output, err := build.CombinedOutput()
@@ -67,6 +68,7 @@ func TestYAMLCyclesTerminate(t *testing.T) {
 //
 // Example: A self-merged lane must fail before publication.
 func TestRefreshRejectsCyclicReportWithoutWriting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	original := strings.Replace(valid, "lanes: []\n", "lanes: [&a {<<: *a}]\n", 1)
@@ -91,6 +93,7 @@ func TestRefreshRejectsCyclicReportWithoutWriting(t *testing.T) {
 //
 // Example: An explicit valid lifecycle overrides a null merged default.
 func TestLifecycleMergeOverride(t *testing.T) {
+	t.Parallel()
 	prefix := "details: {defaults: &defaults {lifecycle: null}}\n"
 	lane := "lanes:\n  - {<<: *defaults, task_id: '1', outcome: X, required_environment: implementation, implementation_status: NEW, test_status: NEW, prod_status: NEW"
 	_, err := parse([]byte(strings.Replace(valid, "lanes: []\n", prefix+lane+"}\n", 1)))

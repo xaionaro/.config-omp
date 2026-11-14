@@ -13,6 +13,7 @@ import (
 //
 // Example: A manually edited effort blocks a paired impact change until restored.
 func TestStructuredTaskUpdateRetriesAfterOwnerResolvesConflict(t *testing.T) {
+	t.Parallel()
 	// first establishes the logged ownership baseline for the task effort.
 	//
 	// Example: Record a measured estimate before the owner edits the report.

@@ -12,6 +12,7 @@ import (
 //
 // Example: An invalid forecast file is repaired before the retained event is retried.
 func TestRefreshRecoversLogAfterForecastSourceRepair(t *testing.T) {
+	t.Parallel()
 	// event records progress while a required canonical source is temporarily invalid.
 	//
 	// Example: Repairing the source permits the same event to project once.

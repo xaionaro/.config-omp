@@ -12,6 +12,7 @@ import (
 //
 // Example: The last closure replaces the reopened forecast.
 func TestDelayedRootCloseReopenClose(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	later := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:10:00Z"}`
@@ -41,6 +42,7 @@ func TestDelayedRootCloseReopenClose(t *testing.T) {
 //
 // Example: A reopened forecast can carry a changed target when current sources agree.
 func TestRootChainReplacesChangedReopenedForecast(t *testing.T) {
+	t.Parallel()
 	old := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	changed := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T17:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
@@ -69,6 +71,7 @@ func TestRootChainReplacesChangedReopenedForecast(t *testing.T) {
 //
 // Example: A delayed completion and reopening end with an explicitly cancelled root.
 func TestRootChainRetiresForecastAfterCancellation(t *testing.T) {
+	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
 	completion := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":` + forecast + `,"record":` + completion + `}]}}}` + "\n"

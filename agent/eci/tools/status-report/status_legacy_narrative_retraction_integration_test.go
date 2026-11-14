@@ -13,6 +13,7 @@ import (
 //
 // Example: Withdraw only an unchanged managed claim and preserve adjacent prose.
 func TestLegacyNarrativeRetractionRecoveryPreservesOwnerChanges(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"old managed text", "manual edit"} {
 		t.Run(text,
 			// Check one current owner-visible narrative value.

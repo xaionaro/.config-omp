@@ -13,6 +13,7 @@ import (
 //
 // Example: A late forecast retirement is observed on retry before the lane closes.
 func TestLaneClosureRetriesWhenForecastRetiresDuringRefresh(t *testing.T) {
+	t.Parallel()
 	// event requests closure of a source-backed implementation lane.
 	//
 	// Example: Closure waits for the canonical forecast to become inactive.

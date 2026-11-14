@@ -13,6 +13,7 @@ import (
 //
 // Example: A changed forecast delays one completion while an independent root completes.
 func TestRootCompletionRecoversAfterOwnerRestoresPrior(t *testing.T) {
+	t.Parallel()
 	// roots are two independent canonical completions.
 	//
 	// Example: The second root is not blocked by the first root's owner edit.

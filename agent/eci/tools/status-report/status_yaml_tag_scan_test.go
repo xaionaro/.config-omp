@@ -13,6 +13,7 @@ import (
 //
 // Example: Multiple explicit tags do not shift delimiters or hide owner comments.
 func TestTaggedFlowScannerPreservesSourcePositions(t *testing.T) {
+	t.Parallel()
 	for _, ending := range []string{"\n", "\r\n"} {
 		t.Run(strings.ReplaceAll(ending, "\r", "CR"),
 			// Compare real byte positions and comment detection under one line ending.

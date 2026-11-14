@@ -16,6 +16,7 @@ import (
 //
 // Example: Null reviews, lanes and root sections accept their first record.
 func TestNullOptionalSectionsAcceptExplicitAdditions(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, section, event string
 		work                 workData
@@ -81,6 +82,7 @@ func TestNullOptionalSectionsAcceptExplicitAdditions(t *testing.T) {
 //
 // Example: A flow-root null review list accepts an explicitly supplied review.
 func TestNullReviewCLIReplaysAndPreservesComments(t *testing.T) {
+	t.Parallel()
 	var mapping map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &mapping))
 	mapping["reviews"] = nil
@@ -105,6 +107,7 @@ func TestNullReviewCLIReplaysAndPreservesComments(t *testing.T) {
 //
 // Example: Tagged, implicit and CRLF nulls initialize without losing a note.
 func TestNullReviewStylesPreserveOwnerComments(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, suffix string }{
 		{"implicit", "reviews: # owner note\n"},
 		{"tilde", "reviews: ~ # owner note\n"},
@@ -156,6 +159,7 @@ func TestNullReviewStylesPreserveOwnerComments(t *testing.T) {
 //
 // Example: A root-completions alias must not turn into a review list.
 func TestNullReviewSharedAliasPreservesOtherSection(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "decisions: [Use YAML]", "reviews: &owner null\nroot_completions: *owner\ndecisions: [Use YAML]", 1)
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
@@ -181,6 +185,7 @@ func TestNullReviewSharedAliasPreservesOtherSection(t *testing.T) {
 //
 // Example: An initialized anchored list accepts a later distinct review.
 func TestAnchoredNullReviewAcceptsLaterAddition(t *testing.T) {
+	t.Parallel()
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport+"reviews: &owner null # owner note\n"), 0600))

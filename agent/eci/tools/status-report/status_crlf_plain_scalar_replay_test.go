@@ -15,6 +15,7 @@ import (
 //
 // Example: An end-of-line state update preserves adjacent Unicode and comments.
 func TestCRLFPlainScalarUpdatePreservesReport(t *testing.T) {
+	t.Parallel()
 	input := strings.Replace(linkedReport, "state: Working\n", "state: Working λ\n", 1)
 	input = strings.Replace(input, "progress: [Implementation started]", "progress: [Implementation started] # owner note", 1)
 	input = strings.ReplaceAll(input, "\n", "\r\n")
@@ -45,6 +46,7 @@ func TestCRLFPlainScalarUpdatePreservesReport(t *testing.T) {
 //
 // Example: A field after CRLF and Unicode still selects its exact original scalar.
 func TestCRLFLexerPositionsMapToOriginalBytes(t *testing.T) {
+	t.Parallel()
 	// input includes UTF-8 and two CRLF boundaries before the target field.
 	//
 	// Example: Resolve a nested mapping and scalar without shifting either byte span.

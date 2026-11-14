@@ -12,6 +12,7 @@ import (
 //
 // Example: A later update detects edits to a newly added task's owner and effort.
 func TestTaskAdditionOwnershipPreservesSuppliedAndAbsentValues(t *testing.T) {
+	t.Parallel()
 	record := json.RawMessage(`{"id":"1.2","title":"Unknown","priority":"unknown","impact":"unknown","effort":{"kind":"elapsed","max_minutes":30,"min_minutes":10,"basis":"educated guess"},"status":"unknown","owner":"Alice"}`)
 	values, ok := taskAdditionOwnership(record)
 	require.True(t, ok)
@@ -27,6 +28,7 @@ func TestTaskAdditionOwnershipPreservesSuppliedAndAbsentValues(t *testing.T) {
 //
 // Example: A manual effort edit blocks a subsequent logged effort update.
 func TestTaskAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
+	t.Parallel()
 	record := json.RawMessage(`{"effort":{"min_minutes":10,"max_minutes":30,"kind":"elapsed","basis":"educated guess"}}`)
 	previous, ok := taskAdditionOwnership(record)
 	require.True(t, ok)
@@ -43,6 +45,7 @@ func TestTaskAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
 //
 // Example: Remember a review critic and a lane blocker as separate owned fields.
 func TestAdditionOwnershipMatchesTargetEncodings(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		target                  syncTarget
 		record, field, expected string
@@ -64,6 +67,7 @@ func TestAdditionOwnershipMatchesTargetEncodings(t *testing.T) {
 //
 // Example: Preserve a manually changed critic after review insertion.
 func TestReviewAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
+	t.Parallel()
 	record := `{"task_id":"1.1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}`
 	previous, ok := additionOwnership(syncTargetReview, json.RawMessage(record))
 	require.True(t, ok)
@@ -81,6 +85,7 @@ func TestReviewAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
 //
 // Example: Preserve an owner's literal "null" after a projected null.
 func TestScalarSyncOwnershipDistinguishesNull(t *testing.T) {
+	t.Parallel()
 	nullValues, ok := additionOwnership(syncTargetTask, json.RawMessage(`{"owner":null}`))
 	require.True(t, ok)
 	textValues, ok := additionOwnership(syncTargetTask, json.RawMessage(`{"owner":"null"}`))

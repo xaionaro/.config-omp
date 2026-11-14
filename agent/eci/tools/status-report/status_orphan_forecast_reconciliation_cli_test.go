@@ -15,6 +15,7 @@ import (
 //
 // Example: An orphan active forecast is diagnosed until its owner retires it.
 func TestUnlinkedActiveForecastSurfacesInCLI(t *testing.T) {
+	t.Parallel()
 	// orphan is a valid forecast that no work record references.
 	//
 	// Example: An inactive orphan does not represent untracked active work.

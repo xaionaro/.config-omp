@@ -15,6 +15,7 @@ import (
 //
 // Example: A task closure, review, and timeline coexist with existing report fields.
 func TestJSONRootReplaysUpdatesAndAddsMissingSections(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	input, err := json.Marshal(source)
@@ -48,6 +49,7 @@ func TestJSONRootReplaysUpdatesAndAddsMissingSections(t *testing.T) {
 //
 // Example: Advancing a report anchors an existing verified-empty timeline.
 func TestFlowRootRefreshPreservesHistoricalTimelineAndComment(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["timeline_state"] = "verified_empty"
@@ -82,6 +84,7 @@ func TestFlowRootRefreshPreservesHistoricalTimelineAndComment(t *testing.T) {
 //
 // Example: Replace an older empty timeline without dropping neighboring fields.
 func TestJSONRootTimelineReplacementPreservesOtherSections(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["timeline_as_of"] = "2026-11-02T15:14:00Z"
@@ -111,6 +114,7 @@ func TestJSONRootTimelineReplacementPreservesOtherSections(t *testing.T) {
 //
 // Example: Eight supplied intervals replace an older empty timeline without changing tasks.
 func TestJSONRootAcceptsPopulatedTimelineSnapshot(t *testing.T) {
+	t.Parallel()
 	var source map[string]any
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["timeline_as_of"] = "2026-11-02T15:14:00Z"

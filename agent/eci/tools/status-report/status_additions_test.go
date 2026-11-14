@@ -10,6 +10,7 @@ import (
 //
 // Example: A new task and its review preserve prior comments and entries.
 func TestSyncAdditionPreservesExistingRecords(t *testing.T) {
+	t.Parallel()
 	data := []byte(strings.Replace(valid, "reviews: []", "reviews: [] # existing reviews", 1))
 	task := syncAddition{Target: syncTargetTask, Record: json.RawMessage(`{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":1,"max_minutes":2,"kind":"work","basis":"guess"},"status":"NEW"}`)}
 	got, ok := applySyncAddition(data, task)
@@ -33,6 +34,7 @@ func TestSyncAdditionPreservesExistingRecords(t *testing.T) {
 //
 // Example: Missing critic or effort leaves the report unchanged.
 func TestSyncAdditionRejectsIncompleteRecords(t *testing.T) {
+	t.Parallel()
 	for _, addition := range []syncAddition{
 		{Target: syncTargetTask, Record: json.RawMessage(`{"id":"3","title":"New","priority":"high","impact":"Useful"}`)},
 		{Target: syncTargetTask, Record: json.RawMessage(`{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":1,"max_minutes":2,"kind":"work","basis":"guess"},"status":"CLOSED"}`)},
@@ -51,6 +53,7 @@ func TestSyncAdditionRejectsIncompleteRecords(t *testing.T) {
 //
 // Example: A report without reviews receives its first supplied review.
 func TestSyncReviewAdditionCreatesMissingList(t *testing.T) {
+	t.Parallel()
 	data := []byte(strings.Replace(valid, "reviews: []", "# reviews were omitted", 1))
 	addition := syncAddition{Target: syncTargetReview, Record: json.RawMessage(`{"task_id":"1.1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}`)}
 	got, ok := applySyncAddition(data, addition)
@@ -66,6 +69,7 @@ func TestSyncReviewAdditionCreatesMissingList(t *testing.T) {
 //
 // Example: A task and its complete estimate publish together.
 func TestSyncAdditionGroupRequiresMatchingEstimate(t *testing.T) {
+	t.Parallel()
 	task := syncAddition{Target: syncTargetTask, Record: json.RawMessage(`{"id":"3","title":"New","priority":"urgent","impact":"Useful","effort":{"min_minutes":1,"max_minutes":2,"kind":"work","basis":"guess"},"status":"NEW"}`)}
 	estimate := syncAddition{Target: syncTargetPriorityEstimate, Record: json.RawMessage(`{"priority":"urgent","as_of":"2026-11-02T15:24:00Z","min_minutes":1,"max_minutes":2,"basis":"guess","assumptions":"none","dependencies":"none","critical_path":"task"}`)}
 	data := []byte(valid)

@@ -18,6 +18,7 @@ const legacyWithdrawalSourceLog = `{"event":"decision","details":{"status_update
 //
 // Example: Retract a pending claim before it appears while keeping unrelated progress.
 func TestLegacyWithdrawalCancelsUnpublishedNarrative(t *testing.T) {
+	t.Parallel()
 	// saved records a never-published claim and its later retraction.
 	//
 	// Example: Resume pending fields after a restart without resurrecting withdrawn text.
@@ -43,6 +44,7 @@ func TestLegacyWithdrawalCancelsUnpublishedNarrative(t *testing.T) {
 //
 // Example: Cancelling an unpublished claim does not remove owner-authored text.
 func TestLegacyWithdrawalKeepsOwnerAuthoredSubject(t *testing.T) {
+	t.Parallel()
 	// saved contains an unpublished claim and its subsequent withdrawal.
 	//
 	// Example: Preserve an independently authored entry with the same subject.
@@ -66,6 +68,7 @@ func TestLegacyWithdrawalKeepsOwnerAuthoredSubject(t *testing.T) {
 //
 // Example: Missing source events cannot authorize or publish a withdrawn claim.
 func TestLegacyWithdrawalWaitsForSourceProvenance(t *testing.T) {
+	t.Parallel()
 	// saved retains a claim and retraction when their original events are unavailable.
 	//
 	// Example: Neither pending field is applied without its immutable predecessor.

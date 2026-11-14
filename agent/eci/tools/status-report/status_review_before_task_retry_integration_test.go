@@ -12,6 +12,7 @@ import (
 //
 // Example: A review and its later critic update apply after the missing task arrives.
 func TestReviewAndCriticWaitForTaskAcrossRefresh(t *testing.T) {
+	t.Parallel()
 	// review adds an assessment for a task not yet present in the report.
 	//
 	// Example: Its later critic update must not bypass the pending addition.

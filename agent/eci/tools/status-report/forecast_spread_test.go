@@ -11,6 +11,7 @@ import (
 //
 // Example: A known scenario later than the target remains an inconsistency.
 func TestForecastSpreadUnitConsistency(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, target, base, endpoint string
 		wantIssue                    bool
@@ -48,6 +49,7 @@ func TestForecastSpreadUnitConsistency(t *testing.T) {
 //
 // Example: An unknown scenario cannot hide another endpoint past the target.
 func TestForecastSpreadUnknownDoesNotMaskKnownViolation(t *testing.T) {
+	t.Parallel()
 	src := map[string]any{"status": "active", "target": "2030-01-01T01:00:00Z", "base_case": map[string]any{"endpoint": "2030-01-01T00:30:00Z"}, "scenarios": []any{map[string]any{"endpoint": "unknown"}, map[string]any{"endpoint": "2030-01-01T02:00:00Z"}}}
 	issues := strings.Join(forecastSpreadIssues(src), "\n")
 	require.Contains(t, issues, "exceeds target")

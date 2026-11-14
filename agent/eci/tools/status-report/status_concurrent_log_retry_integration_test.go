@@ -12,6 +12,7 @@ import (
 //
 // Example: A new event arriving before publication remains visible on retry.
 func TestRefreshRetriesAfterConcurrentLogAppend(t *testing.T) {
+	t.Parallel()
 	// first is the event read by the initial refresh.
 	//
 	// Example: A worker reports its first progress update.

@@ -12,6 +12,7 @@ import (
 //
 // Example: A changed completion time cannot publish a stale lane record.
 func TestTerminalLaneAdditionWaitsForMatchingSources(t *testing.T) {
+	t.Parallel()
 	// event supplies a completed lane without an active report forecast.
 	//
 	// Example: Add an accepted implementation completion.

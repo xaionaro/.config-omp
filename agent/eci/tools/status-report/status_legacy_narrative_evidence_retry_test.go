@@ -13,6 +13,7 @@ import (
 //
 // Example: Preserve a manual claim edit before applying its pending proof update.
 func TestLegacyNarrativeEvidenceWaitsForOwnedText(t *testing.T) {
+	t.Parallel()
 	// saved contains the managed claim and a pending proof change.
 	//
 	// Example: Restore evidence ownership after an interrupted upgrade.

@@ -13,6 +13,7 @@ import (
 //
 // Example: Two same-line transitions remain independently addressable.
 func TestRootPendingRetainsOrderedOccurrences(t *testing.T) {
+	t.Parallel()
 	pending := map[string]syncPendingRootAddition{}
 	a := syncAddition{Target: syncTargetRootCompletion, Record: json.RawMessage(`{"work_ref":"project-understanding.yaml#/records/w"}`)}
 	if !queueRootAddition(pending, 1, 0, a) || !queueRootAddition(pending, 1, 1, a) || len(pending) != 2 {
@@ -27,6 +28,7 @@ func TestRootPendingRetainsOrderedOccurrences(t *testing.T) {
 //
 // Example: Duplicate matching entries cannot supply a missing ordinal.
 func TestRootPendingMigrationRequiresUniqueExactLogMatch(t *testing.T) {
+	t.Parallel()
 	entry := `{"target":"root_completion","record":{"work_ref":"project-understanding.yaml#/records/w"},"evidence":"accepted"}`
 	old := syncPendingAddition{Line: 1, Target: syncTargetRootCompletion, ID: "project-understanding.yaml#/records/w", Record: `{"work_ref":"project-understanding.yaml#/records/w"}`, Evidence: "accepted"}
 	for _, tc := range []struct {
@@ -46,6 +48,7 @@ func TestRootPendingMigrationRequiresUniqueExactLogMatch(t *testing.T) {
 //
 // Example: A pending correction keeps both its prior and corrected occurrences.
 func TestRootPendingMigrationPreservesCorrectionChain(t *testing.T) {
+	t.Parallel()
 	oldRecord := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"old"}`
 	newRecord := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"new"}`
 	log := `{"details":{"status_update":{"additions":[{"target":"root_completion","record":` + oldRecord + `,"evidence":"accepted"}]}}}` + "\n" + `{"event":"correction","details":{"corrects":1,"status_update":{"additions":[{"target":"root_completion","record":` + newRecord + `,"evidence":"corrected","expected_prior":` + oldRecord + `}]}}}`
@@ -60,6 +63,7 @@ func TestRootPendingMigrationPreservesCorrectionChain(t *testing.T) {
 //
 // Example: A pending transition survives report decoding.
 func TestRootPendingYAMLRoundTrip(t *testing.T) {
+	t.Parallel()
 	original := syncPendingRootAddition{Locator: rootLifecycleLocator{Line: 1, Ordinal: 0, Target: syncTargetRootCompletion}, Addition: syncAddition{Target: syncTargetRootCompletion, Record: json.RawMessage(`{"work_ref":"w","outcome":"x"}`), ExpectedPrior: json.RawMessage(`{"forecast_ref":"f"}`), Evidence: "accepted"}}
 	encoded, err := json.Marshal(original)
 	if err != nil {
@@ -78,6 +82,7 @@ func TestRootPendingYAMLRoundTrip(t *testing.T) {
 //
 // Example: An ambiguous source retains duplicate pending metadata even if the report matches.
 func TestLegacyAppliedRootMigrationRequiresIntactRecordAndUniqueSource(t *testing.T) {
+	t.Parallel()
 	record := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:00:00Z"}`
 	entry := `{"target":"root_completion","evidence":"accepted","record":` + record + `}`
 	key := "addition/root_completion/project-understanding.yaml#/records/w"

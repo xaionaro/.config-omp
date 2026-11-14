@@ -14,6 +14,7 @@ import (
 //
 // Example: A session with no forecast source renders an incomplete report.
 func TestReconciliationMissingSources(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		ledger string
@@ -140,6 +141,7 @@ records:
 //
 // Example: A changed source target makes the old report incomplete.
 func TestReconciliationForecasts(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name       string
 		report     string
@@ -191,6 +193,7 @@ func TestReconciliationForecasts(t *testing.T) {
 //
 // Example: Direct work can be fully represented without an applicable forecast.
 func TestReconciliationDirectWorkWithoutForecast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "status: unknown", "status: IN PROGRESS", 1)
@@ -221,6 +224,7 @@ records:
 //
 // Example: A changed scenario endpoint makes the old projection incomplete.
 func TestReconciliationRichForecast(t *testing.T) {
+	t.Parallel()
 	projection := `      source_projection:
         base_case:
           endpoint: '2026-11-02T15:45:00Z'
@@ -273,6 +277,7 @@ func TestReconciliationRichForecast(t *testing.T) {
 //
 // Example: A past high-priority endpoint is harmless after high-priority work completes.
 func TestReconciliationCompletedPriorityDoesNotExpire(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(valid, "scope_complete: false", "scope_complete: true", 1)
 	report = strings.Replace(report, "title: Root", "title: Root\n    work_refs: ['project-understanding.yaml#/records/work:done']", 1)
 	report = strings.Replace(report, "status: IN PROGRESS\n  - id: \"1.1\"", "status: CLOSED\n    evidence: accepted\n  - id: \"1.1\"", 1)
@@ -309,6 +314,7 @@ records:
 //
 // Example: A different completion instant makes the report incomplete.
 func TestReconciliationClosedLaneCompletion(t *testing.T) {
+	t.Parallel()
 	report := strings.Replace(linkedReport, "implementation_status: IN PROGRESS", "implementation_status: CLOSED\n    completed_at: '2026-11-02T15:00:00Z'", 1)
 	report = strings.Replace(report, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	ledger := strings.Replace(linkedLedger, "state: active, next_action: Finish, reporting_roles: [lane]", "state: completed, completed_at: '2026-11-02T15:00:00+00:00', next_action: none, reporting_roles: [lane]", 1)
