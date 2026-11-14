@@ -47,6 +47,6 @@ Each issue attaches to one option and may carry the orthogonal `DUPLICATE-of-#N`
 
 - Choosing a winner without independent baseline/current-source reread or concrete text.
 - Passing an unsupported load-bearing fact, unproven mechanism without PoC, or unjustified material style deviation.
-- Selecting a design whose execution-time forecast is missing, flat, or has unexplained leaves above 30 minutes.
+- Selecting a design whose execution-time forecast is missing or malformed.
 - Leaving a finding without a decided treatment and its evidence, or applying acceptance gates that the Supervisor enforces.
 - Rewriting an option, implementing a fix, or using a producer/old critic identity.

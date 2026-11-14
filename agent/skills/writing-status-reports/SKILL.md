@@ -86,16 +86,13 @@ include concrete impact and its score points. Priority labels group forecasts
 only; they do not rank work. Separately,
 give the estimated remaining work effort or elapsed duration with units and a
 range, explicitly identifying which it is and distinguishing it from agent
-reasoning effort. Forecast each priority with the work tree defined in
-[Work estimates](../../eci-binding-contract.md#work-estimates), including
-required review, checks, repairs, and acceptance. Report a completion estimate for each priority present,
+reasoning effort. Report a completion estimate for each priority present,
 including unscored items, and an overall completion estimate for all
-remaining in-scope work. Give each estimate's basis, material assumptions,
-uncertainty, and dependencies, including external waits. Combine serial
-durations and use the latest required parallel endpoint on the critical path;
-do not sum parallel durations or double-count shared work. Follow
-[Work estimates](../../eci-binding-contract.md#work-estimates) and,
-for ECI, the [scenario forecast rule](../context-ledger/SKILL.md#eci-scenario-forecasts).
+remaining in-scope work. Derive them from the work tree under
+[Work estimates](../../eci-binding-contract.md#work-estimates) and, for ECI,
+the [scenario forecast rule](../context-ledger/SKILL.md#eci-scenario-forecasts).
+Give each estimate's basis, material assumptions, uncertainty, and
+dependencies, including external waits.
 Use evidence-backed guesses for missing impact and work inputs, labeled as
 estimates, or leave priority unscored with a reason. Never invent
 measurements or omit the completion estimate.
