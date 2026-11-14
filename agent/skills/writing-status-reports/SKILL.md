@@ -112,7 +112,7 @@ history. Never
 invent events or treat a commit as proof of acceptance. Timeline-only reports
 follow the forecast exception below.
 
-Calculate progress from the report YAML's leaf task statuses using the status report tool. The YAML task tree mirrors the forecast work tree; each known leaf is one estimated package; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Flag leaves whose upper estimate exceeds 30 minutes and explain why they cannot be split. Label the result an equal-package estimate, not elapsed-time progress; rebaseline when scope is added or split. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
+Calculate progress from the report YAML's leaf task statuses using the status report tool. The YAML task tree mirrors the forecast work tree; each known leaf is one estimated package; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Label the result an equal-package estimate, not elapsed-time progress; rebaseline when scope is added or split. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
 
 ## Lane forecasts
 

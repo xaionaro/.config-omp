@@ -19,8 +19,17 @@ records:
     base_case:
       endpoint: "2000-01-01T00:45:00Z"
       packages:
-        - work: "Reconcile supplied clock evidence"
+        - id: "1"
+          work: "Reconcile supplied clock evidence"
           duration: "45 minutes"
+          basis: "Derived: serial children 1.1 and 1.2"
+        - id: "1.1"
+          work: "Match each clock reading to its source record"
+          duration: "25 minutes"
+          basis: "Educated guess; no measured duration"
+        - id: "1.2"
+          work: "Record each reading's evidence limits"
+          duration: "20 minutes"
           basis: "Educated guess; no measured duration"
     scenarios:
       - name: "Evidence review delay"

@@ -313,8 +313,11 @@ the package duration basis, endpoint, evidence, assumptions and evidence gaps
 needed by the scenario rules below. Store durations and ranges with units and
 UTC endpoints as quoted strings; retain full detail rather than collapsing
 scenario data into a rendered report. Omit an active target when inactive.
-`base_case` contains `endpoint` and a `packages` list; each package contains
-`work`, `duration`, and `basis`. Each scenario contains `name`, `trigger`,
+`base_case` contains `endpoint` and a `packages` list with one entry per node of
+the [work tree](../../eci-binding-contract.md#work-estimates). Each package
+contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
+leaf the work tree must explain; a child's `id` is its parent's `id` plus `.`
+and a segment, such as `1.2`. Each scenario contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
 is unsupported. Add fields needed for combinations, external waits, or other
@@ -330,15 +333,12 @@ When a lane or root forecast changes, update its current record in `forecasts.ya
 
 For ECI forecasts, including nested ECI, store a base case and every material
 downside scenario alongside the canonical target, including risks whose timing
-is not yet supported. Apply [Work estimates](../../eci-binding-contract.md#work-estimates):
-decompose remaining work, use labeled educated guesses where evidence is
-incomplete, and always give an overall completion estimate. Keep evidence gaps
-visible; a probe supplements the estimate.
+is not yet supported. Apply [Work estimates](../../eci-binding-contract.md#work-estimates) and keep
+evidence gaps visible.
 
 - Base case: completion UTC for the remaining authorized in-scope work on the
-  current critical path, assuming no listed downside scenario. Estimate each
-  package using evidence or a labeled educated guess with reasoning; add serial
-  durations and use the latest required parallel endpoint. Add no generic buffer.
+  current critical path, assuming no listed downside scenario. Derive it from
+  the work tree in `packages`; add no generic buffer.
 - Scenario: include every material downside risk that could affect completion
   of the requested ECI outcome. Record its name, trigger/evidence, affected work
   or dependency, evidence assessed, assumptions and limits, added
