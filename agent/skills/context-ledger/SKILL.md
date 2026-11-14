@@ -36,13 +36,17 @@ lineage alongside known work; do not block it.
 
 Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
 
+### User requirements
+
+Apply [Project requirements](../../eci-binding-contract.md#project-requirements) before classifying material input. Record each user requirement, including each clarification or change of one, as its own `requirement` record, and link it from each outcome it affects. Its `source_text` holds only the user's exact words, with secrets redacted. Its `source_context` holds what a fresh reader needs to read those words as meant, such as their source message, what they answer, and the ID of any requirement they clarify or change. Wherever anything is claimed to be a user requirement, cite its requirement ID.
+
+Preserve other exact attributed user passages and distinguish project-specific changes, instruction corrections, hypotheses and derived work using existing record types and links. Reuse the affected outcome for corrective work. Keep applicable instruction sources and unresolved inquiries with their owner and next action; do not attribute agent-derived checks to the user.
+
 Ground each progress item in `high_level_log.jsonl` and `latest-status-report.yaml` in a
-named or linked user-stated requirement. Explain how the change advances or
+user requirement cited by its ID. Explain how the change advances or
 verifies the requested outcome; for a blocker, state its effect on that outcome.
 For supporting work, state what it enables and whether the requested outcome
 remains open.
-
-Apply [Project requirements](../../eci-binding-contract.md#project-requirements) before classifying material input. Preserve exact attributed user passages and distinguish project-specific changes, instruction corrections, hypotheses and derived work using existing record types and links. Reuse the affected outcome for corrective work. Keep applicable instruction sources and unresolved inquiries with their owner and next action; do not attribute agent-derived checks to the user.
 
 Example: ‘The test harness now exercises the requested production behavior,
 making the fix verifiable; the production fix remains open.’
@@ -113,7 +117,7 @@ same envelope themselves.
 | `summary` | Nonempty string describing the changed result and whether supporting work leaves the requested outcome open. |
 | `actor` | Performer `{id, role, turn?}`. Use the exact stable runtime worker id from assignments/reports; role changes keep that id. `id`, `role`, and available `turn` are nonempty strings. |
 | `recorded_by` | Optional recorder identity in the same form when a coordinator records another worker. Keep the worker in `actor`; the root log session is not the performer. |
-| `requirements`, `evidence` | For `worker_progress`, nonempty arrays of nonempty strings naming/linking user requirements and evidence references. |
+| `requirements`, `evidence` | For `worker_progress`, nonempty arrays of nonempty strings citing user requirement IDs and evidence references. |
 | `change`, `reason` | For `worker_progress`, `{before, after}` and `reason` are nonempty strings. Use `"unknown"` for an actually unknown prior state; do not fabricate it. Other material events retain prior/new state, reason, and evidence as applicable. |
 | `next_action` | Nonempty string required by this guidance when work remains; omit when no action remains. The CLI checks its type when supplied. |
 | `details` | Event-specific payload, such as verdicts, forecast targets, commit references, or `corrects` identifying a mistaken prior entry. |
@@ -446,7 +450,7 @@ and relationship arrays are nonempty; named links target the stated record types
 
 | Type | `data` fields | Required typed links |
 |---|---|---|
-| requirement | `source_text: string`, `acceptance: string[]` | None |
+| requirement | `source_text: string`, `source_context: string`, `acceptance: string[]` | None |
 | outcome | `description: string` | `requirements` → requirement, `scope` → scope |
 | scope | `include: string[]`, `exclude: string[]` | None |
 | work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work | `outcomes` → outcome |
@@ -464,7 +468,7 @@ single-assertion string is allowed; pasted prose reports/chronology are not.
 Absent knowledge is an `unknown`, never fabricated zero/false/empty. Provisional
 inferences state their uncertainty, effect and resolution action in unknown records.
 
-Retain exact attributed source text and acceptance in requirements; outcomes
+Retain each requirement's exact source text, source context and acceptance; outcomes
 link their requirements and bounded scope, work links outcomes. Evidence strings
 resolve to accessible passages, retained exact user quotes or observed output;
 relative file references resolve from the canonical session directory. Extract

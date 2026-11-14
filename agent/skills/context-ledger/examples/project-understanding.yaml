@@ -17,6 +17,7 @@ records:
       source_text: |-
         Preserve the receiver clock setting.
         Show the evidence limitations.
+      source_context: "Synthetic user message that starts the receiver clock work"
       acceptance:
         - "One current clock value with units"
         - "Limitations remain visible after completion"

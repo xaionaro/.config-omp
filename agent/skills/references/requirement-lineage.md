@@ -11,7 +11,7 @@ Keep the current `project-understanding.yaml` ledger readable enough to answer:
 
 | Record | Purpose |
 | --- | --- |
-| User requirement | What outcome the user asked for, in concise faithful wording. |
+| User requirement | The user's exact words in its [requirement record](../context-ledger/SKILL.md#user-requirements). |
 | Lane | What bounded work is being done. |
 | Reason | Why the lane helps that outcome. |
 | Parent or prerequisite | Earlier lane when it materially explains the relationship. |

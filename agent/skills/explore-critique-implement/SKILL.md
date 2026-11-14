@@ -18,7 +18,7 @@ On activation and closure, the Supervisor follows [native goal lifecycle](refere
 - For material ECI work, keep `exact user source → faithful requested outcome →
   bounded scope`. A repair necessary to meet or prove that outcome stays current-lane work.
   For each already-discovered lower-priority code issue that remains unfixed, add the TODO defined by [Main ECI quality responsibility](references/fast-path.md#main-eci-quality-responsibility). It does not change an in-scope disposition or replace its required repair; for an unadmitted separate-outcome issue, its TODO is the only code edit and the issue remains post-ECI.
-  Missing or stale lineage never blocks known in-scope work.
+  Cite each claimed user requirement by its [ledger ID](../context-ledger/SKILL.md#user-requirements). Missing or stale lineage never blocks known in-scope work.
 - Derive interface scope and lifetime from the requested capability, affected entities’ meaning and ownership, contracts, and representative consumers. An immediate example alone does not establish a narrower boundary. Preserve explicitly authorized narrow or staged scope; add no speculative capabilities.
 - Apply [coding-policy enforcement](../references/workflow-runtime/coding-style-admission.md) to governed work. For workflow or review-failure repairs, apply [policy failure investigations](../references/review-investigation.md#policy-failure-investigations) before adopting scope, selecting a remedy, or accepting its proof.
 - Every admitted outcome starts main-path ECI and one [Fast Owner](references/fast-path.md) concurrently within its home Job. That module owns launch, lifetime, shared-tree priority, evidence feedback, adoption, and closure rules.
