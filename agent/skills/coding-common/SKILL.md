@@ -57,8 +57,8 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Whenever you design or modify code, you MUST eliminate compensating complexity and patchwork by correcting the underlying design. First establish the domain model, invariants, and responsibilities from domain semantics and contracts, without assuming the existing structure is correct. Use that model to derive or validate a coherent design that solves the problem directly, then implement it and remove the code and mechanisms it makes unnecessary. A sounder design may be more general or flexible.
 - Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
 - Decrease moving parts, state, and call depth when touching code.
-- Simplify through understanding while keeping required behavior, contracts, and handled cases. Never amputate semantics to look simpler.
-- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a stated reason, such as a requirement, contract, or consumer need; that it exists is not a reason.
+- Simplify through understanding, never by dropping behavior, contracts, or handled cases just to look simpler.
+- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete reason you state, such as a requirement, an external contract, or a consumer need; that it exists is not a reason.
 
 ### Computational complexity
 

@@ -1642,6 +1642,9 @@ assert_finding_treatment_rules() {
   require_text "$ECI_BINDING_CONTRACT" 'label does not settle ownership; check it against the definition above.'
   require_text "$ECI_BINDING_CONTRACT" 'Before sending a blocker or question toward the user, try to clear it: get missing facts with tools or Workers'
   require_text "$ECI_BINDING_CONTRACT" "Put only what remains the user's to the user in one concise question, with your attempts and recommendation. If you can keep working while awaiting the answer, send it now and continue answer-independent work; otherwise, finish that work first."
+  require_text "$ECI_BINDING_CONTRACT" "Choosing better behavior over existing behavior does not by itself make a decision the user's."
+  require_text "$ECI_BINDING_CONTRACT" 'Never attribute an unstated requirement to the user or an instruction. Record each decision you make, with its basis, as yours'
+  require_text "$POLICY" '| better behavior in a redesign | The user asks to fix a design.'
   require_text "$ECI" 'It checks each user decision the critic names against [user-owned decisions](../../eci-binding-contract.md#decisions)'
   require_text "$COORDINATOR" 'is [user-owned](../../../eci-binding-contract.md#decisions) before it reaches the user; one that is not is a gap.'
   require_text "$ECI_CRITIQUE" 'only when it is [user-owned](../../../eci-binding-contract.md#decisions); state each authorized remedy you ruled out and why.'
@@ -1649,6 +1652,7 @@ assert_finding_treatment_rules() {
   ! grep -Fq -- "names as the user's reaches the user" "$COORDINATOR" || fail "$COORDINATOR retains superseded user-decision wording: names as the user's reaches the user"
   ! grep -Fq -- "an Orchestrator owns its Job's blockers" "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains superseded blocker-ownership wording: an Orchestrator owns its Job's blockers"
   ! grep -Fq -- 'Before asking, exhaust answer-independent work' "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains duplicate pre-question rule: Before asking, exhaust answer-independent work"
+  ! grep -Fq -- 'a default you choose is your decision under Decisions' "$ECI_BINDING_CONTRACT" || fail "$ECI_BINDING_CONTRACT retains duplicate decision-recording rule: a default you choose is your decision under Decisions"
   for forbidden in 'gets one treatment per part' "that the user's quoted answer accepts"; do
     ! grep -Fq -- "$forbidden" "$REVIEW_POLICY" || fail "$REVIEW_POLICY retains superseded treatment wording: $forbidden"
   done
