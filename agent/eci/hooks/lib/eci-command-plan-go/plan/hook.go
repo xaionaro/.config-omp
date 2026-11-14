@@ -182,6 +182,8 @@ func hookAdvisory(
 	operation string,
 	err error,
 ) int {
+	// TODO: coding-go keeps stderr in package main; take the diagnostics writer
+	// as hookUnavailable does instead of writing os.Stderr here.
 	if err != nil {
 		if _, writeErr := fmt.Fprintf(os.Stderr, "command hook advisory: %s: %v\n", operation, err); writeErr != nil {
 			return 0

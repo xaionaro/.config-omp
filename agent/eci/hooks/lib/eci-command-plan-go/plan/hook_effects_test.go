@@ -2,12 +2,10 @@ package plan
 
 import (
 	"context"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -574,21 +572,11 @@ func TestHookMakeMemoryCapPlatform(t *testing.T) {
 //
 // Example: python3 tool.py is denied while ./tool.py passes.
 func TestHookPythonDirect(t *testing.T) {
-	dir := t.TempDir()
-	link := filepath.Join(dir, "py")
-	require.NoError(t, os.Symlink(filepath.Join(dir, "python3.12"), link))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "python3.12"), nil, 0o755))
-	require.NoError(t, os.Symlink(filepath.Join(dir, "python3.12"), filepath.Join(dir, "rel-py")))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "hatch.py"), []byte("#!/usr/bin/python3\n"), 0o755))
-	t.Setenv("PATH", dir)
-
 	denied := [][]string{
 		{"python"},
 		{"python3", "-c", "print(1)"},
 		{"/usr/bin/python3", "foo.py"},
 		{"/usr/bin/python3.12", "foo.py"},
-		{"py", "foo.py"},
-		{link},
 		{"env", "python3", "foo.py"},
 		{"PYTHONPATH=.", "python3", "foo.py"},
 		{"bash", "-c", "python3 foo.py"},
@@ -615,6 +603,7 @@ func TestHookPythonDirect(t *testing.T) {
 		{"python-tool", "--module"},
 		{"git", "commit", "-m", "python3"},
 		{"which", "python3"},
+		{"./py", "-V"},
 	}
 	for _, argv := range denied {
 		require.NotNil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected denied: %v", argv)
@@ -622,10 +611,6 @@ func TestHookPythonDirect(t *testing.T) {
 	for _, argv := range allowed {
 		require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected allowed: %v", argv)
 	}
-
-	require.NotNil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./rel-py"}, CWD: dir, CWDKnown: true}), "relative alias with known cwd")
-	require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./rel-py"}, CWD: dir}), "relative alias with unknown cwd")
-	require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./hatch.py"}, CWD: dir, CWDKnown: true}), "script file run by path")
 
 	diagnostic := inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"env", "python3"}})
 	require.NotNil(t, diagnostic)
@@ -638,7 +623,6 @@ func TestHookPythonDirect(t *testing.T) {
 //
 // Example: for f in a; do python3 "$f"; done is denied, while echo do python3 is not.
 func TestHookPythonCompoundCommands(t *testing.T) {
-	t.Setenv("PATH", "")
 	request := Request{HookMode: true, Provider: ProviderOmp, Role: RoleWorker, Marker: MarkerInactive, CWD: t.TempDir(), CWDKnown: true, CollectShellCommands: true}
 	for _, command := range []string{
 		`for f in a; do python3 "$f"; done`,
@@ -676,7 +660,6 @@ func TestHookPythonCompoundCommands(t *testing.T) {
 //
 // Example: make x && python3 y reports ECI_PYTHON_SCRIPT_REQUIRED.
 func TestHookEffectsPythonPrecedesMakeCap(t *testing.T) {
-	t.Setenv("PATH", "")
 	result := Result{ShellAnalysis: &ShellAnalysis{Commands: []ShellCommandRecord{
 		{Argv: []string{"make"}, Reachability: segmentReachable},
 		{Argv: []string{"python3", "x.py"}, Reachability: segmentReachable, Segment: 1},
@@ -684,22 +667,4 @@ func TestHookEffectsPythonPrecedesMakeCap(t *testing.T) {
 	diagnostic := inspectHookEffects(Request{}, result)
 	require.NotNil(t, diagnostic)
 	require.Equal(t, hookCodePythonScriptRequired, diagnostic.Code)
-}
-
-// TestHookCommandAbsent checks which lookup failures mean a word names no runnable file.
-//
-// Example: ENOTDIR from ./file/x is absent, while EIO is an unexpected failure.
-func TestHookCommandAbsent(t *testing.T) {
-	for _, err := range []error{
-		&exec.Error{Name: "python9", Err: exec.ErrNotFound},
-		&fs.PathError{Op: "stat", Path: "/missing", Err: syscall.ENOENT},
-		&fs.PathError{Op: "stat", Path: "/file/x", Err: syscall.ENOTDIR},
-		&fs.PathError{Op: "stat", Path: "/private", Err: syscall.EACCES},
-		&exec.Error{Name: "/tmp", Err: syscall.EISDIR},
-		&fs.PathError{Op: "lstat", Path: "/loop", Err: syscall.ELOOP},
-	} {
-		require.True(t, hookCommandAbsent(err), "%v", err)
-	}
-	require.False(t, hookCommandAbsent(&fs.PathError{Op: "stat", Path: "/disk", Err: syscall.EIO}))
-	require.False(t, hookCommandAbsent(&exec.Error{Name: "py", Err: exec.ErrDot}))
 }

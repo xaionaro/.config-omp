@@ -1,15 +1,11 @@
 package plan
 
 import (
-	"errors"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
-	"syscall"
 )
 
 // hookCodeWorkerSessionsRootDenied identifies Worker writes to omp session transcripts.
@@ -129,77 +125,18 @@ func inspectHookMakeMemoryCapForOS(
 // Example: python3 -c 'print(1)' or /usr/bin/python3 tool.py selects this gate.
 const hookCodePythonScriptRequired DiagnosticCode = "ECI_PYTHON_SCRIPT_REQUIRED"
 
-// hookPythonInterpreter reports whether path's basename names the Python runtime family.
-//
-// Example: /usr/bin/python3.12 is Python, while python-tool is not.
-func hookPythonInterpreter(path string) bool {
-	return namedRuntimeFamily(filepath.Base(path)) == "python"
-}
-
 // hookPythonTarget is a direct Python interpreter launch. A memory cap does not clear it.
-// CWD resolves relative command paths and is empty when the command's directory is unknown.
 //
 // Example: hookLaunchReaches([]string{"env", "python3"}, hookPythonTarget{}) is true.
-type hookPythonTarget struct {
-	CWD string
-}
+type hookPythonTarget struct{}
 
-// matchesCommand reports whether word names a Python interpreter, either by
-// basename or by resolving it through PATH (bare names), CWD (relative paths),
-// and symlinks. A relative path with unknown CWD, or a word that resolves to no
-// runnable file, falls back to the basename alone.
+// matchesCommand reports whether word's basename names the Python runtime
+// family. Aliases under other names are not resolved: the gate targets likely
+// direct calls, not deliberate renaming.
 //
-// Example: python3, /usr/bin/python3, and ./py -> /usr/bin/python3 match.
-func (t hookPythonTarget) matchesCommand(word string) bool {
-	if hookPythonInterpreter(word) {
-		return true
-	}
-	if strings.Contains(word, "/") && !filepath.IsAbs(word) {
-		if t.CWD == "" {
-			return false
-		}
-		word = filepath.Join(t.CWD, word)
-	}
-	resolved, ok := hookResolveCommand(word)
-	return ok && hookPythonInterpreter(resolved)
-}
-
-// hookResolveCommand resolves a command word through PATH and symlinks to its
-// physical file. A word that names no runnable file returns false; any other
-// lookup failure is also reported as a callback advisory, because an
-// unresolved word establishes no launch.
-//
-// Example: python3 returns /usr/bin/python3.12 when PATH reaches that symlink chain.
-func hookResolveCommand(word string) (string, bool) {
-	path, err := exec.LookPath(word)
-	if err == nil {
-		path, err = filepath.EvalSymlinks(path)
-	}
-	switch {
-	case err == nil:
-		return path, true
-	case hookCommandAbsent(err):
-		return "", false
-	default:
-		hookAdvisory("resolve command word", err)
-		return "", false
-	}
-}
-
-// hookCommandAbsent reports a lookup failure meaning the word names no runnable
-// file, so the shell could not start it either.
-//
-// Example: exec.ErrNotFound for an unknown bare name, or ENOTDIR for ./file/x.
-func hookCommandAbsent(err error) bool {
-	for _, absent := range []error{
-		exec.ErrNotFound, fs.ErrNotExist, fs.ErrPermission,
-		syscall.ENOTDIR, syscall.EISDIR, syscall.ELOOP, syscall.ENAMETOOLONG,
-	} {
-		if errors.Is(err, absent) {
-			return true
-		}
-	}
-	return false
+// Example: python3, /usr/bin/python3.12, and .venv/bin/python match; ./py does not.
+func (hookPythonTarget) matchesCommand(word string) bool {
+	return namedRuntimeFamily(filepath.Base(word)) == "python"
 }
 
 // honorsMemoryCap reports that no launcher option permits a direct interpreter call.
@@ -212,11 +149,7 @@ func (hookPythonTarget) honorsMemoryCap() bool { return false }
 //
 // Example: python3 tool.py is denied, while ./tool.py is not.
 func inspectHookPythonDirect(record ShellCommandRecord) *Diagnostic {
-	target := hookPythonTarget{}
-	if record.CWDKnown {
-		target.CWD = record.CWD
-	}
-	if !hookLaunchReaches(record.Argv, target) {
+	if !hookLaunchReaches(record.Argv, hookPythonTarget{}) {
 		return nil
 	}
 	return &Diagnostic{
@@ -353,6 +286,10 @@ func hookLaunchReaches(argv []string, target hookLaunchTarget) bool {
 	if target.matchesCommand(argv[0]) {
 		return true
 	}
+	// TODO: launcher options are parsed here and again by the classifier's
+	// unwrap* functions, and the option tables drift: stdbuf --output L python3 x
+	// passes while stdbuf -o L python3 x is denied. Walk the classifier's
+	// unwrapped argv instead of keeping these tables.
 	name := filepath.Base(argv[0])
 	switch name {
 	case "systemd-run":

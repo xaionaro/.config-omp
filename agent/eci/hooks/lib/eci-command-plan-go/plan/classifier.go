@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -1042,7 +1043,7 @@ func Classify(request Request) Result {
 		if segmentState.reachability == segmentUnreachable {
 			continue
 		}
-		inspectionSegment, inspect := conditionalEffectSegment(current)
+		inspectionSegment, inspect := effectSegmentAfterKeywords(current)
 		if !inspect {
 			continue
 		}
@@ -2101,8 +2102,8 @@ func advanceCompoundConditionalState(
 	operator string,
 ) (compoundConditionalCWDResult, bool) {
 	trimmed := strings.TrimSpace(current.command)
-	keyword, body, hasKeyword := conditionalSegmentKeyword(trimmed)
-	if !hasKeyword {
+	keyword, body := conditionalSegmentKeyword(trimmed)
+	if keyword == "" {
 		if len(stack) == 0 {
 			return compoundConditionalCWDResult{}, false
 		}
@@ -2184,7 +2185,7 @@ func advanceCompoundConditionalState(
 		frame := updatedStack[frameIndex]
 		branchExit := frame.conditionState
 		if !frame.suppressed && frame.branchCanRun && body != "" {
-			branch := conditionalBranchSegment(current, body)
+			branch := keywordBodySegment(current, body)
 			branchExit = advanceCompoundReachableCWDState(branchExit, branch, operator)
 		}
 		frame.activeState = branchExit
@@ -2210,7 +2211,7 @@ func advanceCompoundConditionalState(
 		if frame.branchStarted && frame.branchCanRun && !frame.suppressed {
 			frame.exits = joinCompoundReachableCWDStates(frame.exits, frame.activeState)
 		}
-		condition := conditionalBranchSegment(current, body)
+		condition := keywordBodySegment(current, body)
 		conditionReachable := frame.conditionState
 		conditionStatus, conditionKnown := literalSegmentStatus(condition)
 		canEvaluate := frame.remainingPossible && !frame.suppressed
@@ -2250,7 +2251,7 @@ func advanceCompoundConditionalState(
 		possibleElse := frame.remainingPossible
 		canRun := possibleElse && !frame.suppressed
 		if canRun && body != "" {
-			branch := conditionalBranchSegment(current, body)
+			branch := keywordBodySegment(current, body)
 			elseExit = advanceCompoundReachableCWDState(elseExit, branch, operator)
 		}
 		frame.activeState = elseExit
@@ -2357,31 +2358,43 @@ func conditionalBranchReachability(
 }
 
 // conditionalSegmentKeyword splits the parser's lossless segment around one
-// shell conditional keyword.
+// shell conditional keyword. A segment without one returns an empty keyword.
 //
 // Example: ` then cd /tmp` returns then and `cd /tmp`.
-func conditionalSegmentKeyword(command string) (string, string, bool) {
+func conditionalSegmentKeyword(command string) (string, string) {
 	word, body := leadingSegmentWord(command)
+	if !conditionalKeyword(word) {
+		return "", ""
+	}
+	return word, body
+}
+
+// conditionalKeyword reports whether word belongs to the if grammar that CWD
+// tracking follows.
+//
+// Example: then is a conditional keyword, while do is not.
+func conditionalKeyword(word string) bool {
 	switch word {
 	case "if", "then", "elif", "else", "fi":
-		return word, body, true
+		return true
 	default:
-		return "", "", false
+		return false
 	}
 }
 
-// commandPrefixKeyword splits a leading loop keyword or pipeline negation,
-// after which the shell still starts the segment's command. Only effect
-// inspection removes these words; CWD tracking follows the if grammar alone.
+// commandPrefixKeyword reports whether word is a loop keyword or pipeline
+// negation after which the shell still starts the segment's command. Only
+// effect inspection removes these words; CWD tracking follows the if grammar
+// alone. for, select, case, and in are excluded because the next word is a
+// name or pattern, not a command.
 //
-// Example: `do python3 x` returns do and `python3 x`.
-func commandPrefixKeyword(command string) (string, string, bool) {
-	word, body := leadingSegmentWord(command)
+// Example: do and ! are command prefixes, while for is not.
+func commandPrefixKeyword(word string) bool {
 	switch word {
 	case "do", "while", "until", "!":
-		return word, body, true
+		return true
 	default:
-		return "", "", false
+		return false
 	}
 }
 
@@ -2390,33 +2403,35 @@ func commandPrefixKeyword(command string) (string, string, bool) {
 // Example: `while read -r line` returns while and `read -r line`.
 func leadingSegmentWord(command string) (string, string) {
 	trimmed := strings.TrimSpace(command)
-	words := strings.Fields(trimmed)
-	if len(words) == 0 {
-		return "", ""
+	end := strings.IndexFunc(trimmed, unicode.IsSpace)
+	if end < 0 {
+		return trimmed, ""
 	}
-	return words[0], strings.TrimSpace(strings.TrimPrefix(trimmed, words[0]))
+	return trimmed[:end], strings.TrimSpace(trimmed[end:])
 }
 
-// conditionalEffectSegment repeatedly removes leading if-grammar keywords, loop
-// keywords, and pipeline negation for effect inspection, so `if ! cmd` and
-// `do ! cmd` expose cmd, while PlanTopology retains the original segment bytes.
-// Condition and loop bodies remain visible; a bare `fi` or keyword has no effect.
+// effectSegmentAfterKeywords repeatedly removes leading if-grammar keywords,
+// loop keywords, and pipeline negation for effect inspection, so `if ! cmd`
+// and `do ! cmd` expose cmd, while PlanTopology retains the original segment
+// bytes. Condition and loop bodies remain visible; a bare `fi` or keyword has
+// no effect.
 //
 // Example: ` then rm eci_active` and ` do ! rm eci_active` are inspected as `rm eci_active`.
-func conditionalEffectSegment(current segment) (segment, bool) {
+func effectSegmentAfterKeywords(current segment) (segment, bool) {
+	// TODO: a keyword or ! right after a ( or { opener, as in `( ! python3 x )`,
+	// a { group right after then or do, as in `do { rm -rf /; }`, and a coproc
+	// prefix are not removed, so effect checks miss those commands. Handle them
+	// in this loop, keeping argv and group bookkeeping aligned.
 	effect := current
 	for {
-		keyword, body, ok := conditionalSegmentKeyword(effect.command)
-		if !ok {
-			keyword, body, ok = commandPrefixKeyword(effect.command)
-		}
+		word, body := leadingSegmentWord(effect.command)
 		switch {
-		case !ok:
+		case !conditionalKeyword(word) && !commandPrefixKeyword(word):
 			return effect, true
-		case keyword == "fi" || body == "":
+		case word == "fi" || body == "":
 			return segment{}, false
 		}
-		effect = conditionalBranchSegment(effect, body)
+		effect = keywordBodySegment(effect, body)
 	}
 }
 
@@ -2437,11 +2452,14 @@ func isConditionalReservedSegment(command string) bool {
 	}
 }
 
-// conditionalBranchSegment removes then/else syntax before applying one
-// branch's direct state transition.
+// keywordBodySegment returns the segment after one leading shell keyword,
+// dropping that keyword's argv token and the segment's group syntax.
 //
-// Example: `then cd /tmp` becomes the direct `cd /tmp` segment.
-func conditionalBranchSegment(current segment, body string) segment {
+// Example: `then cd /tmp` becomes `cd /tmp`, and `do python3 x` becomes `python3 x`.
+func keywordBodySegment(
+	current segment,
+	body string,
+) segment {
 	branch := current
 	branch.command = body
 	branch.argv = append([]token(nil), current.argv[1:]...)
@@ -7379,6 +7397,9 @@ func isInterpreter(name string) bool {
 //
 // Example: python3.11 is Python, while python-tool is not a runtime alias.
 func namedRuntimeFamily(name string) string {
+	// TODO: return a named runtime-family type with typed constants instead of
+	// bare strings that callers compare, such as "python" in
+	// hookPythonTarget.matchesCommand and the inline-code checks.
 	for _, runtime := range [...]string{"python", "nodejs", "node", "perl", "ruby", "php"} {
 		if name == runtime {
 			if runtime == "nodejs" {

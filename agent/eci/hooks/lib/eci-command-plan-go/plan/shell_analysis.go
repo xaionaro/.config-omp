@@ -126,7 +126,7 @@ func inspectShellAnalysis(
 				appendShellAnalysis(analysis, result.ShellAnalysis)
 			}
 		}
-		effect, inspect := conditionalEffectSegment(current)
+		effect, inspect := effectSegmentAfterKeywords(current)
 		if !inspect {
 			continue
 		}
