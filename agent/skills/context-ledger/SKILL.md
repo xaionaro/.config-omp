@@ -168,22 +168,27 @@ jq -r 'select(.schema == "eci-high-level-log/v1" and .event == "worker_progress"
 ```
 
 Record each leaf completion under
-[Work estimates](../../eci-binding-contract.md#work-estimates) in the `details`
-of one log event, which also closes the leaf's report task:
-
-```json
-{"leaf":{"id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"},"status_update":{"updates":[{"target":"task","id":"1.1","fields":{"status":"CLOSED","evidence":"Synthetic example: readings matched"}}]}}
-```
-
-`planned` is the initial estimate range. Replace a missing time with
-`evidence_gap` naming the missing read. The agent that answers the user appends
-the event on receipt, then lists the five most recent with measured minutes:
+[Work estimates](../../eci-binding-contract.md#work-estimates) as one
+`lifecycle_change` event whose `details.leaf` holds `forecast`, `id`, `work`,
+`planned`, `started_at`, and `completed_at`, plus `evidence_gap` naming a
+missing or malformed read. Add a `details.status_update` closing a report task
+only when the report has a task for that leaf, targeting that task's own ID.
+Correct a leaf with a `correction` event whose `details` holds `corrects` and
+the full corrected `leaf`.
 
 ```sh
-jq -sc '[.[].details.leaf // empty] | .[-5:] | reverse[]
-  | .measured = if .started_at and .completed_at
-    then "\((.completed_at | fromdate) - (.started_at | fromdate) | . / 60 | floor) minutes"
-    else "unknown: \(.evidence_gap)" end' high_level_log.jsonl
+"$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","details":{"leaf":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
+```
+
+List the table's rows with measured minutes:
+
+```sh
+jq -nRc '[inputs | fromjson? | objects | .details | objects | .leaf | objects]
+  | reduce .[] as $l ({}; .["\($l.forecast)/\($l.id)"] = $l) | [.[]]
+  | sort_by(.completed_at) | .[-5:] | reverse[]
+  | (.started_at | try fromdate catch null) as $s | (.completed_at | try fromdate catch null) as $c
+  | .measured = if $s and $c then "\(($c - $s) / 60 | floor) minutes"
+    else "unknown: \(.evidence_gap // "time missing or not in date -u +%FT%TZ form")" end' high_level_log.jsonl
 ```
 
 ## Latest Status Report
