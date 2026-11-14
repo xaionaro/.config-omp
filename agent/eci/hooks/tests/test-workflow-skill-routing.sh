@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+shopt -s globstar
 # Checks workflow-skill structure that agents follow mechanically: Markdown links and anchors resolve, role rows route only to their allowed modules, and AGENTS.md imports the binding contract. Policy wording is reviewed, not pinned: prose pins broke on every rewording and spent minutes re-proving their own checks.
 
 ROOT="${WORKFLOW_SKILL_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
-. "$(dirname -- "${BASH_SOURCE[0]}")/portable-test.sh"
 AGENTS="$ROOT/../AGENTS.md"
 ECI="$ROOT/../skills/explore-critique-implement/SKILL.md"
 ECI_BINDING_CONTRACT="$ROOT/../eci-binding-contract.md"
-DEBUGGING="$ROOT/../skills/debugging-discipline/SKILL.md"
-STATUS_REPORT="$ROOT/../skills/writing-status-reports/SKILL.md"
-LEDGER="$ROOT/../skills/context-ledger/SKILL.md"
 ATE="$ROOT/../skills/agent-teams-execution/SKILL.md"
-ECI_COVERAGE="$ROOT/../skills/explore-critique-implement/references/coverage-map.md"
-ATE_COVERAGE="$ROOT/../skills/agent-teams-execution/references/coverage-map.md"
-FAST_PATH="$ROOT/../skills/explore-critique-implement/references/fast-path.md"
 GATE_CATALOG="$ROOT/hooks/gate-escape-hatches.md"
-SNITCH="$ROOT/../skills/agent-teams-execution/references/snitch.md"
 
 fail() {
   printf 'workflow routing assertion failed: %s\n' "$*" >&2
@@ -48,33 +41,11 @@ heading_anchors() {
 assert_local_links_resolve() {
   local file link path target fragment
   local -A anchors=()
+  # Every Markdown file of the workflow skills, so a new module is checked without editing this list.
   local -a documents=(
-    "$ECI"
-    "$LEDGER"
-    "$STATUS_REPORT"
-    "$ATE"
-    "$DEBUGGING"
-    "$ECI_COVERAGE"
-    "$ATE_COVERAGE"
-    "$ROOT/../skills/explore-critique-implement/references/coordinator.md"
-    "$ROOT/../skills/explore-critique-implement/references/critique.md"
-    "$FAST_PATH"
-    "$ROOT/../skills/explore-critique-implement/references/explore.md"
-    "$ROOT/../skills/explore-critique-implement/references/implement.md"
-    "$ROOT/../skills/explore-critique-implement/references/review.md"
-    "$ROOT/../skills/agent-teams-execution/references/design.md"
-    "$ROOT/../skills/agent-teams-execution/references/execution.md"
-    "$ROOT/../skills/agent-teams-execution/references/orchestration.md"
-    "$ROOT/../skills/agent-teams-execution/references/research.md"
-    "$ROOT/../skills/agent-teams-execution/references/review.md"
-    "$SNITCH"
-    "$ROOT/../skills/agent-teams-execution/references/testing-and-qa.md"
-    "$ROOT/../skills/references/workflow-runtime/coding-style-admission.md"
-    "$ROOT/../skills/references/workflow-runtime/coordinator-runtime.md"
-    "$ROOT/../skills/references/workflow-runtime/pause-all-work.md"
-    "$ROOT/../skills/references/workflow-runtime/policy-pressure-tests.md"
-    "$ROOT/../skills/references/workflow-runtime/review-policy.md"
-    "$ROOT/../skills/references/workflow-runtime/stop-recovery.md"
+    "$ROOT"/../skills/{explore-critique-implement,agent-teams-execution,context-ledger,debugging-discipline,writing-status-reports}/**/*.md
+    "$ROOT"/../skills/references/**/*.md
+    "$ECI_BINDING_CONTRACT"
     "$GATE_CATALOG"
   )
 
@@ -124,7 +95,7 @@ assert_no_control_routes() {
 }
 
 assert_role_rows_are_local() {
-  local snitch_row eci_coordinator_row ate_coordinator_row critic_row
+  local marker snitch_row eci_coordinator_row ate_coordinator_row critic_row
   for marker in \
     '| `explorer` |' \
     '| Producer (`implementer`) |' \
@@ -158,15 +129,11 @@ assert_role_rows_are_local() {
 }
 
 assert_debugging_role_routes() {
-  local row route target
+  local row
 
   row="$(role_rows "$ECI" '| `explorer` |')"
-  route="$(grep -o -- '\[debugging-discipline\]([^)]*)' <<<"$row" | head -n 1)" || route=""
-  [ -n "$route" ] || fail 'ECI explorer row must route to debugging-discipline'
-  target="${route##*(}"
-  target="${target%)}"
-  [ -f "$(dirname "$ECI")/$target" ] ||
-    fail "ECI explorer row routes to a missing debugging-discipline target: $target"
+  [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* ]] ||
+    fail 'ECI explorer row must route to debugging-discipline'
 
   row="$(role_rows "$ECI" '| Producer (`implementer`) |')"
   [[ "$row" == *'[debugging-discipline](../debugging-discipline/SKILL.md)'* ]] ||

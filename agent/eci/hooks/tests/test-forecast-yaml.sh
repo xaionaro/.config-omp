@@ -27,6 +27,7 @@ const scenario = record.scenarios[0];
 for (const key of ['name', 'trigger', 'affected_work', 'evidence', 'assumptions', 'added_duration', 'event_time', 'endpoint', 'basis', 'evidence_gap', 'next_action']) assert(scenario[key], key);
 console.log('forecast YAML fixture and locator: PASS');
 NODE
+# TODO: this block pins context-ledger SKILL.md wording, which testing-discipline forbids; keep only checks that the skill names the forecast keys and values status-report reads (kind, status active/inactive, assessment complete/provisional), and delete the rest.
 node - "$root" <<'NODE'
 const fs = require('fs');
 const assert = require('assert');

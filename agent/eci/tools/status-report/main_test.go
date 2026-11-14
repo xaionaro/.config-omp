@@ -386,9 +386,14 @@ completion_estimate:
 //
 // Example: Verify timeline utcand lifecycle through the public behavior.
 func TestTimelineUTCAndLifecycle(t *testing.T) {
-	t.Parallel()
+	// Not parallel: this test replaces the process-wide time.Local.
 	oldTZ := time.Local
 	time.Local = time.FixedZone("local", -5*3600)
+	t.Cleanup(
+		// Cleanup restores the process time zone, including after a fatal assertion.
+		//
+		// Example: Undo the fixed test zone when the test ends.
+		func() { time.Local = oldTZ })
 	base := strings.Replace(valid, "2026-11-02T15:24:00Z", "2026-11-02T00:15:00+00:00", 1)
 	row := "timeline:\n  - {job: '1', parent_chain: '1', start: '2026-11-01T23:15:00Z', end: '2026-11-01T23:45:00+00:00', fast: unknown, normal: unknown}"
 	if _, err := parse([]byte(strings.Replace(base, "timeline: []", row, 1))); err != nil {
@@ -413,7 +418,6 @@ func TestTimelineUTCAndLifecycle(t *testing.T) {
 	if _, err := parse([]byte(strings.Replace(closed, "lanes: []", lane, 1))); err != nil {
 		assert.Fail(t, fmt.Sprintf("valid closed lane: %v", err))
 	}
-	time.Local = oldTZ
 }
 
 // TestEstimateCoverageRejectsMissing checks every priority and overall are estimated.

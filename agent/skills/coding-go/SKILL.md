@@ -112,7 +112,7 @@ func (n *NodeWithCustomData[C, T]) RemovePushTo(
 ## Testing
 
 - `github.com/stretchr/testify` — `assert` for soft, `require` for fatal.
-- Start each test function with `t.Parallel()` unless it changes process-wide state: environment, working directory, or package variables.
+- Start each test function with `t.Parallel()` unless it changes process-wide state: environment, working directory, or any package's variables, such as `time.Local`.
 
 ## Code Organization Principles
 

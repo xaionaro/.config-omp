@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-# TODO: every check here pins review-policy.md wording, which testing-discipline forbids; delete this file and its run.sh case, and record its port-coverage.tsv row with a port-coverage-check reason code for retired prose-pin tests.
+# TODO: every check here pins review-policy.md wording, which testing-discipline forbids; delete this file and its run.sh case, remove "policy design-boundary test" from the ECI coverage-map.md Verification cell that cites it, and record its port-coverage.tsv row with a port-coverage-check reason code for retired prose-pin tests.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 POLICY="$ROOT/../skills/references/workflow-runtime/review-policy.md"
 
