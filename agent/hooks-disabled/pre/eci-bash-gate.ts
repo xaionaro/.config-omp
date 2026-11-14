@@ -15,10 +15,6 @@ function shellQuote(value: string): string {
 export default function eciBashGate(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event, ctx) => {
 		try {
-			// An eval py cell runs /usr/bin/python3 directly; mirror the planner's ECI_PYTHON_SCRIPT_REQUIRED denial.
-			if (event.toolName === "eval" && "language" in event.input && event.input.language === "py") {
-				return { block: true, reason: "ECI_PYTHON_SCRIPT_REQUIRED: eval Python cells call the interpreter directly. Write the code to a script file with a #!/usr/bin/env python3 shebang, chmod +x it, and run it as ./script.py through bash." };
-			}
 			if (event.toolName !== "bash") return undefined;
 			const input = event.input as { command?: unknown; cwd?: unknown };
 			const command = typeof input.command === "string" ? input.command : "";

@@ -664,6 +664,17 @@ run_subagent_matrix_parallel() {
             exit 1
           }
           ;;
+        python-script-required)
+          jq -e '
+            .hookSpecificOutput.permissionDecision == "deny" and
+            (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PYTHON_SCRIPT_REQUIRED]")) and
+            (.hookSpecificOutput.permissionDecisionReason | contains("#!/usr/bin/python3"))
+          ' "$output" >/dev/null || {
+            printf 'direct worker Python call was not denied ECI_PYTHON_SCRIPT_REQUIRED: %s\n' "$command" >&2
+            cat -- "$output" >&2
+            exit 1
+          }
+          ;;
         *)
           printf 'unknown parallel matrix expectation: %s\n' "$expectation" >&2
           exit 1
@@ -715,6 +726,17 @@ run_hook_matrix_parallel() {
             (.hookSpecificOutput.permissionDecisionReason | startswith("[ECI_") and contains("phase=") and contains("operation=") and contains("reason:") and contains("remediation:"))
           ' "$output" >/dev/null || {
             printf 'protected coordinator argv was unexpectedly allowed: %s\n' "$command" >&2
+            cat -- "$output" >&2
+            exit 1
+          }
+          ;;
+        python-script-required)
+          jq -e '
+            .hookSpecificOutput.permissionDecision == "deny" and
+            (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_PYTHON_SCRIPT_REQUIRED]")) and
+            (.hookSpecificOutput.permissionDecisionReason | contains("#!/usr/bin/python3"))
+          ' "$output" >/dev/null || {
+            printf 'direct coordinator Python call was not denied ECI_PYTHON_SCRIPT_REQUIRED: %s\n' "$command" >&2
             cat -- "$output" >&2
             exit 1
           }
@@ -1165,9 +1187,8 @@ run_hook_matrix_parallel allowed ordinary-coordinator-literal \
   "go test ./..." \
   "cargo test --workspace" \
   "pytest -q tests" \
-  "python3 -m pytest tests" \
   "interpreter-tool --module test-suite --flag value" \
-  "python3 tools/check.py --mode strict" \
+  "./tools/check.py --mode strict" \
   "node scripts/check.mjs" \
   "npm test -- --runInBand" \
   "cmake --build build --target test" \
@@ -1205,13 +1226,19 @@ fi
 run_hook_matrix_parallel allowed ordinary-coordinator-opaque \
   "eval 'go test ./...'" \
   "bash scripts/test.sh" \
-  "python3 -c 'print(1)'" \
-  "python3 -" \
   "node -e 'console.log(1)'" \
   "interpreter-tool -c 'dynamic payload'" \
-  "env -S python3 -m pytest tests" \
   "go test \$(printf ./...)" \
   $'go test ./...\nprintf done'
+
+# Direct Python interpreter calls are a user-required route: the hatch is an
+# executable script file run by path, whatever the interpreter's arguments.
+run_hook_matrix_parallel python-script-required coordinator-python-direct \
+  "python3 -m pytest tests" \
+  "python3 tools/check.py --mode strict" \
+  "python3 -c 'print(1)'" \
+  "python3 -" \
+  "env -S python3 -m pytest tests"
 
 # Ordinary commits and reset do not infer ownership from legacy markers.
 run_hook_matrix_parallel allowed coordinator-git-commit \
@@ -1271,9 +1298,7 @@ run_hook_matrix_parallel allowed coordinator-initial-source-write \
 run_hook_matrix_parallel allowed coordinator-initial-temp-write \
   "touch ${HOME:?}/tmp/eci-finite-literal-probe"
 run_subagent_matrix_parallel allowed ordinary-worker-shell \
-  "python3 -m pytest tests" \
-  "python3 tools/check.py" \
-  "python3 tools/check.py -c" \
+  "./tools/check.py" \
   "node scripts/check.mjs" \
   "nodejs scripts/check.mjs" \
   "perl tools/check.pl" \
@@ -1296,15 +1321,8 @@ run_subagent_matrix_parallel allowed ordinary-worker-interpreter \
   "bash -O extglob scripts/test.sh" \
   "bash --noprofile scripts/test.sh" \
   "sh -e scripts/test.sh" \
-  "python3 -" \
   "interpreter-tool -c 'dynamic payload'"
 run_subagent_matrix_parallel allowed ordinary-worker-runtime \
-  "python3" \
-  "python3 -cprint" \
-  "python3.11 -cprint" \
-  "python3 -W ignore" \
-  "python3 -X dev" \
-  "python3 -i tools/check.py" \
   "node" \
   "nodejs --eval=code" \
   "node -p code" \
@@ -1324,6 +1342,17 @@ run_subagent_matrix_parallel allowed ordinary-worker-runtime \
   "php --process-end=code" \
   "php -d memory_limit=1G" \
   "php -a"
+run_subagent_matrix_parallel python-script-required worker-python-direct \
+  "python3 -m pytest tests" \
+  "python3 tools/check.py" \
+  "python3 tools/check.py -c" \
+  "python3 -" \
+  "python3" \
+  "python3 -cprint" \
+  "python3.11 -cprint" \
+  "python3 -W ignore" \
+  "python3 -X dev" \
+  "python3 -i tools/check.py"
 worker_help_output="$(run_subagent_hook "eci-active --help")"
 [ ! -s "$worker_help_output" ]
 worker_ps_output="$(run_subagent_hook "ps -o pid,etime,stat,cmd")"

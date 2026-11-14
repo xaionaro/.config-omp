@@ -557,6 +557,8 @@ func TestHookPythonDirect(t *testing.T) {
 	link := filepath.Join(dir, "py")
 	require.NoError(t, os.Symlink(filepath.Join(dir, "python3.12"), link))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "python3.12"), nil, 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "python3.12"), filepath.Join(dir, "rel-py")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hatch.py"), []byte("#!/usr/bin/python3\n"), 0o755))
 	t.Setenv("PATH", dir)
 
 	denied := [][]string{
@@ -572,6 +574,12 @@ func TestHookPythonDirect(t *testing.T) {
 		{"timeout", "5", "python3", "foo.py"},
 		{"systemd-run", "--scope", "-p", "MemoryMax=1G", "python3"},
 		{"xargs", "python3"},
+		{"python3", "--version"},
+		{"python3", "-m", "pytest"},
+		{"find", ".", "-exec", "python3", "{}", ";"},
+		{"command", "python3", "x.py"},
+		{"sudo", "python3"},
+		{"env", "-S", "python3 -c 1"},
 	}
 	allowed := [][]string{
 		{"./foo.py"},
@@ -580,6 +588,9 @@ func TestHookPythonDirect(t *testing.T) {
 		{"command", "-v", "python3"},
 		{"pythonic"},
 		{"python3-config"},
+		{"python-tool", "--module"},
+		{"git", "commit", "-m", "python3"},
+		{"which", "python3"},
 	}
 	for _, argv := range denied {
 		require.NotNil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected denied: %v", argv)
@@ -587,4 +598,28 @@ func TestHookPythonDirect(t *testing.T) {
 	for _, argv := range allowed {
 		require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: argv}), "expected allowed: %v", argv)
 	}
+
+	require.NotNil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./rel-py"}, CWD: dir, CWDKnown: true}), "relative alias with known cwd")
+	require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./rel-py"}, CWD: dir}), "relative alias with unknown cwd")
+	require.Nil(t, inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"./hatch.py"}, CWD: dir, CWDKnown: true}), "script file run by path")
+
+	diagnostic := inspectHookPythonDirect(ShellCommandRecord{Argv: []string{"env", "python3"}})
+	require.NotNil(t, diagnostic)
+	require.Equal(t, "python", diagnostic.Token)
+	require.Contains(t, diagnostic.Remediation, "#!/usr/bin/python3")
+}
+
+// TestHookEffectsPythonPrecedesMakeCap pins that the mode-independent Python
+// denial wins over an earlier mode-dependent make cap denial.
+//
+// Example: make x && python3 y reports ECI_PYTHON_SCRIPT_REQUIRED.
+func TestHookEffectsPythonPrecedesMakeCap(t *testing.T) {
+	t.Setenv("PATH", "")
+	result := Result{ShellAnalysis: &ShellAnalysis{Commands: []ShellCommandRecord{
+		{Argv: []string{"make"}, Reachability: segmentReachable},
+		{Argv: []string{"python3", "x.py"}, Reachability: segmentReachable, Segment: 1},
+	}}}
+	diagnostic := inspectHookEffects(Request{}, result)
+	require.NotNil(t, diagnostic)
+	require.Equal(t, hookCodePythonScriptRequired, diagnostic.Code)
 }

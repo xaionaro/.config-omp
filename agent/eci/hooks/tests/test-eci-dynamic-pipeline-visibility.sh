@@ -102,8 +102,8 @@ assert_dynamic_pipeline_allowed worker true
 assert_dynamic_pipeline_allowed coordinator false
 assert_ordinary_pipeline_allowed "find $ROOT -type f | head -n 1"
 assert_ordinary_pipeline_allowed "find $ROOT -type f -exec printf '%s\\n' '{}' \\; | cat"
-assert_ordinary_pipeline_allowed "python3 -c 'print(1)' | cat"
-assert_ordinary_pipeline_allowed "python3 -c 'open(\"result.txt\", \"w\").write(\"x\")' | cat"
+assert_ordinary_pipeline_allowed "node -e 'console.log(1)' | cat"
+assert_ordinary_pipeline_allowed "node -e 'require(\"fs\").writeFileSync(\"result.txt\", \"x\")' | cat"
 assert_ordinary_pipeline_allowed 'printf item | xargs printf'
 assert_ordinary_pipeline_allowed 'timeout 1 printf item | cat'
 assert_broad_pipeline_stays_denied worker true

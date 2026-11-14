@@ -57,9 +57,11 @@ func RunHook(
 		if err != nil {
 			return hookUnavailable(diagnostics, "encode callback denial", "retry the call; if it fails again, rebuild the planner with \"$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" eci-command-plan and retry")
 		}
-		encoded, err = finalizeHookDenial(request, encoded)
-		if err != nil {
-			hookAdvisory("finalize inactive denial", err)
+		if !hookDenialModeIndependent(result.Diagnostic) {
+			encoded, err = finalizeHookDenial(request, encoded)
+			if err != nil {
+				hookAdvisory("finalize inactive denial", err)
+			}
 		}
 		if len(encoded) == 0 {
 			return 0
@@ -89,6 +91,15 @@ func hookIdentityMalformed(envelope HookInput) bool {
 		}
 	}
 	return false
+}
+
+// hookDenialModeIndependent reports a callback denial that every gate mode enforces.
+// Direct Python interpreter calls enforce a user-required route rather than an
+// accidental-effect check, so permissive mode must not downgrade them to telemetry.
+//
+// Example: ECI_PYTHON_SCRIPT_REQUIRED skips gate-mode finalization.
+func hookDenialModeIndependent(diagnostic *Diagnostic) bool {
+	return diagnostic != nil && diagnostic.Code == hookCodePythonScriptRequired
 }
 
 // finalizeHookDenial applies the user's gate mode to a callback denial.

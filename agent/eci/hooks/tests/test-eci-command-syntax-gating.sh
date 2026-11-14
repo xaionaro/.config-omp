@@ -348,7 +348,7 @@ assert_allowed 'env'
 assert_allowed "env | sort | rg '^PATH='"
 assert_allowed 'printenv'
 assert_allowed 'env --unset=9FOO novel-tool'
-assert_allowed "env FOO=bar python3 -c 'print(1)'"
+assert_allowed "env FOO=bar node -e 'console.log(1)'"
 assert_allowed 'file -C -m hooks/validate-bash.sh | head -n 20'
 assert_allowed 'touch hooks/validate-bash.sh'
 assert_allowed "printf '%s\\n' ordinary > $ROOT/.eci-normal-redirect-target"

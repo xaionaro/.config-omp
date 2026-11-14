@@ -259,7 +259,7 @@ for provider in eci kimi; do
       # source emits none of them for these inputs.
       if [ "$active" != active ]; then
         assert_allowed "$provider" "$role" "$active" \
-          'python3 -c "print(1)"'
+          'node -e "console.log(1)"'
       fi
     done
   done

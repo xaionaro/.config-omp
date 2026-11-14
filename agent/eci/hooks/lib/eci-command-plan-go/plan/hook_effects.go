@@ -30,11 +30,18 @@ func inspectHookEffects(
 		if record.Reachability == segmentUnreachable || len(record.Argv) == 0 {
 			continue
 		}
-		// The memory cap applies to every callback, not only active ECI scopes.
-		if diagnostic := inspectHookMakeMemoryCap(record); diagnostic != nil {
+		// Every gate mode enforces the Python route, so check all records before
+		// a mode-dependent denial such as the make cap can end the scan.
+		if diagnostic := inspectHookPythonDirect(record); diagnostic != nil {
 			return diagnostic
 		}
-		if diagnostic := inspectHookPythonDirect(record); diagnostic != nil {
+	}
+	for _, record := range result.ShellAnalysis.Commands {
+		if record.Reachability == segmentUnreachable || len(record.Argv) == 0 {
+			continue
+		}
+		// The memory cap applies to every callback, not only active ECI scopes.
+		if diagnostic := inspectHookMakeMemoryCap(record); diagnostic != nil {
 			return diagnostic
 		}
 		argv := make([]token, len(record.Argv))
@@ -113,21 +120,28 @@ const hookCodePythonScriptRequired DiagnosticCode = "ECI_PYTHON_SCRIPT_REQUIRED"
 var hookPythonName = regexp.MustCompile(`^python[0-9]*(\.[0-9]+)*$`)
 
 // hookPythonTarget is a direct Python interpreter launch. A memory cap does not clear it.
+// CWD resolves relative command paths and is empty when the command's directory is unknown.
 //
 // Example: hookLaunchReaches([]string{"env", "python3"}, hookPythonTarget{}) is true.
-type hookPythonTarget struct{}
+type hookPythonTarget struct {
+	CWD string
+}
 
 // matchesCommand reports whether word names a Python interpreter, either by
-// basename or by resolving a bare or absolute command through PATH and symlinks.
-// Relative paths and lookup failures fall back to the basename alone.
+// basename or by resolving it through PATH (bare names), CWD (relative paths),
+// and symlinks. A relative path with unknown CWD and lookup failures fall back
+// to the basename alone.
 //
-// Example: python3, /usr/bin/python3, and a symlink py -> /usr/bin/python3 match.
-func (hookPythonTarget) matchesCommand(word string) bool {
+// Example: python3, /usr/bin/python3, and ./py -> /usr/bin/python3 match.
+func (t hookPythonTarget) matchesCommand(word string) bool {
 	if hookPythonName.MatchString(filepath.Base(word)) {
 		return true
 	}
 	if strings.Contains(word, "/") && !filepath.IsAbs(word) {
-		return false
+		if t.CWD == "" {
+			return false
+		}
+		word = filepath.Join(t.CWD, word)
 	}
 	path, err := exec.LookPath(word)
 	if err != nil {
@@ -150,16 +164,20 @@ func (hookPythonTarget) honorsMemoryCap() bool { return false }
 //
 // Example: python3 tool.py is denied, while ./tool.py is not.
 func inspectHookPythonDirect(record ShellCommandRecord) *Diagnostic {
-	if !hookLaunchReaches(record.Argv, hookPythonTarget{}) {
+	target := hookPythonTarget{}
+	if record.CWDKnown {
+		target.CWD = record.CWD
+	}
+	if !hookLaunchReaches(record.Argv, target) {
 		return nil
 	}
 	return &Diagnostic{
 		Code:        hookCodePythonScriptRequired,
 		Operation:   "python-direct",
 		Segment:     record.Segment,
-		Token:       record.Argv[0],
-		Reason:      "direct Python interpreter calls are denied",
-		Remediation: "write the code to a script file with a #!/usr/bin/env python3 shebang, chmod +x it, and run it as ./script.py",
+		Token:       "python",
+		Reason:      "the command calls a Python interpreter directly; Python runs only as an executable script file",
+		Remediation: "write the code to a script file whose first line is #!/usr/bin/python3 (not #!/usr/bin/env python3, which resolves python3 through PATH and can reach a refusing wrapper), chmod +x it, and run it by path, for example ./script.py",
 	}
 }
 
