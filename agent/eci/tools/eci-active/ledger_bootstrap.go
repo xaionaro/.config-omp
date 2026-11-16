@@ -47,4 +47,3 @@ func syncLedgerPath(path string) error {
 	}
 	return errors.Join(file.Sync(), file.Close())
 }
-
