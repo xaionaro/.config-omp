@@ -13,7 +13,7 @@ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manage
 import { resolveModelOverride } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
 import { getRetryFallbackChains, resolveRetryFallbackChainKey, findRetryFallbackCandidates } from "@oh-my-pi/pi-coding-agent/session/retry-fallback-chains";
 import { recoverModelLessRevival } from "../extensions/revival-provider.ts";
-import { Effort } from "@oh-my-pi/pi-ai";
+import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 
 export default function observe(pi: ExtensionAPI) {
   const record = async (detail: unknown) => appendFile(process.env.ECI_PROBE_LOG!, `${JSON.stringify({ scenario: process.env.ECI_PROBE_SCENARIO, detail })}\n`);
@@ -88,7 +88,7 @@ export default function observe(pi: ExtensionAPI) {
         parentAgentId: ctx.agent.id,
         bindProcessState: false,
         modelPattern: "missing/no-such-model",
-        thinkingLevelCeiling: scenario === "ceiling-wake" ? Effort.Low : undefined,
+        thinkingLevelCeiling: scenario === "ceiling-wake" ? ThinkingLevel.Low : undefined,
         systemPrompt: "ECI_PROBE_CHILD SDK_COMPONENT",
         disableExtensionDiscovery: true,
         toolNames: [],
@@ -157,7 +157,7 @@ export default function observe(pi: ExtensionAPI) {
     const seam = scenario?.endsWith("-wake") && ["first-write", "metadata", "model-append", "effort-append"].includes(scenario.slice(0, -5)) ? scenario.slice(0, -5) : undefined;
     if (seam) {
       if (_event.reason !== "revive" || proofSession.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId()) throw new Error("seam requires the exact revived child");
-      if (seam === "effort-append") proofSession.setThinkingLevel(Effort.Low);
+      if (seam === "effort-append") proofSession.setThinkingLevel(ThinkingLevel.Low);
       const runner = proofSession.extensionRunner;
       const chains = lookup("retry.fallbackChains");
       if (!runner || !chains) throw new Error("seam observation unavailable");
@@ -248,7 +248,7 @@ export default function observe(pi: ExtensionAPI) {
       });
     }
     if (["literal-carry-wake", "auto-carry-wake"].includes(scenario ?? "")) {
-      proofSession.setThinkingLevel(scenario === "auto-carry-wake" ? "auto" : Effort.Low);
+      proofSession.setThinkingLevel(scenario === "auto-carry-wake" ? "auto" : ThinkingLevel.Low);
       await record({ event: "pre_recovery_effort", effort: proofSession.configuredThinkingLevel() });
     }
     if (process.env.ECI_PROBE_SCENARIO === "enabled-current-wake") {
