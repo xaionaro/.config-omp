@@ -112,7 +112,7 @@ history. Never
 invent events or treat a commit as proof of acceptance. Timeline-only reports
 follow the forecast exception below.
 
-Calculate progress from the report YAML's leaf task statuses using the status report tool. The YAML task tree mirrors the forecast work tree; each known leaf is one estimated package; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Label the result an equal-package estimate, not elapsed-time progress; rebaseline when scope is added or split. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
+Calculate progress from the report YAML's leaf task statuses using the status report tool. The YAML task tree mirrors the forecast work tree; each known leaf is one estimated package; only `CLOSED` with acceptance evidence is complete. Parent tasks are excluded. Label the result an equal-package estimate, not elapsed-time progress; rebaseline for actual scope addition, not delegation, repair or re-estimation of settled leaves. Apply [Work estimates](../../eci-binding-contract.md#work-estimates) to tree changes. Unknown or null statuses are unscored. If scope or any leaf status is unknown, label the result partial and identify coverage and unscored tasks. With no scored leaves, show unknown without a percentage or filled bar. Never store a separate progress percentage or bar or infer an ETA from it.
 
 ## Lane forecasts
 
@@ -189,7 +189,7 @@ them alongside safe work without delaying the update.
 | --- | --- |
 | Material changed-state report omits a milestone or forecast | The report is corrected alongside safe work. |
 | Forecast lacks current evidence | A changed lane/root forecast without its restated current canonical line, prior/current UTCs, why moved, and supporting evidence is stale. |
-| Material risk has no supported duration or endpoint | Decompose work and give labeled educated duration/endpoint guesses, including explicit external-wait assumptions; retain the evidence gap and next action, provisional assessment and conditional overall target/spread. |
+| Material risk has no supported duration or endpoint | Size work under [Work estimates](../../eci-binding-contract.md#work-estimates), retaining settled leaves, and give labeled educated duration/endpoint guesses, including explicit external-wait assumptions; retain the evidence gap and next action, provisional assessment and conditional overall target/spread. |
 | Parallel children | For parallel children, report the single critical-path deadline; child deadlines remain parallel; never add or sum parallel child deadlines into a parent, root, or mission deadline. |
 | Dependency is paused | A paused dependency names its owner and resume condition; it is not a user blocker. |
 

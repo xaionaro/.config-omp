@@ -362,10 +362,13 @@ scenario data into a rendered report. Omit an active target when inactive.
 `base_case` contains `endpoint` and a `packages` list with one entry per node of
 the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
-leaf the work tree must explain; a child's `id` is its parent's `id` plus `.`
-and a segment, such as `1.2`. Write each `duration` as a range, such as
-`"10–20 minutes"`; for a leaf with a multiplier, write one execution's range
-followed by the multiplier, such as `"15–30 minutes ×0–2"`. Each
+leaf the work tree must explain; policy-imposed stability of a settled leaf is
+a valid reason after an overrun, not a claim of physical indivisibility. A
+child's `id` is its parent's `id` plus `.` and a segment, such as `1.2`. Write
+each `duration` as a range, such as `"10–20 minutes"`; for a leaf with a
+multiplier, write one execution's range followed by the multiplier, such as
+`"15–30 minutes ×0–2"`. Preserve initial estimates and measurements and
+forecast remaining time separately under Work estimates. Each
 scenario contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
