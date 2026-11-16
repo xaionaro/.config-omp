@@ -184,21 +184,35 @@ and execution; the table replaces by key and execution.
 "$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf_completion":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
 ```
 
-List the table's rows with each execution's timestamps and measured minutes
-summed over executions. Unknown timestamps retain their evidence gap; do not
-infer them. Malformed JSON or non-object completions require correction.
+List the table's rows using `executions` for both timestamp cells, labeled by
+execution number, and measured minutes summed over executions. Unknown
+timestamps retain their evidence gap; do not infer them. Known closes sort
+newest first, followed by unknown closes. If `recency_incomplete` is true,
+disclose that latest-five recency is incomplete. Malformed JSON or non-object
+completions require correction.
 
 ```sh
 jq -sc 'def epoch: try fromdate catch null;
-  [.[].details | objects | .leaf_completion // empty]
+  def close_order: (.completed_at | epoch) as $t | [($t != null), $t];
+  def display($field):
+    if (.[$field] | epoch) != null then .[$field]
+    elif (.evidence_gap | type) == "string" and (.evidence_gap | test("\\S")) then
+      "unknown: \(.evidence_gap)"
+    else error("correct \(.forecast)/\(.id) execution \(.execution // 1): \($field) needs evidence_gap") end;
+  [.[].details | objects | select(has("leaf_completion")) | .leaf_completion
+    | if type == "object" then . else error("non-object leaf_completion needs correction") end]
   | reduce .[] as $l ({}; .["\($l.forecast)/\($l.id)"]["\($l.execution // 1)"] = $l)
   | [.[] | [.[]] | sort_by(.execution // 1) as $runs
-     | ($runs | max_by((.completed_at | epoch) // -1)) + {
-         executions: [$runs[] | {execution: (.execution // 1), started_at, completed_at, evidence_gap}],
+     | ($runs | max_by(close_order)) + {
+         executions: [$runs[] | {execution: (.execution // 1),
+           started_at: display("started_at"), completed_at: display("completed_at")}],
          measured: (if all($runs[]; (.started_at | epoch) != null and (.completed_at | epoch) != null)
            then "\([$runs[] | (.completed_at | epoch) - (.started_at | epoch)] | add / 60 | floor) min"
-           else "unknown: \([$runs[] | select((.started_at | epoch) == null or (.completed_at | epoch) == null) | .evidence_gap // "missing or malformed timestamp"] | join("; "))" end)}]
-  | sort_by((.completed_at | epoch) // -1) | .[-5:] | reverse[]' high_level_log.jsonl
+           else "unknown: \([$runs[] | select((.started_at | epoch) == null or (.completed_at | epoch) == null) | .evidence_gap] | join("; "))" end),
+         has_unknown_close: any($runs[]; (.completed_at | epoch) == null)}]
+  | any(.[]; .has_unknown_close) as $incomplete
+  | sort_by(close_order) | .[-5:] | reverse[]
+  | del(.has_unknown_close) + {recency_incomplete: $incomplete}' high_level_log.jsonl
 ```
 
 ## Latest Status Report
