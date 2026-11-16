@@ -411,12 +411,19 @@ func validateLedger(
 // validateStoredValues rejects ambiguous objects in the non-record collections.
 //
 // Example: duplicate section titles cannot be silently overwritten by a batch.
-func validateStoredValues(ctx context.Context, tx *sql.Tx) (_err error) {
+func validateStoredValues(
+	ctx context.Context,
+	tx *sql.Tx,
+) (_err error) {
 	rows, err := tx.QueryContext(ctx, "SELECT 'sections',id,value FROM sections UNION ALL SELECT 'forecasts',id,value FROM forecasts")
 	if err != nil {
 		return fmt.Errorf("read stored values: %w", err)
 	}
-	defer func() { _err = errors.Join(_err, rows.Close()) }()
+	defer
+	// closeStoredValues preserves cursor close errors on every return path.
+	//
+	// Example: invalid stored JSON still releases the cursor.
+	func() { _err = errors.Join(_err, rows.Close()) }()
 	for rows.Next() {
 		var table, id string
 		var value []byte

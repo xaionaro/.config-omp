@@ -228,7 +228,10 @@ func ledgerActivationMarker(dir string) (*ledgerMarker, error) {
 // validateLedgerActivation verifies authority and the active database together.
 //
 // Example: a markerless installed database requires recovery rather than fallback.
-func validateLedgerActivation(ctx context.Context, dir string) (_active bool, _err error) {
+func validateLedgerActivation(
+	ctx context.Context,
+	dir string,
+) (_active bool, _err error) {
 	marker, err := ledgerActivationMarker(dir)
 	if err != nil || marker == nil {
 		return false, err
@@ -275,7 +278,11 @@ func validateLedgerActivation(ctx context.Context, dir string) (_active bool, _e
 // validateLedgerTransaction checks an active store within its caller's snapshot.
 //
 // Example: capture validates identity before streaming rows from the same transaction.
-func validateLedgerTransaction(ctx context.Context, tx *sql.Tx, marker *ledgerMarker) error {
+func validateLedgerTransaction(
+	ctx context.Context,
+	tx *sql.Tx,
+	marker *ledgerMarker,
+) error {
 	var version int
 	if err := tx.QueryRowContext(ctx, ledgerVersionQuery).Scan(&version); err != nil {
 		return fmt.Errorf("read ledger version: %w", err)
