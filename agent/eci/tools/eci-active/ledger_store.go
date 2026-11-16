@@ -97,4 +97,3 @@ func (r *ledgerRecord) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
-
