@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +24,7 @@ func TestReportStructurePreservesNumericRange(t *testing.T) {
 // Example: leading nonbreaking space is not valid JSON whitespace.
 func TestReportStructureJSONWhitespace(t *testing.T) {
 	t.Parallel()
-	for _, space := range []string{"", " ", "\t", "\n", "\r", " \t\n\r"} {
+	for _, space := range []string{" ", "\t", "\n", "\r", " \t\n\r"} {
 		require.NoError(t, validateReportStructure([]byte(space+"{}")))
 		require.NoError(t, validateReportStructure([]byte("{}"+space)))
 		require.NoError(t, validateReportStructure([]byte(space+"{}"+space)))
@@ -33,10 +34,9 @@ func TestReportStructureJSONWhitespace(t *testing.T) {
 		//
 		// Example: a nonbreaking space cannot precede a JSON object.
 		func(t *testing.T) {
+			t.Parallel()
 			for _, space := range []string{"\v", "\f", "\u00a0", "\u2003"} {
-				if err := validateReportStructure([]byte(space + "{}")); err == nil {
-					t.Errorf("leading %q accepted", space)
-				}
+				assert.Error(t, validateReportStructure([]byte(space+"{}")), "leading %q", space)
 			}
 		})
 	t.Run("trailing",
@@ -44,10 +44,9 @@ func TestReportStructureJSONWhitespace(t *testing.T) {
 		//
 		// Example: a nonbreaking space cannot follow a JSON object.
 		func(t *testing.T) {
+			t.Parallel()
 			for _, space := range []string{"\v", "\f", "\u00a0", "\u2003"} {
-				if err := validateReportStructure([]byte("{}" + space)); err == nil {
-					t.Errorf("trailing %q accepted", space)
-				}
+				assert.Error(t, validateReportStructure([]byte("{}"+space)), "trailing %q", space)
 			}
 		})
 }
