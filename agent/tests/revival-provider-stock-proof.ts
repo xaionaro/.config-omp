@@ -6,7 +6,7 @@ import * as os from "node:os";
 // Run against the installed omp: bun revival-provider-stock-proof.ts /absolute/path/to/omp
 // ECI_CONTROL: role-chain, wildcard, literal, literal-carry, auto, auto-carry,
 // normalization, routing, ceiling, legacy, unset, exact-empty, child-empty, fallback-off,
-// offline, pin, hook-error, install-error, first-write, metadata, model-append, effort-append, alias, enabled-current.
+// offline, pin, hook-error, install-error, first-write, metadata, model-append, effort-append, alias, enabled-current, auth-skip, auth-none.
 // A nonzero exit means qualification failed; leave the extension disabled.
 
 const binary = process.argv[2];
@@ -80,7 +80,7 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) 
 } });
 
 async function writeConfig(disabled: string[], config: CaseOptions) {
-	const providers = Object.fromEntries(["primary", "enabled", "backup", "wrong", "driver", ...(["routing", "alias"].includes(config.control ?? "") ? ["openrouter"] : [])].map(p => [p, { baseUrl: `${server.url.origin}/${p}/v1`, api: "openai-completions", auth: "none", models: p === "enabled" && config.control === "literal" ? [model, { ...model, id: "probe:high" }] : p === "enabled" && config.control === "literal-carry" ? [model, { ...model, id: "probe:max" }] : p === "enabled" && config.control === "wildcard" ? [model, { ...model, id: "alternate" }] : p === "enabled" && config.control === "normalization" ? [{ ...model, thinking: { mode: "effort", efforts: ["low"] } }] : p === "enabled" && config.control === "effort-append" ? [{ ...model, thinking: { mode: "effort", efforts: ["low", "high"], defaultLevel: "high" } }] : [model] }]));
+	const providers = Object.fromEntries(["primary", "enabled", "backup", "wrong", "driver", ...(["routing", "alias"].includes(config.control ?? "") ? ["openrouter"] : [])].map(p => [p, { baseUrl: `${server.url.origin}/${p}/v1`, api: "openai-completions", auth: responseMode === "wake" && (p === "enabled" && ["auth-skip", "auth-none"].includes(config.control ?? "") || p === "backup" && config.control === "auth-none") ? "oauth" : "none", models: p === "enabled" && config.control === "literal" ? [model, { ...model, id: "probe:high" }] : p === "enabled" && config.control === "literal-carry" ? [model, { ...model, id: "probe:max" }] : p === "enabled" && config.control === "wildcard" ? [model, { ...model, id: "alternate" }] : p === "enabled" && config.control === "normalization" ? [{ ...model, thinking: { mode: "effort", efforts: ["low"] } }] : p === "enabled" && config.control === "effort-append" ? [{ ...model, thinking: { mode: "effort", efforts: ["low", "high"], defaultLevel: "high" } }] : [model] }]));
 	await Bun.write(path.join(agentDir, "models.yml"), JSON.stringify({ providers }));
 	const fallbackChains = config.retry ?? (config.control === "alias" && responseMode === "task" ? { default: ["pi/proof-target:medium", "backup/probe:high"] } : { default: ["wrong/probe:low"] });
 	await Bun.write(path.join(agentDir, "config.yml"), JSON.stringify({ modelRoles: { default: "driver/probe", ...(config.control === "alias" ? { "proof-target": "openrouter/probe@upstream" } : {}) }, disabledProviders: disabled, models: { offline: !!config.offline }, retry: { enabled: true, modelFallback: config.modelFallback !== false, maxRetries: 2, baseDelayMs: 20, maxDelayMs: 100, fallbackOn: "any", fallbackChains }, async: { enabled: false }, task: { agentIdleTtlMs: 0, perCallModel: "on" }, compaction: { enabled: false }, advisor: { enabled: false } }));
@@ -114,12 +114,12 @@ async function run(mode: string, disabled: string[], filter: boolean, session?: 
 					proc.stdin.write(`${JSON.stringify({ id: "probe-state", type: "get_state" })}\n`);
 				}
 				const stateReady = requestedState && output.slice(0, output.lastIndexOf("\n") + 1).includes('"id":"probe-state"');
-				const needsFailureNotice = mode === "wake" && ["exact-empty", "child-empty", "fallback-off", "offline", "install-error", "first-write", "metadata"].includes(config.control ?? "");
+				const needsFailureNotice = mode === "wake" && ["exact-empty", "child-empty", "fallback-off", "offline", "install-error", "first-write", "metadata", "auth-none"].includes(config.control ?? "");
 				if (stateReady && (!needsFailureNotice || output.includes("Wake turn failed: No model configured"))) return;
 			}
 		})();
 		await Promise.race([read, abort, proofFailure.promise]);
-		if (mode === "wake" && ["role-chain", "wildcard", "literal", "literal-carry", "auto", "auto-carry", "normalization", "routing", "alias", "model-append", "effort-append", "ceiling", "legacy", "unset", "hook-error", "enabled-current"].includes(config.control ?? "")) await Promise.race([childEnd.promise, abort, proofFailure.promise]);
+		if (mode === "wake" && ["role-chain", "wildcard", "literal", "literal-carry", "auto", "auto-carry", "normalization", "routing", "alias", "model-append", "effort-append", "ceiling", "legacy", "unset", "hook-error", "enabled-current", "auth-skip"].includes(config.control ?? "")) await Promise.race([childEnd.promise, abort, proofFailure.promise]);
 		completed = true;
 	} catch (error) {
 		failure = error;
@@ -147,7 +147,7 @@ async function run(mode: string, disabled: string[], filter: boolean, session?: 
 	return { scenario, output, stderr: errors, sessionFile: state?.data?.sessionFile as string | undefined };
 }
 const control = process.env.ECI_CONTROL ?? "role-chain";
-assert(["role-chain", "wildcard", "literal", "literal-carry", "auto", "auto-carry", "normalization", "routing", "alias", "ceiling", "legacy", "unset", "exact-empty", "child-empty", "fallback-off", "offline", "pin", "hook-error", "install-error", "first-write", "metadata", "model-append", "effort-append", "enabled-current"].includes(control), "unknown ECI_CONTROL");
+assert(["role-chain", "wildcard", "literal", "literal-carry", "auto", "auto-carry", "normalization", "routing", "alias", "ceiling", "legacy", "unset", "exact-empty", "child-empty", "fallback-off", "offline", "pin", "hook-error", "install-error", "first-write", "metadata", "model-append", "effort-append", "enabled-current", "auth-skip", "auth-none"].includes(control), "unknown ECI_CONTROL");
 const results: Array<{ scenario: string; output?: string; stderr?: string; error?: string; sessionFile?: string }> = [];
 let succeeded = false;
 try {
@@ -202,6 +202,20 @@ try {
 			assert(later, "child did not start");
 			assert.deepEqual({ model: later.model, effort: later.effort, roles: later.roles, entries: later.entries }, { model: prior.model, effort: prior.effort, roles: prior.roles, entries: prior.entries });
 			assert.equal(childRequests[0]?.provider, "primary");
+		} else if (control === "auth-skip" || control === "auth-none") {
+			const component = requests.filter(request => request.component && request.scenario === `${control}-wake`);
+			const authBefore = findEvent("wake", "auth_before");
+			const authAfter = findEvent("wake", "auth_after");
+			assert(authBefore && authAfter, "configured-auth state evidence missing");
+			assert(findEvent("wake", "owners_before") && findEvent("wake", "owners_after_create") && findEvent("wake", "owners_after_dispose"), "owner preservation evidence missing");
+			if (control === "auth-none") {
+				assert.deepEqual(authAfter.state, authBefore.state, "all-unauthenticated component mutated");
+				assert.equal(component.length, 0, "all-unauthenticated component made a request");
+			} else {
+				assert.deepEqual(component.map(request => request.provider), ["backup"], "component did not use only authenticated backup");
+				assert.equal(component[0]?.body.reasoning_effort, "high");
+				assert(JSON.stringify(findEvent("wake", "component_settled")?.assistant).includes("SDK integration complete"), "backup assistant did not complete");
+			}
 		} else if (control === "ceiling" || control === "legacy" || control === "unset") {
 			const component = requests.filter(request => request.component && request.scenario === `${control}-wake`);
 			const selected = findEvent("wake", "component_selected");

@@ -9,7 +9,7 @@ function fixture(options: { current?: boolean; pin?: boolean; fallback?: boolean
     find: () => undefined,
     hasProvider: () => true,
     getAvailable: () => [],
-    hasConfiguredAuth: () => true,
+    hasConfiguredAuth: (_model: { provider: string }) => true,
   };
   const session = {
     settings, modelRegistry: models,
@@ -44,6 +44,22 @@ describe("model-less revival provider recovery", () => {
       ["apply", { role: "subagent:child", model: { provider: "enabled", id: "one" }, thinkingLevel: "medium", explicitThinkingLevel: true }],
       ["effort", "medium"],
     ]);
+  });
+  test("skips an unauthenticated candidate and installs the eligible backup", async () => {
+    const f = fixture();
+    f.session.modelRegistry.hasConfiguredAuth = (model: { provider: string }) => model.provider === "backup";
+    await recoverModelLessRevival(f.context, f.init, f.api);
+    assert.deepEqual(f.calls, [
+      ["install", "subagent:child", { primary: "backup/two:high", chain: [] }],
+      ["apply", { role: "subagent:child", model: { provider: "backup", id: "two" }, thinkingLevel: "high", explicitThinkingLevel: true }],
+      ["effort", "high"],
+    ]);
+  });
+  test("leaves policy and session unchanged when every candidate lacks configured auth", async () => {
+    const f = fixture();
+    f.session.modelRegistry.hasConfiguredAuth = () => false;
+    await recoverModelLessRevival(f.context, f.init, f.api);
+    assert.deepEqual(f.calls, []);
   });
   for (const [name, options] of Object.entries({ current: { current: true }, pin: { pin: true }, disabledFallback: { fallback: false }, offline: { offline: true }, empty: { empty: true } })) {
     test(`${name} does not change model or role`, async () => {

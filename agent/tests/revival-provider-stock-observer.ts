@@ -31,10 +31,10 @@ export default function observe(pi: ExtensionAPI) {
     const scenario = process.env.ECI_PROBE_SCENARIO;
     if (!proofSession || !isLocalAgentSession(proofSession)) {
       const error = new Error("proof child session unavailable");
-      if (scenario === "ceiling-wake" || scenario === "legacy-wake" || scenario === "unset-wake") await signalFailure(error);
+      if (["ceiling-wake", "legacy-wake", "unset-wake", "auth-skip-wake", "auth-none-wake"].includes(scenario ?? "")) await signalFailure(error);
       throw error;
     }
-    if (scenario === "ceiling-wake" || scenario === "legacy-wake" || scenario === "unset-wake") try {
+    if (["ceiling-wake", "legacy-wake", "unset-wake", "auth-skip-wake", "auth-none-wake"].includes(scenario ?? "")) try {
       const settings = Settings.isolated({
         "disabledProviders": ["primary"],
         "retry.modelFallback": true,
@@ -102,6 +102,20 @@ export default function observe(pi: ExtensionAPI) {
         assert.equal(registry.get(componentId), undefined);
         await record({ event: "owners_after_create", ...snapshot(), component: { kind: componentRef.kind, parentId: componentRef.parentId } });
         if (session.model) throw new Error("ceiling integration expected a model-less SDK session");
+        const authCase = scenario === "auth-skip-wake" || scenario === "auth-none-wake";
+        const componentState = () => structuredClone({ model: session.model, effort: session.configuredThinkingLevel(), roles: settings.getModelRoles(), chains: lookup("retry.fallbackChains")?.get(settings), branch: session.sessionManager.getBranch() });
+        let authBefore: ReturnType<typeof componentState> | undefined;
+        if (authCase) {
+          const first = session.modelRegistry.find("enabled", "probe");
+          const backup = session.modelRegistry.find("backup", "probe");
+          const outside = session.modelRegistry.find("wrong", "probe");
+          assert(first && backup && outside, "auth fixture models unavailable");
+          assert.equal(session.modelRegistry.hasConfiguredAuth(first), false, "first candidate unexpectedly has configured auth");
+          assert.equal(session.modelRegistry.hasConfiguredAuth(backup), scenario === "auth-skip-wake", "backup auth fixture mismatch");
+          assert.equal(session.modelRegistry.hasConfiguredAuth(outside), true, "out-of-chain provider is not eligible");
+          authBefore = componentState();
+          await record({ event: "auth_before", state: authBefore });
+        }
         if (scenario === "unset-wake") {
           session.setThinkingLevel(undefined);
           await record({ event: "component_before", effort: session.configuredThinkingLevel() });
@@ -124,18 +138,37 @@ export default function observe(pi: ExtensionAPI) {
           resolve: (selector: string) => resolveModelOverride([selector], session.modelRegistry, settings),
           install: installRetryFallbackRole,
         };
-        await recoverModelLessRevival(context, init, api as never);
-        const fallbackEvents: string[] = [];
-        const unsubscribe = session.subscribe(event => {
-          if (event.type === "retry_fallback_applied" || event.type === "retry_fallback_succeeded") fallbackEvents.push(event.type);
-        });
-        await record({ event: "component_selected", model: session.model, effort: session.configuredThinkingLevel() });
-        await session.prompt("SDK integration");
-        await session.waitForIdle();
-        unsubscribe();
-        const last = session.messages.findLast(message => message.role === "assistant");
-        assert(last && last.stopReason === "stop" && JSON.stringify(last.content).includes("SDK integration complete"), "SDK assistant did not complete successfully");
-        await record({ event: "component_settled", model: session.model, effort: session.configuredThinkingLevel(), fallbackEvents, assistant: last.content });
+        try {
+          await recoverModelLessRevival(context, init, api as never);
+        } catch (error) {
+          if (authCase) await record({ event: "auth_recovery_threw", state: componentState(), error: String(error) });
+          throw error;
+        }
+        if (authCase) {
+          const after = componentState();
+          await record({ event: "auth_after", state: after });
+          if (scenario === "auth-none-wake") {
+            assert.deepEqual(after, authBefore, "all-unauthenticated recovery mutated component state");
+          } else {
+            assert.equal(after.model?.provider, "backup", "recovery did not skip unauthenticated first candidate");
+            assert.equal(session.configuredThinkingLevel(), "high");
+            assert.equal(settings.getModelRole(role), "backup/probe:high");
+            assert.deepEqual(getRetryFallbackChains(settings)[role], []);
+          }
+        }
+        if (scenario !== "auth-none-wake") {
+          const fallbackEvents: string[] = [];
+          const unsubscribe = session.subscribe(event => {
+            if (event.type === "retry_fallback_applied" || event.type === "retry_fallback_succeeded") fallbackEvents.push(event.type);
+          });
+          await record({ event: "component_selected", model: session.model, effort: session.configuredThinkingLevel() });
+          await session.prompt("SDK integration");
+          await session.waitForIdle();
+          unsubscribe();
+          const last = session.messages.findLast(message => message.role === "assistant");
+          assert(last && last.stopReason === "stop" && JSON.stringify(last.content).includes("SDK integration complete"), "SDK assistant did not complete successfully");
+          await record({ event: "component_settled", model: session.model, effort: session.configuredThinkingLevel(), fallbackEvents, assistant: last.content });
+        }
       } catch (error) {
         primaryFailure = error;
         throw error;
