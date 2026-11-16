@@ -184,12 +184,10 @@ and execution; the table replaces by key and execution.
 "$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf_completion":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
 ```
 
-List the table's rows using `executions` for both timestamp cells, labeled by
-execution number, and measured minutes summed over executions. Unknown
-timestamps retain their evidence gap; do not infer them. Known closes sort
-newest first, followed by unknown closes. If `recency_incomplete` is true,
-disclose that latest-five recency is incomplete. Malformed JSON or non-object
-completions require correction.
+List the table’s rows under [Work estimates](../../eci-binding-contract.md#work-estimates),
+using `executions` for both timestamp cells, labeled by execution number, and
+`measured` for measured time. A true `recency_incomplete` requires that rule’s
+recency disclosure. Malformed JSON or non-object completions require correction.
 
 ```sh
 jq -sc 'def epoch: try fromdate catch null;
@@ -211,7 +209,7 @@ jq -sc 'def epoch: try fromdate catch null;
            else "unknown: \([$runs[] | select((.started_at | epoch) == null or (.completed_at | epoch) == null) | .evidence_gap] | join("; "))" end),
          has_unknown_close: any($runs[]; (.completed_at | epoch) == null)}]
   | any(.[]; .has_unknown_close) as $incomplete
-  | sort_by(close_order) | .[-5:] | reverse[]
+  | sort_by(close_order) | .[-5:] | .[]
   | del(.has_unknown_close) + {recency_incomplete: $incomplete}' high_level_log.jsonl
 ```
 
