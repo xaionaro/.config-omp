@@ -154,6 +154,89 @@ export default function observe(pi: ExtensionAPI) {
       await signalFailure(error);
       throw error;
     }
+    const seam = scenario?.endsWith("-wake") && ["first-write", "metadata", "model-append", "effort-append"].includes(scenario.slice(0, -5)) ? scenario.slice(0, -5) : undefined;
+    if (seam) {
+      if (_event.reason !== "revive" || proofSession.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId()) throw new Error("seam requires the exact revived child");
+      if (seam === "effort-append") proofSession.setThinkingLevel("low");
+      const runner = proofSession.extensionRunner;
+      const chains = lookup("retry.fallbackChains");
+      if (!runner || !chains) throw new Error("seam observation unavailable");
+      const history = () => structuredClone(proofSession.sessionManager.getBranch().filter(entry => entry.type === "model_change" || entry.type === "thinking_level_change"));
+      const snapshot = () => ({ roles: proofSession.settings.getModelRoles(), chains: chains.get(proofSession.settings), model: proofSession.model, effort: proofSession.configuredThinkingLevel(), history: history() });
+      await record({ event: "seam_before", ...snapshot() });
+      const restores: Array<() => void> = [];
+      let fired = 0;
+      const restore = () => { for (const undo of restores.splice(0).reverse()) undo(); };
+      runner.onError(error => {
+        if (!error.extensionPath.endsWith("/revival-provider.ts") || error.event !== "before_agent_start") return;
+        restore();
+        appendFileSync(process.env.ECI_PROBE_LOG!, `${JSON.stringify({ scenario, detail: { event: "seam_error", error, fired, ...snapshot() } })}\n`);
+      });
+      if (seam === "first-write") {
+        const setting = lookup("modelRoles");
+        if (!setting) throw new Error("model roles setting unavailable");
+        const original = setting.override;
+        const wrapped: typeof original = function(scope, value) {
+          if (scope !== proofSession.settings) return Reflect.apply(original, this, [scope, value]);
+          setting.override = original;
+          fired++;
+          throw new Error("injected first policy write failure");
+        };
+        setting.override = wrapped;
+        restores.push(() => { if (setting.override === wrapped) setting.override = original; });
+      } else {
+        const originalApply = proofSession.applyRoleModel;
+        const wrappedApply: typeof originalApply = async function(entry) {
+          proofSession.applyRoleModel = originalApply;
+          let finalArmed = false;
+          try {
+            if (seam === "metadata") {
+              const registry = proofSession.modelRegistry;
+              const original = registry.refreshSelectedModelMetadata;
+              const wrapped: typeof original = async function(model) {
+                if (model.provider !== "enabled" || model.id !== "probe") return Reflect.apply(original, this, [model]);
+                registry.refreshSelectedModelMetadata = original;
+                fired++;
+                throw new Error("injected metadata refresh failure");
+              };
+              registry.refreshSelectedModelMetadata = wrapped;
+              restores.push(() => { if (registry.refreshSelectedModelMetadata === wrapped) registry.refreshSelectedModelMetadata = original; });
+            } else if (seam === "model-append") {
+              const manager = proofSession.sessionManager;
+              const original = manager.appendModelChange;
+              const wrapped: typeof original = function(...args) {
+                manager.appendModelChange = original;
+                fired++;
+                throw new Error("injected model history failure");
+              };
+              manager.appendModelChange = wrapped;
+              restores.push(() => { if (manager.appendModelChange === wrapped) manager.appendModelChange = original; });
+            }
+            const result = await Reflect.apply(originalApply, this, [entry]);
+            if (seam === "effort-append") {
+              await record({ event: "seam_after_apply", ...snapshot() });
+              const manager = proofSession.sessionManager;
+              const original = manager.appendThinkingLevelChange;
+              const wrapped: typeof original = function(...args) {
+                manager.appendThinkingLevelChange = original;
+                fired++;
+                throw new Error("injected thinking history failure");
+              };
+              manager.appendThinkingLevelChange = wrapped;
+              restores.push(() => { if (manager.appendThinkingLevelChange === wrapped) manager.appendThinkingLevelChange = original; });
+              finalArmed = true;
+            }
+            return result;
+          } finally {
+            if (!finalArmed) restore();
+          }
+        };
+        proofSession.applyRoleModel = wrappedApply;
+        restores.push(() => { if (proofSession.applyRoleModel === wrappedApply) proofSession.applyRoleModel = originalApply; });
+      }
+      pi.on("session_shutdown", () => { restore(); });
+      pi.on("agent_start", () => { restore(); });
+    }
     if (scenario === "hook-error-wake" || scenario === "install-error-wake") {
       const runner = proofSession.extensionRunner;
       const chains = lookup("retry.fallbackChains");
@@ -213,6 +296,10 @@ export default function observe(pi: ExtensionAPI) {
     const session = AgentRegistry.global().get(ctx.agent.id)?.session;
     if (!session || !isLocalAgentSession(session)) throw new Error("proof child session unavailable");
     await record({ event: "provider_request", model: session.model, effort: session.configuredThinkingLevel() });
+    if (process.env.ECI_PROBE_SCENARIO === "alias-wake" && session.model?.provider === "openrouter") {
+      const role = `subagent:${ctx.agent.id}`;
+      await record({ event: "alias_role", primary: session.settings.getModelRole(role), chain: getRetryFallbackChains(session.settings)[role] });
+    }
   });
   pi.on("after_provider_response", async (event, ctx) => {
     const session = AgentRegistry.global().get(ctx.agent.id)?.session;
