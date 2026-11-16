@@ -635,6 +635,8 @@ Update at work start, material state changes, findings/decisions/agreements, mil
 
 Every material forecast change updates its current `forecasts.yaml` record in place and applies the same-update recalibration rule to that forecast.
 
+When comparable leaf timing evidence arrives, apply measurement-driven recalibration under [Work estimates](../../eci-binding-contract.md#work-estimates).
+
 Answer the user before ledger maintenance or coordination when a response is due.
 Advance ready independent work without waiting for ledger, log, forecast, or report maintenance. Before a dependent action, correct the affected current-state records and communicate the material changed facts that action needs, including changed requirements, scope, ownership, controls, evidence, and verification results. Stop or redirect only work invalidated by that correction.
 
