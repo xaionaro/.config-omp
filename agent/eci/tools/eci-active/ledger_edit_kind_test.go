@@ -34,16 +34,20 @@ func TestLedgerEditKindWireNames(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tc.wire, string(encoded))
 	}
-	var kind ledgerOperationKind
-	require.NoError(t, json.Unmarshal([]byte(`"other"`), &kind))
-	require.Equal(t, ledgerOperationUnknown, kind)
-	_, err := json.Marshal(kind)
-	require.Error(t, err)
-	require.Error(t, json.Unmarshal([]byte(`1`), &kind))
-	var table ledgerTable
-	require.NoError(t, json.Unmarshal([]byte(`"other"`), &table))
-	require.Equal(t, ledgerTableUnknown, table)
-	_, err = json.Marshal(table)
-	require.Error(t, err)
-	require.Error(t, json.Unmarshal([]byte(`1`), &table))
+	t.Run("unknown operation", func(t *testing.T) {
+		var kind ledgerOperationKind
+		require.Error(t, json.Unmarshal([]byte(`"other"`), &kind))
+		require.Equal(t, ledgerOperationUnknown, kind)
+		_, err := json.Marshal(kind)
+		require.Error(t, err)
+		require.Error(t, json.Unmarshal([]byte(`1`), &kind))
+	})
+	t.Run("unknown table", func(t *testing.T) {
+		var table ledgerTable
+		require.Error(t, json.Unmarshal([]byte(`"other"`), &table))
+		require.Equal(t, ledgerTableUnknown, table)
+		_, err := json.Marshal(table)
+		require.Error(t, err)
+		require.Error(t, json.Unmarshal([]byte(`1`), &table))
+	})
 }

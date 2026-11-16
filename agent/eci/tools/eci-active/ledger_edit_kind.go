@@ -46,6 +46,7 @@ func (kind *ledgerOperationKind) UnmarshalJSON(data []byte) error {
 		*kind = ledgerDelete
 	default:
 		*kind = ledgerOperationUnknown
+		return fmt.Errorf("unknown operation %q", name)
 	}
 	return nil
 }
@@ -109,6 +110,7 @@ func (table *ledgerTable) UnmarshalJSON(data []byte) error {
 		*table = ledgerForecasts
 	default:
 		*table = ledgerTableUnknown
+		return fmt.Errorf("unknown table %q", name)
 	}
 	return nil
 }
