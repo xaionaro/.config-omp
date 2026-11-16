@@ -23,12 +23,33 @@ func TestReportStructurePreservesNumericRange(t *testing.T) {
 // Example: leading nonbreaking space is not valid JSON whitespace.
 func TestReportStructureJSONWhitespace(t *testing.T) {
 	t.Parallel()
-	for _, prefix := range []string{"", " ", "\t", "\n", "\r", " \t\n\r"} {
-		require.NoError(t, validateReportStructure([]byte(prefix+"{}")))
+	for _, space := range []string{"", " ", "\t", "\n", "\r", " \t\n\r"} {
+		require.NoError(t, validateReportStructure([]byte(space+"{}")))
+		require.NoError(t, validateReportStructure([]byte("{}"+space)))
+		require.NoError(t, validateReportStructure([]byte(space+"{}"+space)))
 	}
-	for _, prefix := range []string{"\v", "\f", "\u00a0", "\u2003"} {
-		require.Error(t, validateReportStructure([]byte(prefix+"{}")))
-	}
+	t.Run("leading",
+		// rejectLeadingNonJSONWhitespace checks each invalid prefix.
+		//
+		// Example: a nonbreaking space cannot precede a JSON object.
+		func(t *testing.T) {
+			for _, space := range []string{"\v", "\f", "\u00a0", "\u2003"} {
+				if err := validateReportStructure([]byte(space + "{}")); err == nil {
+					t.Errorf("leading %q accepted", space)
+				}
+			}
+		})
+	t.Run("trailing",
+		// rejectTrailingNonJSONWhitespace checks each invalid suffix.
+		//
+		// Example: a nonbreaking space cannot follow a JSON object.
+		func(t *testing.T) {
+			for _, space := range []string{"\v", "\f", "\u00a0", "\u2003"} {
+				if err := validateReportStructure([]byte("{}" + space)); err == nil {
+					t.Errorf("trailing %q accepted", space)
+				}
+			}
+		})
 }
 
 // TestReportStructureNestedArrays checks independent object scopes.
@@ -38,4 +59,14 @@ func TestReportStructureNestedArrays(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, validateReportStructure([]byte(`{"items":[[{"x":1},{"x":2}]]}`)))
 	require.Error(t, validateReportStructure([]byte(`{"items":[[{"x":1,"\u0078":2}]]}`)))
+}
+
+// TestReportStructureRejectsIncompleteValues checks complete JSON structure.
+//
+// Example: a report containing a truncated array is not accepted.
+func TestReportStructureRejectsIncompleteValues(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{"", " \t\n\r", "{", `{"x":`, `{"x":[`, `{"x":[1,]}`, `{"x":{"a":1`, `{"x":[1,2}`} {
+		require.Error(t, validateReportStructure([]byte(input)), "%q", input)
+	}
 }

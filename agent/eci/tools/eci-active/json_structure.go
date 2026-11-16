@@ -12,6 +12,7 @@ import (
 //
 // Example: escaped spellings of the same key are rejected as duplicates.
 func validateReportStructure(data []byte) error {
+	// Only JSON whitespace may precede the object; decode the original bytes.
 	first := 0
 	for first < len(data) && (data[first] == ' ' || data[first] == '\t' || data[first] == '\r' || data[first] == '\n') {
 		first++
