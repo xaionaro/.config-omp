@@ -172,8 +172,8 @@ Record each leaf completion under
 `lifecycle_change` event whose `details.leaf_completion` holds `forecast`,
 `id`, `work`, `planned`, `started_at`, and `completed_at` (the close read),
 plus `multiplier`, such as `"0–2"`, and the 1-based `execution` for a leaf
-with a multiplier; replace a missing or malformed `started_at` with
-`evidence_gap` naming why.
+with a multiplier. Replace a missing or malformed timestamp with
+`evidence_gap` naming the timestamp and why it is unavailable.
 Add a `details.status_update` closing a report task only when the report has a
 task for that leaf, targeting that task's own ID. Correct a leaf with a
 `correction` event whose `details` holds `corrects`, the one-based line of the
@@ -184,17 +184,21 @@ and execution; the table replaces by key and execution.
 "$HOME/.omp/agent/eci/bin/eci-active" ledger-append --json '{"event":"lifecycle_change","actor":{"id":"/root/implementer","role":"Implementer"},"recorded_by":{"id":"/root","role":"Supervisor"},"summary":"Leaf receiver-clock/1.1 closed; requested outcome remains open.","next_action":"Start leaf receiver-clock/1.2","details":{"leaf_completion":{"forecast":"receiver-clock","id":"1.1","work":"Match each clock reading to its source record","planned":"20–25 minutes","started_at":"2000-01-01T00:00:00Z","completed_at":"2000-01-01T00:27:00Z"}}}'
 ```
 
-List the table's rows with measured minutes summed over executions. It fails on
-a malformed line, a non-object leaf completion, or a malformed or missing time;
-correct a leaf as above.
+List the table's rows with each execution's timestamps and measured minutes
+summed over executions. Unknown timestamps retain their evidence gap; do not
+infer them. Malformed JSON or non-object completions require correction.
 
 ```sh
-jq -sc '[.[].details | objects | .leaf_completion // empty]
+jq -sc 'def epoch: try fromdate catch null;
+  [.[].details | objects | .leaf_completion // empty]
   | reduce .[] as $l ({}; .["\($l.forecast)/\($l.id)"]["\($l.execution // 1)"] = $l)
-  | [.[] | [.[]] | max_by(.completed_at | fromdate) + {measured:
-      (if all(.started_at) then "\(map((.completed_at | fromdate) - (.started_at | fromdate)) | add / 60 | floor) min"
-       else "unknown: \(map(select(.started_at | not) | .evidence_gap // error("\(.forecast)/\(.id): no started_at or evidence_gap")) | join("; "))" end)}]
-  | sort_by(.completed_at | fromdate) | .[-5:] | reverse[]' high_level_log.jsonl
+  | [.[] | [.[]] | sort_by(.execution // 1) as $runs
+     | ($runs | max_by((.completed_at | epoch) // -1)) + {
+         executions: [$runs[] | {execution: (.execution // 1), started_at, completed_at, evidence_gap}],
+         measured: (if all($runs[]; (.started_at | epoch) != null and (.completed_at | epoch) != null)
+           then "\([$runs[] | (.completed_at | epoch) - (.started_at | epoch)] | add / 60 | floor) min"
+           else "unknown: \([$runs[] | select((.started_at | epoch) == null or (.completed_at | epoch) == null) | .evidence_gap // "missing or malformed timestamp"] | join("; "))" end)}]
+  | sort_by((.completed_at | epoch) // -1) | .[-5:] | reverse[]' high_level_log.jsonl
 ```
 
 ## Latest Status Report
