@@ -157,7 +157,7 @@ export default function observe(pi: ExtensionAPI) {
     const seam = scenario?.endsWith("-wake") && ["first-write", "metadata", "model-append", "effort-append"].includes(scenario.slice(0, -5)) ? scenario.slice(0, -5) : undefined;
     if (seam) {
       if (_event.reason !== "revive" || proofSession.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId()) throw new Error("seam requires the exact revived child");
-      if (seam === "effort-append") proofSession.setThinkingLevel("low");
+      if (seam === "effort-append") proofSession.setThinkingLevel(Effort.Low);
       const runner = proofSession.extensionRunner;
       const chains = lookup("retry.fallbackChains");
       if (!runner || !chains) throw new Error("seam observation unavailable");
@@ -176,7 +176,7 @@ export default function observe(pi: ExtensionAPI) {
         const setting = lookup("modelRoles");
         if (!setting) throw new Error("model roles setting unavailable");
         const original = setting.override;
-        const wrapped: typeof original = function(scope, value) {
+        const wrapped: typeof original = function(this: typeof setting, scope, value) {
           if (scope !== proofSession.settings) return Reflect.apply(original, this, [scope, value]);
           setting.override = original;
           fired++;
@@ -186,14 +186,14 @@ export default function observe(pi: ExtensionAPI) {
         restores.push(() => { if (setting.override === wrapped) setting.override = original; });
       } else {
         const originalApply = proofSession.applyRoleModel;
-        const wrappedApply: typeof originalApply = async function(entry) {
+        const wrappedApply: typeof originalApply = async function(this: typeof proofSession, entry) {
           proofSession.applyRoleModel = originalApply;
           let finalArmed = false;
           try {
             if (seam === "metadata") {
               const registry = proofSession.modelRegistry;
               const original = registry.refreshSelectedModelMetadata;
-              const wrapped: typeof original = async function(model) {
+              const wrapped: typeof original = async function(this: typeof registry, model) {
                 if (model.provider !== "enabled" || model.id !== "probe") return Reflect.apply(original, this, [model]);
                 registry.refreshSelectedModelMetadata = original;
                 fired++;
@@ -248,7 +248,7 @@ export default function observe(pi: ExtensionAPI) {
       });
     }
     if (["literal-carry-wake", "auto-carry-wake"].includes(scenario ?? "")) {
-      proofSession.setThinkingLevel(scenario === "auto-carry-wake" ? "auto" : "low");
+      proofSession.setThinkingLevel(scenario === "auto-carry-wake" ? "auto" : Effort.Low);
       await record({ event: "pre_recovery_effort", effort: proofSession.configuredThinkingLevel() });
     }
     if (process.env.ECI_PROBE_SCENARIO === "enabled-current-wake") {

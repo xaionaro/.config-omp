@@ -43,7 +43,9 @@ type RecoveryAPI = {
   install(settings: Settings, role: string, value: { primary: string; chain: string[] }): void;
 };
 
-const unavailable = (reason: string): never => { throw new Error(`Model-less revival recovery unavailable: ${reason}`); };
+function unavailable(reason: string): never {
+  throw new Error(`Model-less revival recovery unavailable: ${reason}`);
+}
 
 /** Restore a model-less ordinary child using its effective stock fallback policy. */
 export async function recoverModelLessRevival(ctx: Context, init: Init, api: RecoveryAPI): Promise<void> {
