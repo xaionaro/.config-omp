@@ -11,7 +11,7 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**On ECI's main path**, apply each phase of the cycle below to all pending work together, not one test at a time, under ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule).
+**On ECI's main path**, apply each phase of the cycle below to all pending work together, not one test at a time, in the order of ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline): write all the tests, implement all of it, then run them and verify RED on the pre-change or deliberately broken code.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 

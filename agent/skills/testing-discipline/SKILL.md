@@ -5,7 +5,7 @@ description: Use when writing, running, or reviewing tests, or before reporting 
 
 # Testing Discipline
 
-- Test every modification before reporting done: unit checks plus E2E when a framework exists. Unit isolates; E2E proves user path.
+- Test every modification before reporting its Job or outcome done, not at each work-tree leaf close: unit checks plus E2E when a framework exists. Unit isolates; E2E proves user path.
 - E2E = built artifact in target env, exercised through real UI/API, validated by output/screenshots/state. Anything less is not E2E; name it honestly.
 - Iterate on the shortest faithful check first. If behavior reproduces without full E2E (unit/API/CLI/component), debug there; use E2E for final user-path proof.
 - Treat tests as falsification attempts — they try to disprove your code works. Cover edge cases, not just the happy path.

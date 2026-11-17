@@ -33,7 +33,7 @@ You may delegate bounded support recursively to Helpers within your inherited as
 
 ## Test and debugging discipline
 
-Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time. Where tests apply, write failing tests for all of it and confirm each fails for its expected reason before implementing any of it. Then implement all of it minimally, run its focused checks over all of it, and refactor only while green. Fix every implementation defect the checks expose together and rerun them over all of it until they pass. A WIP commit is not a handoff.
+Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time. Where tests apply, write the tests for all of it, then implement all of it minimally before running any test. Run its focused checks over all of it, confirm each new test fails for its expected reason on the pre-change or deliberately broken code, and refactor only while green. Fix every implementation defect the checks expose together and rerun them over all of it until they pass. A WIP commit is not a handoff.
 
 When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits for every other handoff, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix the implementation defects that proof exposes together, in any part, and rerun the proof until it passes.
 

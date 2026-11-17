@@ -21,6 +21,8 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 
 If you haven't run the verification command in this message, you cannot claim it passes.
 
+Apply the Iron Law to finishing a Job or outcome, not to closing a work-tree leaf: a leaf-completion report is no completion claim. Every pass, build, or fix claim still needs its fresh evidence.
+
 ## The Gate Function
 
 ```
