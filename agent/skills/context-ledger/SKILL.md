@@ -364,7 +364,7 @@ scenario data into a rendered report. Omit an active target when inactive.
 the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
 leaf the work tree must explain; policy-imposed stability of a settled leaf is
-a valid reason after an overrun, not a claim of physical indivisibility. A
+a valid reason after a revised estimate, not a claim of physical indivisibility. A
 child's `id` is its parent's `id` plus `.` and a segment, such as `1.2`. Write
 each `duration` as a range, such as `"10–20 minutes"`; for a leaf with a
 multiplier, write one execution's range followed by the multiplier, such as
@@ -647,8 +647,6 @@ permission ceremonies. History/status/forecasts retain their separate contracts.
 Update at work start, material state changes, findings/decisions/agreements, milestones, material user input, and existing QA/verdict, handoff, user-waiting stop, and shutdown checkpoints. Apply the dependency order below; these update points do not delay ready independent work.
 
 Every material forecast change updates its current `forecasts.yaml` record in place and applies the same-update recalibration rule to that forecast.
-
-When comparable leaf timing evidence arrives, assess and route warranted measurement-driven recalibration under [Work estimates](../../eci-binding-contract.md#work-estimates); apply changes only after the relevant decision.
 
 Answer the user before ledger maintenance or coordination when a response is due.
 Advance ready independent work without waiting for ledger, log, forecast, or report maintenance. Before a dependent action, correct the affected current-state records and communicate the material changed facts that action needs, including changed requirements, scope, ownership, controls, evidence, and verification results. Stop or redirect only work invalidated by that correction.
