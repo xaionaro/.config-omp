@@ -508,7 +508,7 @@ and relationship arrays are nonempty; named links target the stated record types
 | requirement | `source_text: string`, `source_context: string`, `acceptance: string[]` | None |
 | outcome | `description: string` | `requirements` → requirement, `scope` → scope |
 | scope | `include: string[]`, `exclude: string[]` | None |
-| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` for a Job | `outcomes` → outcome |
+| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` for a Job while active/blocked | `outcomes` → outcome |
 | unknown | `question: string`, `answer: null`, `effect: string`, `resolve_by: string` | None |
 | decision | `choice: string`, `reason: string`, `consequence: string` | None |
 | guard | `rule: string`, `reason: string` | None |
