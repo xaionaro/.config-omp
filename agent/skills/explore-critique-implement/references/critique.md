@@ -15,7 +15,7 @@ Read the target state, original requirements, available lineage context, candida
 
 Records, hashes, receipts, and packet shape are review context, not admission criteria. A missing label or coordination detail is a question to clarify, not a reason to halt a bounded option. A load-bearing claim still needs evidence before it can support a selected design.
 
-Check each material option's execution-time forecast against [Work estimates](../../../eci-binding-contract.md#work-estimates). Return an otherwise-surviving option's missing or malformed forecast for correction as bounded re-exploration instead of selecting. Rank options under [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility). Carry the selected design's forecast into the output.
+Check each material option's execution-time forecast against [Work estimates](../../../eci-binding-contract.md#work-estimates). Return an otherwise-surviving option's missing, malformed, or noncompliant forecast for correction as bounded re-exploration instead of selecting. Rank options under [main ECI quality responsibility](fast-path.md#main-eci-quality-responsibility). Carry the selected design's forecast into the output.
 
 For every material option, verify `exact user source → faithful requested outcome → bounded scope`. Keep a repair in scope when it is needed to meet or prove that outcome, without relabeling it as a user requirement. REJECT a discovered concern whose remedy serves an unadmitted separate outcome when presented as current scope, and report it only as an observation or follow-up suggestion. Stale lineage does not reject known in-scope work.
 
@@ -47,6 +47,6 @@ Each issue attaches to one option and may carry the orthogonal `DUPLICATE-of-#N`
 
 - Choosing a winner without independent baseline/current-source reread or concrete text.
 - Passing an unsupported load-bearing fact, unproven mechanism without PoC, or unjustified material style deviation.
-- Selecting a design whose execution-time forecast is missing or malformed.
+- Selecting a design whose execution-time forecast is missing, malformed, or noncompliant.
 - Leaving a finding without a decided treatment and its evidence, or applying acceptance gates that the Supervisor enforces.
 - Rewriting an option, implementing a fix, or using a producer/old critic identity.
