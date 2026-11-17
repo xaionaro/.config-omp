@@ -34,4 +34,3 @@ func TestGuardSQLiteFilesRejectsAliases(t *testing.T) {
 	}
 	require.Error(t, guardSQLiteFiles(filepath.Join(t.TempDir(), "missing")))
 }
-

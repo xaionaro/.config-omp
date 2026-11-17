@@ -126,4 +126,3 @@ func TestProjectionRejectsInvalidEnvelope(t *testing.T) {
 		require.Empty(t, output)
 	}
 }
-

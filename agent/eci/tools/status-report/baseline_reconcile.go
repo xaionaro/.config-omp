@@ -127,4 +127,3 @@ func reconcileBaselinePending(document,log []byte,request baselineReconciliation
  if request.Pending.Kind==syncOperationAddition {guard:=current["record"];if selector.Target==syncTargetRootCompletion||selector.Target==syncTargetRootForecast {pending:=state.PendingRootAdditions[key];pending.RecordGuard=&guard;state.PendingRootAdditions[key]=pending} else {pending:=state.PendingAdditions[key];pending.RecordGuard=&guard;state.PendingAdditions[key]=pending}}
  root["status_sync"]=state;return json.Marshal(root)
 }
-
