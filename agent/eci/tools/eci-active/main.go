@@ -89,6 +89,12 @@ func run(args []string) error {
 		return statusRefresh(args)
 	case "ledger-append":
 		return ledgerAppend(args)
+	case "ledger-init":
+		return ledgerInit(args)
+	case "ledger-apply":
+		return ledgerApply(args)
+	case "ledger-read":
+		return ledgerRead(args)
 	case "requirement-assignment":
 		return requirementAssignment(args)
 	case "manifest-write":
@@ -130,6 +136,9 @@ func usage(w io.Writer) {
 	exe := eciExecutable()
 	fmt.Fprintf(w, `Usage:
   %[1]s ledger-append --json <event-object>
+  %[1]s ledger-init
+  %[1]s ledger-apply --json <operations-array>
+  %[1]s ledger-read
   %[1]s status-refresh --event <event-name>
   %[1]s coordinator-edit-status
   %[1]s repository-allow-status
