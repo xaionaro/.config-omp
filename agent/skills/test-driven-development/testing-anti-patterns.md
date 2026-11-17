@@ -242,8 +242,8 @@ BEFORE creating mock responses:
 **The fix:** follow TDD's [Batch Order](SKILL.md#batch-order):
 ```
 1. Write failing tests
-2. Implement to pass
-3. Confirm it builds, then watch each test fail without its code and pass with it
+2. Implement to pass, confirming each leaf or task builds
+3. After the whole batch, watch each test fail without its code and pass with it
 4. Refactor while green
 5. THEN claim complete
 ```
