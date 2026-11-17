@@ -392,7 +392,9 @@ evidence gaps visible.
 
 - Base case: completion UTC for the remaining authorized in-scope work on the
   current critical path, assuming no listed downside scenario. Derive it from
-  the work tree in `packages`; add no generic buffer.
+  the work tree in `packages`, plus a new ECI Job's labeled remaining-work
+  guess until its tree is settled under [Work estimates](../../eci-binding-contract.md#work-estimates);
+  add no generic buffer.
 - Scenario: include every material downside risk that could affect completion
   of the requested ECI outcome. Record its name, trigger/evidence, affected work
   or dependency, evidence assessed, assumptions and limits, added
