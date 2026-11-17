@@ -11,7 +11,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Personal omp skills live in `~/.omp/agent/skills`.**
 
-You write test cases (pressure scenarios with subagents), watch them fail (baseline behavior), write the skill (documentation), watch tests pass (agents comply), and refactor (close loopholes).
+You write test cases (pressure scenarios with subagents) and the skill (documentation), then run each scenario without the skill (watch it fail: baseline behavior) and with it (watch it pass: agents comply), and refactor (close loopholes).
 
 **Core principle:** If you didn't watch an agent fail without the skill, you don't know if the skill teaches the right thing.
 
@@ -36,9 +36,9 @@ A **skill** is a reference guide for proven techniques, patterns, or tools. Skil
 | **Test fails (RED)** | Agent violates rule without skill (baseline) |
 | **Test passes (GREEN)** | Agent complies with skill present |
 | **Refactor** | Close loopholes while maintaining compliance |
-| **Write test first** | Run baseline scenario BEFORE writing skill |
+| **Write test first** | Write pressure scenarios before the skill; run them only after writing it |
 | **Watch it fail** | Document exact rationalizations agent uses |
-| **Minimal code** | Write skill addressing those specific violations |
+| **Minimal code** | Write skill addressing the violations that prompted it |
 | **Watch it pass** | Verify agent now complies |
 | **Refactor cycle** | Find new rationalizations → plug → re-verify |
 
@@ -374,12 +374,12 @@ When: Reference material too large for inline
 ## The Iron Law (Same as TDD)
 
 ```
-NO SKILL WITHOUT A FAILING TEST FIRST
+NO SKILL BEFORE ITS FAILING TEST IS WRITTEN
 ```
 
 This applies to NEW skills AND EDITS to existing skills.
 
-Write skill before testing? Delete it. Start over.
+Write skill before its test? Delete it. Start over.
 Edit skill without testing? Same violation.
 
 **No exceptions:**
@@ -536,17 +536,17 @@ Follow the TDD cycle:
 
 ### RED: Write Failing Test (Baseline)
 
-Run pressure scenario with subagent WITHOUT the skill. Document exact behavior:
+Write the pressure scenarios before the skill. After writing the skill, run each with a subagent WITHOUT it and document exact behavior:
 - Launch skill-test agents by spawning subagents; include this prompt line: `follow any Stop-hook prompt in this session, including required proof/checklist files; fix blockers within your assigned scope; report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.`
 - What choices did they make?
 - What rationalizations did they use (verbatim)?
 - Which pressures triggered violations?
 
-This is "watch the test fail" - you must see what agents naturally do before writing the skill.
+This is "watch the test fail" - you must see what agents naturally do without the skill.
 
 ### GREEN: Write Minimal Skill
 
-Write skill that addresses those specific rationalizations. Don't add extra content for hypothetical cases.
+Before running any scenario, write the skill to address the violations that prompted it. Don't add extra content for hypothetical cases.
 
 Run same scenarios WITH skill. Agent should now comply.
 
@@ -600,8 +600,6 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 **RED Phase - Write Failing Test:**
 - [ ] Create pressure scenarios (3+ combined pressures for discipline skills)
-- [ ] Run scenarios WITHOUT skill - document baseline behavior verbatim
-- [ ] Identify patterns in rationalizations/failures
 
 **GREEN Phase - Write Minimal Skill:**
 - [ ] Name uses only letters, numbers, hyphens (no parentheses/special chars)
@@ -610,12 +608,14 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Description written in third person
 - [ ] Keywords throughout for search (errors, symptoms, tools)
 - [ ] Clear overview with core principle
-- [ ] Address specific baseline failures identified in RED
+- [ ] Address the violations that prompted the skill
 - [ ] Code inline OR link to separate file
 - [ ] One excellent example (not multi-language)
+- [ ] Run scenarios WITHOUT skill - each must fail; document baseline behavior verbatim
 - [ ] Run scenarios WITH skill - verify agents now comply
 
 **REFACTOR Phase - Close Loopholes:**
+- [ ] Identify patterns in rationalizations/failures
 - [ ] Identify NEW rationalizations from testing
 - [ ] Add explicit counters (if discipline skill)
 - [ ] Build rationalization table from all test iterations
@@ -649,8 +649,8 @@ How omp finds your skill:
 
 **Creating skills IS TDD for process documentation.**
 
-Same Iron Law: No skill without failing test first.
-Same cycle: RED (baseline) → GREEN (write skill) → REFACTOR (close loopholes).
+Same Iron Law: No skill before its failing test is written.
+Same batch cycle: write scenarios → write skill → run without it (RED) and with it (GREEN) → REFACTOR (close loopholes).
 Same benefits: Better quality, fewer surprises, bulletproof results.
 
 If you follow TDD for code, follow it for skills. It's the same discipline applied to documentation.

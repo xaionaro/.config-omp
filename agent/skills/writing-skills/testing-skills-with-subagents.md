@@ -6,7 +6,7 @@
 
 **Testing skills is just TDD applied to process documentation.**
 
-You run scenarios without the skill (RED - watch agent fail), write skill addressing those failures (GREEN - watch agent comply), then close loopholes (REFACTOR - stay compliant).
+You write scenarios and the skill, then run each scenario without the skill (RED - watch agent fail) and with it (GREEN - watch agent comply), then close loopholes (REFACTOR - stay compliant).
 
 **Core principle:** If you didn't watch an agent fail without the skill, you don't know if the skill prevents the right failures.
 
@@ -31,9 +31,9 @@ Don't test:
 
 | TDD Phase | Skill Testing | What You Do |
 |-----------|---------------|-------------|
-| **RED** | Baseline test | Run scenario WITHOUT skill, watch agent fail |
+| **RED** | Baseline test | Write scenarios first; after writing the skill, run them WITHOUT it, watch agent fail |
 | **Verify RED** | Capture rationalizations | Document exact failures verbatim |
-| **GREEN** | Write skill | Address specific baseline failures |
+| **GREEN** | Write skill | Address the violations that prompted it, before any run |
 | **Verify GREEN** | Pressure test | Run scenario WITH skill, verify compliance |
 | **REFACTOR** | Plug holes | Find new rationalizations, add counters |
 | **Stay GREEN** | Re-verify | Test again, ensure still compliant |
@@ -42,16 +42,16 @@ Same cycle as code TDD, different test format.
 
 ## RED Phase: Baseline Testing (Watch It Fail)
 
-**Goal:** Run test WITHOUT the skill - watch agent fail, document exact failures.
+**Goal:** After writing the skill, run each scenario WITHOUT it - watch agent fail, document exact failures.
 
-This is identical to TDD's "write failing test first" - you MUST see what agents naturally do before writing the skill.
+This is TDD's Verify RED - you MUST see what agents naturally do without the skill.
 
 Launch skill-test agents by spawning subagents; include this prompt line: `follow any Stop-hook prompt in this session, including required proof/checklist files; fix blockers within your assigned scope; report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.`
 
 **Process:**
 
 - [ ] **Create pressure scenarios** (3+ combined pressures)
-- [ ] **Run WITHOUT skill** - give agents realistic task with pressures
+- [ ] **Run WITHOUT skill**, after writing it - give agents realistic task with pressures
 - [ ] **Document choices and rationalizations** word-for-word
 - [ ] **Identify patterns** - which excuses appear repeatedly?
 - [ ] **Note effective pressures** - which scenarios trigger violations?
@@ -79,11 +79,11 @@ Run this WITHOUT a TDD skill. Agent chooses B or C and rationalizes:
 - "Deleting is wasteful"
 - "Being pragmatic not dogmatic"
 
-**NOW you know exactly what the skill must prevent.**
+**REFACTOR adds a counter for each rationalization the skill does not yet block.**
 
 ## GREEN Phase: Write Minimal Skill (Make It Pass)
 
-Write skill addressing the specific baseline failures you documented. Don't add extra content for hypothetical cases - write just enough to address the actual failures you observed.
+Write the skill before running any scenario, addressing the violations that prompted it. Don't add extra content for hypothetical cases - write just enough to address the actual failures reported or observed.
 
 Run same scenarios WITH skill. Agent should now comply.
 
@@ -313,11 +313,11 @@ Before deploying skill, verify you followed RED-GREEN-REFACTOR:
 
 **RED Phase:**
 - [ ] Created pressure scenarios (3+ combined pressures)
-- [ ] Ran scenarios WITHOUT skill (baseline)
+- [ ] Ran scenarios WITHOUT skill (baseline), after writing it
 - [ ] Documented agent failures and rationalizations verbatim
 
 **GREEN Phase:**
-- [ ] Wrote skill addressing specific baseline failures
+- [ ] Wrote skill before running any scenario, addressing the violations that prompted it
 - [ ] Ran scenarios WITH skill
 - [ ] Agent now complies
 
@@ -333,9 +333,9 @@ Before deploying skill, verify you followed RED-GREEN-REFACTOR:
 
 ## Common Mistakes (Same as TDD)
 
-**❌ Writing skill before testing (skipping RED)**
-Reveals what YOU think needs preventing, not what ACTUALLY needs preventing.
-✅ Fix: Always run baseline scenarios first.
+**❌ Skipping RED**
+Without a run that fails without the skill, you can't tell whether the skill changed anything.
+✅ Fix: After writing the skill, always run each scenario without it.
 
 **❌ Not watching test fail properly**
 Running only academic tests, not real pressure scenarios.

@@ -88,8 +88,8 @@ Treat skill authoring as TDD for process documentation.
 
 | Phase | Action |
 | --- | --- |
-| RED | Run pressure scenarios without the skill. Record exact failures and rationalizations. |
-| GREEN | Add the smallest guidance that blocks those failures. |
+| RED | Write pressure scenarios before the skill. After GREEN's guidance is written, run them without it and record exact failures and rationalizations. |
+| GREEN | Add the smallest guidance that blocks the violations that prompted it, then run the scenarios with it. |
 | REFACTOR | Re-test, close new loopholes, remove redundant text. |
 
 Spawn a subagent for subagent tests. The prompt must include:
