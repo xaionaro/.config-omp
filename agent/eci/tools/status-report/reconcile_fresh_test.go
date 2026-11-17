@@ -39,6 +39,23 @@ func TestOutcomeIdentityChecks(t *testing.T) {
 	require.NotEmpty(t, checkSharedForecastOwners(map[string]sourceRecord{"a": a, "b": b}))
 }
 
+// TestOutcomeLinksOptionalOutsideJobs checks which work records may omit outcome links.
+//
+// Example: An unlinked follow-up passes while an unlinked Job is flagged.
+func TestOutcomeLinksOptionalOutsideJobs(t *testing.T) {
+	t.Parallel()
+	records := map[string]sourceRecord{"outcome:o": {Type: "outcome"}}
+	unlinked := sourceRecord{Type: "work", Data: workData{State: workStateBlocked}}
+	for _, id := range []string{"followup:x", "work:none:owed:x"} {
+		require.Empty(t, validateWorkOutcomes(id, unlinked, records), id)
+	}
+	for _, id := range []string{"work:j:job", "work:j:owed:x", "work:j:leaf", "work:followup:x"} {
+		require.Equal(t, []string{"work " + id + " missing outcome links"}, validateWorkOutcomes(id, unlinked, records), id)
+	}
+	dangling := sourceRecord{Type: "work", Data: workData{State: workStateBlocked}, OutcomeRefs: []string{"missing"}}
+	require.Equal(t, []string{"work followup:x has invalid outcome link missing"}, validateWorkOutcomes("followup:x", dangling, records))
+}
+
 // TestForecastStatErrorIsVisible distinguishes unavailable paths from absent files.
 //
 // Example: A symlink loop must not be silently treated as no forecast file.

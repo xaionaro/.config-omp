@@ -3,9 +3,42 @@ package main
 import (
 	"reflect"
 	"sort"
+	"strings"
 )
 
+// Ledger ID prefixes of the work records that the context-ledger skill's ID
+// patterns and `work` row exempt from outcome links.
+const (
+	// followupIDPrefix starts the ledger ID of a follow-up.
+	//
+	// Example: followup:contract-todo-unverified.
+	followupIDPrefix = "followup:"
+
+	// noJobOwedIDPrefix starts the ledger ID of an owed action of no Job.
+	//
+	// Example: work:none:owed:live-link-check.
+	noJobOwedIDPrefix = "work:none:owed:"
+)
+
+// needsOutcomeLinks reports whether the ledger schema requires this work
+// record to link an outcome. Follow-ups and owed actions of no Job serve no
+// admitted outcome, so the context-ledger skill's `work` row exempts them.
+//
+// Example: workID("work:todo-groups:job").needsOutcomeLinks() is true, and
+// workID("followup:contract-todo-unverified").needsOutcomeLinks() is false.
+func (id workID) needsOutcomeLinks() bool {
+	switch {
+	case strings.HasPrefix(string(id), followupIDPrefix),
+		strings.HasPrefix(string(id), noJobOwedIDPrefix):
+		return false
+	default:
+		return true
+	}
+}
+
 // validateWorkOutcomes checks canonical work outcome links by record identity.
+// A record that needsOutcomeLinks exempts may omit links; any links it carries
+// are still checked.
 //
 // Example: Reject a dangling link even if its text resembles an outcome ID.
 func validateWorkOutcomes(
@@ -13,7 +46,7 @@ func validateWorkOutcomes(
 	work sourceRecord,
 	records map[string]sourceRecord,
 ) []string {
-	if len(work.OutcomeRefs) == 0 {
+	if len(work.OutcomeRefs) == 0 && workID(id).needsOutcomeLinks() {
 		return []string{"work " + id + " missing outcome links"}
 	}
 	var issues []string
