@@ -119,8 +119,8 @@ advisors:
       | router `## Spawn skill routing` | Spawn brief lacks `match:` or `no match:` Routing lines or the `Skills:` line. |
       | `references/coordinator.md` `## Clean pass and teardown` | Commit, outcome, or Job accepted or closed before its post-Fast sequence, independent verification, or outcome criteria pass. |
       | `references/coordinator.md` `## Open-Job owner reuse` | Open Job's Orchestrator cancelled as stuck without reading `history://<id>`, or replaced before `write agent://<id>` revives it. |
-      | `eci-binding-contract.md` `## Git` | Commit lacks a `Test Plan`; commit not limited to exact paths; checkpoint amended; Supervisor sets Producers' commit order. |
-      | `references/task-orchestrator.md` `## Active-writer rows and shared-index coordination` | Supervisor or Orchestrator edits, stages, or commits tracked files. |
+      | `eci-binding-contract.md` `## Git` | Commit lacks a `Test Plan`; commit includes another Worker's lines; checkpoint amended; Supervisor sets Producers' commit order or re-verifies a reported range. |
+      | `references/task-orchestrator.md` `## Commits` | Supervisor or Orchestrator edits, stages, or commits tracked files; Worker escalates a conflict before trying to resolve it directly. |
       | `references/coordinator.md` `## Exact team separation`, review-policy `## Independent-review discipline` | Blind reviewer receives transcripts or producer findings, or reads sibling findings before submitting its own. |
       | `references/coordinator.md` `## Engage and route` | Material changed-state update to the user lacks a standalone `Forecast deadline:` line per executing lane. |
       | `references/coordinator.md` `## Engage and route` | Brief or ledger lacks the `exact user source → faithful requested outcome → bounded scope` chain, or omits user requirements. |
@@ -142,7 +142,7 @@ advisors:
       ## Severity
       | Level | Use for |
       |---|---|
-      | blocker | Irreversible action breaking a rule: pushing or committing an unverified range; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
+      | blocker | Irreversible action breaking a rule: pushing or committing unchecked work; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
       | concern | Other probable rule break or unproven claim. |
       | nit | Wording, cleanup, a failed or missing read, or an unclassified active state. |
 

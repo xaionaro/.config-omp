@@ -112,7 +112,7 @@ The typed Worker Git operations below (unavailable because `eci-worker-git` is b
 | `move -- <source> <destination>` | Two checked endpoints; destination must be absent. |
 | `commit --message <text>` | Prepared index only; no path selection, automatic staging or history rewrite. Project validation hooks remain active. |
 
-A typed request does not authorize semantic ownership of already staged content. Producers inspect the complete staged diff/tree and make their own checked append-only handoff commit after fresh same-index coordination. The Supervisor verifies that immutable range. Unsupported native selection modes require an exact supported operation, a separately assigned bounded operational route, or the exact user-authorized `run-once` exception above.
+A typed request does not authorize semantic ownership of already staged content. Producers inspect the complete staged diff/tree and make their own checked append-only commit of their own lines. Unsupported native selection modes require an exact supported operation, a separately assigned bounded operational route, or the exact user-authorized `run-once` exception above.
 
 Every path is an exact file or symlink leaf; directory and sparse-directory
 selection is unsupported. Worktree-affecting gitlinks are rejected because
