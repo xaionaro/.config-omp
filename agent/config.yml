@@ -1,13 +1,9 @@
 modelRoles:
-  default: anthropic/claude-opus-5-5:low
-  smol: anthropic/claude-haiku-5-5:low
-  slow: anthropic/claude-opus-5-5:xhigh
-  advisor: openai-codex/gpt-6.1-terra:medium
-  # Grants the opposite provider's ECI critic model for per-call task spawns
-  # (task.perCallModel only accepts models some role names).
-  cross-review: openai-codex/gpt-6.1-sol:medium
-# Two interchangeable sets; switch with /modelpreset switch <name>.
-# Each preset gives the advisor and cross-review the other provider's model.
+  default: openai-codex/gpt-6.1-terra:medium
+  smol: openai-codex/gpt-6-luna:low
+  slow: openai-codex/gpt-6.1-sol:xhigh
+  advisor: anthropic/claude-opus-5-5:low
+  cross-review: anthropic/claude-opus-5-5:medium
 modelPresets:
   claude:
     modelRoles:
@@ -40,7 +36,7 @@ task:
   softRequestBudget: 0
   agentSoftRequestBudget: {}
   agentIdleTtlMs: 3600000
-defaultThinkingLevel: low
+defaultThinkingLevel: medium
 advisor:
   enabled: true
 dev:
@@ -87,22 +83,58 @@ lsp:
   formatOnWrite: true
 retry:
   waitForUsageReset: false
-  # Automatic switch on provider failure or usage limit, both directions.
-  # Role keys: Claude tiers -> GPT 6.1. Model keys (win over role keys):
-  # GPT 6.1 -> Opus; bare sol entry keeps the failing effort (medium/xhigh).
   fallbackChains:
-    default: [openai-codex/gpt-6.1-terra:medium]
-    slow: [openai-codex/gpt-6.1-sol:xhigh]
+    default:
+      - openai-codex/gpt-6.1-terra:medium
+    slow:
+      - openai-codex/gpt-6.1-sol:xhigh
     anthropic/claude-opus-5-5:low:
       - openai-codex/gpt-6.1-terra:medium
     anthropic/claude-opus-5-5:medium:
       - openai-codex/gpt-6.1-sol:medium
     anthropic/claude-opus-5-5:xhigh:
       - openai-codex/gpt-6.1-sol:xhigh
-    anthropic/claude-haiku-5-5: [openai-codex/gpt-6-luna:low]
-    openai-codex/gpt-6-luna: [anthropic/claude-haiku-5-5:low]
-    openai-codex/gpt-6.1-terra: [anthropic/claude-opus-5-5:low]
-    openai-codex/gpt-6.1-sol: [anthropic/claude-opus-5-5]
+    anthropic/claude-haiku-5-5:
+      - openai-codex/gpt-6-luna:low
+    openai-codex/gpt-6-luna:
+      - anthropic/claude-haiku-5-5:low
+    openai-codex/gpt-6.1-terra:
+      - anthropic/claude-opus-5-5:low
+    openai-codex/gpt-6.1-sol:
+      - anthropic/claude-opus-5-5
 secrets:
   enabled: true
 autoResume: true
+hideThinkingBlock: true
+disabledProviders:
+  - anthropic
+  - opencode-zen
+auth:
+  accountPolicies:
+    - provider: openai-codex
+      account:
+        email: gpt@danusya.net
+      priority: 3
+    - provider: openai-codex
+      account:
+        email: pheonallm3@gmail.com
+      priority: 2
+    - provider: openai-codex
+      account:
+        email: xaionaro@gmail.com
+      priority: 1
+    - provider: anthropic
+      account:
+        email: pheonallm3@gmail.com
+      priority: 3
+    - provider: anthropic
+      account:
+        email: xaionaro@gmail.com
+      priority: 2
+    - provider: anthropic
+      account:
+        email: admin@danusya.net
+      priority: 1
+codexResets:
+  autoRedeem5h: unset
+  autoRedeemWeekly: "no"
