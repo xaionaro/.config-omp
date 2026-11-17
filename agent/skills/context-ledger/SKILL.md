@@ -364,7 +364,7 @@ scenario data into a rendered report. Omit an active target when inactive.
 the [work tree](../../eci-binding-contract.md#work-estimates). Each package
 contains `id`, `work`, `duration`, and `basis`, plus `indivisible_reason` for a
 leaf the work tree must explain; policy-imposed stability of a settled leaf is
-a valid reason after a revised estimate, not a claim of physical indivisibility. A
+a valid reason, not a claim of physical indivisibility. A
 child's `id` is its parent's `id` plus `.` and a segment, such as `1.2`. Write
 each `duration` as a range, such as `"10–20 minutes"`; for a leaf with a
 multiplier, write one execution's range followed by the multiplier, such as
