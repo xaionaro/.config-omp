@@ -354,7 +354,8 @@ has `status` (`unchanged` or `changed`) and `evidence`; when changed it also
 has `prior`, `current`, and `reason`. An initial forecast records its baseline
 and evidence with `unchanged`; preserve baseline evidence on later changes.
 A provisional record also has `target_basis`.
-For ECI, record `base_case` and `scenarios` as native mappings and lists: keep
+For ECI, record `base_case` and `scenarios`, when the scenario rules below call
+for them, as native mappings and lists: keep
 the package duration basis, endpoint, evidence, assumptions and evidence gaps
 needed by the scenario rules below. Store durations and ranges with units and
 UTC endpoints as quoted strings; retain full detail rather than collapsing
@@ -387,17 +388,17 @@ When a lane or root forecast changes, update its current record in `forecasts.ya
 
 For ECI forecasts, including nested ECI, store a base case and every material
 downside scenario alongside the canonical target, including risks whose timing
-is not yet supported. Apply [Work estimates](../../eci-binding-contract.md#work-estimates) and keep
+is not yet supported. Until Step 2 selects a new ECI Job's design, the forecast
+record of each of its outcomes without the Job's design-loop leaf instead omits
+`base_case` and `scenarios`; its `target_basis` states the outcome's estimate
+and material downside risks. Apply [Work estimates](../../eci-binding-contract.md#work-estimates) and keep
 evidence gaps visible.
 
 - Base case: completion UTC for the remaining authorized in-scope work on the
   current critical path, assuming no listed downside scenario. Derive it from
   the work tree in `packages`, plus a new ECI Job's labeled remaining-work
   guess until Step 2 selects its design; add no generic buffer. That guess
-  makes each of the Job's forecasts `provisional`. Until that selection, the
-  record of each outcome without the Job's design-loop leaf omits `base_case`
-  and `scenarios`; its `target_basis` states the outcome's estimate and
-  material downside risks.
+  makes each of the Job's forecasts `provisional`.
 - Scenario: include every material downside risk that could affect completion
   of the requested ECI outcome. Record its name, trigger/evidence, affected work
   or dependency, evidence assessed, assumptions and limits, added
