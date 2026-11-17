@@ -84,12 +84,9 @@ func runNativeReportCommand(
 	}
 	cmd := exec.Command(filepath.Join(eciBaseDir(), "bin", "status-report"), command+"-locked", dir, "--stdin")
 	cmd.Stdin = bytes.NewReader(data)
-	spill, err := os.CreateTemp("", "eci-report-result-*")
+	spill, err := openPrivateSpill("eci-report-result-")
 	if err != nil {
 		return err
-	}
-	if err := os.Remove(spill.Name()); err != nil {
-		return errors.Join(err, spill.Close())
 	}
 	defer
 	// closeReportResult preserves errors when discarding the private result.

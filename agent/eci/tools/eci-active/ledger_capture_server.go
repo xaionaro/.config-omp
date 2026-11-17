@@ -123,7 +123,7 @@ func (s *captureStore) close() error { s.mu.Lock(); defer s.mu.Unlock(); for tok
 // captureAnonymous creates an unlinked private spill before any content is written.
 //
 // Example: a crash leaves no named snapshot data.
-func captureAnonymous() (*os.File,error) { f,err:=os.CreateTemp("","eci-capture-"); if err!=nil { return nil,err }; if err=os.Remove(f.Name()); err!=nil { return nil,errors.Join(err,f.Close()) }; return f,nil }
+func captureAnonymous() (*os.File,error) { return openPrivateSpill("eci-capture-") }
 
 // validateCaptureUTF8 rejects malformed storage before publishing a snapshot.
 //

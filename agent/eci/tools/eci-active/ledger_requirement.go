@@ -32,12 +32,9 @@ func runRequirementHelper(
 	cmd := exec.CommandContext(ctx, executable)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.Stderr = os.Stderr
-	spill, err := os.CreateTemp("", "eci-assignment-result-*")
+	spill, err := openPrivateSpill("eci-assignment-result-")
 	if err != nil {
 		return nil, nil, err
-	}
-	if err := os.Remove(spill.Name()); err != nil {
-		return nil, nil, errors.Join(err, spill.Close())
 	}
 	cmd.Stdout = spill
 	if err := cmd.Run(); err != nil {
