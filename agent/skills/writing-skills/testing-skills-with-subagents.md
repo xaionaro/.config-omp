@@ -361,9 +361,9 @@ Tests pass once ≠ bulletproof.
 
 | TDD Phase | Skill Testing | Success Criteria |
 |-----------|---------------|------------------|
-| **RED** | Run scenario without skill | Agent fails, document rationalizations |
+| **RED** | Write scenarios first; after writing the skill, run them without it | Agent fails, document rationalizations |
 | **Verify RED** | Capture exact wording | Verbatim documentation of failures |
-| **GREEN** | Write skill addressing failures | Agent now complies with skill |
+| **GREEN** | Write skill addressing the violations that prompted it, before any run | Agent now complies with skill |
 | **Verify GREEN** | Re-test scenarios | Agent follows rule under pressure |
 | **REFACTOR** | Close loopholes | Add counters for new rationalizations |
 | **Stay GREEN** | Re-verify | Agent still complies after refactoring |

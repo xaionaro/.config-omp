@@ -11,7 +11,7 @@ Code review requires technical evaluation, not emotional performance.
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
-**Within ECI**, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule): implement all of an iteration's routed fixes, then test them together, never one at a time. The one-at-a-time steps below apply outside ECI.
+Implement all accepted items, then test them together, never one at a time. Within ECI, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule).
 
 ## The Response Pattern
 
@@ -23,7 +23,7 @@ WHEN receiving code review feedback:
 3. VERIFY: Check against codebase reality
 4. EVALUATE: Technically sound for THIS codebase?
 5. RESPOND: Technical acknowledgment or reasoned pushback
-6. IMPLEMENT: One item at a time, test each
+6. IMPLEMENT: All accepted items, then test them together
 ```
 
 ## Forbidden Responses
@@ -108,7 +108,7 @@ FOR multi-item feedback:
      - Blocking issues (breaks, security)
      - Simple fixes (typos, imports)
      - Complex fixes (refactoring, logic)
-  3. Test each fix individually
+  3. Test all fixes together
   4. Verify no regressions
 ```
 
@@ -169,7 +169,7 @@ State the correction factually and move on.
 |---------|-----|
 | Performative agreement | State requirement or just act |
 | Blind implementation | Verify against codebase first |
-| Batch without testing | One at a time, test each |
+| Batch without testing | Test the whole batch after implementing it |
 | Assuming reviewer is right | Check if breaks things |
 | Avoiding pushback | Technical correctness > comfort |
 | Partial implementation | Clarify all items first |

@@ -7,11 +7,11 @@ description: Use when implementing any feature or bugfix, before writing impleme
 
 ## Overview
 
-Write the test first. Watch it fail. Write minimal code to pass.
+Write the tests first. Write minimal code to pass them. Then watch each test fail without that code and pass with it.
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**On ECI's main path**, apply each phase of the cycle below to all pending work together, not one test at a time, in the order of ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline): write all the tests, implement all of it, then run them and verify RED on the pre-change or deliberately broken code.
+**Batch order:** write the tests for all pending work in your assignment, then implement all of it, and only then run any test; a bug's reproduction may run earlier, for diagnosis. On ECI's main path, follow ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline).
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
@@ -33,7 +33,7 @@ Thinking "skip TDD just this once"? Stop. That's rationalization.
 ## The Iron Law
 
 ```
-NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+NO PRODUCTION CODE BEFORE ITS FAILING TEST IS WRITTEN
 ```
 
 Write code before the test? Delete it. Start over.
@@ -51,17 +51,17 @@ Implement fresh from tests. Period.
 ```dot
 digraph tdd_cycle {
     rankdir=LR;
-    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
-    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    red [label="RED\nWrite failing tests", shape=box, style=filled, fillcolor="#ffcccc"];
     green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_red [label="Verify fails\nwithout the code", shape=diamond];
     verify_green [label="Verify passes\nAll green", shape=diamond];
     refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
-    next [label="Next", shape=ellipse];
+    next [label="Next batch", shape=ellipse];
 
-    red -> verify_red;
-    verify_red -> green [label="yes"];
+    red -> green;
+    green -> verify_red;
+    verify_red -> verify_green [label="yes"];
     verify_red -> red [label="wrong\nfailure"];
-    green -> verify_green;
     verify_green -> refactor [label="yes"];
     verify_green -> green [label="no"];
     refactor -> verify_green [label="stay\ngreen"];
@@ -72,7 +72,7 @@ digraph tdd_cycle {
 
 ### RED - Write Failing Test
 
-Write one minimal test showing what should happen.
+Write one minimal test per behavior, for all pending work, showing what should happen.
 
 <Good>
 ```typescript
@@ -112,26 +112,9 @@ Vague name, tests mock not code
 - Clear name
 - Real code (no mocks unless unavoidable)
 
-### Verify RED - Watch It Fail
-
-**MANDATORY. Never skip.**
-
-```bash
-npm test path/to/test.test.ts
-```
-
-Confirm:
-- Test fails (not errors)
-- Failure message is expected
-- Fails because feature missing (not typos)
-
-**Test passes?** You're testing existing behavior. Fix test.
-
-**Test errors?** Fix error, re-run until it fails correctly.
-
 ### GREEN - Minimal Code
 
-Write simplest code to pass the test.
+Write the simplest code to pass the tests.
 
 <Good>
 ```typescript
@@ -167,6 +150,23 @@ Over-engineered
 
 Don't add features, refactor other code, or "improve" beyond the test.
 
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Run each new test without the code it tests: on the pre-change code, or with that code deliberately broken. Never stash or reset a shared tree for this. Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
 ### Verify GREEN - Watch It Pass
 
 **MANDATORY.**
@@ -195,7 +195,7 @@ Keep tests green. Don't add behavior.
 
 ### Repeat
 
-Next failing test for next feature.
+Next batch: failing tests for the next pending work.
 
 ## Good Tests
 
@@ -215,7 +215,7 @@ Tests written after code pass immediately. Passing immediately proves nothing:
 - Might miss edge cases you forgot
 - You never saw it catch the bug
 
-Test-first forces you to see the test fail, proving it actually tests something.
+Verify RED shows each test fail without the code, proving it actually tests something.
 
 **"I already manually tested all the edge cases"**
 
@@ -274,8 +274,8 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 ## Red Flags - STOP and Start Over
 
 - Code before test
-- Test after implementation
-- Test passes immediately
+- Test written after implementation
+- Test passes without the code
 - Can't explain why test failed
 - Tests added "later"
 - Rationalizing "just this once"
@@ -301,12 +301,6 @@ test('rejects empty email', async () => {
 });
 ```
 
-**Verify RED**
-```bash
-$ npm test
-FAIL: expected 'Email required', got undefined
-```
-
 **GREEN**
 ```typescript
 function submitForm(data: FormData) {
@@ -315,6 +309,12 @@ function submitForm(data: FormData) {
   }
   // ...
 }
+```
+
+**Verify RED** (without the fix)
+```bash
+$ npm test
+FAIL: expected 'Email required', got undefined
 ```
 
 **Verify GREEN**
@@ -328,10 +328,10 @@ Extract validation for multiple fields if needed.
 
 ## Verification Checklist
 
-Before marking work complete:
+Before reporting the Job or outcome done:
 
 - [ ] Every new function/method has a test
-- [ ] Watched each test fail before implementing
+- [ ] Watched each test fail without its code
 - [ ] Each test failed for expected reason (feature missing, not typo)
 - [ ] Wrote minimal code to pass each test
 - [ ] All tests pass
@@ -366,7 +366,7 @@ When adding mocks or test utilities, read @testing-anti-patterns.md to avoid com
 ## Final Rule
 
 ```
-Production code → test exists and failed first
+Production code → test written first and failed without it
 Otherwise → not TDD
 ```
 

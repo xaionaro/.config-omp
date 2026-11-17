@@ -1,6 +1,6 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: Use when about to claim a Job or outcome complete, or anything fixed or passing, and before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
 ---
 
 # Verification Before Completion
@@ -21,7 +21,7 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 
 If you haven't run the verification command in this message, you cannot claim it passes.
 
-Apply the Iron Law to finishing a Job or outcome, not to closing a work-tree leaf: a leaf-completion report is no completion claim. Every pass, build, or fix claim still needs its fresh evidence.
+Apply the Iron Law to finishing a Job or outcome, not to closing a work-tree leaf: neither a leaf-completion report nor a leaf's todo marked done is a completion claim. Every pass, build, or fix claim still needs its fresh evidence.
 
 ## The Gate Function
 
@@ -55,7 +55,7 @@ Skip any step = lying, not verifying
 
 - Using "should", "probably", "seems to"
 - Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
-- About to commit/push/PR without verification
+- About to commit without its static checks and Test Plan, or push or open a PR without verification
 - Trusting agent success reports
 - Relying on partial verification
 - Thinking "just this once"
@@ -123,8 +123,7 @@ From 24 failure memories:
 - ANY variation of success/completion claims
 - ANY expression of satisfaction
 - ANY positive statement about work state
-- Committing, PR creation, task completion
-- Moving to next task
+- Committing (static checks and Test Plan), PR creation, Job or outcome completion
 - Delegating to agents
 
 **Rule applies to:**

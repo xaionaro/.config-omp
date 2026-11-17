@@ -1,6 +1,6 @@
 # ~/.omp/agent/WATCHDOG.yml  (user-level; RulesAdvisor v5.3; installed and enabled: entry enabled: true)
 # Word count method: `yq4 '.advisors[0].instructions' agent/WATCHDOG.yml | grep -vE '^\s*\|[-|: ]+\|\s*$' | tr -d '|' | wc -w` (raw block text; table separator rows dropped; pipe tokens removed).
-#   Result: 1679; no fixed word budget (harness-tuning).
+#   Result: 1805; no fixed word budget (harness-tuning).
 # Entry `enabled: true` is per-advisor. Global `advisor.enabled` must also be true; its default is false (cfg://advisor/enabled).
 # Saving reports the active advisor count [unverified]; whether activation also needs `/advisor on` is OPEN.
 # Keys verified against omp advisor config.ts.
@@ -91,7 +91,7 @@ advisors:
       | coding-common | ~/.omp/agent/skills/coding-common/SKILL.md | Code or Harness row |
       | coding-go | ~/.omp/agent/skills/coding-go/SKILL.md | Code row with *.go, go.mod, go.sum |
       | coding-python | ~/.omp/agent/skills/coding-python/SKILL.md | Code row with *.py, pyproject.toml, setup.cfg |
-      | verification-before-completion | ~/.omp/agent/skills/verification-before-completion/SKILL.md | Any row with a commit, PR, todo marked done, or status claim |
+      | verification-before-completion | ~/.omp/agent/skills/verification-before-completion/SKILL.md | Any row with a commit, PR, Job or outcome done, or status claim |
       | harness-tuning | ~/.omp/agent/skills/harness-tuning/SKILL.md | Harness row |
       | debugging-discipline | ~/.omp/agent/skills/debugging-discipline/SKILL.md | Bug diagnosis, ECI, or Code row |
 
@@ -134,7 +134,7 @@ advisors:
       | `eci-binding-contract.md` `### Work estimates` | Owner fails to assess comparable evidence or route a warranted correction through the applicable design loop; changes a planned leaf or estimate without a relevant selected decision; or dispatches affected work without applying that decision to the actual remaining tree and pending assignments. A changed endpoint alone is insufficient. Judge comparability and exceptions under the cited section; unknown or incomparable evidence or an honestly disclosed leaf-floor limitation alone is not a violation. Do not flag actual-only writes, unaffected work, or legitimate routing in progress. |
       | `eci-binding-contract.md` `### ECI Supervisor repository-edit routing` | Agent starts substantive work, including writing a brief, before loading every installed skill its task matches. |
       | `eci-binding-contract.md` `### Clean system and repair` | Agent reads, or sends workers, a duplicate skill copy instead of the router-linked path. |
-      | verification-before-completion `## The Gate Function` | Todo marked done or status claimed without fresh verification output. |
+      | verification-before-completion `## The Gate Function` | Job or outcome reported done, or status claimed, without fresh verification output; a leaf's todo or leaf-completion report needs none. |
       | router `## Configuration E2E contract`, `## Runtime E2E policy`, `## E2E cadence, scope, and timing` | Configuration or runtime change marked done without the final producer and independent E2E pair, or with proxy evidence alone. |
       | debugging-discipline `## Required Procedure` | Symptom-only change, such as a timing bump or documentation, closes a defect without investigation unless containment was explicitly requested. |
       | coding-common `### Organization and names`, `### Semantic consistency` | File, directory, or identifier named `utils`, `helper`, `misc`, `wrapper`, or `adapter`, or after its implementation instead of its domain concept. |

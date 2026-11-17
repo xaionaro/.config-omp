@@ -1,6 +1,6 @@
 ---
 name: testing-discipline
-description: Use when writing, running, or reviewing tests, or before reporting any task as done — ensures test coverage, falsification, dual-sided validation, determinism, behavior-level assertions, and efficient suites
+description: Use when writing, running, or reviewing tests, or before reporting a Job or outcome done — ensures test coverage, falsification, dual-sided validation, determinism, behavior-level assertions, and efficient suites
 ---
 
 # Testing Discipline
@@ -13,7 +13,7 @@ description: Use when writing, running, or reviewing tests, or before reporting 
 - **Prune on touch**: When editing tests, check each test of the behavior you are changing or testing; delete it if it cannot fail, restates the implementation (wiring, echoed inputs), pins incidental defaults, or repeats another test's assertion at the same test level.
 - **Dual-sided testing**: Every test must confirm both that good behavior IS happening AND that bad behavior is NOT happening. Testing only one side leaves the other unverified.
 - **Test validation**: When adding a new test, break the code intentionally and confirm the test fails. A test that passes regardless of code correctness proves nothing. Break it once by hand; never commit loops that mutate inputs only to re-prove the test's own checks.
-- **A/B differential on every bug fix**: Run the test against the pre-fix code (e.g. `git show HEAD~1:<path>`, `git stash`, or revert) and confirm it FAILS. Then re-run against the fixed code and confirm it PASSES. "Test passes after my fix" alone is worthless — it proves the test runs, not that the fix changed anything. Show both outputs in the report. Skip only when the change is a literal text edit a human can verify by reading the diff.
+- **A/B differential on every bug fix**: Run the test against the pre-fix code (e.g. `git show HEAD~1:<path>` or reverting your own change; never stash or reset a shared tree) and confirm it FAILS. Then re-run against the fixed code and confirm it PASSES. "Test passes after my fix" alone is worthless — it proves the test runs, not that the fix changed anything. Show both outputs in the report. Skip only when the change is a literal text edit a human can verify by reading the diff.
 - Infeasible tests → document why + provide alternative verification.
 - Use provided logs/stacktraces as verification evidence. Add logging if insufficient.
 - Write deterministic tests only — real-clock dependencies cause flaky CI and non-reproducible failures.
