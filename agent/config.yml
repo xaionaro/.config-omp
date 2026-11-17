@@ -1,7 +1,7 @@
 modelRoles:
-  default: openai-codex/gpt-6.2-sol:low
+  default: openai-codex/gpt-6.1-terra:medium
   smol: openai-codex/gpt-6-luna:low
-  slow: openai-codex/gpt-6.2-sol:xhigh
+  slow: openai-codex/gpt-6.1-sol:xhigh
   advisor: anthropic/claude-opus-5-5:low
   cross-review: anthropic/claude-opus-5-5:medium
 modelPresets:
@@ -10,14 +10,14 @@ modelPresets:
       default: anthropic/claude-opus-5-5:low
       smol: anthropic/claude-haiku-5-5:low
       slow: anthropic/claude-opus-5-5:xhigh
-      advisor: openai-codex/gpt-6.2-sol:low
-      cross-review: openai-codex/gpt-6.2-sol:medium
+      advisor: openai-codex/gpt-6.1-terra:medium
+      cross-review: openai-codex/gpt-6.1-sol:medium
     defaultThinkingLevel: low
   openai:
     modelRoles:
-      default: openai-codex/gpt-6.2-sol:low
+      default: openai-codex/gpt-6.1-terra:medium
       smol: openai-codex/gpt-6-luna:low
-      slow: openai-codex/gpt-6.2-sol:xhigh
+      slow: openai-codex/gpt-6.1-sol:xhigh
       advisor: anthropic/claude-opus-5-5:low
       cross-review: anthropic/claude-opus-5-5:medium
     defaultThinkingLevel: medium
@@ -85,22 +85,22 @@ retry:
   waitForUsageReset: false
   fallbackChains:
     default:
-      - openai-codex/gpt-6.2-sol:low
+      - openai-codex/gpt-6.1-terra:medium
     slow:
-      - openai-codex/gpt-6.2-sol:xhigh
+      - openai-codex/gpt-6.1-sol:xhigh
     anthropic/claude-opus-5-5:low:
-      - openai-codex/gpt-6.2-sol:low
+      - openai-codex/gpt-6.1-terra:medium
     anthropic/claude-opus-5-5:medium:
-      - openai-codex/gpt-6.2-sol:medium
+      - openai-codex/gpt-6.1-sol:medium
     anthropic/claude-opus-5-5:xhigh:
-      - openai-codex/gpt-6.2-sol:xhigh
+      - openai-codex/gpt-6.1-sol:xhigh
     anthropic/claude-haiku-5-5:
       - openai-codex/gpt-6-luna:low
     openai-codex/gpt-6-luna:
       - anthropic/claude-haiku-5-5:low
-    openai-codex/gpt-6.2-sol:low:
+    openai-codex/gpt-6.1-terra:
       - anthropic/claude-opus-5-5:low
-    openai-codex/gpt-6.2-sol:
+    openai-codex/gpt-6.1-sol:
       - anthropic/claude-opus-5-5
 secrets:
   enabled: true

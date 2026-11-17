@@ -12,11 +12,11 @@ anthropic:
     reasoning_effort: xhigh
 openai:
   default:
-    model: openai-codex/gpt-6.2-sol
-    reasoning_effort: low
+    model: openai-codex/gpt-6.1-terra
+    reasoning_effort: medium
   higher:
-    model: openai-codex/gpt-6.2-sol
+    model: openai-codex/gpt-6.1-sol
     reasoning_effort: medium
   max:
-    model: openai-codex/gpt-6.2-sol
+    model: openai-codex/gpt-6.1-sol
     reasoning_effort: xhigh
