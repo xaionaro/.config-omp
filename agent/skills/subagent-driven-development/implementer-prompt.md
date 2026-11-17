@@ -35,11 +35,10 @@ Pause when uncertain. Do not guess.
 </clarify-first>
 
 <execute>
-1. Implement exactly what the task specifies.
-2. Write tests, following TDD when required.
-3. Verify the implementation.
-4. Commit your work.
-5. Self-review before reporting.
+1. Do exactly what the task specifies, writing any test before the code it tests.
+2. Run the static checks. Run tests only when the task says to.
+3. Commit your work with a Test Plan listing those checks.
+4. Self-review before reporting.
 </execute>
 
 <code-organization>
@@ -63,7 +62,7 @@ Fix issues before reporting.
 <report>
 - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
 - What you implemented, or attempted if blocked
-- What you tested and results
+- Checks and tests you ran, and results
 - Files changed
 - Self-review findings
 - Issues or concerns

@@ -39,10 +39,10 @@ This structure informs the task decomposition. Each task should produce self-con
 
 **Each step is one action (2-5 minutes):**
 - "Write the failing test" - step
-- "Run it to make sure it fails" - step
 - "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
+- "Run the static checks and commit" - step
+
+Order tasks so every test is written before any implementation, and run tests only in the final task: each new test without its code (it must fail), then all tests (they must pass).
 
 ## Plan Document Header
 
@@ -65,14 +65,12 @@ This structure informs the task decomposition. Each task should produce self-con
 ## Task Structure
 
 ````markdown
-### Task N: [Component Name]
+### Task 1: Failing tests
 
 **Files:**
-- Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
 - Test: `tests/exact/path/to/test.py`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests for every later task**
 
 ```python
 def test_specific_behavior():
@@ -80,29 +78,47 @@ def test_specific_behavior():
     assert result == expected
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run static checks and commit**
 
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
+```bash
+git add tests/path/test.py
+git commit -m "test: specify specific feature" -m "Test Plan: <static check>: clean; tests run in the final task"
+```
 
-- [ ] **Step 3: Write minimal implementation**
+### Task N: [Component Name]
+
+**Files:**
+- Create: `exact/path/to/file.py`
+- Modify: `exact/path/to/existing.py:123-145`
+
+- [ ] **Step 1: Write minimal implementation**
 
 ```python
 def function(input):
     return expected
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Run static checks and commit**
 
 ```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
+git add src/path/file.py
+git commit -m "feat: add specific feature" -m "Test Plan: <static check>: clean; tests run in the final task"
 ```
+
+### Final Task: Run the tests
+
+- [ ] **Step 1: Run each new test without its code to verify it fails**
+
+Use the pre-change code or deliberately broken code; never stash or reset a shared tree.
+Run: `pytest tests/path/test.py::test_name -v`
+Expected: FAIL with "function not defined"
+
+- [ ] **Step 2: Run the tests to verify they pass**
+
+Run: `pytest tests/path/test.py -v`
+Expected: PASS
+
+- [ ] **Step 3: Fix every failure together, rerun until all pass, then commit with the Test Plan**
 ````
 
 ## No Placeholders
