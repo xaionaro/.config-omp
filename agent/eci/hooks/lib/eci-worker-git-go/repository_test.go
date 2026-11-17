@@ -210,7 +210,7 @@ func TestAncestorAliasAndGitControlsAreRejected(t *testing.T) {
 	}
 }
 
-// TestAlternateIndexIdentityIsCanonical proves the actual shared-index lookup key.
+// TestAlternateIndexIdentityIsCanonical proves the canonical Git index identity.
 //
 // Example: a symlink spelling names the same index and must report its referent.
 func TestAlternateIndexIdentityIsCanonical(t *testing.T) {

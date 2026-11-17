@@ -23,11 +23,11 @@ E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-caden
 
 Before each durable write, reread the intended target, requested outcome, approved winner, and changed-file context. Route a concrete wrong target or separate outcome before writing. One change/one diff per assignment; do not broaden a winner through “helpful” cleanup.
 
-The handoff names changed files, the applied winner/fix, checks run, repair rationale, RCA/regression explanation where applicable, factual evidence, exact exclusions, and limitations. Report your commit IDs and parent-to-commit range. If a governed scope changes, report it before the next affected write. Continue unaffected work only; a local correction returns to Step 2 and substantive drift returns to Explore/Step 2. An unsupported load-bearing claim, missing required final E2E, unknown repair rationale, or symptom-only fix needs correction before acceptance; labels and coordination notes alone never decide it.
+The handoff names changed files, the applied winner/fix, checks run, repair rationale, RCA/regression explanation where applicable, factual evidence, exact exclusions, and limitations. Report your commit IDs with their parent-to-commit ranges. If a governed scope changes, report it before the next affected write. Continue unaffected work only; a local correction returns to Step 2 and substantive drift returns to Explore/Step 2. An unsupported load-bearing claim, missing required final E2E, unknown repair rationale, or symptom-only fix needs correction before acceptance; labels and coordination notes alone never decide it.
 
 ## Producer, Worker, and Helper boundaries
 
-Commit under [Commits](task-orchestrator.md#commits): your own checked lines, whenever you choose; resolve conflicts directly with the other Worker.
+Commit under [Commits](task-orchestrator.md#commits): your own checked lines, whenever you choose; resolve conflicts directly with the other Producer.
 
 You may delegate bounded support recursively to Helpers within your inherited assignment, authorization, and read/write limits. Helpers return changes and evidence through their parent; integrate and check their work before including it in your commit. Helpers do not commit.
 
