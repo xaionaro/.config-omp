@@ -489,7 +489,10 @@ to arrays of existing record IDs. No mandatory timestamp, hash, source registry
 or duplicate ID field.
 
 Stable semantic IDs identify subjects, not states or locations:
-`requirement:<job>:<source-id>:<facet>`, `work:<job>:<subject>`. Different Jobs'
+`requirement:<job>:<source-id>:<facet>`, `work:<job>:<subject>`. Record a Job as
+`work:<job>:job`, an owed action as `work:<job>:owed:<subject>` (`<job>` is
+`none` for one of no Job), and a follow-up as `followup:<subject>`, each a
+`work` record. Different Jobs'
 R1 labels must not collide. Facets distinguish independently binding conditions
 from one source. Search/reuse the existing subject before adding; changes to
 value, owner, role or section retain its ID. Section title changes preserve IDs;
@@ -508,7 +511,7 @@ and relationship arrays are nonempty; named links target the stated record types
 | requirement | `source_text: string`, `source_context: string`, `acceptance: string[]` | None |
 | outcome | `description: string` | `requirements` → requirement, `scope` → scope |
 | scope | `include: string[]`, `exclude: string[]` | None |
-| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` while active/blocked for a Job, follow-up or owed action | `outcomes` → outcome |
+| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` while active/blocked for a Job, follow-up or owed action | `outcomes` → outcome, except for a follow-up or an owed action of no Job |
 | unknown | `question: string`, `answer: null`, `effect: string`, `resolve_by: string` | None |
 | decision | `choice: string`, `reason: string`, `consequence: string` | None |
 | guard | `rule: string`, `reason: string` | None |
@@ -648,7 +651,7 @@ For assignments affected by material user input, use the [capture-and-prepare op
 
 Reconcile the remaining records, append material changes to `high_level_log.jsonl`, and refresh `latest-status-report.yaml` in the same turn, before QA/verdicts, handoff, user-waiting stops, or shutdown. A status must reflect current facts; answering a due user response still comes first. A forecast-only change updates `forecasts.yaml` without rewriting the ledger. Keep this maintenance bounded to changed facts and their affected links; it never grants permission or creates a dispatch gate.
 
-Keep the [`todo` list](../../eci-binding-contract.md#decisions) in step with the ledger: update it at each state change of a Job, leaf, follow-up or owed action, no later than the matching ledger or log entry. Take each Job's phase name and each follow-up or owed-action task name from its record's `title`.
+Keep the [`todo` list](../../eci-binding-contract.md#todo-list) in step with the ledger: update it at each state change of a Job, leaf, follow-up or owed action, no later than the matching ledger or log entry. Take each Job's phase name and each follow-up or owed-action task name from its record's `title`.
 
 For a project/task fact change, use this three-pass ledger edit:
 
