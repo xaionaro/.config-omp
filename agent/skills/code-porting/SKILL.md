@@ -211,7 +211,7 @@ Proceed only with user-approved tasks.
 
 ## Phase 7: Implementation
 
-Route the approved tasks through ECI's full explore→critique→implement→review loop. Tasks in one ECI Job share its iterations under ECI's [iteration rule](../explore-critique-implement/SKILL.md#activation-and-invariants); do not give each task its own iteration. A task admitted as a [child Job](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure) runs its own full pipeline. If ECI is the outer workflow, use that workflow. If ATE is outer, ATE routes each bounded task through ECI and remains outer.
+Route the approved tasks through ECI's full explore→critique→implement→review loop. Tasks in one ECI Job share its iterations under ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule); do not give each task its own iteration. A task admitted as a [child Job](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure) runs its own full pipeline. If ECI is the outer workflow, use that workflow. If ATE is outer, ATE routes each bounded task through ECI and remains outer.
 
 Each ECI brief for these tasks must include:
 

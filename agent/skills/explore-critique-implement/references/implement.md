@@ -15,7 +15,7 @@ A missing record, receipt, hash, marker, or coordination detail does not deny a 
 
 For code/debug work, load test-driven-development, debugging-discipline, and every matching coding skill. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
 
-Implement your whole assigned part, then run its focused unit/proof checks over all of it before handoff; a WIP commit is not a handoff. When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits until the Supervisor has verified every other handoff range, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix every implementation defect those checks or that proof expose together, in any Producer's part, then rerun them once over all the work. See the [iteration rule](../SKILL.md#activation-and-invariants). Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
+Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
 
 E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).
 
@@ -33,6 +33,10 @@ You may delegate bounded support recursively to Helpers within your inherited as
 
 ## Test and debugging discipline
 
-For code work, test-driven-development governs production code under the [iteration rule](../SKILL.md#activation-and-invariants): where applicable, write failing behavior tests for all your pending work and observe each expected RED cause in one run, implement all of it minimally, verify GREEN in one run, then refactor only while green. For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If test/E2E infrastructure is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not silently substitute proxy evidence for a required real path.
+Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time. Where tests apply, write failing tests for all of it and confirm each fails for its expected reason before implementing any of it. Then implement all of it minimally, run its focused checks over all of it, and refactor only while green. Fix every implementation defect the checks expose together and rerun them over all of it until they pass. A WIP commit is not a handoff.
+
+When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits until the Supervisor has verified every other handoff range, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix the implementation defects that proof exposes together, in any part, and rerun the proof until it passes.
+
+For code work, test-driven-development governs test quality within this procedure. For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If test/E2E infrastructure is unavailable, report the exact missing resource and the shortest faithful evidence attempted; do not silently substitute proxy evidence for a required real path.
 
 Commit your checked scoped work during handoff. Do not declare the outcome accepted/complete, publish a manifest, or tear down ECI. The current Job owner assigns independent Step 4 review; the Supervisor verifies the immutable range first and retains acceptance.

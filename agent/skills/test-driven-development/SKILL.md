@@ -11,7 +11,7 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**Within ECI**, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#activation-and-invariants): run each phase of the cycle below once over all pending work instead of one test at a time. Write all the failing tests, watch them fail in one run, implement all of it, then verify GREEN in one run.
+**On ECI's main path**, apply each phase of the cycle below to all pending work together, not one test at a time, under ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule).
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
