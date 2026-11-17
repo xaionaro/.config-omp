@@ -261,7 +261,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - Every wait/status/close update uses `<role label> (<runtime name> [type])`, never a bare nickname after labeling.
 - When advancing ECI outcomes, do not use or advance on evidence or agent results before delivery; undelivered results block only the actions that need them. Independently verify available results, continue independent ready work, then park. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
 - Outside ECI tasks, do not use or advance on a still-running in-scope subagent's results before delivery; park meanwhile; exclude closed/completed/outside agents and shell jobs/tests/background services.
-- Independently verify subagent claims before relying on them, except an ECI Producer's reported commit ranges (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
+- Independently verify subagent claims before relying on them, except that the ECI Supervisor trusts a Producer's reported commit ranges (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
 - Subagents verify assigned work, fix in-scope blockers, and report recovery needs through ordinary handoff.
 
 ## Environment/Stop
@@ -277,7 +277,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - Treat Stop as post-response continuation, not output control: `decision: "block"` creates a continuation prompt but cannot retract a rendered response, and `suppressOutput` is unsupported.
 - Never claim a Stop hook hides visible terminal output; that guarantee needs client support.
 
-- Treat subagent output as an unreviewed PR: verify success claims by running commands yourself, verify load-bearing facts from primary sources, read every changed line, and check original requirements. Within ECI, trust a Producer's reported commit ranges, including when you report them to users (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
+- Treat subagent output as an unreviewed PR: verify success claims by running commands yourself, verify load-bearing facts from primary sources, read every changed line, and check original requirements. Within ECI, the Supervisor trusts a Producer's reported commit ranges, including when it reports them to users (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
 - Reject incomplete work: finish or return it. Never pass unverified subagent claims to users.
 
 ## Pending native targets

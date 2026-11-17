@@ -106,7 +106,7 @@ Skip any step = lying, not verifying
 ✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
 ❌ Trust agent report
 ```
-Exception: within ECI, trust a Producer's reported commit ranges without re-checking them ([Commits](../explore-critique-implement/references/task-orchestrator.md#commits)); independent review still verifies their content.
+Exception: within ECI, the Supervisor trusts a Producer's reported commit ranges without re-checking them ([Commits](../explore-critique-implement/references/task-orchestrator.md#commits)); independent review still verifies their content.
 
 ## Why This Matters
 
