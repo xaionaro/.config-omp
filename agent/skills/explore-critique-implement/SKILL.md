@@ -192,7 +192,7 @@ Before step 1, complete the first-spawn rule in [Spawn skill routing](#spawn-ski
 
 1. Explorer ranks tagged, evidence-backed options and required PoC/style-source proposal.
 2. The current Job owner dispatches a fresh Step 2 critic for the iteration. The critic independently baselines, admits scope, rejects bad options, and selects concrete winner text or returns bounded re-exploration.
-3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then commits its checked scope during handoff.
+3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then hands off with its checked work committed and its ranges reported.
 Reviewers receive the Producers' reported ranges in the iteration's review scope and explicit exclusions; excluded baseline and later ambient changes remain outside review scope.
 4. The current Job owner dispatches fresh A/B/C critics in parallel for every iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required; E2E follows [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing).
    It sends every REJECT, CONDITIONAL, NIT, and E2E-failure finding, unchanged with its report, to a fresh Step 2 critic. That critic makes the finding decisions under [critique](references/critique.md#admission-and-treatment): each finding's scope, impact, and [treatment](../references/workflow-runtime/review-policy.md#gate-evaluation), and each in-scope inventory item's disposition. The critic names each decision that belongs to the user.
