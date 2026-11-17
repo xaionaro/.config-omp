@@ -393,8 +393,11 @@ evidence gaps visible.
 - Base case: completion UTC for the remaining authorized in-scope work on the
   current critical path, assuming no listed downside scenario. Derive it from
   the work tree in `packages`, plus a new ECI Job's labeled remaining-work
-  guess until its tree is settled under [Work estimates](../../eci-binding-contract.md#work-estimates);
-  add no generic buffer.
+  guess until Step 2 selects its design; add no generic buffer. That guess
+  makes each of the Job's forecasts `provisional`. Until that selection, the
+  record of each outcome without the Job's design-loop leaf omits `base_case`
+  and `scenarios`; its `target_basis` states the outcome's estimate and
+  material downside risks.
 - Scenario: include every material downside risk that could affect completion
   of the requested ECI outcome. Record its name, trigger/evidence, affected work
   or dependency, evidence assessed, assumptions and limits, added
