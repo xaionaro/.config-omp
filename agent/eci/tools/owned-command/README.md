@@ -51,10 +51,12 @@ The original `DBUS_SESSION_BUS_ADDRESS` is used when set; otherwise the native
 bus by spawning helpers or changing the environment.
 
 Only the command root is launched into the scope's private `command` subgroup,
-using clone-bound placement and a clone-returned pidfd. The supervisor remains in
-the containing scope. Ordinary forks, reparenting and `setsid` retain command
-membership. A command deliberately migrating through another service manager is
-outside inherited-family coverage; this tool is not a sandbox.
+using clone-bound placement and a clone-returned pidfd. Without `-memory-max` the
+supervisor remains in the containing scope; with it the supervisor first moves to
+a sibling `guard` subgroup. Ordinary forks, reparenting and `setsid` retain
+command membership. A process migrating through another service manager,
+including a nested `owned-command` or `systemd-run`, leaves inherited-family
+coverage; this tool is not a sandbox.
 
 `-memory-max BYTES` opts into an aggregate cgroup-v2 workload limit; zero or
 omission preserves the original topology. The delegated scope has `guard` and
@@ -63,19 +65,32 @@ the memory controller and verifies `memory.max`, `memory.swap.max=0`, and
 `memory.oom.group=1` before launch; missing controls fail closed with status 125.
 The effective limit is rounded down to a page, and values below one page fail.
 It cannot be combined with `-cancel-pid`.
+A limit above the kernel maximum reads back as `max` and fails closed. Capped
+mode requires Linux 5.19 or later; setup checks `memory.peak` and `memory.events`
+before launch. The `guard` leaf carries `user.oomd_omit=1`: a leaf is a
+systemd-oomd kill candidate, and oomd honors the omission only when the leaf's
+owner matches the monitored user-manager cgroup's owner. Setup fails closed if
+the attribute cannot be set.
 
 The cap is not a reservation or a host-wide safety guarantee. Workload charges
 can still cause ancestor throttling, reclaim, OOM, or systemd-oomd pressure
 kills; concurrent activity can consume headroom. Kernel accounting can
-temporarily exceed the limit. HugeTLB allocations are not covered. A workload
-deliberately migrating out of `command` escapes the cap as well as custody.
+temporarily exceed the limit. HugeTLB allocations are not covered. The cap and
+`Memory.Peak` cover only processes in `command`. A nested `owned-command`,
+`systemd-run` or other new systemd unit started by the workload runs in a
+separate scope outside the cap, `Memory.Peak` and custody, as does any other
+migration out of `command`. The workload runs as the same user and can rewrite
+its own `command` controls; the guard then reports a guard error instead of
+the limit.
 If the guard crashes or is SIGKILLed, nothing retires the command subtree; it
 continues under its memory and swap limits until it exits, when systemd can
 collect the scope.
 
 For resource-sensitive builds, measure need and fresh headroom before launch,
-and require measured need ≤ cap ≤ headroom − margin. Estimates are not a
-reservation; if the inequality does not hold, reduce concurrency or do not run.
+and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` measures
+need only for workloads that start no nested units; otherwise add each nested
+unit's separately measured peak. Estimates are not a reservation; if the
+inequality does not hold, reduce concurrency or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process
 group. Early signal notification can reset formerly ignored HUP/INT to default
@@ -159,8 +174,8 @@ XNU and launchd limits are documented only in this section:
   125 and signals nothing. It writes a receipt: `Cause` is `guard error`, `CommandPID`
   is 0, `HostChildrenSettled` is false, and `Errors` holds one `cancel:` message. A
   malformed cancellation request is refused without a receipt.
-- A nonzero `-memory-max` is refused with a guard-error receipt; the command
-  does not run.
+- A launch with a nonzero `-memory-max` is refused with one stderr line and a
+  guard-error receipt; the command does not run.
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
 - The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
   `Survivors` holds the root only when it is still unreaped at the end of settlement, and
@@ -236,9 +251,11 @@ unresolved identities; empty known custody or an absent receipt cannot prove an
 unknown family empty. A zero birth value is unavailable metadata and supplies no
 cancellation authority. Receipt output errors also force 125.
 darwin-pgroup receipts add `Guarantee`, and their `Backend` and `FamilyCoverage` name process-group coverage.
-Linux capped launch receipts add `Memory`: requested and effective byte limits,
-zero swap limit, OOM-group setting, guard cgroup, peak bytes, and all
-`memory.events` counters. Failure to read final memory evidence returns 125.
+Linux capped launch receipts add `Memory`: requested byte limit; effective byte
+limit, swap limit and OOM-group setting reread from the kernel at finalization;
+guard cgroup; `command` peak bytes; and all `memory.events` counters. Failure to
+read final memory evidence, or a final control differing from its configured
+value, returns 125.
 
 Host settlement proves no remote Android, camera, media or profile cleanup.
 Verify those resources separately. The reconstructed implementation does not

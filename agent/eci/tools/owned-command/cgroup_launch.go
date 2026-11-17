@@ -33,8 +33,31 @@ const cgroupSetupTimeout = 5 * time.Second
 // Example: controller delegation moves the supervisor into this leaf.
 const memoryGuardLeaf = "guard"
 
+// commandLeaf names the workload subtree.
+//
+// Example: the guard retires processes only in this subtree.
+const commandLeaf = "command"
+
+// oomdOmitXattr excludes the guard leaf from systemd-oomd kill selection.
+// oomd selects leaf cgroups and honors the attribute only when the leaf's owner
+// matches the monitored cgroup's owner.
+//
+// Example: the guard remains outside oomd's leaf candidates.
+const oomdOmitXattr = "user.oomd_omit"
+
+// memoryPeakFile names the kernel's peak accounting control.
+//
+// Example: a receipt records the command's peak bytes.
+const memoryPeakFile = "memory.peak"
+
+// memoryEventsFile names the kernel's memory event counters.
+//
+// Example: oom_kill records a workload killed at its limit.
+const memoryEventsFile = "memory.events"
+
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
-// The supervisor remains in the scope parent and is never included in group retirement.
+// The supervisor stays outside it, in the scope parent or, with a memory limit,
+// in the sibling guard leaf, and is never included in group retirement.
 //
 // Example: a setsid grandchild remains in Directory despite leaving the root's process group.
 type commandCgroup struct {
@@ -47,16 +70,15 @@ type commandCgroup struct {
 
 // acquireCommandCgroup moves this supervisor into a fresh manager-owned delegated scope.
 // In-process registration preserves signals, environment, cwd, descriptors and PID.
+// A nonzero memory limit first moves this supervisor into the sibling guard leaf,
+// enables the memory controller and installs the command's memory controls.
 //
 // Example: a direct-built executable acquires the same ownership as the cache wrapper.
 func acquireCommandCgroup(
 	ctx context.Context,
 	memoryMax MemoryBytes,
 ) (*commandCgroup, error) {
-	address := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
-	if address == "" {
-		address = "unix:path=" + dbus.EscapeBusAddressValue(fmt.Sprintf("/run/user/%d/bus", os.Getuid()))
-	}
+	address := userManagerBusAddress()
 	connection, err := systemddbus.NewConnection(
 		// Connect uses an explicit address so bus discovery cannot mutate environment or launch helpers.
 		//
@@ -112,7 +134,7 @@ func acquireCommandCgroup(
 			return nil, err
 		}
 	}
-	relative := parent + "/command"
+	relative := parent + "/" + commandLeaf
 	path := filepath.Join("/sys/fs/cgroup", relative)
 	if err := os.Mkdir(path, 0700); err != nil {
 		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
@@ -137,6 +159,24 @@ func acquireCommandCgroup(
 	return &commandCgroup{Directory: directory, Events: events, Kill: kill, Path: path, Relative: relative}, nil
 }
 
+// userManagerBusAddress returns the configured or standard user manager bus address.
+//
+// Example: without an override the address uses the caller's runtime directory.
+func userManagerBusAddress() string {
+	address := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
+	if address == "" {
+		return "unix:path=" + dbus.EscapeBusAddressValue(fmt.Sprintf("/run/user/%d/bus", os.Getuid()))
+	}
+	return address
+}
+
+// guardCgroup identifies the sibling guard below a delegated scope.
+//
+// Example: a scope named /example contains /example/guard.
+func guardCgroup(parent string) string {
+	return parent + "/" + memoryGuardLeaf
+}
+
 // prepareMemoryScope moves the guard to a sibling before enabling the memory controller.
 //
 // Example: a populated scope cannot enable a domain controller until its guard moves.
@@ -144,7 +184,7 @@ func prepareMemoryScope(
 	parent string,
 	limit MemoryBytes,
 ) error {
-	if limit < MemoryBytes(os.Getpagesize()) {
+	if limit.pageFloor() == 0 {
 		return fmt.Errorf("memory limit %d is below one page", limit)
 	}
 	scope := filepath.Join("/sys/fs/cgroup", parent)
@@ -159,7 +199,7 @@ func prepareMemoryScope(
 	if err := os.Mkdir(guard, 0700); err != nil {
 		return fmt.Errorf("create guard cgroup: %w", err)
 	}
-	if err := unix.Setxattr(guard, "user.oomd_omit", []byte("1"), 0); err != nil {
+	if err := unix.Setxattr(guard, oomdOmitXattr, []byte("1"), 0); err != nil {
 		return fmt.Errorf("exclude guard from oomd selection: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(guard, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
@@ -169,7 +209,7 @@ func prepareMemoryScope(
 	if err != nil {
 		return fmt.Errorf("read guard cgroup membership: %w", err)
 	}
-	if strings.TrimSpace(string(membership)) != "0::"+parent+"/"+memoryGuardLeaf {
+	if strings.TrimSpace(string(membership)) != "0::"+guardCgroup(parent) {
 		return errors.New("guard did not enter sibling cgroup")
 	}
 	if err := os.WriteFile(filepath.Join(scope, "cgroup.subtree_control"), []byte("+memory"), 0600); err != nil {
@@ -197,6 +237,25 @@ func hasMemoryController(data []byte) bool {
 	return false
 }
 
+// memoryControl describes an expected command cgroup control value.
+//
+// Example: swap is disabled before a capped workload starts.
+type memoryControl struct {
+	Name  string
+	Value string
+}
+
+// commandMemoryControls returns the mandatory workload limits in receipt order.
+//
+// Example: the final control is the page-rounded aggregate memory limit.
+func commandMemoryControls(limit MemoryBytes) [3]memoryControl {
+	return [3]memoryControl{
+		{"memory.swap.max", "0"},
+		{"memory.oom.group", "1"},
+		{"memory.max", strconv.FormatUint(uint64(limit.pageFloor()), 10)},
+	}
+}
+
 // configureCommandMemory installs and checks all mandatory workload controls before launch.
 //
 // Example: unavailable swap control refuses the workload rather than allowing uncapped swap.
@@ -204,22 +263,22 @@ func configureCommandMemory(
 	path string,
 	limit MemoryBytes,
 ) error {
-	effective := limit.pageFloor()
-	for _, control := range []struct{ name, value string }{
-		{"memory.swap.max", "0"},
-		{"memory.oom.group", "1"},
-		{"memory.max", strconv.FormatUint(uint64(effective), 10)},
-	} {
-		name := filepath.Join(path, control.name)
-		if err := os.WriteFile(name, []byte(control.value), 0600); err != nil {
-			return fmt.Errorf("write %s: %w", control.name, err)
+	for _, control := range commandMemoryControls(limit) {
+		name := filepath.Join(path, control.Name)
+		if err := os.WriteFile(name, []byte(control.Value), 0600); err != nil {
+			return fmt.Errorf("write %s: %w", control.Name, err)
 		}
 		data, err := os.ReadFile(name)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", control.name, err)
+			return fmt.Errorf("read %s: %w", control.Name, err)
 		}
-		if strings.TrimSpace(string(data)) != control.value {
-			return fmt.Errorf("%s readback %q, expected %q", control.name, data, control.value)
+		if strings.TrimSpace(string(data)) != control.Value {
+			return fmt.Errorf("%s readback %q, expected %q", control.Name, data, control.Value)
+		}
+	}
+	for _, name := range []string{memoryPeakFile, memoryEventsFile} {
+		if _, err := os.ReadFile(filepath.Join(path, name)); err != nil {
+			return fmt.Errorf("%s unavailable before launch (requires Linux 5.19+ for memory.peak): %w", name, err)
 		}
 	}
 	return nil
@@ -232,7 +291,23 @@ func readMemoryReceipt(
 	group *commandCgroup,
 	limit MemoryBytes,
 ) (*MemoryReceipt, error) {
-	peakData, err := os.ReadFile(filepath.Join(group.Path, "memory.peak"))
+	controls := commandMemoryControls(limit)
+	var values [3]uint64
+	for index, control := range controls {
+		data, err := os.ReadFile(filepath.Join(group.Path, control.Name))
+		if err != nil {
+			return nil, fmt.Errorf("read memory control %s: %w", control.Name, err)
+		}
+		actual := strings.TrimSpace(string(data))
+		if actual != control.Value {
+			return nil, fmt.Errorf("memory control %s changed to %q, expected %q", control.Name, actual, control.Value)
+		}
+		values[index], err = strconv.ParseUint(actual, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse memory control %s: %w", control.Name, err)
+		}
+	}
+	peakData, err := os.ReadFile(filepath.Join(group.Path, memoryPeakFile))
 	if err != nil {
 		return nil, fmt.Errorf("read memory peak: %w", err)
 	}
@@ -240,7 +315,7 @@ func readMemoryReceipt(
 	if err != nil {
 		return nil, fmt.Errorf("parse memory peak: %w", err)
 	}
-	data, err := os.ReadFile(filepath.Join(group.Path, "memory.events"))
+	data, err := os.ReadFile(filepath.Join(group.Path, memoryEventsFile))
 	if err != nil {
 		return nil, fmt.Errorf("read memory events: %w", err)
 	}
@@ -261,10 +336,10 @@ func readMemoryReceipt(
 	}
 	return &MemoryReceipt{
 		RequestedMax: limit,
-		EffectiveMax: limit.pageFloor(),
-		SwapMax:      0,
-		OOMGroup:     true,
-		GuardCgroup:  filepath.Join(filepath.Dir(group.Relative), memoryGuardLeaf),
+		EffectiveMax: MemoryBytes(values[2]),
+		SwapMax:      MemoryBytes(values[0]),
+		OOMGroup:     values[1] == 1,
+		GuardCgroup:  guardCgroup(filepath.Dir(group.Relative)),
 		Peak:         MemoryBytes(peak),
 		Events:       events,
 	}, nil

@@ -456,8 +456,20 @@ func acquireProofSessionLock(sid string) (*os.File, error) {
 	return acquireSessionLock(dir)
 }
 
-// contextSessionsRoot is <home>/.agent/context/sessions, the store of session ledgers and reports.
-func contextSessionsRoot() string { return filepath.Join(homeDir(), ".agent", "context", "sessions") }
+// contextSessionsRoot is <home>/.agent/context/sessions, the store of session ledgers and reports,
+// with symlinks in the root path resolved so a relocated store passes the per-session no-symlink checks.
+// Session directories and ledger files below it must still be real, unlinked paths.
+//
+// Example: contextSessionsRoot() names the directory that holds <sid>/high_level_log.jsonl.
+func contextSessionsRoot() string {
+	root := filepath.Join(homeDir(), ".agent", "context", "sessions")
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		// A missing root is created lexically by contextSessionDir; other failures surface there too.
+		return root
+	}
+	return resolved
+}
 
 // contextSessionDir creates and returns <home>/.agent/context/sessions/<sid>.
 func contextSessionDir(sid string) (string, error) {

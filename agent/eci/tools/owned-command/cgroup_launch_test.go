@@ -20,8 +20,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
+	"github.com/stretchr/testify/require"
 	"github.com/xaionaro-go/observability"
 	"golang.org/x/sys/unix"
+)
+
+// Memory test limits use a page-aligned cap, its unaligned neighbor, and an invalid maximum.
+//
+// Example: the unaligned value exercises kernel page rounding.
+const (
+	testMemoryLimit            = "67108864"
+	testUnalignedMemoryLimit   = "67108865"
+	testAboveKernelMemoryLimit = "9223372036854775808"
+	scopeCollectionLimit       = 5 * time.Second
 )
 
 // TestCgroupPopulation requires explicit population evidence and rejects malformed emptiness.
@@ -543,6 +555,7 @@ func TestCgroupCleanupChargesControlEntries(t *testing.T) {
 //
 // Example: an allocation larger than the cap is killed and reported in the receipt.
 func TestCgroupMemoryLimit(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		limit  string
@@ -550,45 +563,87 @@ func TestCgroupMemoryLimit(t *testing.T) {
 		status int
 		oom    bool
 	}{
-		{"under", "67108864", "16M", 0, false},
-		{"single-aggregate-member", "67108864", "40M", 0, false},
-		{"over", "67108864", "200M", 137, true},
+		{"under", testUnalignedMemoryLimit, "16M", 0, false},
+		{"single-aggregate-member", testMemoryLimit, "40M", 0, false},
+		{"over", testMemoryLimit, "200M", 137, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", test.limit, "--", "dd", "if=/dev/zero", "of=/dev/null", "bs="+test.block, "count=1")
-			if status != test.status {
-				t.Fatalf("status=%d want=%d output=%q", status, test.status, output)
-			}
-			if !receipt.HostChildrenSettled || receipt.Memory == nil || (receipt.Memory.Events["oom_kill"] > 0) != test.oom {
-				t.Fatalf("unexpected memory receipt: %+v", receipt)
+			require.Equal(t, test.status, status, output)
+			require.True(t, receipt.HostChildrenSettled)
+			require.NotNil(t, receipt.Memory)
+			require.Equal(t, test.oom, receipt.Memory.Events["oom_kill"] > 0)
+			if test.name == "under" {
+				require.Equal(t, MemoryBytes(67108865), receipt.Memory.RequestedMax)
+				require.Equal(t, MemoryBytes(67108864), receipt.Memory.EffectiveMax)
+				require.Zero(t, receipt.Memory.SwapMax)
+				require.True(t, receipt.Memory.OOMGroup)
+				require.Equal(t, guardCgroup(filepath.Dir(receipt.Cgroup)), receipt.Memory.GuardCgroup)
+				require.Greater(t, receipt.Memory.Peak, MemoryBytes(0))
+				for _, name := range []string{"low", "high", "max", "oom", "oom_kill"} {
+					require.Contains(t, receipt.Memory.Events, name)
+				}
 			}
 		})
 	}
+}
+
+// TestCgroupMemoryLimitAboveKernelMaximumFailsClosed verifies post-creation rollback.
+//
+// Example: an unrepresentable limit never starts the requested workload.
+func TestCgroupMemoryLimitAboveKernelMaximumFailsClosed(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	marker := filepath.Join(t.TempDir(), "launched")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", testAboveKernelMemoryLimit, "-receipt", path, "--", "/usr/bin/touch", marker)
+	err := cmd.Run()
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit)
+	require.Equal(t, guardFailure, exit.ExitCode())
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var receipt Receipt
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.Zero(t, receipt.CommandPID)
+	require.Contains(t, strings.Join(receipt.Errors, "\n"), "memory.max")
+	_, err = os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	assertScopeCollected(t, cmd.Process.Pid)
+}
+
+// TestCgroupMemoryLimitControlChangeFails detects a workload lifting its cap.
+//
+// Example: changing memory.max invalidates the final receipt and returns a guard error.
+func TestCgroupMemoryLimitControlChangeFails(t *testing.T) {
+	t.Parallel()
+	script := `echo max > "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.max"`
+	receipt, status, output := runGuard(t, "-memory-max", testMemoryLimit, "--", "/bin/sh", "-c", script)
+	require.Equal(t, guardFailure, status, output)
+	require.True(t, receipt.HostChildrenSettled)
+	require.Nil(t, receipt.Memory)
+	require.Contains(t, strings.Join(receipt.Errors, "\n"), "memory.max")
 }
 
 // TestCgroupMemoryLimitBelowPageFailsClosed checks setup rollback.
 //
 // Example: a sub-page limit cannot launch a command or leave its scope behind.
 func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	marker := filepath.Join(t.TempDir(), "launched")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "1", "-receipt", path, "--", "/usr/bin/touch", marker)
 	err := cmd.Run()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != guardFailure {
-		t.Fatalf("sub-page status: %v", err)
-	}
+	require.ErrorAs(t, err, &exit)
+	require.Equal(t, guardFailure, exit.ExitCode())
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var receipt Receipt
-	if err := json.Unmarshal(data, &receipt); err != nil || receipt.CommandPID != 0 {
-		t.Fatalf("sub-page receipt=%+v err=%v", receipt, err)
-	}
-	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sub-page command ran: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.Zero(t, receipt.CommandPID)
+	_, err = os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	assertScopeCollected(t, cmd.Process.Pid)
 }
 
@@ -596,59 +651,51 @@ func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
 //
 // Example: two individually smaller blocked writes exceed the family cap together.
 func TestCgroupMemoryLimitAggregate(t *testing.T) {
+	t.Parallel()
 	script := `dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10 & setsid sh -c 'dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10' & wait`
-	receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", "67108864", "--", "/bin/sh", "-c", script)
-	if status != 137 {
-		t.Fatalf("aggregate status=%d output=%q", status, output)
-	}
-	if !receipt.HostChildrenSettled || receipt.Memory == nil || receipt.Memory.Events["oom_kill"] == 0 {
-		t.Fatalf("aggregate limit not demonstrated: %+v", receipt)
-	}
+	receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", testMemoryLimit, "--", "/bin/sh", "-c", script)
+	require.Equal(t, 137, status, output)
+	require.True(t, receipt.HostChildrenSettled)
+	require.NotNil(t, receipt.Memory)
+	require.Greater(t, receipt.Memory.Events["oom_kill"], uint64(0))
 }
 
 // TestCgroupMemoryLimitCancellationRejected checks incompatible launch and cancellation modes.
 //
 // Example: a cap cannot silently change the meaning of external PID cancellation.
 func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
+	t.Parallel()
 	control := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
 	controlStat, err := readProcess(control.Process.Pid)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	receipt, code, output := runGuard(t, "-cancel-pid", strconv.Itoa(controlStat.PID), "-cancel-birth", strconv.FormatUint(controlStat.Birth, 10))
-	if code != 0 || !receipt.HostChildrenSettled {
-		t.Fatalf("uncapped cancellation status=%d receipt=%+v output=%q", code, receipt, output)
-	}
-	if err := control.Wait(); err == nil {
-		t.Fatal("cancellation did not terminate control child")
-	}
+	require.Zero(t, code, output)
+	require.True(t, receipt.HostChildrenSettled)
+	require.Error(t, control.Wait())
 	child := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
 	before, err := readProcess(child.Process.Pid)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "receipt.json")
-	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "67108864", "-cancel-pid", strconv.Itoa(before.PID), "-cancel-birth", strconv.FormatUint(before.Birth, 10), "-receipt", path)
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", testMemoryLimit, "-cancel-pid", strconv.Itoa(before.PID), "-cancel-birth", strconv.FormatUint(before.Birth, 10), "-receipt", path)
 	err = cmd.Run()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 125 {
-		t.Fatalf("incompatible arguments accepted: %v", err)
-	}
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("invalid cancellation wrote receipt: %v", err)
-	}
+	require.ErrorAs(t, err, &exit)
+	require.Equal(t, guardFailure, exit.ExitCode())
+	_, err = os.Stat(path)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	after, err := readProcess(child.Process.Pid)
-	if err != nil || after.Birth != before.Birth || after.State == "Z" || after.State == "X" {
-		t.Fatalf("invalid cancellation affected child: %+v err=%v", after, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, before.Birth, after.Birth)
+	require.NotContains(t, []string{"Z", "X"}, after.State)
 }
 
 // TestCgroupMemoryLimitTopologyAndInterrupt observes the live guard and command siblings.
 //
 // Example: interruption retires the workload while the guard remains outside its cap.
 func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
-	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", "67108864", "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; exec sleep 10")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; exec sleep 10")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -669,9 +716,7 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 		t.Fatalf("command did not report membership: %v", err)
 	}
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
-	if !strings.HasSuffix(relative, "/command") {
-		t.Fatalf("unexpected command membership %q", line)
-	}
+	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
 	command := filepath.Join("/sys/fs/cgroup", relative)
 	parent := filepath.Dir(command)
 	unit := filepath.Base(parent)
@@ -683,7 +728,7 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	if !strings.Contains(listing, unit) {
 		t.Fatalf("live scope %s missing from listing: %q", unit, listing)
 	}
-	for name, want := range map[string]string{"memory.max": "67108864", "memory.swap.max": "0", "memory.oom.group": "1"} {
+	for name, want := range map[string]string{"memory.max": testMemoryLimit, "memory.swap.max": "0", "memory.oom.group": "1"} {
 		data, err := os.ReadFile(filepath.Join(command, name))
 		if err != nil || strings.TrimSpace(string(data)) != want {
 			t.Fatalf("%s=%q err=%v", name, data, err)
@@ -693,13 +738,13 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	if err != nil || !strings.Contains(" "+strings.Join(strings.Fields(string(control)), " ")+" ", " memory ") {
 		t.Fatalf("controller=%q err=%v", control, err)
 	}
-	guard := filepath.Join(parent, "guard")
+	guard := filepath.Join(parent, memoryGuardLeaf)
 	members, err := os.ReadFile(filepath.Join(guard, "cgroup.procs"))
 	if err != nil || strings.TrimSpace(string(members)) != strconv.Itoa(cmd.Process.Pid) {
 		t.Fatalf("guard membership=%q err=%v", members, err)
 	}
 	value := make([]byte, 16)
-	n, err := unix.Getxattr(guard, "user.oomd_omit", value)
+	n, err := unix.Getxattr(guard, oomdOmitXattr, value)
 	if err != nil {
 		t.Fatalf("read guard omit: %v", err)
 	}
@@ -755,26 +800,30 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 //
 // Example: the same command sees a guard sibling only when a cap is requested.
 func TestCgroupMemoryLimitPairedTopology(t *testing.T) {
-	script := `group=$(cut -d: -f3 /proc/self/cgroup); test ! -d "/sys/fs/cgroup${group%/command}/guard"`
+	t.Parallel()
+	script := `group=$(cut -d: -f3 /proc/self/cgroup); test ! -d "/sys/fs/cgroup${group%/` + commandLeaf + `}/` + memoryGuardLeaf + `"`
 	for _, capped := range []bool{false, true} {
 		args := []string{"-deadline", "15s"}
 		want := 0
 		if capped {
-			args = append(args, "-memory-max", "67108864")
+			args = append(args, "-memory-max", testMemoryLimit)
 			want = 1
 		}
 		args = append(args, "--", "/bin/sh", "-c", script)
 		receipt, code, output := runGuard(t, args...)
-		if code != want || (receipt.Memory != nil) != capped || !receipt.HostChildrenSettled {
-			t.Fatalf("capped=%t status=%d receipt=%+v output=%q", capped, code, receipt, output)
-		}
+		require.Equal(t, want, code, output)
+		require.Equal(t, capped, receipt.Memory != nil)
+		require.True(t, receipt.HostChildrenSettled)
 	}
 }
 
 // scopeListing queries systemd for the exact guard's scope names.
 //
 // Example: the same query finds a live scope and later confirms its collection.
-func scopeListing(t *testing.T, pid int) string {
+func scopeListing(
+	t *testing.T,
+	pid int,
+) string {
 	t.Helper()
 	pattern := fmt.Sprintf("owned-command-%d-*.scope", pid)
 	output, err := exec.Command("systemctl", "--user", "list-units", "--all", "--plain", "--no-legend", pattern).Output()
@@ -787,25 +836,53 @@ func scopeListing(t *testing.T, pid int) string {
 // assertScopeCollected waits for systemd to prune a guard's empty scope.
 //
 // Example: a sub-page limit never leaves an owned scope behind.
-func assertScopeCollected(t *testing.T, pid int) {
+func assertScopeCollected(
+	t *testing.T,
+	pid int,
+) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		listing := scopeListing(t, pid)
-		if listing == "" {
-			return
+	ctx, cancel := context.WithTimeout(context.Background(), scopeCollectionLimit)
+	defer cancel()
+	conn, err := dbus.Connect(userManagerBusAddress(), dbus.WithContext(ctx))
+	require.NoError(t, err)
+	defer conn.Close()
+	require.NoError(t, conn.AddMatchSignalContext(ctx,
+		dbus.WithMatchObjectPath(dbus.ObjectPath("/org/freedesktop/systemd1")),
+		dbus.WithMatchInterface("org.freedesktop.systemd1.Manager"),
+		dbus.WithMatchMember("UnitRemoved"),
+	))
+	signals := make(chan *dbus.Signal, 64)
+	conn.Signal(signals)
+	defer conn.RemoveSignal(signals)
+	manager := conn.Object("org.freedesktop.systemd1", dbus.ObjectPath("/org/freedesktop/systemd1"))
+	require.NoError(t, manager.CallWithContext(ctx, "org.freedesktop.systemd1.Manager.Subscribe", 0).Err)
+	pending := make(map[string]bool)
+	for _, line := range strings.Split(scopeListing(t, pid), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 0 {
+			pending[fields[0]] = true
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("scope was not collected: %s", listing)
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
+	for len(pending) != 0 {
+		select {
+		case event := <-signals:
+			if event != nil && len(event.Body) > 0 {
+				if unit, ok := event.Body[0].(string); ok {
+					delete(pending, unit)
+				}
+			}
+		case <-ctx.Done():
+			t.Fatalf("scope collection timed out: %v", pending)
+		}
+	}
+	require.Empty(t, scopeListing(t, pid))
 }
 
 // TestCgroupMemoryLimitAbsentKeepsTopology verifies the unmodified launch mode.
 //
 // Example: a launch without a cap has no guard sibling or Memory receipt.
 func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
 	stdin, err := cmd.StdinPipe()
@@ -832,13 +909,10 @@ func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
 		t.Fatal(err)
 	}
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
-	if !strings.HasSuffix(relative, "/command") {
-		t.Fatalf("unexpected membership %q", line)
-	}
-	guard := filepath.Join("/sys/fs/cgroup", filepath.Dir(relative), "guard")
-	if _, err := os.Stat(guard); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("uncapped launch has guard sibling: %v", err)
-	}
+	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
+	guard := filepath.Join("/sys/fs/cgroup", filepath.Dir(relative), memoryGuardLeaf)
+	_, err = os.Stat(guard)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	if _, err := stdin.Write([]byte("done\n")); err != nil {
 		t.Fatal(err)
 	}

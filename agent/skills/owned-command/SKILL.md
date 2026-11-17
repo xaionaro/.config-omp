@@ -1,6 +1,6 @@
 ---
 name: owned-command
-description: Use when running bounded host process families with deadline or interruption cleanup (Linux; macOS with a narrower process-group guarantee), or cancelling a Linux host PID with its recorded birth identity.
+description: Use when running bounded host process families with deadline or interruption cleanup (Linux; macOS with a narrower process-group guarantee), capping a Linux command family's aggregate memory, or cancelling a Linux host PID with its recorded birth identity.
 ---
 
 # Owned command
@@ -30,7 +30,7 @@ The guard validates that identity through anchored reads and retained pidfd cust
 
 Launch uses a private inherited cgroup v2 subtree and native child reaping; it requires a reachable systemd user manager with delegation, including for direct-built binaries. Missing facilities return 125 before command launch. Foreign PID cancellation instead covers one bounded observed static-family snapshot; children outside that snapshot or changing ancestry are unproved. Read `Backend` and `FamilyCoverage` with settlement fields; cancellation never authorizes killing the target's ambient cgroup.
 
-On Linux, `-memory-max BYTES` optionally caps the inherited workload aggregate with swap disabled and the guard outside the cap; setup fails closed if enforcement is unavailable. It is not a reservation or host-wide safety guarantee. A nonzero cap is refused on macOS and cannot be combined with cancellation. See the README for accounting limits, receipts and launch sizing.
+Cap a Linux launch's aggregate memory with `-memory-max BYTES`. The guard moves to a sibling `guard` cgroup; only `command` is capped, with swap disabled. An OOM at the cap kills the whole command group: expect status 137 and `Memory.Events.oom_kill` above zero. Setup returns 125 before launch when enforcement is unavailable. The cap reserves no memory and gives no host-wide safety. Nested `owned-command`, `systemd-run` or other new systemd units leave the cap, custody and `Memory.Peak`. macOS refuses a nonzero cap; combining it with `-cancel-pid` is invalid. Size launches by the README rule.
 
 On macOS the wrapper runs the `darwin-pgroup` backend (`Backend=darwin-pgroup`; `main_darwin.go`, `pgroup.go`): the command runs in its own process group, and a deadline, an interruption (SIGINT, SIGTERM or SIGHUP to the guard) or the command's exit sends SIGTERM and SIGCONT to that group, then SIGKILL after `-grace`; the final check runs at 2·`-grace`. The guarantee is deadline and cleanup only, with `FamilyCoverage` set to "command process group only": there is no birth identity and no PID-reuse guard, so `-cancel-pid` with `-cancel-birth` returns 125 with a receipt (`Cause` "guard error") and signals nothing, and without `-cancel-birth` the arguments are invalid and no receipt is written. There is no subreaper and no cgroup, so a descendant that calls `setsid` or `setpgid` leaves the group and is not cleaned up; it can outlive `HostChildrenSettled: true`, which means only that the command was reaped and its process group is empty. The receipt's `Guarantee` field states these limits, and its `Survivors` and `Events` fields are present. Use this backend for non-interactive families only.
 

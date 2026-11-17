@@ -71,19 +71,6 @@ type Receipt struct {
 	Errors              []string
 }
 
-// MemoryBytes identifies a workload memory quantity in bytes.
-//
-// Example: a limit of 67108864 bounds the workload to 64 MiB.
-type MemoryBytes uint64
-
-// pageFloor rounds a byte quantity down to the kernel page size.
-//
-// Example: a non-page-aligned limit never exceeds its requested value.
-func (b MemoryBytes) pageFloor() MemoryBytes {
-	page := MemoryBytes(os.Getpagesize())
-	return b / page * page
-}
-
 // MemoryReceipt records the enforced workload limit and kernel memory observations.
 //
 // Example: Events reports an oom_kill when the workload exceeds its limit.
@@ -1619,16 +1606,17 @@ func main() {
 	receipt := flag.String("receipt", "", "JSON receipt path")
 	cancelPID := flag.Int("cancel-pid", 0, "cancel this exact host process")
 	cancelBirth := flag.Uint64("cancel-birth", 0, "required /proc stat field 22 identity")
-	memoryMax := flag.Uint64("memory-max", 0, "aggregate command memory limit in bytes; zero disables")
+	var memoryMax MemoryBytes
+	flag.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; zero disables")
 	flag.Parse()
 	cancel := ProcessIdentity{PID: *cancelPID, Birth: *cancelBirth}
-	if *receipt == "" || !validArguments(*deadline, *grace, cancel, MemoryBytes(*memoryMax), flag.Args()) {
+	if *receipt == "" || !validArguments(*deadline, *grace, cancel, memoryMax, flag.Args()) {
 		if _, err := fmt.Fprintln(os.Stderr, "invalid owned-command arguments"); err != nil {
 			os.Exit(guardFailure)
 		}
 		os.Exit(guardFailure)
 	}
-	r, code := supervise(*deadline, *grace, cancel, MemoryBytes(*memoryMax), flag.Args())
+	r, code := supervise(*deadline, *grace, cancel, memoryMax, flag.Args())
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err == nil {
 		err = os.WriteFile(*receipt, append(data, '\n'), 0600)

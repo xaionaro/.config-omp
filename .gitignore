@@ -40,3 +40,4 @@ agent/auth*.json
 *.pem
 *.token
 *.secret
+agent/eci/tools/owned-command/owned-command

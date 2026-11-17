@@ -198,6 +198,33 @@ func TestLedgerAppendKeepsAppendWhenStatusReportFails(t *testing.T) {
 	fx.assertNoGoCalls(t)
 }
 
+// TestLedgerAppendFollowsSymlinkedSessionsRoot appends when ~/.agent/context/sessions is a symlink to the real store.
+//
+// Example: a sessions root relocated to another disk behind a symlink.
+func TestLedgerAppendFollowsSymlinkedSessionsRoot(t *testing.T) {
+	fx := newWrapperFixture(t)
+	store := filepath.Join(filepath.Dir(fx.home), "store")
+	parent := filepath.Join(fx.home, ".agent", "context")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatalf("create context parent: %v", err)
+	}
+	if err := os.Symlink(store, filepath.Join(parent, "sessions")); err != nil {
+		t.Fatalf("link sessions root: %v", err)
+	}
+	stdout, stderr, code := fx.run(t, 0, "ledger-append", "--json", `{"event":"decision","summary":"symlinked root"}`)
+	if code != 0 {
+		t.Fatalf("ledger-append exit = %d, want 0; stdout %q stderr %q", code, stdout, stderr)
+	}
+	log, err := os.ReadFile(filepath.Join(store, wrapperSessionID, ledgerLogName))
+	if err != nil || !strings.Contains(string(log), "symlinked root") {
+		t.Errorf("ledger log in the link target: err %v, content %q; want the appended entry", err, log)
+	}
+	fx.assertWrapperCalls(t, "refresh "+filepath.Join(store, wrapperSessionID)+" decision")
+}
+
 // TestRequirementAssignmentRunsWrapperWithoutGo hands the request to bin/eci-requirement-assignment and emits nothing when the wrapper fails.
 func TestRequirementAssignmentRunsWrapperWithoutGo(t *testing.T) {
 	fx := newWrapperFixture(t)

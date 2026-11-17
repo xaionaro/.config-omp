@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/godbus/dbus/v5 v5.1.0
+	github.com/stretchr/testify v1.12.1
 	github.com/xaionaro-go/observability v0.0.0-20251102143534-3aeb2a25e57d
 	golang.org/x/sys v0.33.0
 )
@@ -27,6 +28,7 @@ require (
 	github.com/xaionaro-go/spinlock v0.0.0-20200518175509-30e6d1ce68a1 // indirect
 	github.com/xaionaro-go/unsafetools v0.0.0-20241024014258-a46e1ce3763e // indirect
 	github.com/xaionaro-go/xsync v0.0.0-20250111141039-3e7f31b1a2c6 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )

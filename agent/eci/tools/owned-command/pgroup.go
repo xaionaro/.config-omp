@@ -67,6 +67,16 @@ const (
 	//
 	// Example: the diagnostic names the missing birth identity and states that nothing was signaled.
 	pgroupCancelDiagnostic = "owned-command: -cancel-pid is unavailable on darwin-pgroup (no birth identity); nothing was signaled"
+
+	// pgroupMemoryError is the receipt error for an unsupported memory cap.
+	//
+	// Example: a refused cap never launches the workload.
+	pgroupMemoryError = "memory: -memory-max is unavailable on darwin-pgroup (no cgroup); nothing was launched"
+
+	// pgroupMemoryDiagnostic is the stderr line for an unsupported memory cap.
+	//
+	// Example: a caller sees why its command was not launched.
+	pgroupMemoryDiagnostic = "owned-command: -memory-max is unavailable on darwin-pgroup (no cgroup); nothing was launched"
 )
 
 // pgroupIdentity names one process in a receipt. Birth is zero because this backend reads no birth identity.
@@ -562,7 +572,7 @@ func pgroupValidArguments(
 	grace time.Duration,
 	cancelPID int,
 	cancelBirth uint64,
-	memoryMax uint64,
+	memoryMax MemoryBytes,
 	args []string,
 ) bool {
 	if deadline <= 0 || grace <= 0 || cancelPID < 0 {
@@ -574,19 +584,22 @@ func pgroupValidArguments(
 	return cancelBirth > 0 && len(args) == 0 && memoryMax == 0
 }
 
-// pgroupRefuseCancellation writes the receipt for a cancellation this backend cannot prove and returns pgroupFailure.
-// Nothing is signaled.
+// pgroupRefuse writes a guard-error receipt and diagnostic for an unsupported request.
 //
-// Example: a recorded PID and birth yield one stderr line and a guard-error receipt with CommandPID zero.
-func pgroupRefuseCancellation(path string) int {
+// Example: an unavailable memory cap never launches the command.
+func pgroupRefuse(
+	path string,
+	receiptError string,
+	diagnostic string,
+) int {
 	started := time.Now()
 	receipt := pgroupNewReceipt(started)
 	receipt.Cause = "guard error"
-	receipt.Errors = append(receipt.Errors, pgroupCancelError)
+	receipt.Errors = append(receipt.Errors, receiptError)
 	finished := time.Now()
 	receipt.Finished = finished.UTC()
 	receipt.ElapsedSeconds = finished.Sub(started).Seconds()
-	_, _ = fmt.Fprintln(os.Stderr, pgroupCancelDiagnostic)
+	_, _ = fmt.Fprintln(os.Stderr, diagnostic)
 	if err := pgroupWriteReceipt(path, receipt); err != nil {
 		return pgroupDiagnose(err.Error())
 	}
@@ -622,30 +635,22 @@ func pgroupMain(args []string) int {
 	receipt := flags.String("receipt", "", "JSON receipt path")
 	cancelPID := flags.Int("cancel-pid", 0, "cancel this exact host process (refused on darwin-pgroup)")
 	cancelBirth := flags.Uint64("cancel-birth", 0, "required birth identity (refused on darwin-pgroup)")
-	memoryMax := flags.Uint64("memory-max", 0, "aggregate command memory limit in bytes (unavailable on darwin-pgroup)")
+	var memoryMax MemoryBytes
+	flags.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes (unavailable on darwin-pgroup)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 2
 	}
-	if *receipt == "" || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, *memoryMax, flags.Args()) {
+	if *receipt == "" || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, memoryMax, flags.Args()) {
 		return pgroupDiagnose("invalid owned-command arguments")
 	}
-	if *memoryMax != 0 {
-		started := time.Now()
-		result := pgroupNewReceipt(started)
-		result.Cause = "guard error"
-		result.Errors = append(result.Errors, "memory limit unavailable on darwin-pgroup; command not launched")
-		result.Finished = time.Now().UTC()
-		result.ElapsedSeconds = time.Since(started).Seconds()
-		if err := pgroupWriteReceipt(*receipt, result); err != nil {
-			return pgroupDiagnose(err.Error())
-		}
-		return pgroupFailure
+	if memoryMax != 0 {
+		return pgroupRefuse(*receipt, pgroupMemoryError, pgroupMemoryDiagnostic)
 	}
 	if *cancelPID > 0 {
-		return pgroupRefuseCancellation(*receipt)
+		return pgroupRefuse(*receipt, pgroupCancelError, pgroupCancelDiagnostic)
 	}
 	result, status := pgroupRun(pgroupOptions{Deadline: *deadline, Grace: *grace, Args: flags.Args()}, notices)
 	if err := pgroupWriteReceipt(*receipt, result); err != nil {

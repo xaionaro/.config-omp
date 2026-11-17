@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -1036,25 +1038,19 @@ func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
 //
 // Example: a Darwin caller gets a guard-error receipt instead of an uncapped workload.
 func TestPgroupMemoryLimitRefused(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "receipt")
 	marker := filepath.Join(directory, "launched")
 	status := pgroupMain([]string{"-memory-max", "67108864", "-receipt", path, "--", "/usr/bin/touch", marker})
-	if status != pgroupFailure {
-		t.Fatalf("status=%d", status)
-	}
+	require.Equal(t, pgroupFailure, status)
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var receipt pgroupReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil {
-		t.Fatal(err)
-	}
-	if receipt.Cause != "guard error" || receipt.CommandPID != 0 || len(receipt.Errors) == 0 {
-		t.Fatalf("missing refusal: %+v", receipt)
-	}
-	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("uncapped command ran: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.Equal(t, "guard error", receipt.Cause)
+	require.Zero(t, receipt.CommandPID)
+	require.NotEmpty(t, receipt.Errors)
+	_, err = os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
