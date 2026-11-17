@@ -6,7 +6,7 @@
 
 **Testing skills is just TDD applied to process documentation.**
 
-You write scenarios and the skill, then run each scenario without the skill (RED - watch agent fail) and with it (GREEN - watch agent comply), then close loopholes (REFACTOR - stay compliant).
+You write scenarios and the skill, then run each scenario without the skill (RED - watch agent fail) and with it (GREEN - watch agent comply), then close loopholes (REFACTOR - stay compliant). Follow test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order).
 
 **Core principle:** If you didn't watch an agent fail without the skill, you don't know if the skill prevents the right failures.
 

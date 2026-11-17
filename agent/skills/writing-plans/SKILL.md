@@ -40,9 +40,9 @@ This structure informs the task decomposition. Each task should produce self-con
 **Each step is one action (2-5 minutes):**
 - "Write the failing test" - step
 - "Implement the minimal code to make the test pass" - step
-- "Run the static checks and commit" - step
+- "Confirm the build, run the static checks, and commit" - step
 
-Order tasks so every test is written before any implementation, and run tests only in the final task: each new test without its code (it must fail), then all tests (they must pass).
+Order tasks in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order): the first task writes every test, later tasks implement, and only the final task runs the tests.
 
 ## Plan Document Header
 
@@ -78,11 +78,11 @@ def test_specific_behavior():
     assert result == expected
 ```
 
-- [ ] **Step 2: Run static checks and commit**
+- [ ] **Step 2: Confirm the build, run static checks, and commit**
 
 ```bash
 git add tests/path/test.py
-git commit -m "test: specify specific feature" -m "Test Plan: <static check>: clean; tests run in the final task"
+git commit -m "test: specify specific feature" -m "Test Plan: <build check>: <observed result, naming each failure only later tasks' code removes>; <static check>: <observed result>; tests run in the final task"
 ```
 
 ### Task N: [Component Name]
@@ -98,20 +98,20 @@ def function(input):
     return expected
 ```
 
-- [ ] **Step 2: Run static checks and commit**
+- [ ] **Step 2: Confirm the build, run static checks, and commit**
 
 ```bash
 git add src/path/file.py
-git commit -m "feat: add specific feature" -m "Test Plan: <static check>: clean; tests run in the final task"
+git commit -m "feat: add specific feature" -m "Test Plan: <build check>: <observed result>; <static check>: <observed result>; tests run in the final task"
 ```
 
 ### Final Task: Run the tests
 
 - [ ] **Step 1: Run each new test without its code to verify it fails**
 
-Use the pre-change code or deliberately broken code; never stash or reset a shared tree.
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
+Run it in a scratch export of the commit before Task 1, with the new tests copied in (testing-discipline, Test validation):
+Run: `git archive <base> | tar -x -C /tmp/red && cp -r tests /tmp/red/ && cd /tmp/red && pytest tests/path/test.py::test_name -v`
+Expected: FAIL on its assertion (stub a missing name in /tmp/red so the test fails rather than errors)
 
 - [ ] **Step 2: Run the tests to verify they pass**
 

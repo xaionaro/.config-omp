@@ -54,7 +54,7 @@ digraph process {
         "Dispatch implementer subagent (./implementer-prompt.md)" [shape=box];
         "Implementer subagent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
-        "Implementer subagent does the task, runs static checks, commits, self-reviews" [shape=box];
+        "Implementer subagent does the task, confirms the build, runs static checks, commits, self-reviews" [shape=box];
         "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [shape=box];
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
@@ -73,8 +73,8 @@ digraph process {
     "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
-    "Implementer subagent asks questions?" -> "Implementer subagent does the task, runs static checks, commits, self-reviews" [label="no"];
-    "Implementer subagent does the task, runs static checks, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
+    "Implementer subagent asks questions?" -> "Implementer subagent does the task, confirms the build, runs static checks, commits, self-reviews" [label="no"];
+    "Implementer subagent does the task, confirms the build, runs static checks, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
     "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer subagent confirms code matches spec?";
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
     "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
@@ -135,10 +135,10 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 You: I'm using Subagent-Driven Development to execute this plan.
 
 [Read plan file once: docs/plans/feature-plan.md]
-[Extract all 5 tasks with full text and context]
+[Extract all 4 tasks with full text and context]
 [Create todo with all tasks]
 
-Task 1: Hook installation script
+Task 1: Failing tests
 
 [Get Task 1 text and context (already extracted)]
 [Dispatch implementation subagent with full task text + context]
@@ -147,30 +147,44 @@ Implementer: "Before I begin - should the hook be installed at user or system le
 
 You: "User level (~/.omp/agent/hooks/)"
 
-Implementer: "Got it. Implementing now..."
+Implementer: "Got it. Writing the tests now..."
 [Later] Implementer:
-  - Implemented install-hook command
-  - Static checks clean
-  - Self-review: Found I missed --force flag, added it
+  - Wrote tests for install-hook and the verify/repair modes
+  - Build: fails only on install-hook, verifyIndex and repairIndex, which Tasks 2-3 add
+  - Lint clean
+  - Self-review: Found I missed a --force test, added it
   - Committed
 
 [Dispatch spec compliance reviewer]
-Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
+Spec reviewer: ✅ Spec compliant - every planned behavior has a test
 
 [Get git SHAs, dispatch code quality reviewer]
-Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
+Code reviewer: Strengths: Tests check real behavior. Issues: None. Approved.
 
 [Mark Task 1 complete]
 
-Task 2: Recovery modes
+Task 2: Hook installation script
 
-[Get Task 2 text and context (already extracted)]
 [Dispatch implementation subagent with full task text + context]
 
 Implementer: [No questions, proceeds]
 Implementer:
+  - Implemented install-hook command, including --force
+  - Build: fails only on verifyIndex and repairIndex, which Task 3 adds
+  - Lint clean
+  - Committed
+
+[Spec and code quality reviewers approve]
+[Mark Task 2 complete]
+
+Task 3: Recovery modes
+
+[Dispatch implementation subagent with full task text + context]
+
+Implementer:
   - Added verify/repair modes
-  - Static checks clean
+  - Build confirmed
+  - Lint clean
   - Self-review: All good
   - Committed
 
@@ -180,7 +194,7 @@ Spec reviewer: ❌ Issues:
   - Extra: Added --json flag (not requested)
 
 [Implementer fixes issues]
-Implementer: Removed --json flag, added progress reporting
+Implementer: Removed --json flag; wrote a progress-reporting test, then added the reporting
 
 [Spec reviewer reviews again]
 Spec reviewer: ✅ Spec compliant now
@@ -194,13 +208,23 @@ Implementer: Extracted PROGRESS_INTERVAL constant
 [Code reviewer reviews again]
 Code reviewer: ✅ Approved
 
-[Mark Task 2 complete]
+[Mark Task 3 complete]
 
-...
+Task 4: Run the tests
+
+[Dispatch implementation subagent with full task text + context]
+
+Implementer:
+  - Each new test failed without its code, in a scratch export of the pre-plan commit
+  - All tests pass
+  - Committed with the Test Plan
+
+[Spec and code quality reviewers approve]
+[Mark Task 4 complete]
 
 [After all tasks]
 [Dispatch final code-reviewer]
-Final reviewer: All requirements met, ready to merge
+Final reviewer: All requirements met, all tests pass, ready to merge
 
 Done!
 ```
@@ -276,7 +300,7 @@ Done!
 - **finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents should use:**
-- **test-driven-development** - Subagents write tests before code; only the plan's final task runs them
+- **test-driven-development** - Subagents follow its [Batch Order](../test-driven-development/SKILL.md#batch-order) across the plan's tasks
 
 **Alternative workflow:**
 - **executing-plans** - Use for parallel session instead of same-session execution

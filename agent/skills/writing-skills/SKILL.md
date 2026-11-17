@@ -11,7 +11,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Personal omp skills live in `~/.omp/agent/skills`.**
 
-You write test cases (pressure scenarios with subagents) and the skill (documentation), then run each scenario without the skill (watch it fail: baseline behavior) and with it (watch it pass: agents comply), and refactor (close loopholes).
+You write test cases (pressure scenarios with subagents) and the skill (documentation), then run each scenario without the skill (watch it fail: baseline behavior) and with it (watch it pass: agents comply), and refactor (close loopholes). Follow test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order).
 
 **Core principle:** If you didn't watch an agent fail without the skill, you don't know if the skill teaches the right thing.
 
@@ -581,16 +581,13 @@ step2 [label="read file"];
 helper1, helper2, step3, pattern4
 **Why bad:** Labels should have semantic meaning
 
-## STOP: Before Moving to Next Skill
+## STOP: Before Deploying Skills
 
-**After writing ANY skill, you MUST STOP and complete the deployment process.**
+**Before deploying any skill, complete the deployment checklist below for every skill in the change.**
 
 **Do NOT:**
-- Create multiple skills in batch without testing each
-- Move to next skill before current one is verified
-- Skip testing because "batching is more efficient"
-
-**The deployment checklist below is MANDATORY for EACH skill.**
+- Deploy a skill before its scenarios have run without and with it
+- Skip testing a skill because it was written in a batch
 
 Deploying untested skills = deploying untested code. It's a violation of quality standards.
 
@@ -650,7 +647,6 @@ How omp finds your skill:
 **Creating skills IS TDD for process documentation.**
 
 Same Iron Law: No skill before its failing test is written.
-Same batch cycle: write scenarios → write skill → run without it (RED) and with it (GREEN) → REFACTOR (close loopholes).
 Same benefits: Better quality, fewer surprises, bulletproof results.
 
 If you follow TDD for code, follow it for skills. It's the same discipline applied to documentation.

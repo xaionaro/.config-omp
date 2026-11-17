@@ -11,7 +11,7 @@ Code review requires technical evaluation, not emotional performance.
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
-Implement all accepted items, then test them together, never one at a time. Within ECI, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule).
+Implement and test accepted items in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order), never one at a time. Within ECI, follow ECI's [iteration rule](../explore-critique-implement/SKILL.md#iteration-rule).
 
 ## The Response Pattern
 

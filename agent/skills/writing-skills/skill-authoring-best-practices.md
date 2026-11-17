@@ -84,7 +84,7 @@ Do not reference old skill roots, absolute home paths, or load directives. If a 
 
 ## Testing Skills
 
-Treat skill authoring as TDD for process documentation.
+Treat skill authoring as TDD for process documentation, in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order).
 
 | Phase | Action |
 | --- | --- |

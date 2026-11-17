@@ -49,7 +49,8 @@ git diff {BASE_SHA}..{HEAD_SHA}
 - Tests actually test logic (not mocks)?
 - Edge cases covered?
 - Integration tests where needed?
-- All tests passing?
+- Tests written before the code they test?
+- Build and static-check results reported; all tests passing once the work reaches its test run under `skill://test-driven-development` Batch Order?
 
 **Requirements:**
 - All plan requirements met?
