@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# On-demand launcher for the canonical ECI Go tool agent/eci/tools/eci-active, following the
-# owned-command wrapper pattern of pre-migration source 575bb81. The first run of each source and
-# toolchain builds bin/.eci-active.<key> beside this wrapper, because eciBaseDir() is the
-# executable's grandparent directory and the binary must not move. Source and helper libraries
-# come from the canonical $HOME/.omp/agent/eci.
+# Temporary same-bin deployment selector for eci-active. The selected executable
+# stays beside this wrapper because eciBaseDir() is its grandparent directory.
+# Source changes are not activated until a separate coordinated cutover.
 set -euo pipefail
 case ${HOME:-} in
   /*) ;;
@@ -37,7 +35,8 @@ source "$eci_home/hooks/lib/eci-file-lock.sh"
 source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 exec 9>"$bin_dir/.eci-active-build.lock"
 eci_file_lock_acquire_fd 9 blocking
-eci_go_tool_build eci-active "$eci_home/tools/eci-active" "$bin_dir/.eci-active." '' 'about 30 seconds' || exit $?
+source "$eci_home/hooks/lib/eci-executable-selection.sh"
+eci_select_executable eci-active || exit $?
 executable=$eci_go_tool_executable
 # Selection refreshes the mtime under the lock. Only keys unselected for 24 hours are pruned, so a
 # caller between unlock and exec keeps its file.

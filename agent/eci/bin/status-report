@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# On-demand launcher for the canonical ECI Go tool tools/status-report. The first run of each source
-# and toolchain builds bin/.status-report.<key> beside this wrapper, then execs it. Source and helper
-# libraries come only from the canonical $HOME/.omp/agent/eci, so a copied wrapper uses the same tree.
+# Temporary same-bin deployment selector for status-report. Source changes do
+# not activate until a separate coordinated cutover.
 set -euo pipefail
 case ${HOME:-} in
   /*) ;;
@@ -29,7 +28,8 @@ source "$eci_home/hooks/lib/eci-file-lock.sh"
 source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 exec 9>"$bin_dir/.status-report-build.lock"
 eci_file_lock_acquire_fd 9 blocking
-eci_go_tool_build status-report "$eci_home/tools/status-report" "$bin_dir/.status-report." '' 'about 1 minute' || exit $?
+source "$eci_home/hooks/lib/eci-executable-selection.sh"
+eci_select_executable status-report || exit $?
 executable=$eci_go_tool_executable
 # Selection refreshes the mtime under the lock; keys unselected for 24 hours are pruned.
 touch -c -- "$executable"

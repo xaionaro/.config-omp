@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# On-demand launcher for the canonical ECI Go tool hooks/lib/eci-requirement-assignment-go. The first run
-# of each source and toolchain builds bin/.eci-requirement-assignment.<key> beside this wrapper, then
-# execs it with the caller's arguments and streams unchanged. Build output goes to stderr only, so the
-# helper's stdout stays JSON. Source and libraries come only from the canonical $HOME/.omp/agent/eci.
+# Temporary same-bin deployment selector for the assignment helper. Source
+# changes do not activate until a separate coordinated cutover.
 set -euo pipefail
 case ${HOME:-} in
   /*) ;;
@@ -30,7 +28,8 @@ source "$eci_home/hooks/lib/eci-file-lock.sh"
 source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 exec 9>"$bin_dir/.eci-requirement-assignment-build.lock"
 eci_file_lock_acquire_fd 9 blocking
-eci_go_tool_build eci-requirement-assignment "$eci_home/hooks/lib/eci-requirement-assignment-go" "$bin_dir/.eci-requirement-assignment." '' 'about 1 minute' || exit $?
+source "$eci_home/hooks/lib/eci-executable-selection.sh"
+eci_select_executable eci-requirement-assignment || exit $?
 executable=$eci_go_tool_executable
 # Selection refreshes the mtime under the lock; keys unselected for 24 hours are pruned.
 touch -c -- "$executable"
