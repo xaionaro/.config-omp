@@ -508,7 +508,7 @@ and relationship arrays are nonempty; named links target the stated record types
 | requirement | `source_text: string`, `source_context: string`, `acceptance: string[]` | None |
 | outcome | `description: string` | `requirements` → requirement, `scope` → scope |
 | scope | `include: string[]`, `exclude: string[]` | None |
-| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work | `outcomes` → outcome |
+| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` for a Job | `outcomes` → outcome |
 | unknown | `question: string`, `answer: null`, `effect: string`, `resolve_by: string` | None |
 | decision | `choice: string`, `reason: string`, `consequence: string` | None |
 | guard | `rule: string`, `reason: string` | None |
@@ -648,7 +648,7 @@ For assignments affected by material user input, use the [capture-and-prepare op
 
 Reconcile the remaining records, append material changes to `high_level_log.jsonl`, and refresh `latest-status-report.yaml` in the same turn, before QA/verdicts, handoff, user-waiting stops, or shutdown. A status must reflect current facts; answering a due user response still comes first. A forecast-only change updates `forecasts.yaml` without rewriting the ledger. Keep this maintenance bounded to changed facts and their affected links; it never grants permission or creates a dispatch gate.
 
-Keep one `todo` item per active Job, promise or other owed action, and follow-up. Update it at each state change, no later than its ledger record. The item names its ledger record ID instead of restating its facts.
+Keep the [`todo` list](../../eci-binding-contract.md#decisions) in step with the ledger: update it at each Job or leaf state change, no later than the matching ledger or log entry. Take each phase name from its Job record's `title`.
 
 For a project/task fact change, use this three-pass ledger edit:
 
