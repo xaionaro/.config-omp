@@ -7,6 +7,7 @@ This map is an audit index, not an admission inventory. Source versions, hashes,
 | activation, lineage, and worker routing | ECI router | routing test + independent policy review |
 | published task ownership, active-outcome count, report routing/drain, and task-local review dispatch | task-orchestrator + router/coordinator/runtime/review-policy/Fast pointers | independent policy review |
 | role authority, finding decisions, user-owned decision checks, stall decisions, mistake notices, and messages to a Job | binding contract Decisions + router role rules and Step 4 + critique Admission and treatment + review-policy Gate evaluation treatments + task-orchestrator Messages to a Job + coordinator Stall decisions + coordinator/runtime/Fast pointers + Fast continuation cases + implement/review consumers | policy design-boundary test + policy pressure scenarios + independent policy review |
+| sourced constraints in job definitions and verdicts | `~/.omp/agent/RULES.md` Sourced constraints + pointers in router role rule, task-orchestrator Messages to a Job, coordinator Step 4 | policy pressure scenarios + independent policy review |
 | concurrent Fast owner, shared-tree priority, evidence feedback, retained-hunk review, closure | fast-path + owning role pointers | independent policy scenarios/review |
 | coordinator lifecycle and teardown | coordinator runtime + ECI coordinator | independent policy review |
 | direct-user pause behavior | pause-all-work | independent policy review |
