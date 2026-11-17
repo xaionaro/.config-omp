@@ -26,6 +26,10 @@ func (e exitError) Error() string { return e.msg }
 
 // usageError reports a bad invocation: usage on stderr, exit 2.
 func usageError() error {
+	// TODO: name the missing or rejected argument (for example no event object after
+	// ledger-append --json, or a status-refresh event outside refreshEvents) instead of
+	// printing only the full usage; a truncated usage dump ending in the
+	// deferred-mutators line reads like a tool refusal.
 	usage(os.Stderr)
 	return exitError{code: 2}
 }

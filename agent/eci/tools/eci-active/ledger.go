@@ -141,6 +141,9 @@ func ledgerAppend(args []string) error {
 func appendLedgerEntry(raw string, announce bool) error {
 	obj, err := validateLedgerEntry(raw)
 	if err != nil {
+		// TODO: include err in the message and have validateLedgerEntry name the failing
+		// field (for example an event outside refreshEvents); the bare rejection hides why
+		// the append failed.
 		return exitError{code: 2, msg: "ECI high-level log append rejected invalid structured entry before log mutation."}
 	}
 	sid, err := currentSession()
