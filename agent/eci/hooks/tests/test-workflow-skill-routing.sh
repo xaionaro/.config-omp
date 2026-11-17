@@ -38,7 +38,7 @@ heading_anchors() {
   ' "$1"
 }
 
-# TODO: Only Markdown links are checked; backtick path#anchor pointers, such as the binding contract's `~/.omp/agent/skills/explore-critique-implement/SKILL.md#iteration-rule`, go unchecked. Resolve them here too.
+# TODO: Only Markdown links are checked; backtick `~/.omp/<path>#<anchor>` pointers, such as the binding contract's, go unchecked. Check them here too, resolving `~/.omp/` to the checkout root `$ROOT/../..`, not `$HOME`, so a WORKFLOW_SKILL_ROOT override checks the tree under test.
 assert_local_links_resolve() {
   local file link path target fragment
   local -A anchors=()
