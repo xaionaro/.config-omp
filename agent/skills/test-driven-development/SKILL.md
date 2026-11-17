@@ -15,9 +15,9 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 ## Batch Order
 
-Write the tests for all pending work in your batch, then implement it. Close each implementation leaf or plan task by confirming that its changed code builds. Its implementer may also lint that code and run tests for at most 5 seconds per run. Run the full tests only after the whole batch is implemented: each new test without its code ([Verify RED](#verify-red---watch-it-fail)), then all of them ([Verify GREEN](#verify-green---watch-it-pass)). A bug's diagnosis, such as its reproduction, may run earlier.
+Write the tests for all pending work in your batch, then implement it. Close each implementation leaf or plan task by confirming that its changed code builds. Its implementer may also lint that code and run tests for at most 5 seconds per run. Hold every longer test run until the whole batch is implemented, then run each new test without its code ([Verify RED](#verify-red---watch-it-fail)), then all of them ([Verify GREEN](#verify-green---watch-it-pass)). A bug's diagnosis, such as its reproduction, may run earlier.
 
-Confirming the build is not a test run. Compile or type-check the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. A linter alone is not a build, and a prose-only change has none. Until the code that new tests reference exists, as in a tests-only task or leaf, report each check's observed result, name each failure that only that later code removes, and fix every other failure.
+Confirm the build by compiling or type-checking the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. Run this check even when a lint or test run passes. Skip it for a prose-only change. Until the code that new tests reference exists, as in a tests-only task or leaf, report each check's observed result, name each failure that only that later code removes, and fix every other failure.
 
 | Work | Batch |
 | --- | --- |
