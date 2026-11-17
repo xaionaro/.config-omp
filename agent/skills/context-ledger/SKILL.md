@@ -368,7 +368,9 @@ child's `id` is its parent's `id` plus `.` and a segment, such as `1.2`. Write
 each `duration` as a range, such as `"10–20 minutes"`; for a leaf with a
 multiplier, write one execution's range followed by the multiplier, such as
 `"15–30 minutes ×0–2"`. Preserve initial estimates and measurements and
-forecast remaining time separately under Work estimates. Each
+forecast remaining time separately under Work estimates. Changes to packages,
+scenario estimates and endpoints follow its design-loop condition; actuals and
+status remain immediately writable. Each
 scenario contains `name`, `trigger`,
 `affected_work`, `evidence`, `assumptions`, `added_duration`, `event_time`,
 `endpoint`, and `basis`; include `evidence_gap` and `next_action` when timing
@@ -401,7 +403,8 @@ evidence gaps visible.
   documented lead times, direct timing evidence, and dependency/overlap
   evidence. Distinguish commitments from observed durations; do not present a
   commitment as a guaranteed resolution, hard cap, or worst case. Cite or
-  summarize what was assessed; update as evidence changes. Derive a UTC
+  summarize what was assessed; record observed evidence as it changes and route
+  estimate changes under Work estimates. Derive a UTC
   endpoint from a stated event/base time and estimated duration. When timing
   lacks evidence, use a labeled educated guess and set the forecast assessment
   to `provisional`. For external waits, state assumed availability or wait duration,
@@ -636,7 +639,7 @@ Update at work start, material state changes, findings/decisions/agreements, mil
 
 Every material forecast change updates its current `forecasts.yaml` record in place and applies the same-update recalibration rule to that forecast.
 
-When comparable leaf timing evidence arrives, apply measurement-driven recalibration under [Work estimates](../../eci-binding-contract.md#work-estimates).
+When comparable leaf timing evidence arrives, assess and route warranted measurement-driven recalibration under [Work estimates](../../eci-binding-contract.md#work-estimates); apply changes only after the relevant decision.
 
 Answer the user before ledger maintenance or coordination when a response is due.
 Advance ready independent work without waiting for ledger, log, forecast, or report maintenance. Before a dependent action, correct the affected current-state records and communicate the material changed facts that action needs, including changed requirements, scope, ownership, controls, evidence, and verification results. Stop or redirect only work invalidated by that correction.

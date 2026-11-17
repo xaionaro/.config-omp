@@ -90,6 +90,8 @@ including unscored items, and an overall completion estimate for all
 remaining in-scope work. Derive them from the work tree under
 [Work estimates](../../eci-binding-contract.md#work-estimates) and, for ECI,
 the [scenario forecast rule](../context-ledger/SKILL.md#eci-scenario-forecasts).
+Changes to those estimates follow the Work estimates design-loop condition;
+report status and observed evidence without waiting for that decision.
 Give each estimate's basis, material assumptions, uncertainty, and
 dependencies, including external waits.
 Use evidence-backed guesses for missing impact and work inputs, labeled as
