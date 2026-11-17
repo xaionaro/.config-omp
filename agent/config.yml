@@ -107,7 +107,6 @@ secrets:
 autoResume: true
 hideThinkingBlock: true
 disabledProviders:
-  - anthropic
   - opencode-zen
 auth:
   accountPolicies:
