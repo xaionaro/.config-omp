@@ -29,7 +29,7 @@ The handoff names changed files, the applied winner/fix, checks run, repair rati
 
 Commit under [Commits](task-orchestrator.md#commits): your own checked lines, whenever you choose; resolve conflicts directly with the other Producer.
 
-You may delegate bounded support recursively to Helpers within your inherited assignment, authorization, and read/write limits. Helpers return changes and evidence through their parent; integrate and check their work before including it in your commit. Helpers do not commit.
+You may delegate bounded support recursively to Helpers within your inherited assignment, authorization, and read/write limits. Helpers return changes and evidence through their parent; integrate and check their work before including it in your commit.
 
 ## Test and debugging discipline
 
