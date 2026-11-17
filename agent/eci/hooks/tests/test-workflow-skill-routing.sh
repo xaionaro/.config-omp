@@ -38,6 +38,7 @@ heading_anchors() {
   ' "$1"
 }
 
+# TODO: Only Markdown links are checked; backtick path#anchor pointers, such as the binding contract's `~/.omp/agent/skills/explore-critique-implement/SKILL.md#iteration-rule`, go unchecked. Resolve them here too.
 assert_local_links_resolve() {
   local file link path target fragment
   local -A anchors=()
