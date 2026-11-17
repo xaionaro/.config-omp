@@ -14,7 +14,7 @@ This map is an audit index, not an admission inventory. Source versions, hashes,
 | last-resort escalation | ECI coordinator + blocker-resolution-protocol | independent policy review |
 | exploration and design choice | ECI explore + critique | independent review |
 | bounded implementation and proof | ECI implement | target-appropriate checks |
-| iteration rule: implement everything pending, then test it; batch Step 3; any-Producer repair; iteration triggers | ECI router Iteration rule; Producer batch procedure in implement Test and debugging discipline; pointers in router E2E cadence and Step 4, coordinator, task-orchestrator, review-policy Gate evaluation, binding contract, test-driven-development, receiving-code-review, code-porting; override names systematic-debugging and writing-skills | link/anchor test + policy pressure scenarios + independent policy review |
+| iteration rule: implement everything pending, then test it; batch Step 3; any-Producer repair; iteration triggers | ECI router Iteration rule; Producer batch procedure in implement Test and debugging discipline, under test-driven-development Batch Order; pointers in router E2E cadence and Step 4, coordinator, task-orchestrator, review-policy Gate evaluation, binding contract, receiving-code-review, code-porting | link/anchor test + policy pressure scenarios + independent policy review |
 | independent review and acceptance | ECI review + coordinator runtime + review policy | fresh A/B/C per iteration; final E2E pair and timing per ECI router |
 | workflow-policy pressure cases | policy-pressure-tests | independent policy review |
 | cross-skill red flags | owning module + ECI router | focused review |

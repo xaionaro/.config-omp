@@ -21,7 +21,7 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 
 If you haven't run the verification command in this message, you cannot claim it passes.
 
-Apply the Iron Law to finishing a Job or outcome, not to closing a work-tree leaf: neither a leaf-completion report nor a leaf's todo marked done is a completion claim. Every pass, build, or fix claim still needs its fresh evidence.
+Apply the Iron Law to finishing a Job or outcome, not to closing a work-tree leaf: neither a leaf-completion report nor a leaf's todo marked done is a completion claim. Every pass, build, or fix claim still needs its fresh evidence, including the build confirmation an implementation leaf owes at close ([Forecast leaves](../../RULES.md)).
 
 ## The Gate Function
 
@@ -85,9 +85,10 @@ Skip any step = lying, not verifying
 
 **Regression tests (TDD Red-Green):**
 ```
-✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+✅ Write test → Fix → Build → Run without the fix (MUST FAIL) → Run with it (pass)
 ❌ "I've written a regression test" (without red-green verification)
 ```
+Run without the fix by testing-discipline's [Test validation](../testing-discipline/SKILL.md) method.
 
 **Build:**
 ```
@@ -123,7 +124,7 @@ From 24 failure memories:
 - ANY variation of success/completion claims
 - ANY expression of satisfaction
 - ANY positive statement about work state
-- Committing (static checks and Test Plan), PR creation, Job or outcome completion
+- Committing, PR creation, Job or outcome completion
 - Delegating to agents
 
 **Rule applies to:**

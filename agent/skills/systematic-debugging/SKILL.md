@@ -171,6 +171,8 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
+With several diagnosed bugs, take steps 1–3 for all of them as one batch in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); the diagnosis runs above may come earlier.
+
 1. **Create Failing Test Case**
    - Simplest possible reproduction
    - Automated test if possible

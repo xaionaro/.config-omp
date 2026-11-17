@@ -164,8 +164,8 @@ BEFORE mocking any method:
     NOT the high-level method the test depends on
 
   IF unsure what test depends on:
-    Run test with real implementation FIRST
-    Observe what actually needs to happen
+    Read the real implementation FIRST
+    Trace what actually needs to happen
     THEN add minimal mocking at the right level
 
   Red flags:
@@ -239,13 +239,13 @@ BEFORE creating mock responses:
 - TDD would have caught this
 - Can't claim complete without tests
 
-**The fix:**
+**The fix:** follow TDD's [Batch Order](SKILL.md#batch-order):
 ```
-TDD cycle:
-1. Write failing test
+1. Write failing tests
 2. Implement to pass
-3. Refactor
-4. THEN claim complete
+3. Confirm it builds, then watch each test fail without its code and pass with it
+4. Refactor while green
+5. THEN claim complete
 ```
 
 ## When Mocks Become Too Complex
@@ -264,11 +264,11 @@ TDD cycle:
 
 **Why TDD helps:**
 1. **Write test first** → Forces you to think about what you're actually testing
-2. **Watch it fail** → Confirms test tests real behavior, not mocks
-3. **Minimal implementation** → No test-only methods creep in
+2. **Minimal implementation** → No test-only methods creep in
+3. **Watch it fail without the code** → Confirms test tests real behavior, not mocks
 4. **Real dependencies** → You see what the test actually needs before mocking
 
-**If you're testing mock behavior, you violated TDD** - you added mocks without watching test fail against real code first.
+**If you're testing mock behavior, you violated TDD** - you added mocks without watching the test fail against real code.
 
 ## Quick Reference
 
