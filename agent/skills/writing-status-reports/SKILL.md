@@ -173,9 +173,9 @@ not supported; identify the lane or root in each row:
 
 Apply the canonical [ledger scenario rule](../context-ledger/SKILL.md#eci-scenario-forecasts)
 for decomposition, educated guesses, external-wait assumptions, evidence gaps,
-duration combinations and critical-path endpoints. For a record that rule lets
-omit `base_case` and `scenarios`, report its `target_basis` instead of the
-block. Always report an overall
+duration combinations and critical-path endpoints. When that rule omits
+`base_case` and `scenarios` from a record, report its `target_basis` instead
+of the block. Always report an overall
 completion estimate; a bounded probe supplements it. Keep guessed timing
 provisional and conditional until evidence supports or resolves the risks.
 Summarize the basis, assumptions, limits and next fact-finding action; never
