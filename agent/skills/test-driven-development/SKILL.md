@@ -11,9 +11,24 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**Batch order:** write the tests for all pending work in your assignment, then implement all of it, and only then run any test; a bug's reproduction may run earlier, for diagnosis. On ECI's main path, follow ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline).
-
 **Violating the letter of the rules is violating the spirit of the rules.**
+
+## Batch Order
+
+Write the tests for all pending work in your batch, then implement all of it, then confirm it builds, and only then run any test: each new test without its code ([Verify RED](#verify-red---watch-it-fail)), then all of them ([Verify GREEN](#verify-green---watch-it-pass)). A bug's diagnosis, such as its reproduction, may run earlier.
+
+Confirming the build is not a test run. Compile or type-check the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. A linter alone is not a build, and a prose-only change has none. Until the code that new tests reference exists, as in a tests-only task or leaf, report the observed result, name each failure that only that later code removes, and fix every other failure.
+
+| Work | Batch |
+| --- | --- |
+| ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) |
+| ECI Fast Owner | One Fast issue per [checkpoint](../explore-critique-implement/references/fast-path.md#adoption-review-and-closure) |
+| writing-plans plan, run by subagent-driven-development or executing-plans | The whole plan; its final task runs the tests |
+| receiving-code-review | All accepted items |
+| systematic-debugging | The fixes for every diagnosed bug |
+| writing-skills | Every skill in the change; a pressure scenario is a test, and the skill is its code |
+| deadline-ladder | The fallback, then each improvement slice, so the verified floor holds |
+| Any other work | Your assignment |
 
 ## When to Use
 
@@ -53,13 +68,16 @@ digraph tdd_cycle {
     rankdir=LR;
     red [label="RED\nWrite failing tests", shape=box, style=filled, fillcolor="#ffcccc"];
     green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    build [label="Confirm\nit builds", shape=diamond];
     verify_red [label="Verify fails\nwithout the code", shape=diamond];
     verify_green [label="Verify passes\nAll green", shape=diamond];
     refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
     next [label="Next batch", shape=ellipse];
 
     red -> green;
-    green -> verify_red;
+    green -> build;
+    build -> verify_red [label="yes"];
+    build -> green [label="no"];
     verify_red -> verify_green [label="yes"];
     verify_red -> red [label="wrong\nfailure"];
     verify_green -> refactor [label="yes"];
@@ -158,7 +176,7 @@ Don't add features, refactor other code, or "improve" beyond the test.
 npm test path/to/test.test.ts
 ```
 
-Run each new test without the code it tests: on the pre-change code, or with that code deliberately broken. Never stash or reset a shared tree for this. Confirm:
+Run each new test without the code it tests, by testing-discipline's [Test validation](../testing-discipline/SKILL.md) method. Confirm:
 - Test fails (not errors)
 - Failure message is expected
 - Fails because feature missing (not typos)
