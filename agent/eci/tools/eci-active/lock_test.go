@@ -104,7 +104,7 @@ func TestConcurrentLedgerAppendSameSessionBothSucceed(t *testing.T) {
 	if elapsed < 300*time.Millisecond {
 		t.Errorf("appends finished in %v, before the 300 ms hold ended; they did not wait", elapsed)
 	}
-	lines := readLines(t, filepath.Join(ctxDir(fx, wrapperSessionID), ledgerLogName))
+	lines := readLogEntries(t, ctxDir(fx, wrapperSessionID))
 	if len(lines) != 2 {
 		t.Fatalf("log lines = %d, want 2: %q", len(lines), lines)
 	}
@@ -144,7 +144,7 @@ func TestSessionLockTimeoutMessage(t *testing.T) {
 	if el < time.Second {
 		t.Errorf("failed after %v, before the 1 s wait", el)
 	}
-	if lines := readLines(t, filepath.Join(ctxDir(fx, wrapperSessionID), ledgerLogName)); len(lines) != 0 {
+	if lines := readLogEntries(t, ctxDir(fx, wrapperSessionID)); len(lines) != 0 {
 		t.Errorf("log changed: %q", lines)
 	}
 }
@@ -160,7 +160,7 @@ func TestLedgerAppendRequiresProofRoot(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d stderr %q; want 1", code, stderr)
 	}
-	for _, name := range []string{ledgerLogName, ".eci-session.lock"} {
+	for _, name := range []string{ledgerDBName, ".eci-session.lock"} {
 		if exists(filepath.Join(ctxDir(fx, wrapperSessionID), name)) {
 			t.Errorf("%s created without a proof root", name)
 		}

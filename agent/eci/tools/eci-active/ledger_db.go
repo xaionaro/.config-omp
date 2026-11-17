@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // ledgerDBName is the per-session SQLite store holding sections, records and forecasts.
@@ -23,6 +25,7 @@ type ledgerDocument struct {
 	Sections   map[string]json.RawMessage `json:"sections"`
 	Records    map[string]json.RawMessage `json:"records"`
 	Forecasts  map[string]json.RawMessage `json:"forecasts"`
+	Log        []json.RawMessage          `json:"log"`
 }
 
 // currentLedgerDir resolves and verifies the calling session's context directory for verb.
@@ -139,6 +142,7 @@ func readLedgerDocument(
 		Sections:  map[string]json.RawMessage{},
 		Records:   map[string]json.RawMessage{},
 		Forecasts: map[string]json.RawMessage{},
+		Log:       []json.RawMessage{},
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT generation FROM ledger_meta WHERE id=1").Scan(&doc.Generation); err != nil {
 		return ledgerDocument{}, fmt.Errorf("read generation: %w", err)
@@ -152,7 +156,54 @@ func readLedgerDocument(
 			return ledgerDocument{}, err
 		}
 	}
+	logRows := map[string]json.RawMessage{}
+	if err := projectLedgerRows(ctx, tx, "SELECT printf('%020d',seq),entry FROM log", logRows); err != nil {
+		return ledgerDocument{}, err
+	}
+	seqs := slices.Sorted(maps.Keys(logRows))
+	for _, seq := range seqs {
+		doc.Log = append(doc.Log, logRows[seq])
+	}
 	return doc, nil
+}
+
+// ensureLedger opens the session store at dir, creating an empty one when none exists.
+//
+// Example: the first `ledger-append` of a session creates its store.
+func ensureLedger(
+	ctx context.Context,
+	dir string,
+) (*sql.DB, error) {
+	switch _, err := os.Lstat(filepath.Join(dir, ledgerDBName)); {
+	case err == nil:
+	case errors.Is(err, os.ErrNotExist):
+		if err := createLedger(ctx, dir); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("inspect ledger database: %w", err)
+	}
+	return openLedger(ctx, dir)
+}
+
+// appendLedgerLog appends one validated high-level log entry and returns its sequence number.
+//
+// Example: `ledger-append` stores each event as one row of the append-only log table.
+func appendLedgerLog(
+	ctx context.Context,
+	dir string,
+	entry []byte,
+) (_ int64, _err error) {
+	db, err := ensureLedger(ctx, dir)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _err = errors.Join(_err, db.Close()) }()
+	result, err := db.ExecContext(ctx, "INSERT INTO log(entry) VALUES(?)", string(entry))
+	if err != nil {
+		return 0, fmt.Errorf("append high-level log entry: %w", err)
+	}
+	return result.LastInsertId()
 }
 
 // ledgerInit implements `ledger-init`: create the session store unless it already exists.
@@ -166,25 +217,14 @@ func ledgerInit(args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	path := filepath.Join(dir, ledgerDBName)
-	switch _, err := os.Lstat(path); {
-	case err == nil:
-		db, err := openLedger(ctx, dir)
-		if err != nil {
-			return err
-		}
-		if err := db.Close(); err != nil {
-			return err
-		}
-	case errors.Is(err, os.ErrNotExist):
-		if err := createLedger(ctx, dir); err != nil {
-			return err
-		}
-	default:
+	db, err := ensureLedger(context.Background(), dir)
+	if err != nil {
 		return err
 	}
-	fmt.Println(path)
+	if err := db.Close(); err != nil {
+		return err
+	}
+	fmt.Println(filepath.Join(dir, ledgerDBName))
 	return nil
 }
 

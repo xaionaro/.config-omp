@@ -174,7 +174,7 @@ func TestLedgerAppendRefreshesThroughStatusReportWrapper(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("ledger-append exit = %d, want 0; stdout %q stderr %q", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "ECI high-level log appended at EOF:") {
+	if !strings.Contains(stdout, "ECI high-level log appended: "+filepath.Join(fx.contextDir(), ledgerDBName)+" seq 1") {
 		t.Errorf("ledger-append stdout = %q, want the append confirmation", stdout)
 	}
 	fx.assertWrapperCalls(t, "refresh "+fx.contextDir()+" decision")
@@ -191,9 +191,8 @@ func TestLedgerAppendKeepsAppendWhenStatusReportFails(t *testing.T) {
 	if !strings.Contains(stderr, "ECI advisory: log append succeeded; status refresh failed.") {
 		t.Errorf("ledger-append stderr = %q, want the refresh advisory", stderr)
 	}
-	log, err := os.ReadFile(filepath.Join(fx.contextDir(), ledgerLogName))
-	if err != nil || !strings.Contains(string(log), "refresh failure") {
-		t.Errorf("ledger log after failed refresh: err %v, content %q; want the appended entry", err, log)
+	if log := readLogEntries(t, fx.contextDir()); len(log) != 1 || !strings.Contains(log[0], "refresh failure") {
+		t.Errorf("ledger log after failed refresh = %q; want the appended entry", log)
 	}
 	fx.assertNoGoCalls(t)
 }
@@ -218,9 +217,8 @@ func TestLedgerAppendFollowsSymlinkedSessionsRoot(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("ledger-append exit = %d, want 0; stdout %q stderr %q", code, stdout, stderr)
 	}
-	log, err := os.ReadFile(filepath.Join(store, wrapperSessionID, ledgerLogName))
-	if err != nil || !strings.Contains(string(log), "symlinked root") {
-		t.Errorf("ledger log in the link target: err %v, content %q; want the appended entry", err, log)
+	if log := readLogEntries(t, filepath.Join(store, wrapperSessionID)); len(log) != 1 || !strings.Contains(log[0], "symlinked root") {
+		t.Errorf("ledger log in the link target = %q; want the appended entry", log)
 	}
 	fx.assertWrapperCalls(t, "refresh "+filepath.Join(store, wrapperSessionID)+" decision")
 }

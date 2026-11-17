@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,23 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+// readLogEntries returns the session store's high-level log entries in order, or nil when no store exists.
+//
+// Example: readLogEntries(t, fx.contextDir()) after one ledger-append has one entry.
+func readLogEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	if _, err := os.Lstat(filepath.Join(dir, ledgerDBName)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	doc, err := readLedgerDocument(context.Background(), dir)
+	require.NoError(t, err)
+	var entries []string
+	for _, entry := range doc.Log {
+		entries = append(entries, string(entry))
+	}
+	return entries
+}
 
 // TestLedgerDBLifecycle creates a session store, applies batches and reads the result through the built binary.
 //

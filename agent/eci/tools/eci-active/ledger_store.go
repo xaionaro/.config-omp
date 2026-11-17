@@ -34,6 +34,9 @@ CREATE TABLE forecasts (id TEXT PRIMARY KEY NOT NULL CHECK (id <> '' AND id NOT 
 CREATE TABLE ledger_meta (id INTEGER PRIMARY KEY CHECK (id=1), generation INTEGER NOT NULL CHECK (generation>=0), postactivation_mutated INTEGER NOT NULL CHECK (postactivation_mutated IN (0,1)), database_id TEXT NOT NULL, ledger_present INTEGER NOT NULL CHECK (ledger_present IN (0,1)), forecasts_present INTEGER NOT NULL CHECK (forecasts_present IN (0,1))) STRICT;
 CREATE TABLE recovery_intent (id INTEGER PRIMARY KEY CHECK (id=1), session_id TEXT NOT NULL, request_id TEXT NOT NULL, database_id TEXT NOT NULL) STRICT;
 CREATE TABLE report (id INTEGER PRIMARY KEY CHECK (id=1), document_json TEXT NOT NULL CHECK (json_valid(document_json) AND json_type(document_json) IS 'object'), revision INTEGER NOT NULL CHECK (revision>=0)) STRICT;
+CREATE TABLE log (seq INTEGER PRIMARY KEY AUTOINCREMENT, entry TEXT NOT NULL CHECK (json_valid(entry) AND json_type(entry) IS 'object')) STRICT;
+CREATE TRIGGER log_append_only_update BEFORE UPDATE ON log BEGIN SELECT RAISE(ABORT,'high-level log is append-only'); END;
+CREATE TRIGGER log_append_only_delete BEFORE DELETE ON log BEGIN SELECT RAISE(ABORT,'high-level log is append-only'); END;
 PRAGMA user_version=1;`
 )
 

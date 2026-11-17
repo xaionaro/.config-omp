@@ -2,8 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,13 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
-)
-
-const (
-	ledgerLogName    = "high_level_log.jsonl"
-	ledgerAnchorName = "high_level_log.anchor"
 )
 
 var refreshEvents = map[string]bool{
@@ -97,194 +90,6 @@ func validateLedgerEntry(raw string) (map[string]any, error) {
 		}
 	}
 	return obj, nil
-}
-
-func ledgerLinkCount(path string) (uint64, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return 0, err
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok || st.Nlink < 1 {
-		return 0, fmt.Errorf("link count unavailable: %s", path)
-	}
-	return uint64(st.Nlink), nil
-}
-
-// ledgerPathSafe requires a real session directory and a regular, non-symlink
-// ledger whose canonical path equals its lexical path.
-func ledgerPathSafe(sessionDir string) bool {
-	if !isDir(sessionDir) || isSymlink(sessionDir) {
-		return false
-	}
-	path := filepath.Join(sessionDir, ledgerLogName)
-	if !isRegularNoFollow(path) {
-		return false
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	return err == nil && resolved == path
-}
-
-func ledgerPathMutable(sessionDir string) bool {
-	if !ledgerPathSafe(sessionDir) {
-		return false
-	}
-	links, err := ledgerLinkCount(filepath.Join(sessionDir, ledgerLogName))
-	return err == nil && links == 1
-}
-
-// ledgerDetachHardlinked replaces a linked ledger with a private copy so that
-// appends never mutate other names of the same inode.
-func ledgerDetachHardlinked(sessionDir string) error {
-	if !ledgerPathSafe(sessionDir) {
-		return fmt.Errorf("unsafe ledger")
-	}
-	log := filepath.Join(sessionDir, ledgerLogName)
-	links, err := ledgerLinkCount(log)
-	if err != nil {
-		return err
-	}
-	if links == 1 {
-		return nil
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", log, os.Getpid())
-	if exists(tmp) {
-		return fmt.Errorf("temporary ledger exists")
-	}
-	data, err := os.ReadFile(log)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if !ledgerPathSafe(sessionDir) {
-		os.Remove(tmp)
-		return fmt.Errorf("unsafe ledger")
-	}
-	if links, err := ledgerLinkCount(log); err != nil || links <= 1 {
-		os.Remove(tmp)
-		return fmt.Errorf("ledger is no longer linked")
-	}
-	if err := os.Rename(tmp, log); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if !ledgerPathMutable(sessionDir) {
-		return fmt.Errorf("ledger not mutable after detach")
-	}
-	return nil
-}
-
-func ledgerSHA256(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-// writeAnchor publishes the anchor for the current ledger. With replace=false
-// the anchor must not exist; with replace=true it must be a regular file.
-func writeAnchor(sessionDir string, replace bool) error {
-	if !ledgerPathSafe(sessionDir) {
-		return fmt.Errorf("unsafe ledger")
-	}
-	log := filepath.Join(sessionDir, ledgerLogName)
-	anchor := filepath.Join(sessionDir, ledgerAnchorName)
-	if replace {
-		if !isRegularNoFollow(anchor) {
-			return fmt.Errorf("anchor is not a regular file")
-		}
-	} else if exists(anchor) {
-		return fmt.Errorf("anchor exists")
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", anchor, os.Getpid())
-	if exists(tmp) {
-		return fmt.Errorf("temporary anchor exists")
-	}
-	fi, err := os.Stat(log)
-	if err != nil {
-		return err
-	}
-	hash, err := ledgerSHA256(log)
-	if err != nil {
-		return err
-	}
-	body := fmt.Sprintf("schema: eci-high-level-log-anchor/v1\nsession_id: %s\nlog_path: %s\nbytes: %d\nsha256: %s\n",
-		filepath.Base(sessionDir), log, fi.Size(), hash)
-	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, anchor); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
-}
-
-// ledgerEnsureAnchor bootstraps the ledger and anchor. Anchor problems are
-// advisory; the ledger stays usable for normal lifecycle work.
-func ledgerEnsureAnchor(sessionDir string) error {
-	if !isDir(sessionDir) || isSymlink(sessionDir) {
-		return fmt.Errorf("unsafe session directory")
-	}
-	log := filepath.Join(sessionDir, ledgerLogName)
-	created := false
-	if !exists(log) {
-		f, err := os.OpenFile(log, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		if err != nil {
-			if exists(log) {
-				if !ledgerPathSafe(sessionDir) {
-					return fmt.Errorf("unsafe ledger")
-				}
-			} else {
-				fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger bootstrap was unavailable; normal lifecycle work continues.")
-				return nil
-			}
-		} else {
-			f.Close()
-			created = true
-		}
-	}
-	if !ledgerPathSafe(sessionDir) {
-		if created {
-			_ = os.Remove(log)
-		}
-		return fmt.Errorf("unsafe ledger")
-	}
-	anchor := filepath.Join(sessionDir, ledgerAnchorName)
-	if isSymlink(anchor) {
-		fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger anchor is a symlink; leaving it untouched while normal lifecycle work continues.")
-		return nil
-	}
-	if exists(anchor) {
-		if !isRegularNoFollow(anchor) {
-			fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger anchor is not a regular file; leaving it untouched while normal lifecycle work continues.")
-			return nil
-		}
-		if err := writeAnchor(sessionDir, true); err != nil {
-			fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger anchor could not be refreshed; normal lifecycle work continues.")
-		}
-		return nil
-	}
-	if err := writeAnchor(sessionDir, false); err != nil {
-		fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger anchor could not be initialized; normal lifecycle work continues.")
-	}
-	return nil
-}
-
-func appendToFile(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(data)
-	return err
 }
 
 // ledgerMarkerCwdBound rejects an append when the session's marker declares a
@@ -377,48 +182,16 @@ func appendLedgerEntry(raw string, announce bool) error {
 	}
 	formatted := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 
-	if err := ledgerEnsureAnchor(ledgerDir); err != nil {
-		return exitError{code: 1, msg: "ECI high-level log append found an unsafe current ledger target."}
-	}
-	if err := ledgerDetachHardlinked(ledgerDir); err != nil {
-		return exitError{code: 1, msg: "ECI high-level log append could not detach an externally linked current ledger target."}
-	}
-	logPath := filepath.Join(ledgerDir, ledgerLogName)
-	if !ledgerPathMutable(ledgerDir) {
-		return exitError{code: 1, msg: "ECI high-level log append could not access an exclusive current ledger target."}
-	}
-	if fi, err := os.Stat(logPath); err == nil && fi.Size() > 0 {
-		data, err := os.ReadFile(logPath)
-		if err != nil {
-			return err
-		}
-		if data[len(data)-1] != '\n' {
-			if !ledgerPathMutable(ledgerDir) {
-				return exitError{code: 1, msg: "ECI high-level log changed to an externally linked target during normalization."}
-			}
-			if err := appendToFile(logPath, []byte("\n")); err != nil {
-				return exitError{code: 1, msg: "ECI high-level log append could not normalize its current regular ledger target."}
-			}
-		}
-	}
-	if !ledgerPathMutable(ledgerDir) {
-		return exitError{code: 1, msg: "ECI high-level log changed to an unsafe or externally linked file during normalization."}
-	}
-	if err := appendToFile(logPath, append(append([]byte{}, formatted...), '\n')); err != nil {
-		return err
-	}
-	if !ledgerPathMutable(ledgerDir) {
-		return exitError{code: 1, msg: "ECI high-level log changed to an unsafe or externally linked file during append."}
-	}
-	if err := writeAnchor(ledgerDir, true); err != nil {
-		fmt.Fprintln(os.Stderr, "ECI advisory: high-level ledger anchor could not be refreshed after append.")
+	seq, err := appendLedgerLog(context.Background(), ledgerDir, formatted)
+	if err != nil {
+		return exitError{code: 1, msg: fmt.Sprintf("ECI high-level log append failed; no entry was recorded: %v", err)}
 	}
 	event, _ := obj["event"].(string)
 	if err := runStatusRefresh(ledgerDir, event); err != nil {
 		fmt.Fprintf(os.Stderr, "ECI advisory: log append succeeded; status refresh failed. Reconcile the report, then run eci-active status-refresh --event %s without appending the event again.\n", event)
 	}
 	if announce {
-		fmt.Printf("ECI high-level log appended at EOF: %s\n", logPath)
+		fmt.Printf("ECI high-level log appended: %s seq %d\n", filepath.Join(ledgerDir, ledgerDBName), seq)
 	}
 	return nil
 }
