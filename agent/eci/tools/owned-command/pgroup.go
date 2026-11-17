@@ -562,6 +562,7 @@ func pgroupValidArguments(
 	grace time.Duration,
 	cancelPID int,
 	cancelBirth uint64,
+	memoryMax uint64,
 	args []string,
 ) bool {
 	if deadline <= 0 || grace <= 0 || cancelPID < 0 {
@@ -570,7 +571,7 @@ func pgroupValidArguments(
 	if cancelPID == 0 {
 		return cancelBirth == 0 && len(args) > 0
 	}
-	return cancelBirth > 0 && len(args) == 0
+	return cancelBirth > 0 && len(args) == 0 && memoryMax == 0
 }
 
 // pgroupRefuseCancellation writes the receipt for a cancellation this backend cannot prove and returns pgroupFailure.
@@ -621,14 +622,27 @@ func pgroupMain(args []string) int {
 	receipt := flags.String("receipt", "", "JSON receipt path")
 	cancelPID := flags.Int("cancel-pid", 0, "cancel this exact host process (refused on darwin-pgroup)")
 	cancelBirth := flags.Uint64("cancel-birth", 0, "required birth identity (refused on darwin-pgroup)")
+	memoryMax := flags.Uint64("memory-max", 0, "aggregate command memory limit in bytes (unavailable on darwin-pgroup)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 2
 	}
-	if *receipt == "" || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, flags.Args()) {
+	if *receipt == "" || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, *memoryMax, flags.Args()) {
 		return pgroupDiagnose("invalid owned-command arguments")
+	}
+	if *memoryMax != 0 {
+		started := time.Now()
+		result := pgroupNewReceipt(started)
+		result.Cause = "guard error"
+		result.Errors = append(result.Errors, "memory limit unavailable on darwin-pgroup; command not launched")
+		result.Finished = time.Now().UTC()
+		result.ElapsedSeconds = time.Since(started).Seconds()
+		if err := pgroupWriteReceipt(*receipt, result); err != nil {
+			return pgroupDiagnose(err.Error())
+		}
+		return pgroupFailure
 	}
 	if *cancelPID > 0 {
 		return pgroupRefuseCancellation(*receipt)

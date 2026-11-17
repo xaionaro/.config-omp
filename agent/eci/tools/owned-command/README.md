@@ -25,6 +25,7 @@ source before each execution.
 ```sh
 owned-command -deadline 3s -receipt receipt.json -- command args...
 owned-command -cancel-pid PID -cancel-birth BIRTH -receipt receipt.json
+owned-command -memory-max 67108864 -deadline 3s -receipt receipt.json -- command args...
 ```
 
 PID and BIRTH must be positive for cancellation; BIRTH is the separately recorded
@@ -54,6 +55,27 @@ using clone-bound placement and a clone-returned pidfd. The supervisor remains i
 the containing scope. Ordinary forks, reparenting and `setsid` retain command
 membership. A command deliberately migrating through another service manager is
 outside inherited-family coverage; this tool is not a sandbox.
+
+`-memory-max BYTES` opts into an aggregate cgroup-v2 workload limit; zero or
+omission preserves the original topology. The delegated scope has `guard` and
+`command` siblings, so the guard is outside the capped workload. Setup enables
+the memory controller and verifies `memory.max`, `memory.swap.max=0`, and
+`memory.oom.group=1` before launch; missing controls fail closed with status 125.
+The effective limit is rounded down to a page, and values below one page fail.
+It cannot be combined with `-cancel-pid`.
+
+The cap is not a reservation or a host-wide safety guarantee. Workload charges
+can still cause ancestor throttling, reclaim, OOM, or systemd-oomd pressure
+kills; concurrent activity can consume headroom. Kernel accounting can
+temporarily exceed the limit. HugeTLB allocations are not covered. A workload
+deliberately migrating out of `command` escapes the cap as well as custody.
+If the guard crashes or is SIGKILLed, nothing retires the command subtree; it
+continues under its memory and swap limits until it exits, when systemd can
+collect the scope.
+
+For resource-sensitive builds, measure need and fresh headroom before launch,
+and require measured need ≤ cap ≤ headroom − margin. Estimates are not a
+reservation; if the inequality does not hold, reduce concurrency or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process
 group. Early signal notification can reset formerly ignored HUP/INT to default
@@ -137,6 +159,8 @@ XNU and launchd limits are documented only in this section:
   125 and signals nothing. It writes a receipt: `Cause` is `guard error`, `CommandPID`
   is 0, `HostChildrenSettled` is false, and `Errors` holds one `cancel:` message. A
   malformed cancellation request is refused without a receipt.
+- A nonzero `-memory-max` is refused with a guard-error receipt; the command
+  does not run.
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
 - The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
   `Survivors` holds the root only when it is still unreaped at the end of settlement, and
@@ -212,6 +236,9 @@ unresolved identities; empty known custody or an absent receipt cannot prove an
 unknown family empty. A zero birth value is unavailable metadata and supplies no
 cancellation authority. Receipt output errors also force 125.
 darwin-pgroup receipts add `Guarantee`, and their `Backend` and `FamilyCoverage` name process-group coverage.
+Linux capped launch receipts add `Memory`: requested and effective byte limits,
+zero swap limit, OOM-group setting, guard cgroup, peak bytes, and all
+`memory.events` counters. Failure to read final memory evidence returns 125.
 
 Host settlement proves no remote Android, camera, media or profile cleanup.
 Verify those resources separately. The reconstructed implementation does not

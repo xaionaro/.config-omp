@@ -1031,3 +1031,30 @@ func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
 	}
 	t.Logf("holder reaped by the seam: %v; extended at %.3f s, finished at %.3f s", group.holderErr, extendedAt, receipt.ElapsedSeconds)
 }
+
+// TestPgroupMemoryLimitRefused prevents an unsupported cap from launching a command.
+//
+// Example: a Darwin caller gets a guard-error receipt instead of an uncapped workload.
+func TestPgroupMemoryLimitRefused(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "receipt")
+	marker := filepath.Join(directory, "launched")
+	status := pgroupMain([]string{"-memory-max", "67108864", "-receipt", path, "--", "/usr/bin/touch", marker})
+	if status != pgroupFailure {
+		t.Fatalf("status=%d", status)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt pgroupReceipt
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Cause != "guard error" || receipt.CommandPID != 0 || len(receipt.Errors) == 0 {
+		t.Fatalf("missing refusal: %+v", receipt)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncapped command ran: %v", err)
+	}
+}

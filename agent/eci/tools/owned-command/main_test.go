@@ -471,7 +471,7 @@ func TestProfileNativeSupervision(t *testing.T) {
 	}
 	started := time.Now()
 	t.Logf("profile started_at_utc=%s guard_pid=%d child_command=/bin/sleep 33", started.UTC().Format(time.RFC3339Nano), os.Getpid())
-	receipt, code := supervise(time.Minute, 250*time.Millisecond, ProcessIdentity{}, []string{"/bin/sleep", "33"})
+	receipt, code := supervise(time.Minute, 250*time.Millisecond, ProcessIdentity{}, 0, []string{"/bin/sleep", "33"})
 	finished := time.Now()
 	var after, childrenAfter syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &after); err != nil {

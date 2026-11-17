@@ -28,6 +28,11 @@ import (
 // Example: a missing manager cannot consume an unbounded prelaunch wait.
 const cgroupSetupTimeout = 5 * time.Second
 
+// memoryGuardLeaf names the guard sibling outside the command's memory cap.
+//
+// Example: controller delegation moves the supervisor into this leaf.
+const memoryGuardLeaf = "guard"
+
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
 // The supervisor remains in the scope parent and is never included in group retirement.
 //
@@ -44,7 +49,10 @@ type commandCgroup struct {
 // In-process registration preserves signals, environment, cwd, descriptors and PID.
 //
 // Example: a direct-built executable acquires the same ownership as the cache wrapper.
-func acquireCommandCgroup(ctx context.Context) (*commandCgroup, error) {
+func acquireCommandCgroup(
+	ctx context.Context,
+	memoryMax MemoryBytes,
+) (*commandCgroup, error) {
 	address := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
 	if address == "" {
 		address = "unix:path=" + dbus.EscapeBusAddressValue(fmt.Sprintf("/run/user/%d/bus", os.Getuid()))
@@ -99,10 +107,20 @@ func acquireCommandCgroup(ctx context.Context) (*commandCgroup, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("delegated scope %s setup canceled: %w", unit, err)
 	}
+	if memoryMax != 0 {
+		if err := prepareMemoryScope(parent, memoryMax); err != nil {
+			return nil, err
+		}
+	}
 	relative := parent + "/command"
 	path := filepath.Join("/sys/fs/cgroup", relative)
 	if err := os.Mkdir(path, 0700); err != nil {
 		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
+	}
+	if memoryMax != 0 {
+		if err := configureCommandMemory(path, memoryMax); err != nil {
+			return nil, errors.Join(err, os.Remove(path))
+		}
 	}
 	directory, err := os.Open(path)
 	if err != nil {
@@ -117,6 +135,139 @@ func acquireCommandCgroup(ctx context.Context) (*commandCgroup, error) {
 		return nil, errors.Join(fmt.Errorf("open command cgroup kill control: %w", err), events.Close(), directory.Close(), os.Remove(path))
 	}
 	return &commandCgroup{Directory: directory, Events: events, Kill: kill, Path: path, Relative: relative}, nil
+}
+
+// prepareMemoryScope moves the guard to a sibling before enabling the memory controller.
+//
+// Example: a populated scope cannot enable a domain controller until its guard moves.
+func prepareMemoryScope(
+	parent string,
+	limit MemoryBytes,
+) error {
+	if limit < MemoryBytes(os.Getpagesize()) {
+		return fmt.Errorf("memory limit %d is below one page", limit)
+	}
+	scope := filepath.Join("/sys/fs/cgroup", parent)
+	controllers, err := os.ReadFile(filepath.Join(scope, "cgroup.controllers"))
+	if err != nil {
+		return fmt.Errorf("read available cgroup controllers: %w", err)
+	}
+	if !hasMemoryController(controllers) {
+		return errors.New("memory controller unavailable")
+	}
+	guard := filepath.Join(scope, memoryGuardLeaf)
+	if err := os.Mkdir(guard, 0700); err != nil {
+		return fmt.Errorf("create guard cgroup: %w", err)
+	}
+	if err := unix.Setxattr(guard, "user.oomd_omit", []byte("1"), 0); err != nil {
+		return fmt.Errorf("exclude guard from oomd selection: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(guard, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+		return fmt.Errorf("move guard into sibling cgroup: %w", err)
+	}
+	membership, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return fmt.Errorf("read guard cgroup membership: %w", err)
+	}
+	if strings.TrimSpace(string(membership)) != "0::"+parent+"/"+memoryGuardLeaf {
+		return errors.New("guard did not enter sibling cgroup")
+	}
+	if err := os.WriteFile(filepath.Join(scope, "cgroup.subtree_control"), []byte("+memory"), 0600); err != nil {
+		return fmt.Errorf("enable memory controller: %w", err)
+	}
+	enabled, err := os.ReadFile(filepath.Join(scope, "cgroup.subtree_control"))
+	if err != nil {
+		return fmt.Errorf("read enabled cgroup controllers: %w", err)
+	}
+	if !hasMemoryController(enabled) {
+		return errors.New("memory controller was not enabled")
+	}
+	return nil
+}
+
+// hasMemoryController reports whether a kernel controller list includes memory.
+//
+// Example: a delegated scope can enable memory only when it is available.
+func hasMemoryController(data []byte) bool {
+	for _, controller := range strings.Fields(string(data)) {
+		if controller == "memory" {
+			return true
+		}
+	}
+	return false
+}
+
+// configureCommandMemory installs and checks all mandatory workload controls before launch.
+//
+// Example: unavailable swap control refuses the workload rather than allowing uncapped swap.
+func configureCommandMemory(
+	path string,
+	limit MemoryBytes,
+) error {
+	effective := limit.pageFloor()
+	for _, control := range []struct{ name, value string }{
+		{"memory.swap.max", "0"},
+		{"memory.oom.group", "1"},
+		{"memory.max", strconv.FormatUint(uint64(effective), 10)},
+	} {
+		name := filepath.Join(path, control.name)
+		if err := os.WriteFile(name, []byte(control.value), 0600); err != nil {
+			return fmt.Errorf("write %s: %w", control.name, err)
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", control.name, err)
+		}
+		if strings.TrimSpace(string(data)) != control.value {
+			return fmt.Errorf("%s readback %q, expected %q", control.name, data, control.value)
+		}
+	}
+	return nil
+}
+
+// readMemoryReceipt collects final kernel counters before the command group is removed.
+//
+// Example: memory.events records whether the kernel killed a workload at its cap.
+func readMemoryReceipt(
+	group *commandCgroup,
+	limit MemoryBytes,
+) (*MemoryReceipt, error) {
+	peakData, err := os.ReadFile(filepath.Join(group.Path, "memory.peak"))
+	if err != nil {
+		return nil, fmt.Errorf("read memory peak: %w", err)
+	}
+	peak, err := strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse memory peak: %w", err)
+	}
+	data, err := os.ReadFile(filepath.Join(group.Path, "memory.events"))
+	if err != nil {
+		return nil, fmt.Errorf("read memory events: %w", err)
+	}
+	events := make(map[string]uint64)
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("invalid memory event %q", line)
+		}
+		value, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse memory event %q: %w", line, err)
+		}
+		if _, exists := events[fields[0]]; exists {
+			return nil, fmt.Errorf("duplicate memory event %q", fields[0])
+		}
+		events[fields[0]] = value
+	}
+	return &MemoryReceipt{
+		RequestedMax: limit,
+		EffectiveMax: limit.pageFloor(),
+		SwapMax:      0,
+		OOMGroup:     true,
+		GuardCgroup:  filepath.Join(filepath.Dir(group.Relative), memoryGuardLeaf),
+		Peak:         MemoryBytes(peak),
+		Events:       events,
+	}, nil
 }
 
 // Populated reads the kernel's subtree population independently of native zombie reaping.
@@ -372,7 +523,10 @@ func (g *guard) drainCgroupCommand(rootPID int) commandDrain {
 // Setup failures happen before command creation and enter the ordinary 125 receipt path.
 //
 // Example: an idle command blocks on native exit, a notice or the command deadline.
-func (g *guard) runCgroupCommand(args []string) {
+func (g *guard) runCgroupCommand(
+	args []string,
+	memoryMax MemoryBytes,
+) {
 	commandEnvironment := os.Environ()
 	g.receipt.Backend = "cgroup-v2"
 	g.receipt.FamilyCoverage = "inherited command cgroup plus native child reaping"
@@ -388,7 +542,7 @@ func (g *guard) runCgroupCommand(args []string) {
 		return
 	}
 	runtimeBudget := g.expires.Sub(g.started)
-	group, err := acquireCommandCgroup(ctx)
+	group, err := acquireCommandCgroup(ctx, memoryMax)
 	g.consumeNotices()
 	if setupNotices.Err() != nil {
 		g.interrupted = true
@@ -410,6 +564,21 @@ func (g *guard) runCgroupCommand(args []string) {
 			g.fail("close command cgroup", err)
 		}
 	}()
+	if memoryMax != 0 {
+		// Capture counters before the deferred command cgroup removal.
+		//
+		// Example: an OOM-killed workload still produces its final event counts.
+		defer func() {
+			if g.receipt.CommandPID == 0 {
+				return
+			}
+			var err error
+			g.receipt.Memory, err = readMemoryReceipt(group, memoryMax)
+			if err != nil {
+				g.fail("read command memory receipt", err)
+			}
+		}()
+	}
 	watch, err := newCgroupWatch(group, -1)
 	if err != nil {
 		g.fail("prepare command cgroup watcher", err)

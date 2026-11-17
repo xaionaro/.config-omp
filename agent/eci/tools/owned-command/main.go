@@ -57,6 +57,7 @@ type Receipt struct {
 	Backend             string
 	FamilyCoverage      string
 	Cgroup              string
+	Memory              *MemoryReceipt `json:",omitempty"`
 	Started             time.Time
 	CommandStarted      time.Time
 	Finished            time.Time
@@ -68,6 +69,32 @@ type Receipt struct {
 	Survivors           []ProcessIdentity
 	Events              []Event
 	Errors              []string
+}
+
+// MemoryBytes identifies a workload memory quantity in bytes.
+//
+// Example: a limit of 67108864 bounds the workload to 64 MiB.
+type MemoryBytes uint64
+
+// pageFloor rounds a byte quantity down to the kernel page size.
+//
+// Example: a non-page-aligned limit never exceeds its requested value.
+func (b MemoryBytes) pageFloor() MemoryBytes {
+	page := MemoryBytes(os.Getpagesize())
+	return b / page * page
+}
+
+// MemoryReceipt records the enforced workload limit and kernel memory observations.
+//
+// Example: Events reports an oom_kill when the workload exceeds its limit.
+type MemoryReceipt struct {
+	RequestedMax MemoryBytes
+	EffectiveMax MemoryBytes
+	SwapMax      MemoryBytes
+	OOMGroup     bool
+	GuardCgroup  string
+	Peak         MemoryBytes
+	Events       map[string]uint64
 }
 
 // processStat is fresh metadata, not ancestry authority by itself.
@@ -1546,6 +1573,7 @@ func validArguments(
 	deadline time.Duration,
 	grace time.Duration,
 	cancel ProcessIdentity,
+	memoryMax MemoryBytes,
 	args []string,
 ) bool {
 	if deadline <= 0 || grace <= 0 || cancel.PID < 0 {
@@ -1554,7 +1582,7 @@ func validArguments(
 	if cancel.PID == 0 {
 		return cancel.Birth == 0 && len(args) > 0
 	}
-	return cancel.Birth > 0 && len(args) == 0
+	return cancel.Birth > 0 && len(args) == 0 && memoryMax == 0
 }
 
 // supervise registers signals before setup and classifies only after checked finalization.
@@ -1564,16 +1592,17 @@ func supervise(
 	deadline time.Duration,
 	grace time.Duration,
 	cancel ProcessIdentity,
+	memoryMax MemoryBytes,
 	args []string,
 ) (Receipt, int) {
 	notices := make(chan os.Signal, 16)
 	g := newGuard(linuxKernel{}, realClock{}, notices, deadline, grace, cancel)
 	signal.Notify(notices, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	switch {
-	case !validArguments(deadline, grace, cancel, args):
+	case !validArguments(deadline, grace, cancel, memoryMax, args):
 		g.fail("invalid arguments", errors.New("invalid owned-command arguments"))
 	case g.launchMode:
-		g.runCgroupCommand(args)
+		g.runCgroupCommand(args, memoryMax)
 	case g.constructCancellation():
 		g.drive()
 	}
@@ -1590,15 +1619,16 @@ func main() {
 	receipt := flag.String("receipt", "", "JSON receipt path")
 	cancelPID := flag.Int("cancel-pid", 0, "cancel this exact host process")
 	cancelBirth := flag.Uint64("cancel-birth", 0, "required /proc stat field 22 identity")
+	memoryMax := flag.Uint64("memory-max", 0, "aggregate command memory limit in bytes; zero disables")
 	flag.Parse()
 	cancel := ProcessIdentity{PID: *cancelPID, Birth: *cancelBirth}
-	if *receipt == "" || !validArguments(*deadline, *grace, cancel, flag.Args()) {
+	if *receipt == "" || !validArguments(*deadline, *grace, cancel, MemoryBytes(*memoryMax), flag.Args()) {
 		if _, err := fmt.Fprintln(os.Stderr, "invalid owned-command arguments"); err != nil {
 			os.Exit(guardFailure)
 		}
 		os.Exit(guardFailure)
 	}
-	r, code := supervise(*deadline, *grace, cancel, flag.Args())
+	r, code := supervise(*deadline, *grace, cancel, MemoryBytes(*memoryMax), flag.Args())
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err == nil {
 		err = os.WriteFile(*receipt, append(data, '\n'), 0600)

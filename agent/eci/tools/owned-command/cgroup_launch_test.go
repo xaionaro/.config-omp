@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -535,4 +537,326 @@ func TestCgroupCleanupChargesControlEntries(t *testing.T) {
 		t.Fatalf("control entries bypassed cleanup allowance: result=%v err=%v", result, err)
 	}
 	assertCgroupTraversalClosed(t, group.Path)
+}
+
+// TestCgroupMemoryLimit checks enforced aggregate memory and fail-closed setup.
+//
+// Example: an allocation larger than the cap is killed and reported in the receipt.
+func TestCgroupMemoryLimit(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		limit  string
+		block  string
+		status int
+		oom    bool
+	}{
+		{"under", "67108864", "16M", 0, false},
+		{"single-aggregate-member", "67108864", "40M", 0, false},
+		{"over", "67108864", "200M", 137, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", test.limit, "--", "dd", "if=/dev/zero", "of=/dev/null", "bs="+test.block, "count=1")
+			if status != test.status {
+				t.Fatalf("status=%d want=%d output=%q", status, test.status, output)
+			}
+			if !receipt.HostChildrenSettled || receipt.Memory == nil || (receipt.Memory.Events["oom_kill"] > 0) != test.oom {
+				t.Fatalf("unexpected memory receipt: %+v", receipt)
+			}
+		})
+	}
+}
+
+// TestCgroupMemoryLimitBelowPageFailsClosed checks setup rollback.
+//
+// Example: a sub-page limit cannot launch a command or leave its scope behind.
+func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	marker := filepath.Join(t.TempDir(), "launched")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "1", "-receipt", path, "--", "/usr/bin/touch", marker)
+	err := cmd.Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != guardFailure {
+		t.Fatalf("sub-page status: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt Receipt
+	if err := json.Unmarshal(data, &receipt); err != nil || receipt.CommandPID != 0 {
+		t.Fatalf("sub-page receipt=%+v err=%v", receipt, err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sub-page command ran: %v", err)
+	}
+	assertScopeCollected(t, cmd.Process.Pid)
+}
+
+// TestCgroupMemoryLimitAggregate covers detached descendants in the same aggregate.
+//
+// Example: two individually smaller blocked writes exceed the family cap together.
+func TestCgroupMemoryLimitAggregate(t *testing.T) {
+	script := `dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10 & setsid sh -c 'dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10' & wait`
+	receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", "67108864", "--", "/bin/sh", "-c", script)
+	if status != 137 {
+		t.Fatalf("aggregate status=%d output=%q", status, output)
+	}
+	if !receipt.HostChildrenSettled || receipt.Memory == nil || receipt.Memory.Events["oom_kill"] == 0 {
+		t.Fatalf("aggregate limit not demonstrated: %+v", receipt)
+	}
+}
+
+// TestCgroupMemoryLimitCancellationRejected checks incompatible launch and cancellation modes.
+//
+// Example: a cap cannot silently change the meaning of external PID cancellation.
+func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
+	control := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
+	controlStat, err := readProcess(control.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, code, output := runGuard(t, "-cancel-pid", strconv.Itoa(controlStat.PID), "-cancel-birth", strconv.FormatUint(controlStat.Birth, 10))
+	if code != 0 || !receipt.HostChildrenSettled {
+		t.Fatalf("uncapped cancellation status=%d receipt=%+v output=%q", code, receipt, output)
+	}
+	if err := control.Wait(); err == nil {
+		t.Fatal("cancellation did not terminate control child")
+	}
+	child := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
+	before, err := readProcess(child.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "67108864", "-cancel-pid", strconv.Itoa(before.PID), "-cancel-birth", strconv.FormatUint(before.Birth, 10), "-receipt", path)
+	err = cmd.Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 125 {
+		t.Fatalf("incompatible arguments accepted: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid cancellation wrote receipt: %v", err)
+	}
+	after, err := readProcess(child.Process.Pid)
+	if err != nil || after.Birth != before.Birth || after.State == "Z" || after.State == "X" {
+		t.Fatalf("invalid cancellation affected child: %+v err=%v", after, err)
+	}
+}
+
+// TestCgroupMemoryLimitTopologyAndInterrupt observes the live guard and command siblings.
+//
+// Example: interruption retires the workload while the guard remains outside its cap.
+func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", "67108864", "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; exec sleep 10")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Errorf("interrupt guard during cleanup: %v", err)
+			}
+			_ = cmd.Wait()
+		}
+	})
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil {
+		t.Fatalf("command did not report membership: %v", err)
+	}
+	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
+	if !strings.HasSuffix(relative, "/command") {
+		t.Fatalf("unexpected command membership %q", line)
+	}
+	command := filepath.Join("/sys/fs/cgroup", relative)
+	parent := filepath.Dir(command)
+	unit := filepath.Base(parent)
+	unitPath, err := exec.Command("systemctl", "--user", "show", unit, "--property=ControlGroup", "--value").Output()
+	if err != nil || strings.TrimSpace(string(unitPath)) != filepath.Dir(relative) {
+		t.Fatalf("live scope %s: cgroup=%q err=%v", unit, unitPath, err)
+	}
+	listing := scopeListing(t, cmd.Process.Pid)
+	if !strings.Contains(listing, unit) {
+		t.Fatalf("live scope %s missing from listing: %q", unit, listing)
+	}
+	for name, want := range map[string]string{"memory.max": "67108864", "memory.swap.max": "0", "memory.oom.group": "1"} {
+		data, err := os.ReadFile(filepath.Join(command, name))
+		if err != nil || strings.TrimSpace(string(data)) != want {
+			t.Fatalf("%s=%q err=%v", name, data, err)
+		}
+	}
+	control, err := os.ReadFile(filepath.Join(parent, "cgroup.subtree_control"))
+	if err != nil || !strings.Contains(" "+strings.Join(strings.Fields(string(control)), " ")+" ", " memory ") {
+		t.Fatalf("controller=%q err=%v", control, err)
+	}
+	guard := filepath.Join(parent, "guard")
+	members, err := os.ReadFile(filepath.Join(guard, "cgroup.procs"))
+	if err != nil || strings.TrimSpace(string(members)) != strconv.Itoa(cmd.Process.Pid) {
+		t.Fatalf("guard membership=%q err=%v", members, err)
+	}
+	value := make([]byte, 16)
+	n, err := unix.Getxattr(guard, "user.oomd_omit", value)
+	if err != nil {
+		t.Fatalf("read guard omit: %v", err)
+	}
+	if string(value[:n]) != "1" {
+		t.Fatalf("guard omit=%q", value[:n])
+	}
+	guardInfo, err := os.Stat(guard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monitored := parent
+	for monitored != "/sys/fs/cgroup" && !strings.HasPrefix(filepath.Base(monitored), "user@") {
+		monitored = filepath.Dir(monitored)
+	}
+	if monitored == "/sys/fs/cgroup" {
+		t.Fatal("user manager cgroup not found")
+	}
+	monitorInfo, err := os.Stat(monitored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guardStat, guardOK := guardInfo.Sys().(*syscall.Stat_t)
+	monitorStat, monitorOK := monitorInfo.Sys().(*syscall.Stat_t)
+	if !guardOK || !monitorOK || guardStat.Uid != monitorStat.Uid {
+		t.Fatalf("oomd owner mismatch: guard=%v monitored=%v", guardInfo.Sys(), monitorInfo.Sys())
+	}
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Wait()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 125 {
+		t.Fatalf("interrupt status: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt struct {
+		HostChildrenSettled bool
+		Memory              json.RawMessage
+	}
+	if err := json.Unmarshal(data, &receipt); err != nil || !receipt.HostChildrenSettled || len(receipt.Memory) == 0 {
+		t.Fatalf("interrupt receipt=%+v err=%v", receipt, err)
+	}
+	assertScopeCollected(t, cmd.Process.Pid)
+	if _, err := os.Stat(parent); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scope directory remains: %v", err)
+	}
+}
+
+// TestCgroupMemoryLimitPairedTopology compares capped and uncapped launches.
+//
+// Example: the same command sees a guard sibling only when a cap is requested.
+func TestCgroupMemoryLimitPairedTopology(t *testing.T) {
+	script := `group=$(cut -d: -f3 /proc/self/cgroup); test ! -d "/sys/fs/cgroup${group%/command}/guard"`
+	for _, capped := range []bool{false, true} {
+		args := []string{"-deadline", "15s"}
+		want := 0
+		if capped {
+			args = append(args, "-memory-max", "67108864")
+			want = 1
+		}
+		args = append(args, "--", "/bin/sh", "-c", script)
+		receipt, code, output := runGuard(t, args...)
+		if code != want || (receipt.Memory != nil) != capped || !receipt.HostChildrenSettled {
+			t.Fatalf("capped=%t status=%d receipt=%+v output=%q", capped, code, receipt, output)
+		}
+	}
+}
+
+// scopeListing queries systemd for the exact guard's scope names.
+//
+// Example: the same query finds a live scope and later confirms its collection.
+func scopeListing(t *testing.T, pid int) string {
+	t.Helper()
+	pattern := fmt.Sprintf("owned-command-%d-*.scope", pid)
+	output, err := exec.Command("systemctl", "--user", "list-units", "--all", "--plain", "--no-legend", pattern).Output()
+	if err != nil {
+		t.Fatalf("list guard scopes: %v", err)
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// assertScopeCollected waits for systemd to prune a guard's empty scope.
+//
+// Example: a sub-page limit never leaves an owned scope behind.
+func assertScopeCollected(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		listing := scopeListing(t, pid)
+		if listing == "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("scope was not collected: %s", listing)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestCgroupMemoryLimitAbsentKeepsTopology verifies the unmodified launch mode.
+//
+// Example: a launch without a cap has no guard sibling or Memory receipt.
+func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Errorf("interrupt guard during cleanup: %v", err)
+			}
+			_ = cmd.Wait()
+		}
+	})
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
+	if !strings.HasSuffix(relative, "/command") {
+		t.Fatalf("unexpected membership %q", line)
+	}
+	guard := filepath.Join("/sys/fs/cgroup", filepath.Dir(relative), "guard")
+	if _, err := os.Stat(guard); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncapped launch has guard sibling: %v", err)
+	}
+	if _, err := stdin.Write([]byte("done\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]json.RawMessage
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := receipt["Memory"]; exists {
+		t.Fatalf("uncapped receipt has Memory: %s", data)
+	}
 }
