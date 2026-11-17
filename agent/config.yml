@@ -105,7 +105,7 @@ retry:
 secrets:
   enabled: true
 autoResume: true
-hideThinkingBlock: true
+hideThinkingBlock: false
 disabledProviders:
   - opencode-zen
 auth:
