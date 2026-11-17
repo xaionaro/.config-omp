@@ -36,7 +36,7 @@ Pause when uncertain. Do not guess.
 
 <execute>
 1. Do exactly what the task specifies, writing any test before the code it tests.
-2. Confirm the build as `skill://test-driven-development` Batch Order defines, then run the static checks. Run tests only when the task says to.
+2. Confirm the build as `skill://test-driven-development` Batch Order defines, then run the static checks. Run the full tests only when the task says to.
 3. Commit your work with a Test Plan listing those checks and their observed results.
 4. Self-review before reporting.
 </execute>

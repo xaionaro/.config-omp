@@ -42,7 +42,7 @@ This structure informs the task decomposition. Each task should produce self-con
 - "Implement the minimal code to make the test pass" - step
 - "Confirm the build, run the static checks, and commit" - step
 
-Order tasks in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order): the first task writes every test, later tasks implement, and only the final task runs the tests.
+Order tasks in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order): the first task writes every test, later tasks implement, and only the final task runs the full tests.
 
 ## Plan Document Header
 

@@ -15,9 +15,9 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 ## Batch Order
 
-Write the tests for all pending work in your batch, then implement it. Close each implementation leaf or task by confirming that its changed code builds; its implementer may also lint that code and run tests under a 5-second timeout. Run the full tests only after the whole batch is implemented: each new test without its code ([Verify RED](#verify-red---watch-it-fail)), then all of them ([Verify GREEN](#verify-green---watch-it-pass)). A bug's diagnosis, such as its reproduction, may run earlier.
+Write the tests for all pending work in your batch, then implement it. Close each implementation leaf or plan task by confirming that its changed code builds. Its implementer may also lint that code and run tests for at most 5 seconds per run. Run the full tests only after the whole batch is implemented: each new test without its code ([Verify RED](#verify-red---watch-it-fail)), then all of them ([Verify GREEN](#verify-green---watch-it-pass)). A bug's diagnosis, such as its reproduction, may run earlier.
 
-Confirming the build is not a test run. Compile or type-check the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. A linter alone is not a build, and a prose-only change has none. Until the code that new tests reference exists, as in a tests-only task or leaf, report the observed result, name each failure that only that later code removes, and fix every other failure.
+Confirming the build is not a test run. Compile or type-check the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. A linter alone is not a build, and a prose-only change has none. Until the code that new tests reference exists, as in a tests-only task or leaf, report each check's observed result, name each failure that only that later code removes, and fix every other failure.
 
 | Work | Batch |
 | --- | --- |
@@ -77,8 +77,7 @@ digraph tdd_cycle {
     red -> green;
     green -> build;
     build -> verify_red [label="batch\nimplemented"];
-    build -> green [label="next\nleaf"];
-    build -> green [label="no"];
+    build -> green [label="fails, or\nnext leaf"];
     verify_red -> verify_green [label="yes"];
     verify_red -> red [label="wrong\nfailure"];
     verify_green -> refactor [label="yes"];
