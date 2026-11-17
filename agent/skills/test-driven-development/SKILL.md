@@ -22,7 +22,7 @@ Confirming the build is not a test run. Compile or type-check the changed code a
 | Work | Batch |
 | --- | --- |
 | ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) |
-| ECI Fast Owner | One Fast issue per [checkpoint](../explore-critique-implement/references/fast-path.md#adoption-review-and-closure) |
+| ECI Fast Owner | Provisional Fast work need not follow this order ([fast-path](../explore-critique-implement/references/fast-path.md#fast-solving-and-delegation)); when it writes tests, one Fast issue per [checkpoint](../explore-critique-implement/references/fast-path.md#adoption-review-and-closure) |
 | writing-plans plan, run by subagent-driven-development or executing-plans | The whole plan; its final task runs the tests |
 | receiving-code-review | All accepted items |
 | systematic-debugging | The fixes for every diagnosed bug |
@@ -171,10 +171,6 @@ Don't add features, refactor other code, or "improve" beyond the test.
 ### Verify RED - Watch It Fail
 
 **MANDATORY. Never skip.**
-
-```bash
-npm test path/to/test.test.ts
-```
 
 Run each new test without the code it tests, by testing-discipline's [Test validation](../testing-discipline/SKILL.md) method. Confirm:
 - Test fails (not errors)

@@ -171,7 +171,7 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-With several diagnosed bugs, take steps 1–3 for all of them as one batch in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); the diagnosis runs above may come earlier.
+With several diagnosed bugs, take steps 1–3 for all of them as one batch in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); the diagnostic runs in Phases 1–3 may come earlier.
 
 1. **Create Failing Test Case**
    - Simplest possible reproduction
@@ -182,7 +182,7 @@ With several diagnosed bugs, take steps 1–3 for all of them as one batch in te
 
 2. **Implement Single Fix**
    - Address the root cause identified
-   - ONE change at a time
+   - ONE change per bug
    - No "while I'm here" improvements
    - No bundled refactoring
 

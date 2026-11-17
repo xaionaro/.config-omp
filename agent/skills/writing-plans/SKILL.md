@@ -110,8 +110,8 @@ git commit -m "feat: add specific feature" -m "Test Plan: <build check>: <observ
 - [ ] **Step 1: Run each new test without its code to verify it fails**
 
 Run it in a scratch export of the commit before Task 1, with the new tests copied in (testing-discipline, Test validation):
-Run: `git archive <base> | tar -x -C /tmp/red && cp -r tests /tmp/red/ && cd /tmp/red && pytest tests/path/test.py::test_name -v`
-Expected: FAIL on its assertion (stub a missing name in /tmp/red so the test fails rather than errors)
+Run: `mkdir -p "$HOME/tmp" && d=$(mktemp -d "$HOME/tmp/red.XXXX") && git archive <base> | tar -x -C "$d" && cp -r tests "$d"/ && (cd "$d" && pytest tests/path/test.py::test_name -v)`
+Expected: FAIL on its assertion (stub a missing name in "$d" so the test fails rather than errors)
 
 - [ ] **Step 2: Run the tests to verify they pass**
 
