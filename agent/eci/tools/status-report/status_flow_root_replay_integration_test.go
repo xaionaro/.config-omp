@@ -25,7 +25,7 @@ func TestJSONRootReplaysUpdatesAndAddsMissingSections(t *testing.T) {
 	// Example: Publish all supplied data in the same JSON-root report.
 	const event = `{"event":"worker_progress","timestamp":"2026-11-02T15:24:00Z","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}},{"target":"progress","id":"work:one","fields":{"text":"verified progress"}}],"additions":[{"target":"review","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}],"timeline":{"as_of":"2026-11-02T15:24:00Z","state":"verified_empty","entries":[]}}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	result, _, err := projectLogStatus(dir, input, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.True(t, json.Valid(result), string(result))
@@ -66,7 +66,7 @@ func TestFlowRootRefreshPreservesHistoricalTimelineAndComment(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, input, 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "worker_progress"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestJSONRootTimelineReplacementPreservesOtherSections(t *testing.T) {
 	// Example: Publish an updated anchor in an existing JSON report.
 	const event = `{"event":"checkpoint","timestamp":"2026-11-02T15:24:00Z","details":{"status_update":{"timeline":{"as_of":"2026-11-02T15:24:00Z","state":"verified_empty","entries":[]}}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	result, _, err := projectLogStatus(dir, input, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.True(t, json.Valid(result), string(result))
@@ -133,7 +133,7 @@ func TestJSONRootAcceptsPopulatedTimelineSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	event := `{"event":"checkpoint","timestamp":"2026-11-02T15:24:00Z","details":{"status_update":{"timeline":` + string(encoded) + `}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	result, _, err := projectLogStatus(dir, input, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.True(t, json.Valid(result), string(result))

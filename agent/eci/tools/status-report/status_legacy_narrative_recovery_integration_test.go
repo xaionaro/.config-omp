@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,7 +23,7 @@ func TestLegacyNarrativeRecoveryPreservesOwnerChanges(t *testing.T) {
 				// Example: Resume a pending text change after an upgrade.
 				const saved = `{"cursor":1,"applied":{"[\"progress\",\"work:one\",\"\",\"\"]/text":"old managed text"},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":1},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/text":{"line":1,"update":{"target":"progress","id":"work:one","fields":{"text":"new managed text"}}}}}`
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 				input := strings.Replace(linkedReport, "progress: [Implementation started]", "progress: [Implementation started, {subject_ref: 'work:one', text: '"+text+"'}] # owner comment", 1)
 				require.NotEqual(t, linkedReport, input)
 				initial, err := putSyncState([]byte(input), saved)

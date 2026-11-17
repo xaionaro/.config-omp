@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -30,7 +28,7 @@ func TestSourceBackedAdditionsReplay(t *testing.T) {
 			func(t *testing.T) {
 				dir := t.TempDir()
 				log := `{"event":"requirement_change","details":{"status_update":{"additions":[` + tc.entry + `]}}}` + "\n"
-				if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600); err != nil {
+				if err := writeSessionLog(dir, []byte(log)); err != nil {
 					t.Fatal(err)
 				}
 				ledger := ledgerSource{Records: map[string]sourceRecord{"w": tc.work, "o": {Type: "outcome", Outcome: "Result"}}}

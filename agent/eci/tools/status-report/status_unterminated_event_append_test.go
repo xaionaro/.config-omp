@@ -23,7 +23,7 @@ func TestCompleteUnterminatedEventThenAppendKeepsCursor(t *testing.T) {
 	const second = `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"two","fields":{"text":"second claim"}}]}}}` + "\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	initial, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(initial)

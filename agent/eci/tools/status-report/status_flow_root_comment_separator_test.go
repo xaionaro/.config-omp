@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,7 +37,7 @@ func TestFlowRootReplayPreservesCommentsAroundSeparators(t *testing.T) {
 				comments, err := yamlComments([]byte(reportText))
 				require.NoError(t, err)
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				result, _, err := projectLogStatus(dir, []byte(reportText), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(result)

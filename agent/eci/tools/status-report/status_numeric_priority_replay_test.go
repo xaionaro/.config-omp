@@ -26,7 +26,7 @@ func TestNumericPriorityEstimateSelectorsRemainLexical(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"forecast_change","details":{"status_update":{"updates":[{"target":"priority_estimate","id":"1.10","values":{"basis":"updated basis"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "forecast_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -49,7 +49,7 @@ func TestNumericPriorityEstimateSelectorsRemainLexical(t *testing.T) {
 	require.NotEqual(t, string(retry), edited)
 	require.NoError(t, os.WriteFile(path, []byte(edited), 0600))
 	second := `{"event":"forecast_change","details":{"status_update":{"updates":[{"target":"priority_estimate","id":"1.10","values":{"basis":"later basis"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event+second)))
 	out.Reset()
 	errOut.Reset()
 	require.Equal(t, 0, run([]string{"refresh", dir, "forecast_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
@@ -124,7 +124,7 @@ func TestNumericPriorityMergeRetiresExactEstimate(t *testing.T) {
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(report), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -159,7 +159,7 @@ func TestStringDomainPriorityLabelsKeepYAMLLexemes(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 				event := `{"event":"forecast_change","details":{"status_update":{"updates":[{"target":"priority_estimate","id":"` + label + `","values":{"basis":"changed"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "forecast_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -187,10 +187,9 @@ func TestNumericPriorityValueKeepsLexicalOwnership(t *testing.T) {
 	require.NoError(t, err)
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"priority":1.1}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -201,7 +200,7 @@ func TestNumericPriorityValueKeepsLexicalOwnership(t *testing.T) {
 	edited := strings.Replace(string(result), "title: First, priority: 1.1,", "title: First, priority: 1.10,", 1)
 	require.NotEqual(t, string(result), edited)
 	require.NoError(t, os.WriteFile(path, []byte(edited), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first+first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+first)))
 	out.Reset()
 	errOut.Reset()
 	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
@@ -221,10 +220,9 @@ func TestNumericPriorityOrderOwnershipKeepsLexicalValues(t *testing.T) {
 	report := linkedReport + "priority_order: [1.1, 1.10]\n"
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"report","id":"current","values":{"priority_order":[1.10,1.1]}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -235,7 +233,7 @@ func TestNumericPriorityOrderOwnershipKeepsLexicalValues(t *testing.T) {
 	edited := strings.Replace(string(result), "priority_order: [1.10,1.1]", "priority_order: [1.100,1.1]", 1)
 	require.NotEqual(t, string(result), edited)
 	require.NoError(t, os.WriteFile(path, []byte(edited), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first+first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+first)))
 	out.Reset()
 	errOut.Reset()
 	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
@@ -261,7 +259,7 @@ func TestNumericTopPriorityValuesKeepLexicalIDs(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"decision","details":{"status_update":{"updates":[{"target":"report","id":"current","values":{"top_priorities":[1.10,1.1]}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -300,7 +298,7 @@ func TestNumericPriorityValuePairedRetirementIsAtomic(t *testing.T) {
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(tc.input), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)

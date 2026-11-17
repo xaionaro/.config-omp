@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,7 +31,7 @@ func TestLaneCorrectionRequiresCorrectOrdinalForSameLineUpdates(t *testing.T) {
 			func(t *testing.T) {
 				correction := `{"event":"correction","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","corrects":1` + tc.ordinal + `,"evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}` + "\n"
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+correction), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+correction)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:45:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 				forecasts := forecastSource{Records: map[string]map[string]any{"first": {"kind": "lane", "status": "inactive"}}}
 				result, _, err := projectLogStatus(dir, []byte(linkedReport), ledger, forecasts)

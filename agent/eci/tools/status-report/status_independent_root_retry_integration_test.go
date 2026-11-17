@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,7 +24,7 @@ func TestIndependentRootCompletionSurvivesOtherPriorConflict(t *testing.T) {
 	// Example: Both canonical sources complete after their work was accepted.
 	const events = `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":{"forecast_ref":"forecasts.yaml#/records/f1","outcome":"First","target":"2026-11-02T16:00:00Z","assessment":"complete"},"record":{"work_ref":"project-understanding.yaml#/records/w1","outcome":"First","completed_at":"2026-11-02T15:00:00Z"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":{"forecast_ref":"forecasts.yaml#/records/f2","outcome":"Second","target":"2026-11-02T17:00:00Z","assessment":"complete"},"record":{"work_ref":"project-understanding.yaml#/records/w2","outcome":"Second","completed_at":"2026-11-02T15:05:00Z"}}]}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(events)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w1": {Type: "work", OutcomeRefs: []string{"o1"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:00:00Z", Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f1"}}, "w2": {Type: "work", OutcomeRefs: []string{"o2"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:05:00Z", Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f2"}}, "o1": {Type: "outcome", Outcome: "First"}, "o2": {Type: "outcome", Outcome: "Second"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f1": {"status": "inactive", "kind": "root"}, "f2": {"status": "inactive", "kind": "root"}}}
 	result, _, err := projectLogStatus(dir, []byte(valid+"root_forecasts: ["+first+","+second+"]\n"), ledger, forecasts)

@@ -19,7 +19,7 @@ func TestStatusSyncClosesOnlyExplicitTask(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
 	log := `{"schema":"eci-high-level-log/v1","event":"lifecycle_change","timestamp":"2026-11-02T15:25:00Z","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "lifecycle_change"))
 	data, err := os.ReadFile(filepath.Join(dir, "latest-status-report.yaml"))
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestStatusSyncCorrectionDoesNotOverwriteNewerValue(t *testing.T) {
 		`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"newer"}}]}}}`,
 		`{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"work","corrects":1,"fields":{"text":"stale correction"}}]}}}`,
 	}, "\n") + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.Contains(t, string(updated), "newer")
@@ -60,7 +60,7 @@ func TestStatusSyncLaneCompletionIsAtomicAndSourceBacked(t *testing.T) {
 	dir := t.TempDir()
 	report := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z"}}}}
 	updated, _, err := projectLogStatus(dir, []byte(report), ledger, forecastSource{})
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestStatusSyncAddsTaskWithItsPriorityEstimate(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"low","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}},{"target":"priority_estimate","record":{"priority":"low","min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(updated)
@@ -105,7 +105,7 @@ func TestStatusSyncCancelsOnlyNamedTask(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"lifecycle":"cancelled","status":"unknown","evidence":"cancelled by owner"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(updated)
@@ -122,13 +122,12 @@ func TestStatusSyncCancelsOnlyNamedTask(t *testing.T) {
 func TestStatusSyncRetractionDropsOnlyItsManagedEntry(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"managed"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	correction := `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"work","corrects":1,"retract":true}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+correction), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+correction)))
 	updated, _, err = projectLogStatus(dir, updated, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(updated)
@@ -146,7 +145,7 @@ func TestStatusSyncIgnoresClosureWithoutAcceptance(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
 	log := `{"details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "lifecycle_change"))
 	data, err := os.ReadFile(filepath.Join(dir, "latest-status-report.yaml"))
 	require.NoError(t, err)

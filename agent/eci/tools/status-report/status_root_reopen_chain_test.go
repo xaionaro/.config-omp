@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,7 +18,7 @@ func TestDelayedRootReopening(t *testing.T) {
 	second := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_forecast","evidence":"reopened","reopen_work_ref":"project-understanding.yaml#/records/w","expected_prior":` + completion + `,"record":` + forecast + `}]}}}` + "\n"
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"kind": "root", "status": "active"}}}
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first+second)); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
 	out, _, err := projectLogStatus(dir, []byte(valid+"root_forecasts: ["+forecast+"]\n"), ledger, forecasts)

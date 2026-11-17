@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,7 +16,7 @@ func TestCancelledLaneAdditionWaitsForCancelledSource(t *testing.T) {
 	// Example: Record the owner's withdrawn implementation lane.
 	const event = `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"lane","evidence":"owner withdrew","record":{"task_id":"1","work_ref":"project-understanding.yaml#/records/w","outcome":"Result","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW","lifecycle":"cancelled"}}]}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	work := workData{State: workStateActive, Roles: []reportingRole{reportingRoleLane}}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: work}, "o": {Type: "outcome", Outcome: "Result"}}}
 	pending, _, err := projectLogStatus(dir, []byte(valid), ledger, forecastSource{})

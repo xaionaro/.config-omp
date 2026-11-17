@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ func TestLegacyLaneClosureRetriesAfterStatusConflict(t *testing.T) {
 	// Example: Retry a saved status and completion-time pair after an upgrade.
 	const saved = `{"cursor":1,"applied":{"[\"lane\",\"1\",\"project-understanding.yaml#/records/work:first\",\"implementation\"]/implementation_status":"IN PROGRESS"},"latest":{"[\"lane\",\"1\",\"project-understanding.yaml#/records/work:first\",\"implementation\"]/completed_at":1,"[\"lane\",\"1\",\"project-understanding.yaml#/records/work:first\",\"implementation\"]/implementation_status":1},"pending":{"[\"lane\",\"1\",\"project-understanding.yaml#/records/work:first\",\"implementation\"]/completed_at":{"line":1,"update":{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"completed_at":"2026-11-02T15:25:00Z"}}},"[\"lane\",\"1\",\"project-understanding.yaml#/records/work:first\",\"implementation\"]/implementation_status":{"line":1,"update":{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED"}}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	input := strings.Replace(linkedReport, "    forecast: {forecast_ref: 'forecasts.yaml#/records/first', outcome: First result, target: '2026-11-02T16:00:00Z', assessment: complete, baseline: '2026-11-02T16:00:00Z', evidence: initial}\n", "", 1)
 	require.NotEqual(t, linkedReport, input)
 	edited := strings.Replace(input, "    implementation_status: IN PROGRESS", "    implementation_status: PAUSED", 1)

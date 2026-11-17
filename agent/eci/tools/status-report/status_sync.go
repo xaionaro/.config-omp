@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -148,7 +147,7 @@ func projectLogStatus(
 	if document.StatusSync != nil {
 		cursor = document.StatusSync.Cursor
 	}
-	logBytes, err := os.ReadFile(filepath.Join(dir, "high_level_log.jsonl"))
+	logBytes, err := readSessionLog(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		if cursor != 0 {
 			return nil, nil, fmt.Errorf("status sync cursor exceeds log: %w", err)

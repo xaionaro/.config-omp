@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,7 +21,7 @@ func TestLegacyAmbiguousRootOccurrenceStaysPending(t *testing.T) {
 	const entry = `{"target":"root_completion","evidence":"accepted","record":{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}}`
 	dir := t.TempDir()
 	log := `{"event":"lifecycle_change","details":{"status_update":{"additions":[` + entry + `,` + entry + `]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	initial, err := putSyncState([]byte(valid), saved)
 	require.NoError(t, err)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:05:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}

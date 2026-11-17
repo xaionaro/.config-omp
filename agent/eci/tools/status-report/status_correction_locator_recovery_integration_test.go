@@ -32,7 +32,7 @@ func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				log := `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1",` + tc.locator + `,"fields":{"owner":"mistaken"}}]}}}` + "\n" + `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"actual"}}]}}}` + "\n"
 				require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				require.NoError(t, refreshTestStatus(dir, "assignment_change"))
 				result, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestPersistedSelfCorrectionDoesNotBlockRetry(t *testing.T) {
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport+saved+"\n"), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "assignment_change"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestCorrectionCanNameEarlierSameLineOrdinal(t *testing.T) {
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "correction"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestLegacyFieldSelfCorrectionIsRejected(t *testing.T) {
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport+saved+"\n"), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "correction"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -151,7 +151,7 @@ func TestLegacySameLineCorrectionUsesUniqueSourceOrdinal(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				input := strings.Replace(linkedReport, "title: First,", `title: First, owner: second,`, 1)
 				require.NoError(t, os.WriteFile(path, []byte(input+saved+"\n"), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				require.NoError(t, refreshTestStatus(dir, "correction"))
 				result, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestLegacyCancellationRejectsSelfCorrectionsBeforeAtomicReplay(t *testing.T
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, input, 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	require.NoError(t, refreshTestStatus(dir, "correction"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestLegacySameLineCorrectionRequiresMatchingPriorField(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				input := strings.Replace(linkedReport, "title: First,", `title: First, owner: second,`, 1)
 				require.NoError(t, os.WriteFile(path, []byte(input+saved+"\n"), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				require.NoError(t, refreshTestStatus(dir, "correction"))
 				result, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -275,7 +275,7 @@ func TestLegacyEarlierCorrectionRequiresMatchingLatestPrior(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				input := strings.Replace(linkedReport, "title: First,", `title: First, owner: second,`, 1)
 				require.NoError(t, os.WriteFile(path, []byte(input+saved+"\n"), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				require.NoError(t, refreshTestStatus(dir, "correction"))
 				result, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -319,7 +319,7 @@ func TestLegacyCorrectionIgnoresInvalidInterveningUpdates(t *testing.T) {
 				const saved = `status_sync: {"cursor":3,"applied":{"[\"task\",\"1\",\"\",\"\"]/owner":"second"},"latest":{"[\"task\",\"1\",\"\",\"\"]/owner":3},"pending":{"[\"task\",\"1\",\"\",\"\"]/owner":{"line":3,"update":{"target":"task","id":"1","corrects":1,"fields":{"owner":"third"}}}}}`
 				log := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"second"}}]}}}` + "\n" + `{"event":"` + tc.event + `","details":{"status_update":{"updates":[` + tc.update + `]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":1,"fields":{"owner":"third"}}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				input := strings.Replace(linkedReport, "title: First,", `title: First, owner: second,`, 1) + saved + "\n"
@@ -357,7 +357,7 @@ func TestLegacyCorrectionRespectsInterveningRetraction(t *testing.T) {
 			func(t *testing.T) {
 				log := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"first","evidence":"proof"}}]}}}` + "\n" + `{"event":"` + tc.event + `","details":{"status_update":{"updates":[{"target":"progress","id":"` + tc.subject + `",` + tc.locator + `,"retract":true}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"one","corrects":1,"fields":{"text":"third"}}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				update := syncUpdate{Target: syncTargetProgress, ID: "one", Corrects: 1, Fields: map[string]string{"text": "third"}}
@@ -404,7 +404,7 @@ func TestLegacyRetractionUsesLatestNarrativeEvidence(t *testing.T) {
 			func(t *testing.T) {
 				log := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"first"}}]}}}` + "\n" + `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"evidence":"proof"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"one",` + tc.locator + `,"retract":true}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"one","corrects":1,"fields":{"text":"third"}}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				update := syncUpdate{Target: syncTargetProgress, ID: "one", Corrects: 1, Fields: map[string]string{"text": "third"}}
@@ -441,7 +441,7 @@ func TestLegacyTaskRetractionCannotAuthorizeCorrection(t *testing.T) {
 	// Example: Fresh and legacy replay both retain the original evidence.
 	const log = `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"evidence":"first proof"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":1,"retract":true}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":2,"fields":{"evidence":"new proof"}}]}}}` + "\n"
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	update := syncUpdate{Target: syncTargetTask, ID: "1", Corrects: 2, Fields: map[string]string{"evidence": "new proof"}}
@@ -482,7 +482,7 @@ func TestLegacyTextCorrectionAfterEvidenceCorrectionMatchesFreshReplay(t *testin
 				prefix := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"first","evidence":"proof"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"one","corrects":1,"fields":{"evidence":"new proof"}}]}}}` + "\n" + tc.withdrawal
 				log := prefix + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"one","corrects":1,"fields":{"text":"third"}}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				update := syncUpdate{Target: syncTargetProgress, ID: "one", Corrects: 1, Fields: map[string]string{"text": "third"}}
@@ -523,7 +523,7 @@ func TestLegacyInvalidBaseCannotAuthorizeCorrection(t *testing.T) {
 	// Example: Both fresh and legacy replay preserve the absent owner.
 	const log = `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"mistaken","status":"impossible"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":1,"fields":{"owner":"third"}}]}}}` + "\n"
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	update := syncUpdate{Target: syncTargetTask, ID: "1", Corrects: 1, Fields: map[string]string{"owner": "third"}}
@@ -562,7 +562,7 @@ func TestLegacyCorrectionRequiresValidCurrentTransaction(t *testing.T) {
 			func(t *testing.T) {
 				log := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"first"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":1,"fields":{` + tc.fields + `}}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				fresh, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				update := syncUpdate{Target: syncTargetTask, ID: "1", Corrects: 1, Fields: map[string]string{"owner": "third"}}
@@ -609,7 +609,7 @@ func TestLegacyCorrectionHoldsStructuredCompanions(t *testing.T) {
 			func(t *testing.T) {
 				log := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"first"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"task","id":"1","corrects":1,"fields":{"owner":"third"},` + tc.companion + `}]}}}` + "\n"
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				update := syncUpdate{Target: syncTargetTask, ID: "1", Corrects: 1, Fields: map[string]string{"owner": "third"}}
 				key := syncTargetKey(update, "owner")
 				state := syncState{Cursor: 2, Applied: map[string]string{key: "first"}, Latest: map[string]int{key: 2}, Pending: map[string]syncPending{key: {Line: 2, Update: update}}}

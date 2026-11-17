@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,16 +13,15 @@ import (
 func TestSyncOwnerConflictDoesNotBlockDisjointTaskClosure(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	initial, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(initial), `"owner": "projected"`, `"owner": "manual"`, 1)
 	require.NotEqual(t, string(initial), edited)
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"later"}}]}}}` + "\n"
 	third := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second+third), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second+third)))
 	out, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(out)
@@ -41,16 +38,15 @@ func TestSyncOwnerConflictDoesNotBlockDisjointTaskClosure(t *testing.T) {
 func TestSyncEvidenceConflictBlocksDependentTaskClosure(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"evidence":"projected"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	initial, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(initial), `"evidence": "projected"`, `"evidence": "manual"`, 1)
 	require.NotEqual(t, string(initial), edited)
 	second := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"evidence":"later"}}]}}}` + "\n"
 	third := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second+third), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second+third)))
 	out, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(out)

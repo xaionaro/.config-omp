@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,7 +25,7 @@ func TestInvalidAdditionModesDoNotBlockIndependentProgress(t *testing.T) {
 			func(t *testing.T) {
 				dir := t.TempDir()
 				event := `{"event":"decision","details":{"status_update":{"additions":[` + tc.addition + `],"updates":[{"target":"progress","id":"other","fields":{"text":"independent progress"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				result, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(result)

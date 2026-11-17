@@ -48,7 +48,7 @@ root_forecasts:
 	dir := writeLinkedSources(t, linkedLedger+roots, linkedForecasts+retired)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(events)))
 	require.NoError(t, refreshTestStatus(dir, "lifecycle_change"))
 	pending, err := os.ReadFile(path)
 	require.NoError(t, err)

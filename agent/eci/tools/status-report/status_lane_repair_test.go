@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,7 +21,7 @@ func explorationProjection(
 ) report {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log+"\n"), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(log+"\n")); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
 	out, _, err := projectLogStatus(dir, []byte(report), ledger, forecasts)

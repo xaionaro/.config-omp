@@ -25,9 +25,8 @@ timeline:
 `
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "checkpoint"))
 	pending, err := os.ReadFile(path)
 	require.NoError(t, err)

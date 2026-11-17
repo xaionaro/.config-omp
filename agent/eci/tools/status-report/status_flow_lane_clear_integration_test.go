@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,7 +26,7 @@ func TestFlowLaneClearLastFieldPreservesNeighbors(t *testing.T) {
 	require.Greater(t, end, start)
 	input := linkedReport[:start] + lane + linkedReport[end:]
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(clear), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(clear)))
 	result, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(result)

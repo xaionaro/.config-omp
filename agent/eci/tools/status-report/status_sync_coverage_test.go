@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,15 +50,14 @@ func TestSyncWireSelectorsRoundTrip(t *testing.T) {
 func TestSyncOwnerEditsAndNewerUpdates(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"first"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	report, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report = []byte(strings.Replace(string(report), `"owner": "first"`, `"owner": "manual"`, 1))
 	require.Contains(t, string(report), `"owner": "manual"`)
 	newer := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"newer"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+newer), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+newer)))
 	result, _, err := projectLogStatus(dir, report, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -76,7 +73,7 @@ func TestSyncPendingRetractionDoesNotInsertOldText(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work","fields":{"text":"old"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"work","corrects":1,"retract":true}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	result, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -175,14 +172,13 @@ func TestSyncTimestampKeepsTimelineAnchor(t *testing.T) {
 func TestSyncRetriesAfterTaskAddition(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"worker"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	pending, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.Contains(t, string(pending), "status updates remain pending")
 	addition := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+addition), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+addition)))
 	updated, _, err := projectLogStatus(dir, pending, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(updated)
@@ -199,7 +195,7 @@ func TestSyncUpdatesDistinctLaneAndReportFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"owner":"coordinator","next_action":"review"}},{"target":"report","id":"current","fields":{"state":"Reviewing","next_focus":"Check evidence"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(updated)
@@ -218,7 +214,7 @@ func TestSyncDefersTerminalLaneWithActiveForecast(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(log)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:25:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"status": "active"}}}
 	updated, _, err := projectLogStatus(dir, []byte(linkedReport), ledger, forecasts)

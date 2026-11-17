@@ -24,9 +24,8 @@ func TestLaneCorrectionWaitsForCanonicalCompletionOnDisk(t *testing.T) {
 	const correction = `{"event":"correction","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","corrects":1,"evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}` + "\n"
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first+correction), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+correction)))
 	require.NoError(t, refreshTestStatus(dir, "correction"))
 	pending, err := os.ReadFile(path)
 	require.NoError(t, err)

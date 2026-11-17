@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,8 +24,7 @@ func TestPendingCorrectionSurvivesRefreshUntilTaskExists(t *testing.T) {
 	// Example: A later requirement event makes the queued updates applicable.
 	const third = `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	pending, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(pending)
@@ -37,7 +34,7 @@ func TestPendingCorrectionSurvivesRefreshUntilTaskExists(t *testing.T) {
 	retry, _, err := projectLogStatus(dir, pending, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	require.Equal(t, string(pending), string(retry))
-	require.NoError(t, os.WriteFile(path, []byte(first+second+third), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second+third)))
 	result, _, err := projectLogStatus(dir, retry, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err = parse(result)

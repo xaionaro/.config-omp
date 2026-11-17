@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +14,6 @@ import (
 func TestLaneReopenRestoresCanonicalForecast(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	closeEvent := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"IN PROGRESS"}}]}}}` + "\n"
 	var ledger ledgerSource
@@ -27,13 +24,13 @@ func TestLaneReopenRestoresCanonicalForecast(t *testing.T) {
 	work.Data.State, work.Data.CompletedAt = workStateCompleted, "2026-11-02T15:25:00Z"
 	ledger.Records["work:first"] = work
 	forecasts.Records["first"]["status"] = "inactive"
-	require.NoError(t, os.WriteFile(path, []byte(closeEvent), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(closeEvent)))
 	closed, _, err := projectLogStatus(dir, []byte(linkedReport), ledger, forecasts)
 	require.NoError(t, err)
 	work.Data.State, work.Data.CompletedAt = workStateActive, ""
 	ledger.Records["work:first"] = work
 	forecasts.Records["first"]["status"] = "active"
-	require.NoError(t, os.WriteFile(path, []byte(closeEvent+reopen), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(closeEvent+reopen)))
 	reopened, _, err := projectLogStatus(dir, closed, ledger, forecasts)
 	require.NoError(t, err)
 	var doc yaml.Node

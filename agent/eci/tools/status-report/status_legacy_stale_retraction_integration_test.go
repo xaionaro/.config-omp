@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ func TestLegacyStaleRetractionCannotRemoveNewerClaim(t *testing.T) {
 	// Example: Resume older saved metadata after a newer claim was published.
 	const saved = `{"cursor":3,"applied":{"[\"progress\",\"work:one\",\"\",\"\"]/text":"newer claim"},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":3,"[\"progress\",\"work:one\",\"\",\"\"]/retract":2},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/retract":{"line":2,"update":{"target":"progress","id":"work:one","corrects":1,"retract":true,"fields":null}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n{}\n{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n{}\n{}\n")))
 	input := strings.Replace(linkedReport, "progress: [Implementation started]", "progress: [Implementation started, {subject_ref: 'work:one', text: 'newer claim'}] # owner note", 1)
 	require.NotEqual(t, linkedReport, input)
 	initial, err := putSyncState([]byte(input), saved)

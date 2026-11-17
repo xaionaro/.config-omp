@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,7 +20,7 @@ func TestDelayedRootCloseReopenClose(t *testing.T) {
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:10:00Z", Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"kind": "root", "status": "inactive"}}}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second+third), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first+second+third)); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
 	out, _, err := projectLogStatus(dir, []byte(valid+"root_forecasts: ["+forecast+"]\n"), ledger, forecasts)
@@ -51,7 +49,7 @@ func TestRootChainReplacesChangedReopenedForecast(t *testing.T) {
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "other": {Type: "work", OutcomeRefs: []string{"different"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}, "different": {Type: "outcome", Outcome: "Other"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"kind": "root", "status": "active"}}}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first+second)); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
 	out, _, err := projectLogStatus(dir, []byte(valid+"root_forecasts: ["+old+"]\n"), ledger, forecasts)
@@ -80,7 +78,7 @@ func TestRootChainRetiresForecastAfterCancellation(t *testing.T) {
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCancelled, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"kind": "root", "status": "inactive"}}}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second+third), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first+second+third)); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
 	out, _, err := projectLogStatus(dir, []byte(valid+"root_forecasts: ["+forecast+"]\n"), ledger, forecasts)

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,7 +31,7 @@ func TestTerminalLaneAdditionWaitsForMatchingSources(t *testing.T) {
 			// Example: A root forecast cannot authorize a lane completion.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: tc.work}, "o": {Type: "outcome", Outcome: "Result"}}}
 				forecasts := forecastSource{Records: map[string]map[string]any{"f": tc.forecast}}
 				pending, _, err := projectLogStatus(dir, []byte(valid), ledger, forecasts)

@@ -25,7 +25,7 @@ func TestRefreshAppendsAfterCompleteUnterminatedLogRecord(t *testing.T) {
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
 	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	require.NoError(t, refreshTestStatus(dir, "decision"))
 	initial, err := os.ReadFile(reportPath)
 	require.NoError(t, err)

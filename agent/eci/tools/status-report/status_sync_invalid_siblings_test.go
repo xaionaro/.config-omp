@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +14,7 @@ func TestMalformedStatusSiblingDoesNotDiscardValidClosure(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	event := `{"event":"decision","details":{"status_update":{"updates":[{"target":42,"id":"bad","fields":{"owner":"x"}},{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted safe sibling"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	out, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	r, err := parse(out)

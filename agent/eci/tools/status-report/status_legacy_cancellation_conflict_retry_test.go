@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ func TestLegacyCancellationWaitsForOwnerEvidenceResolution(t *testing.T) {
 	// Example: Resume a cancellation that was interrupted before publication.
 	const saved = `{"cursor":1,"applied":{"[\"task\",\"1\",\"\",\"\"]/evidence":"original reason"},"latest":{"[\"task\",\"1\",\"\",\"\"]/evidence":1,"[\"task\",\"1\",\"\",\"\"]/lifecycle":1,"[\"task\",\"1\",\"\",\"\"]/status":1},"pending":{"[\"task\",\"1\",\"\",\"\"]/evidence":{"line":1,"update":{"target":"task","id":"1","fields":{"evidence":"owner withdrew"}}},"[\"task\",\"1\",\"\",\"\"]/lifecycle":{"line":1,"update":{"target":"task","id":"1","fields":{"lifecycle":"cancelled"}}},"[\"task\",\"1\",\"\",\"\"]/status":{"line":1,"update":{"target":"task","id":"1","fields":{"status":"unknown"}}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	input := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", "status: IN PROGRESS, evidence: 'manual reason', work_refs:", 1)
 	require.NotEqual(t, linkedReport, input)
 	initial, err := putSyncState([]byte(input), saved)

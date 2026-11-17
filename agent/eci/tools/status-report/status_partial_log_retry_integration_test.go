@@ -30,7 +30,7 @@ func TestRefreshRetriesIncompleteFinalLogEntry(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
 	split := strings.Index(event, `"event recovered"`)
 	require.Greater(t, split, 0)
-	require.NoError(t, os.WriteFile(logPath, []byte(prior+event[:split]), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(prior+event[:split])))
 	require.NoError(t, refreshTestStatus(dir, "worker_progress"))
 	pending, err := os.ReadFile(reportPath)
 	require.NoError(t, err)
@@ -72,8 +72,7 @@ func TestLogFinalLineCompatibility(t *testing.T) {
 	// Example: Replay a manually supplied complete final record.
 	const complete = `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"complete event"}}]}}}`
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(complete), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(complete)))
 	result, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(result)
@@ -84,7 +83,7 @@ func TestLogFinalLineCompatibility(t *testing.T) {
 	//
 	// Example: Diagnose a corrupted record rather than treating it as in progress.
 	const malformed = `{"event":"decision","details":{"status_update":` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(malformed), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(malformed)))
 	result, _, err = projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err = parse(result)
@@ -110,7 +109,7 @@ func TestIncompleteTailCompletionDuringRefreshRetries(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
 	split := strings.Index(event, `"completed concurrently"`)
 	require.Greater(t, split, 0)
-	require.NoError(t, os.WriteFile(logPath, []byte(event[:split]), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event[:split])))
 	observer := testRefreshObserver{Action:
 	// Complete the pending event at the publication boundary.
 	//

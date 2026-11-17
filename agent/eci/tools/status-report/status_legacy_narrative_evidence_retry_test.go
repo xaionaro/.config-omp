@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ func TestLegacyNarrativeEvidenceWaitsForOwnedText(t *testing.T) {
 	// Example: Restore evidence ownership after an interrupted upgrade.
 	const saved = `{"cursor":1,"applied":{"[\"verification\",\"work:one\",\"\",\"\"]/text":"verified claim","[\"verification\",\"work:one\",\"\",\"\"]/evidence":"old proof"},"latest":{"[\"verification\",\"work:one\",\"\",\"\"]/evidence":1},"pending":{"[\"verification\",\"work:one\",\"\",\"\"]/evidence":{"line":1,"update":{"target":"verification","id":"work:one","fields":{"evidence":"new proof"}}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	original := strings.Replace(linkedReport, "verification: [pending]", "verification: [pending, {subject_ref: 'work:one', text: 'manual edit', evidence: 'old proof'}] # owner note", 1)
 	require.NotEqual(t, linkedReport, original)
 	initial, err := putSyncState([]byte(original), saved)

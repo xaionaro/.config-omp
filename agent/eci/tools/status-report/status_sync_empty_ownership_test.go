@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,13 +20,12 @@ func TestSyncEmptyAndNullOwnersPreserveLaterEdits(t *testing.T) {
 			// Example: An unchanged empty value permits the requested assignment.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				path := filepath.Join(dir, "high_level_log.jsonl")
 				first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW","owner":` + owner + `}}]}}}` + "\n"
 				second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"later"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first)))
 				added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
-				require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 				unchanged, _, err := projectLogStatus(dir, added, ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(unchanged)
@@ -52,8 +49,7 @@ func TestSyncEmptyAndNullOwnersPreserveLaterEdits(t *testing.T) {
 func TestSyncLegacyEmptyOwnerRemainsProtected(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	update := syncUpdate{Target: syncTargetTask, ID: "1", Fields: map[string]string{"owner": "later"}}
 	key := syncTargetKey(update, "owner")
 	state := syncState{Cursor: 1, Applied: map[string]string{key: ""}, Latest: map[string]int{key: 1}, Pending: map[string]syncPending{key: {Line: 1, Update: update}}}
@@ -76,15 +72,14 @@ func TestSyncLegacyEmptyOwnerRemainsProtected(t *testing.T) {
 func TestSyncNullOwnerAndLiteralNullAreDistinct(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW","owner":null}}]}}}` + "\n"
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"owner":null`, `"owner":"null"`, 1)
 	require.NotEqual(t, string(added), edited)
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -99,15 +94,14 @@ func TestSyncNullOwnerAndLiteralNullAreDistinct(t *testing.T) {
 func TestSyncLiteralNullOwnerAndNullAreDistinct(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW","owner":"null"}}]}}}` + "\n"
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"owner":"null"`, `"owner":null`, 1)
 	require.NotEqual(t, string(added), edited)
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -128,10 +122,9 @@ func TestSyncAmbiguousLegacyNullOwnerStaysPending(t *testing.T) {
 			// Example: A quoted null remains the owner's literal string.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				path := filepath.Join(dir, "high_level_log.jsonl")
 				first := `{}` + "\n"
 				second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"later"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 				update := syncUpdate{Target: syncTargetTask, ID: "1"}
 				key := syncTargetKey(update, "owner")
 				state := syncState{Cursor: 1, Applied: map[string]string{key: "null"}, Latest: map[string]int{key: 1}, Pending: map[string]syncPending{}}

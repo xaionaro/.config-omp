@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,15 +15,14 @@ import (
 func TestSyncTaskRejectsIrrelevantSelector(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	original, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(original), `"owner": "projected"`, `"owner": "manual"`, 1)
 	require.NotEqual(t, string(original), edited)
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","work_ref":"project-understanding.yaml#/records/work:first","fields":{"owner":"next"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(result)
@@ -39,16 +36,15 @@ func TestSyncTaskRejectsIrrelevantSelector(t *testing.T) {
 func TestSyncLegacyBatchAdvancesCursor(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	legacy := strings.Repeat(`{"event":"checkpoint","summary":"legacy"}`+"\n", 2000)
-	require.NoError(t, os.WriteFile(path, []byte(legacy), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(legacy)))
 	first, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(first)
 	require.NoError(t, err)
 	require.Equal(t, 2000, parsed.StatusSync.Cursor)
 	typed := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"worker"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(legacy+typed), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(legacy+typed)))
 	updated, _, err := projectLogStatus(dir, first, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err = parse(updated)
@@ -71,7 +67,7 @@ func BenchmarkSyncLegacyBatch(b *testing.B) {
 			// Example: Replay a two-thousand-entry legacy log.
 			func(b *testing.B) {
 				dir := b.TempDir()
-				if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(strings.Repeat(`{"event":"checkpoint","summary":"legacy"}`+"\n", count)), 0600); err != nil {
+				if err := writeSessionLog(dir, []byte(strings.Repeat(`{"event":"checkpoint","summary":"legacy"}`+"\n", count))); err != nil {
 					b.Fatal(err)
 				}
 				b.ResetTimer()
@@ -90,8 +86,7 @@ func BenchmarkSyncLegacyBatch(b *testing.B) {
 func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	selector := syncUpdate{Target: syncTargetTask, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first"}
 	// A prior version incorrectly included the irrelevant work reference in this key.
 	encoded, _ := json.Marshal([]string{"task", "1", selector.WorkRef, ""})
@@ -103,7 +98,7 @@ func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
 	reportBytes, err := putSyncState([]byte(report), string(raw))
 	require.NoError(t, err)
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"next"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n"+second)))
 	result, _, err := projectLogStatus(dir, reportBytes, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -132,8 +127,7 @@ func TestSyncLegacyAliasConflictDoesNotDiscardOwnership(t *testing.T) {
 func TestSyncLegacyQueuedAliasUsesActualTaskIdentity(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte("{}\n{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n{}\n")))
 	update := syncUpdate{Target: syncTargetTask, ID: "1", WorkRef: "legacy reference", Fields: map[string]string{"owner": "next"}}
 	encodedUpdate, err := encodeSyncGroup(update)
 	require.NoError(t, err)
@@ -159,15 +153,14 @@ func TestSyncLegacyQueuedAliasUsesActualTaskIdentity(t *testing.T) {
 func TestSyncAddedTaskPreservesLaterOwnerEdits(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Original","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"impact":"Original"`, `"impact":"Owner edit"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"3","values":{"impact":"Later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -182,15 +175,14 @@ func TestSyncAddedTaskPreservesLaterOwnerEdits(t *testing.T) {
 func TestSyncAddedTaskPreservesOwnerAddedField(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Original","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"id":"3"`, `"owner":"manual","id":"3"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"owner":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)

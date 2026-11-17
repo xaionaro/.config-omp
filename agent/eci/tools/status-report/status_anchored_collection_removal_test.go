@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,8 +18,7 @@ func TestAnchoredNullRootForecastRetires(t *testing.T) {
 	first := `{"event":"forecast_change","details":{"status_update":{"additions":[{"target":"root_forecast","record":` + forecast + `}]}}}` + "\n"
 	second := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","retire_forecast":true,"expected_prior":` + forecast + `,"record":` + completion + `}]}}}` + "\n"
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleRoot}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"status": "active", "kind": "root"}}}
 	initial := []byte(valid + "root_forecasts: &owner null # forecast note\nroot_completions: null # completion note\n")
@@ -35,7 +32,7 @@ func TestAnchoredNullRootForecastRetires(t *testing.T) {
 	work.Data.CompletedAt = "2026-11-02T15:00:00Z"
 	ledger.Records["w"] = work
 	forecasts.Records["f"]["status"] = "inactive"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, projected, ledger, forecasts)
 	require.NoError(t, err)
 	report, err = parse(result)

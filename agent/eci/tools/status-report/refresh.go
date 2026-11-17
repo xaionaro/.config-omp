@@ -407,7 +407,7 @@ func publishStatus(
 			}
 			return fmt.Errorf("input changed during refresh: %w", errRefreshRetry)
 		}
-		current, err := os.ReadFile(p)
+		current, err := readRefreshInput(p)
 		if err != nil {
 			return fmt.Errorf("input changed during refresh: %w: %w", errRefreshRetry, err)
 		}

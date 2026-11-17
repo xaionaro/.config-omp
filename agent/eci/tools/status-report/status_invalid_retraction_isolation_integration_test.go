@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,7 +32,7 @@ func TestInvalidRetractionsPreserveClaimAndIndependentProgress(t *testing.T) {
 				if tc.event == "correction" {
 					event = `{"event":"` + tc.event + `","details":{"status_update":{"updates":[` + tc.update + `]}}}` + "\n" + `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"other","fields":{"text":"independent progress"}}]}}}` + "\n"
 				}
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				result, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(result)

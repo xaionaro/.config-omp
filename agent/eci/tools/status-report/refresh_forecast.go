@@ -136,7 +136,7 @@ func refreshForecastTargets(
 	}
 	inputs := map[string][]byte{ledgerPath: ledgerBytes}
 	// A nil log snapshot records absence, which must remain true until publication.
-	inputs[filepath.Join(dir, "high_level_log.jsonl")] = logBytes
+	inputs[filepath.Join(dir, sessionLedgerDBName)] = logBytes
 	if forecastBytes != nil {
 		inputs[forecastPath] = forecastBytes
 	}

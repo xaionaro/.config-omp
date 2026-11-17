@@ -30,7 +30,7 @@ func TestRefreshRejectsMissingPreviouslyConsumedLog(t *testing.T) {
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	var diagnostics bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "worker_progress"}, strings.NewReader(""), io.Discard, &diagnostics), diagnostics.String())
 	require.NoError(t, os.Remove(logPath))
@@ -43,7 +43,7 @@ func TestRefreshRejectsMissingPreviouslyConsumedLog(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, report.Progress, "first claim")
 	require.Equal(t, 1, report.StatusSync.Cursor)
-	require.NoError(t, os.WriteFile(logPath, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	diagnostics.Reset()
 	require.Equal(t, 0, run([]string{"refresh", dir, "worker_progress"}, strings.NewReader(""), io.Discard, &diagnostics), diagnostics.String())
 	data, err = os.ReadFile(reportPath)

@@ -20,7 +20,6 @@ func TestRefreshRetriesWhenMissingLogAppearsBeforePublication(t *testing.T) {
 	const event = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"newly logged progress"}}]}}}` + "\n"
 	dir := t.TempDir()
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	changed := strings.Replace(linkedForecasts, "target: '2026-11-02T16:00:00+00:00'", "target: '2026-11-02T16:30:00Z'", 1)
@@ -30,7 +29,7 @@ func TestRefreshRetriesWhenMissingLogAppearsBeforePublication(t *testing.T) {
 	// Create the first event log immediately before report publication.
 	//
 	// Example: A concurrent writer wins after the absent-log read.
-	func() { require.NoError(t, os.WriteFile(logPath, []byte(event), 0600)) }}
+	func() { require.NoError(t, writeSessionLog(dir, []byte(event))) }}
 	require.ErrorContains(t, refreshTestLinkedStatus(dir, "forecast_change", observer), "retry needed")
 	before, err := os.ReadFile(reportPath)
 	require.NoError(t, err)
@@ -60,7 +59,7 @@ func TestRefreshRetriesWhenEmptyLogChanges(t *testing.T) {
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte{}, 0600))
+	require.NoError(t, writeSessionLog(dir, []byte{}))
 	observer := testRefreshObserver{Action:
 	// Append the first event before the report publication check.
 	//

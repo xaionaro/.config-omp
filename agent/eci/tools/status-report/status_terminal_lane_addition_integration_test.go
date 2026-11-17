@@ -21,7 +21,7 @@ func TestTerminalLaneAdditionRetriesAfterSourceCompletion(t *testing.T) {
 	//
 	// Example: Record a completed implementation lane.
 	const event = `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"lane","evidence":"accepted","record":{"task_id":"1","work_ref":"project-understanding.yaml#/records/w","outcome":"Result","required_environment":"implementation","implementation_status":"CLOSED","test_status":"NEW","prod_status":"NEW","completed_at":"2026-11-02T15:00:00Z"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleLane}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"status": "active", "kind": "lane"}}}
 	pending, _, err := projectLogStatus(dir, []byte(valid), ledger, forecasts)
@@ -92,7 +92,7 @@ func TestTerminalLaneAdditionRefreshCLIRecoversPendingEvent(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(valid), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger+active), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts+forecast), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var stderr bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "lifecycle_change"}, strings.NewReader(""), io.Discard, &stderr), stderr.String())
 	before, err := os.ReadFile(path)

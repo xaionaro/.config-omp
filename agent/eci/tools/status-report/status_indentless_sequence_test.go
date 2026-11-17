@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,7 +27,7 @@ func TestBlockPriorityUpdatesPreserveFollowingSections(t *testing.T) {
 				require.NotEqual(t, linkedReport, input)
 				input = strings.Replace(input, "priority_estimates:", "priority_estimates: # keep next section\n", 1)
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(tc.event+"\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(tc.event+"\n")))
 				out, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(out)
@@ -77,7 +75,7 @@ func TestNestedBlockSequencePreservesSiblingFields(t *testing.T) {
 				require.NotEqual(t, valid, input)
 				event := `{"event":"requirement_change","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"work_refs":["project-understanding.yaml#/records/new"]}}]}}}`
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event+"\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event+"\n")))
 				out, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(out)
@@ -107,7 +105,7 @@ func TestCommentInsideBlockPriorityListStaysPending(t *testing.T) {
 				input := strings.Replace(linkedReport, "top_priorities: ['1', '2']", "top_priorities:\n- '1' # owner note\n- '2'", 1)
 				require.NotEqual(t, linkedReport, input)
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(tc.event+"\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(tc.event+"\n")))
 				out, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(out)

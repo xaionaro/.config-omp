@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,7 +22,7 @@ func TestLegacyWithdrawalCancelsUnpublishedNarrative(t *testing.T) {
 	// Example: Resume pending fields after a restart without resurrecting withdrawn text.
 	const saved = `{"cursor":2,"applied":{},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":1,"[\"progress\",\"work:one\",\"\",\"\"]/evidence":1,"[\"progress\",\"work:one\",\"\",\"\"]/retract":2},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/text":{"line":1,"update":{"target":"progress","id":"work:one","fields":{"text":"withdrawn claim"}}},"[\"progress\",\"work:one\",\"\",\"\"]/evidence":{"line":1,"update":{"target":"progress","id":"work:one","fields":{"evidence":"obsolete proof"}}},"[\"progress\",\"work:one\",\"\",\"\"]/retract":{"line":2,"update":{"target":"progress","id":"work:one","corrects":1,"retract":true,"fields":null}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(legacyWithdrawalSourceLog), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(legacyWithdrawalSourceLog)))
 	initial, err := putSyncState([]byte(linkedReport), saved)
 	require.NoError(t, err)
 	result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})
@@ -50,7 +48,7 @@ func TestLegacyWithdrawalKeepsOwnerAuthoredSubject(t *testing.T) {
 	// Example: Preserve an independently authored entry with the same subject.
 	const saved = `{"cursor":2,"applied":{},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":1,"[\"progress\",\"work:one\",\"\",\"\"]/retract":2},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/text":{"line":1,"update":{"target":"progress","id":"work:one","fields":{"text":"withdrawn claim"}}},"[\"progress\",\"work:one\",\"\",\"\"]/retract":{"line":2,"update":{"target":"progress","id":"work:one","corrects":1,"retract":true,"fields":null}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(legacyWithdrawalSourceLog), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(legacyWithdrawalSourceLog)))
 	input := strings.Replace(linkedReport, "progress: [Implementation started]", "progress: [Implementation started, {subject_ref: 'work:one', text: 'owner text'}]", 1)
 	require.NotEqual(t, linkedReport, input)
 	initial, err := putSyncState([]byte(input), saved)
@@ -74,7 +72,7 @@ func TestLegacyWithdrawalWaitsForSourceProvenance(t *testing.T) {
 	// Example: Neither pending field is applied without its immutable predecessor.
 	const saved = `{"cursor":2,"applied":{},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":1,"[\"progress\",\"work:one\",\"\",\"\"]/retract":2},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/text":{"line":1,"update":{"target":"progress","id":"work:one","fields":{"text":"withdrawn claim"}}},"[\"progress\",\"work:one\",\"\",\"\"]/retract":{"line":2,"update":{"target":"progress","id":"work:one","corrects":1,"retract":true,"fields":null}}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n{}\n")))
 	initial, err := putSyncState([]byte(linkedReport), saved)
 	require.NoError(t, err)
 	result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})

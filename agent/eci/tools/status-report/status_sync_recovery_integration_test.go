@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +14,7 @@ import (
 func TestLegacyTaskCancellationRecovery(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	// saved is the historical wire format retained across upgrades.
 	//
 	// Example: Resume an update queued before grouped replay.
@@ -47,7 +45,7 @@ func TestLegacyTaskClosureRecoveryRequiresEvidence(t *testing.T) {
 			// Example: An owner edit keeps closure pending.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 				// saved is the historical wire format retained across upgrades.
 				//
 				// Example: Resume an update queued before grouped replay.
@@ -85,7 +83,7 @@ func TestLegacyLaneCompletionRecoveryRequiresCanonicalCompletion(t *testing.T) {
 			// Example: Active work keeps closure pending.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 				// saved is the historical wire format retained across upgrades.
 				//
 				// Example: Resume an update queued before grouped replay.
@@ -123,7 +121,7 @@ func TestLegacyLaneCompletionRecoveryRequiresCanonicalCompletion(t *testing.T) {
 func TestLegacyPendingTimelineRecovery(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	// saved is the historical wire format retained across upgrades.
 	//
 	// Example: Resume an update queued before grouped replay.

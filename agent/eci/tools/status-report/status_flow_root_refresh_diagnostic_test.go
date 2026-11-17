@@ -35,7 +35,7 @@ func TestFlowRootRefreshAddsDiagnosticWithMultilineComment(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(input), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "requirement_change"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)

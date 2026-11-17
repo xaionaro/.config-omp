@@ -119,7 +119,7 @@ func TestAbsentLogChangingToAnUnusableTargetRequiresRetry(t *testing.T) {
 				func() {
 					switch kind {
 					case "empty file":
-						require.NoError(t, os.WriteFile(logPath, []byte{}, 0600))
+						require.NoError(t, writeSessionLog(dir, []byte{}))
 					case "directory":
 						require.NoError(t, os.Mkdir(logPath, 0700))
 					case "symlink loop":

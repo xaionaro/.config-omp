@@ -30,10 +30,9 @@ func TestLaneClosureRetriesAgainstChangedCompletionTime(t *testing.T) {
 	require.NotEqual(t, linkedForecasts, inactive)
 	dir := writeLinkedSources(t, completed, inactive)
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	ledgerPath := filepath.Join(dir, "project-understanding.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	observer := testRefreshObserver{Action:
 	// revise changes canonical completion after the original snapshot is read.
 	//
@@ -50,7 +49,7 @@ func TestLaneClosureRetriesAgainstChangedCompletionTime(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, statusInProgress, report.Lanes[0].ImplementationStatus)
 	require.NotEmpty(t, report.StatusSync.Groups)
-	require.NoError(t, os.WriteFile(logPath, []byte(first+correction), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+correction)))
 	require.NoError(t, refreshTestStatus(dir, "correction"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)

@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,7 +34,7 @@ func TestCancelledRootRetiresForecastReplay(t *testing.T) {
 		}
 		dir := t.TempDir()
 		log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[` + string(raw) + `]}}}` + "\n"
-		if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600); err != nil {
+		if err := writeSessionLog(dir, []byte(log)); err != nil {
 			t.Fatal(err)
 		}
 		out, _, err := projectLogStatus(dir, original, ledger, forecasts)

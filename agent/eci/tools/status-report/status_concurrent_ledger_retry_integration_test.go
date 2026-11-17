@@ -21,7 +21,7 @@ func TestRefreshRetriesWhenLedgerChangesDuringLogReplay(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	ledgerPath := filepath.Join(dir, "project-understanding.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	changed := linkedLedger + "# concurrent source note\n"
 	observer := testRefreshObserver{Action:
 	// mutate changes the source immediately before candidate publication.

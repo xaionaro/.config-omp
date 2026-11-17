@@ -35,7 +35,7 @@ func TestForecastUnchangedSourceWaitsForStaleHistoryResolution(t *testing.T) {
 	unchanged := strings.Replace(changed, "recalibration: {status: changed, prior: '2026-11-02T16:00:00Z', current: '2026-11-02T16:30:00Z', reason: review, evidence: verified}", "recalibration: {status: unchanged, evidence: current}", 1)
 	require.NotEqual(t, changed, unchanged)
 	require.NoError(t, os.WriteFile(forecastPath, []byte(unchanged), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.ErrorContains(t, refreshTestStatus(dir, "forecast_change"), "stale")
 	blocked, err := os.ReadFile(path)
 	require.NoError(t, err)

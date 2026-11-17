@@ -28,7 +28,7 @@ func TestIncompleteTailRecoveryPreservesIndependentOwnerEdit(t *testing.T) {
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
 	split := strings.Index(next, `"recovered claim"`)
 	require.Greater(t, split, 0)
-	require.NoError(t, os.WriteFile(logPath, []byte(prior+next[:split]), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(prior+next[:split])))
 	require.NoError(t, refreshTestStatus(dir, "decision"))
 	pending, err := os.ReadFile(reportPath)
 	require.NoError(t, err)

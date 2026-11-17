@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,7 +33,7 @@ func TestLaneCorrectionAcrossInterveningUpdate(t *testing.T) {
 			// Example: Do not bypass a malformed same-lane lifecycle update.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+tc.middle+last), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+tc.middle+last)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:45:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 				forecasts := forecastSource{Records: map[string]map[string]any{"first": {"kind": "lane", "status": "inactive"}}}
 				result, _, err := projectLogStatus(dir, []byte(linkedReport), ledger, forecasts)

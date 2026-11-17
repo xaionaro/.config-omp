@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -13,7 +11,7 @@ func TestDelayedLaneReopen(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(events)); err != nil {
 		t.Fatal(err)
 	}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateActive, ForecastRef: "forecasts.yaml#/records/first"}}}}
@@ -38,7 +36,7 @@ func TestStaleLaneTransitionPreservesUnreplacedFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","blocker":"hold"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(events), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(events)); err != nil {
 		t.Fatal(err)
 	}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateActive, ForecastRef: "forecasts.yaml#/records/first"}}}}
@@ -64,7 +62,7 @@ func TestStaleLaneCompletionReplacedByCanonicalCompletion(t *testing.T) {
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
 	next := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"corrected","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(old+next), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(old+next)); err != nil {
 		t.Fatal(err)
 	}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:45:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
@@ -90,7 +88,7 @@ func TestStaleLaneCancellationReplacedByReactivation(t *testing.T) {
 	dir := t.TempDir()
 	old := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled"}}]}}}` + "\n"
 	next := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"resumed","clear":["lifecycle"],"fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(old+next), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(old+next)); err != nil {
 		t.Fatal(err)
 	}
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateActive, ForecastRef: "forecasts.yaml#/records/first"}}}}

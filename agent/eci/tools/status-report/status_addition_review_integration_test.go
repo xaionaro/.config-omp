@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,9 +13,8 @@ import (
 func TestSyncAddedTaskAllowsNullStatus(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":null}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(added)
@@ -25,7 +22,7 @@ func TestSyncAddedTaskAllowsNullStatus(t *testing.T) {
 	require.Len(t, parsed.Tasks, 3)
 	require.Equal(t, statusUnknown, parsed.Tasks[2].Status)
 	second := `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"task","id":"3","fields":{"status":"IN PROGRESS"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	updated, _, err := projectLogStatus(dir, added, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err = parse(updated)
@@ -39,15 +36,14 @@ func TestSyncAddedTaskAllowsNullStatus(t *testing.T) {
 func TestSyncAddedReviewPreservesOwnerEdit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"requester","critic":"reviewer","rounds":1,"estimate":"ten minutes","impact":"proof","priority":"high","unresolved":"none"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"critic":"reviewer"`, `"critic":"owner edit"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"review_result","details":{"status_update":{"updates":[{"target":"review","id":"1","values":{"critic":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -63,17 +59,16 @@ func TestSyncAddedReviewPreservesOwnerEdit(t *testing.T) {
 func TestSyncAddedLanePreservesOwnerEdit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"lane","record":{"task_id":"1","work_ref":"project-understanding.yaml#/records/w","outcome":"Result","owner":"initial","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW","forecast":{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}}}]}}}` + "\n"
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleLane}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"f": {"status": "active", "kind": "lane"}}}
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(valid), ledger, forecasts)
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"owner":"initial"`, `"owner":"manual"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/w","required_environment":"implementation","fields":{"owner":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledger, forecasts)
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -89,15 +84,14 @@ func TestSyncAddedLanePreservesOwnerEdit(t *testing.T) {
 func TestSyncAddedPriorityEstimatePreservesOwnerEdit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"requirement_change","details":{"status_update":{"additions":[{"target":"task","record":{"id":"3","title":"New","priority":"low","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}},{"target":"priority_estimate","record":{"priority":"low","min_minutes":1,"max_minutes":2,"as_of":"2026-11-02T15:24:00Z","basis":"initial basis","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"basis":"initial basis"`, `"basis":"owner edit"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"forecast_change","details":{"status_update":{"updates":[{"target":"priority_estimate","id":"low","values":{"basis":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -112,15 +106,14 @@ func TestSyncAddedPriorityEstimatePreservesOwnerEdit(t *testing.T) {
 func TestSyncReprioritizationEstimatePreservesOwnerEdit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"priority":"low"}}],"additions":[{"target":"priority_estimate","record":{"priority":"low","min_minutes":1,"max_minutes":2,"as_of":"2026-11-02T15:24:00Z","basis":"initial basis","assumptions":"none","dependencies":"none","critical_path":"work"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	added, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(added), `"basis":"initial basis"`, `"basis":"owner edit"`, 1)
 	require.NotEqual(t, string(added), edited)
 	second := `{"event":"forecast_change","details":{"status_update":{"updates":[{"target":"priority_estimate","id":"low","values":{"basis":"later"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
@@ -141,10 +134,9 @@ func TestSyncExplicitNullStatusSpellings(t *testing.T) {
 			// Example: Replace a tilde with an in-progress status.
 			func(t *testing.T) {
 				dir := t.TempDir()
-				path := filepath.Join(dir, "high_level_log.jsonl")
 				report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", "status: "+value+", work_refs:", 1)
 				entry := `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"IN PROGRESS"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(path, []byte(entry), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(entry)))
 				result, _, err := projectLogStatus(dir, []byte(report), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				parsed, err := parse(result)

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,7 +24,7 @@ func TestLegacyNarrativeRetractionRecoveryPreservesOwnerChanges(t *testing.T) {
 				const saved = `{"cursor":2,"applied":{"[\"progress\",\"work:one\",\"\",\"\"]/text":"old managed text"},"latest":{"[\"progress\",\"work:one\",\"\",\"\"]/text":1,"[\"progress\",\"work:one\",\"\",\"\"]/retract":2},"pending":{"[\"progress\",\"work:one\",\"\",\"\"]/retract":{"line":2,"update":{"target":"progress","id":"work:one","corrects":1,"retract":true,"fields":null}}}}`
 				dir := t.TempDir()
 				log := `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"work:one","fields":{"text":"old managed text"}}]}}}` + "\n" + `{"event":"correction","details":{"status_update":{"updates":[{"target":"progress","id":"work:one","corrects":1,"retract":true}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(log)))
 				input := strings.Replace(linkedReport, "progress: [Implementation started]", "progress: [Implementation started, {subject_ref: 'work:one', text: '"+text+"'}] # owner comment", 1)
 				require.NotEqual(t, linkedReport, input)
 				initial, err := putSyncState([]byte(input), saved)

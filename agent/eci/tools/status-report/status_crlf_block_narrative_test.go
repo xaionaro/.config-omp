@@ -27,7 +27,7 @@ func TestCRLFBlockNarrativeAppendPreservesLineEndings(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(input), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "worker_progress"))
 	result, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestCRLFBlockNarrativeAtEOFWithoutNewline(t *testing.T) {
 	// Example: Preserve the preceding final item when no newline existed at EOF.
 	const event = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new progress"}}]}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	result, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(result)
@@ -185,7 +185,7 @@ func TestAppendAfterUnterminatedBlockScalarPreservesValue(t *testing.T) {
 				// Example: Replay a newly recorded work update.
 				const event = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new progress"}}]}}}` + "\n"
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				result, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				report, err := parse(result)
@@ -298,7 +298,7 @@ func TestReplayEOFScalarCommentsAndIndent(t *testing.T) {
 				// Example: A worker records another update.
 				const event = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new progress"}}]}}}` + "\n"
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				out, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 				require.NoError(t, err)
 				before, err := parse([]byte(input))
@@ -325,7 +325,7 @@ func TestReplayEmptyKeptScalarWithComment(t *testing.T) {
 	// Example: Replay a worker update without altering an empty legacy item.
 	const event = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new progress"}}]}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	out, _, err := projectLogStatus(dir, []byte(input), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	before, err := parse([]byte(input))
@@ -366,7 +366,7 @@ func TestRefreshEmptyKeptScalarWithReconciliation(t *testing.T) {
 	reportPath := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(reportPath, []byte(input), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte("schema: project-understanding/v1\nrecords: {}\n"), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "worker_progress"))
 	out, err := os.ReadFile(reportPath)
 	require.NoError(t, err)

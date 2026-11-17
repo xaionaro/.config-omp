@@ -27,7 +27,7 @@ func TestRefreshRetriesAfterConcurrentLogAppend(t *testing.T) {
 	require.NoError(t, os.WriteFile(reportPath, []byte(linkedReport), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "forecasts.yaml"), []byte(linkedForecasts), 0600))
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	observer := testRefreshObserver{Action:
 	// Append the second event at the publication boundary.
 	//

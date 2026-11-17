@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,9 +13,8 @@ import (
 func TestReviewTransitiveDependency(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	initial, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(initial), `"owner": "projected"`, `"owner": "manual"`, 1)
@@ -25,7 +22,7 @@ func TestReviewTransitiveDependency(t *testing.T) {
 	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"later"}}]}}}` + "\n"
 	third := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"third","evidence":"waiting"}}]}}}` + "\n"
 	fourth := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"CLOSED","evidence":"accepted"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(path, []byte(first+second+third+fourth), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second+third+fourth)))
 	out, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(out)

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,13 +21,12 @@ func TestStructuredTaskUpdateRetriesAfterOwnerResolvesConflict(t *testing.T) {
 	// Example: Keep both fields pending when the effort was manually changed.
 	const second = `{"event":"decision","details":{"status_update":{"updates":[{"target":"task","id":"1","values":{"effort":{"min_minutes":8,"max_minutes":18,"kind":"elapsed","basis":"updated"},"impact":"Expanded impact"}}]}}}` + "\n"
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	projected, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	edited := strings.Replace(string(projected), `"max_minutes":15`, `"max_minutes":14`, 1)
 	require.NotEqual(t, string(projected), edited)
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	pending, _, err := projectLogStatus(dir, []byte(edited), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(pending)

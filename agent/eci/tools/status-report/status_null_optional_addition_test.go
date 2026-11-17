@@ -46,7 +46,7 @@ func TestNullOptionalSectionsAcceptExplicitAdditions(t *testing.T) {
 				}
 				dir := t.TempDir()
 				event := `{"event":"decision","details":{"status_update":{"additions":[` + tc.event + `]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: tc.work}, "o": {Type: "outcome", Outcome: "Result"}}}
 				kind := "root"
 				if tc.section == "lanes" {
@@ -92,7 +92,7 @@ func TestNullReviewCLIReplaysAndPreservesComments(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, input, 0600))
 	event := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "review_result"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -130,7 +130,7 @@ func TestNullReviewStylesPreserveOwnerComments(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(input), 0600))
 				event := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "review_result"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -165,7 +165,7 @@ func TestNullReviewSharedAliasPreservesOtherSection(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(input), 0600))
 	event := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	code := run([]string{"refresh", dir, "review_result"}, strings.NewReader(""), &out, &errOut)
 	result, err := os.ReadFile(path)
@@ -189,13 +189,12 @@ func TestAnchoredNullReviewAcceptsLaterAddition(t *testing.T) {
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport+"reviews: &owner null # owner note\n"), 0600))
-	logPath := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"review_result","details":{"status_update":{"additions":[{"target":"review","record":{"task_id":"1","reporter":"A","critic":"B","rounds":1,"estimate":"checked","impact":"checked","priority":"checked","unresolved":"none"}}]}}}` + "\n"
 	second := strings.Replace(first, `"task_id":"1"`, `"task_id":"2"`, 1)
-	require.NoError(t, os.WriteFile(logPath, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "review_result"}, strings.NewReader(""), &out, &errOut), errOut.String())
-	require.NoError(t, os.WriteFile(logPath, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	out.Reset()
 	errOut.Reset()
 	require.Equal(t, 0, run([]string{"refresh", dir, "review_result"}, strings.NewReader(""), &out, &errOut), errOut.String())

@@ -50,7 +50,7 @@ func TestReprioritizeIntoExistingEstimateReplaysAtomically(t *testing.T) {
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(tc.report), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)

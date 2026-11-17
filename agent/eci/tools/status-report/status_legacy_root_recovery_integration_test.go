@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,7 +24,7 @@ func TestLegacyRootCorrectionRecovery(t *testing.T) {
 	// Example: Recover a pending correction after an upgrade.
 	const saved = `{"cursor":2,"applied":{},"latest":{},"pending":{},"pending_additions":{"addition/root_completion/project-understanding.yaml#/records/w":{"line":2,"target":"root_completion","id":"project-understanding.yaml#/records/w","evidence":"corrected","record":"{\"work_ref\":\"project-understanding.yaml#/records/w\",\"outcome\":\"Result\",\"completed_at\":\"2026-11-02T15:05:00Z\"}","expected_prior":"{\"work_ref\":\"project-understanding.yaml#/records/w\",\"outcome\":\"Result\",\"completed_at\":\"2026-11-02T15:00:00Z\"}","prior_line":1,"prior_record":"{\"work_ref\":\"project-understanding.yaml#/records/w\",\"outcome\":\"Result\",\"completed_at\":\"2026-11-02T15:00:00Z\"}"}}}`
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+"\n"+second+"\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+"\n"+second+"\n")))
 	initial, err := putSyncState([]byte(valid), saved)
 	require.NoError(t, err)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:05:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}

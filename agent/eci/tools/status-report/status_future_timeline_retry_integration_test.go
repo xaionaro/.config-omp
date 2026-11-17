@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,15 +20,14 @@ func TestTimelineSnapshotRetriesWhenReportTimestampAdvances(t *testing.T) {
 	// Example: Advancing the report permits the earlier pending snapshot to publish.
 	const second = `{"event":"worker_progress","timestamp":"2026-11-02T15:35:00Z","details":{"status_update":{"updates":[{"target":"progress","id":"work:one","fields":{"text":"progress advanced"}}]}}}` + "\n"
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(first), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first)))
 	pending, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(pending)
 	require.NoError(t, err)
 	require.NotEqual(t, timelineVerifiedEmpty, report.TimelineState)
 	require.Len(t, report.StatusSync.PendingTimelines, 1)
-	require.NoError(t, os.WriteFile(path, []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, pending, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err = parse(result)

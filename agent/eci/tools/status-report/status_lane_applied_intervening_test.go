@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,7 +32,7 @@ func TestReviewCIndependentAppliedFieldBetweenTransitions(t *testing.T) {
 		require.NoError(t, err)
 		log = append(log, []byte(`{"event":"lifecycle_change","details":{"status_update":{"updates":[`+string(raw)+`]}}}`+"\n")...)
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), log, 0600))
+	require.NoError(t, writeSessionLog(dir, log))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"work:first": {Type: "work", Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:45:00Z", ForecastRef: "forecasts.yaml#/records/first"}}}}
 	forecasts := forecastSource{Records: map[string]map[string]any{"first": {"kind": "lane", "status": "inactive"}}}
 	out := []byte(linkedReport)

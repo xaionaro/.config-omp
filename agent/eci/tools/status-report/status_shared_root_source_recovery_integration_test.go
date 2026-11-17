@@ -51,7 +51,7 @@ func TestSharedRootForecastRecoversAfterSourceRepair(t *testing.T) {
 	dir := writeLinkedSources(t, ledger, linkedForecasts+rootForecast)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.NoError(t, refreshTestStatus(dir, "forecast_change"))
 	pending, err := os.ReadFile(path)
 	require.NoError(t, err)

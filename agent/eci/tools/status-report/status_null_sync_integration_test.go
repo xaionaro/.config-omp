@@ -60,7 +60,7 @@ func TestNullStatusSyncBootstrapReplays(t *testing.T) {
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(tc.input), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"first real progress"}}]}}}`+"\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"first real progress"}}]}}}`+"\n")))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -101,7 +101,7 @@ func TestNullSyncAliasDoesNotOverwriteOwnerData(t *testing.T) {
 	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(input), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new claim"}}]}}}`+"\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(`{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"new claim"}}]}}}`+"\n")))
 	var out, errOut bytes.Buffer
 	require.NotEqual(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut))
 	result, err := os.ReadFile(path)

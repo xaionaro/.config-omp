@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,7 +42,7 @@ func TestRootCorrectionReplayPreservesConflicts(t *testing.T) {
 				initial, err := putSyncState([]byte(valid+section), saved)
 				require.NoError(t, err)
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: sourceTime, Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 				out, _, err := projectLogStatus(dir, initial, ledger, forecastSource{})
 				require.NoError(t, err)
@@ -76,7 +74,7 @@ func TestLegacyPendingRootDoesNotUndoOwnerRemoval(t *testing.T) {
 	initial, err := putSyncState([]byte(valid), string(raw))
 	require.NoError(t, err)
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:05:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	out, _, err := projectLogStatus(dir, initial, ledger, forecastSource{})
 	require.NoError(t, err)
@@ -102,7 +100,7 @@ func TestLegacyPendingRootAllowsIntactPriorCorrection(t *testing.T) {
 	initial, err := putSyncState([]byte(valid+"root_completions: ["+old+"]\n"), string(raw))
 	require.NoError(t, err)
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:05:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	out, _, err := projectLogStatus(dir, initial, ledger, forecastSource{})
 	require.NoError(t, err)
@@ -131,7 +129,7 @@ func TestLegacyAppliedCorrectionAllowsNextCorrection(t *testing.T) {
 	initial, err := putSyncState([]byte(valid+"root_completions: ["+corrected+"]\n"), string(raw))
 	require.NoError(t, err)
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second+third), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(first+second+third)))
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:10:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	out, _, err := projectLogStatus(dir, initial, ledger, forecastSource{})
 	require.NoError(t, err)
@@ -171,7 +169,7 @@ func TestLegacyAppliedCorrectionKeepsChangedCurrentRecord(t *testing.T) {
 				initial, err := putSyncState([]byte(valid+section), string(raw))
 				require.NoError(t, err)
 				dir := t.TempDir()
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(first+second+third), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(first+second+third)))
 				ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:10:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 				out, _, err := projectLogStatus(dir, initial, ledger, forecastSource{})
 				require.NoError(t, err)

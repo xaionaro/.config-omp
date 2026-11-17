@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,8 +21,7 @@ func TestLegacyLaneAdditionRecoversSelectorAndOwner(t *testing.T) {
 	// Example: Keep an owner's intervening manual edit instead of replacing it.
 	const update = `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/w","required_environment":"implementation","fields":{"owner":"later"}}]}}}` + "\n"
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
 	initial, err := putSyncState([]byte(valid), saved)
 	require.NoError(t, err)
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateActive, Roles: []reportingRole{reportingRoleLane}, ForecastRef: "forecasts.yaml#/records/f"}}, "o": {Type: "outcome", Outcome: "Result"}}}
@@ -38,7 +35,7 @@ func TestLegacyLaneAdditionRecoversSelectorAndOwner(t *testing.T) {
 	require.Empty(t, report.StatusSync.PendingAdditions)
 	edited := strings.Replace(string(inserted), `"owner":"first"`, `"owner":"manual"`, 1)
 	require.NotEqual(t, string(inserted), edited)
-	require.NoError(t, os.WriteFile(path, []byte("{}\n"+update), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte("{}\n"+update)))
 	result, _, err := projectLogStatus(dir, []byte(edited), ledger, forecasts)
 	require.NoError(t, err)
 	report, err = parse(result)

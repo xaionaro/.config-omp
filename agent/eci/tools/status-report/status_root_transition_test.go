@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -83,7 +81,7 @@ func TestRootTransitionsReplay(t *testing.T) {
 					}
 					dir := t.TempDir()
 					log := `{"event":"lifecycle_change","details":{"status_update":{"additions":[` + string(raw) + `]}}}` + "\n"
-					if err := os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(log), 0600); err != nil {
+					if err := writeSessionLog(dir, []byte(log)); err != nil {
 						t.Fatal(err)
 					}
 					out, _, err := projectLogStatus(dir, original, ledger, forecasts)
@@ -139,9 +137,8 @@ func TestRootCompletionCorrectionReplay(t *testing.T) {
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	ledger := ledgerSource{Records: map[string]sourceRecord{"w": {Type: "work", OutcomeRefs: []string{"o"}, Data: workData{State: workStateCompleted, CompletedAt: "2026-11-02T15:00:00Z", Roles: []reportingRole{reportingRoleRoot}}}, "o": {Type: "outcome", Outcome: "Result"}}}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "high_level_log.jsonl")
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","record":` + old + `}]}}}` + "\n"
-	if err := os.WriteFile(path, []byte(first), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first)); err != nil {
 		t.Fatal(err)
 	}
 	projected, _, err := projectLogStatus(dir, []byte(valid), ledger, forecastSource{})
@@ -152,7 +149,7 @@ func TestRootCompletionCorrectionReplay(t *testing.T) {
 	work.Data.CompletedAt = "2026-11-02T15:05:00Z"
 	ledger.Records["w"] = work
 	second := `{"event":"correction","details":{"corrects":1,"status_update":{"additions":[{"target":"root_completion","evidence":"corrected","expected_prior":` + old + `,"record":` + newer + `}]}}}` + "\n"
-	if err := os.WriteFile(path, []byte(first+second), 0600); err != nil {
+	if err := writeSessionLog(dir, []byte(first+second)); err != nil {
 		t.Fatal(err)
 	}
 	corrected, _, err := projectLogStatus(dir, projected, ledger, forecastSource{})

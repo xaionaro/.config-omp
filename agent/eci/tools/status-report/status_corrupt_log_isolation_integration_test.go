@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,7 +20,7 @@ func TestMalformedLogEntryDoesNotDiscardFollowingProgress(t *testing.T) {
 	// Example: A later worker can still record completed progress.
 	const later = `{"event":"worker_progress","details":{"status_update":{"updates":[{"target":"progress","id":"other","fields":{"text":"later progress"}}]}}}` + "\n"
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(broken+later), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(broken+later)))
 	result, _, err := projectLogStatus(dir, []byte(linkedReport), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	report, err := parse(result)

@@ -27,7 +27,7 @@ func TestNumericTaskIdentitiesReplayLexically(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1.10","fields":{"owner":"selected owner"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "assignment_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -59,7 +59,7 @@ func TestNumericTopPriorityCancellation(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"unknown","lifecycle":"cancelled","evidence":"withdrawn"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "lifecycle_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -128,7 +128,7 @@ func TestNumericLaneAndReviewSelectorsReplay(t *testing.T) {
 				dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(tc.input), 0600))
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(tc.event+"\n"), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(tc.event+"\n")))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -204,7 +204,7 @@ func TestNumericDottedPriorityCancellationPreservesSibling(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1.1","fields":{"status":"unknown","lifecycle":"cancelled","evidence":"withdrawn"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	require.Equal(t, 0, run([]string{"refresh", dir, "lifecycle_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 	result, err := os.ReadFile(path)
@@ -247,7 +247,7 @@ func TestCancellationRetainsDecoratedPrioritySurvivors(t *testing.T) {
 				path := filepath.Join(dir, "latest-status-report.yaml")
 				require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 				event := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"2","fields":{"status":"unknown","lifecycle":"cancelled","evidence":"withdrawn"}}]}}}` + "\n"
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+				require.NoError(t, writeSessionLog(dir, []byte(event)))
 				var out, errOut bytes.Buffer
 				require.Equal(t, 0, run([]string{"refresh", dir, "lifecycle_change"}, strings.NewReader(""), &out, &errOut), errOut.String())
 				result, err := os.ReadFile(path)
@@ -274,7 +274,7 @@ func TestCancellationDoesNotDeleteReferencedPriorityAnchor(t *testing.T) {
 	path := filepath.Join(dir, "latest-status-report.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	event := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"status":"unknown","lifecycle":"cancelled","evidence":"withdrawn"}}]}}}` + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "high_level_log.jsonl"), []byte(event), 0600))
+	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	var out, errOut bytes.Buffer
 	code := run([]string{"refresh", dir, "lifecycle_change"}, strings.NewReader(""), &out, &errOut)
 	result, err := os.ReadFile(path)
