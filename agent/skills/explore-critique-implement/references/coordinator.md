@@ -126,7 +126,7 @@ The disengage report has `## ECI completion certificate` with exactly one `clean
 
 ## Coordinator red flags
 
-- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or per-fix rounds, or a main-path iteration skips any of Steps 1–4.
+- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or per-fix rounds, or a main-path iteration skips any of Steps 1–4. This includes treating part of an iteration's work, such as one assignment, contribution, commit, or component, as an iteration boundary or counting its checks as the iteration's focused proof, in a dispatch, owner brief, or user answer. See the [iteration rule](../SKILL.md#activation-and-invariants).
 - A critic prompt lacks lineage/full chain, original requirements, concrete winner text, or applies a defer/debt as implementation.
 - A fresh critic is replaced by a producer, a same-role followup, or serial review.
 - A known bug is sent to BRP before debugging discipline/attempt record.
