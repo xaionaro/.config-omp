@@ -37,7 +37,7 @@ Read issue details, representative events, stack traces, breadcrumbs/logs, comme
 | Adequate observability was already added, but no qualifying events from software containing it exist | **Skip this issue for this iteration** and move to the next issue. Retain its evidence request. Do not duplicate instrumentation, comments, or polling. Silence is neither a fix nor proof that diagnostics failed. |
 | Events from a proven instrumented build contain the needed evidence | Resume diagnosis now and fix or mitigate when possible. A previous waiting disposition does not defer new actionable evidence. |
 | The cause is fundamentally external and cannot be fixed or mitigated locally | Classify `actionability:external` only after the external-cause test below. Record supporting evidence and apply the annotation through a verified supported interface. |
-| Access, capabilities, or build provenance remain unresolved | Record the precise missing capability/evidence and complete independent work. This is a blocker or uncertainty, never evidence for `actionability:external`. |
+| Access, capabilities, or build provenance remain unresolved | Record the precise missing capability/evidence and complete independent work. This is stuck work or uncertainty, never evidence for `actionability:external`. |
 
 ### Evidence needed before waiting
 

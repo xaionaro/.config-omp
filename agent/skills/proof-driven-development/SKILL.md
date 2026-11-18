@@ -14,7 +14,7 @@ The full proof-through-Lean workflow is optional assurance work. Run it in paral
 | Main effort | Continue design, implementation, ordinary tests, review, delivery, and completion independently. Never wait for Lean work. |
 | Lean track | Use any valuable subset: specification, key proofs, executable model, or differential tests. Schedule it concurrently with the main effort. |
 | No parallel capacity | Prioritize the main effort. Defer or skip Lean work instead of serializing it ahead of delivery. |
-| Missing, incomplete, or failing Lean artifacts | Keep artifact and tooling status non-blocking. Never fail the main effort solely because a proof, model, or tool is unavailable or failing. Confirmed correctness or security defects still follow ordinary gates. |
+| Missing, incomplete, or failing Lean artifacts | Never make work await artifact or tooling status. Never fail the main effort solely because a proof, model, or tool is unavailable or failing. Confirmed correctness or security defects still follow ordinary gates. |
 
 Lean's optional status does not relax ordinary testing, review, security, or delivery requirements.
 

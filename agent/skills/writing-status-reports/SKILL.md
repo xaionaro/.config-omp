@@ -195,7 +195,7 @@ them alongside safe work without delaying the update.
 | Forecast lacks current evidence | A changed lane/root forecast without its restated current canonical line, prior/current UTCs, why moved, and supporting evidence is stale. |
 | Material risk has no supported duration or endpoint | Size work under [Work estimates](../../eci-binding-contract.md#work-estimates), retaining settled leaves, and give labeled educated duration/endpoint guesses, including explicit external-wait assumptions; retain the evidence gap and next action, provisional assessment and conditional overall target/spread. |
 | Parallel children | For parallel children, report the single critical-path deadline; child deadlines remain parallel; never add or sum parallel child deadlines into a parent, root, or mission deadline. |
-| Dependency is paused | A paused dependency names its owner and resume condition; it is not a user blocker. |
+| Dependency is paused | A paused dependency names its owner and resume condition; it does not make work await the user. |
 
 ## Multi-Lane Mission Status
 

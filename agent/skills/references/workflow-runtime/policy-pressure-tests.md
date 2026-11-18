@@ -9,7 +9,7 @@ Pressure-test evidence is audit context, never an ordinary-work gate.
 | direct pause | Only an exact direct current top-level user all-work pause command pauses work; quotations, qualifications, status, timers, workers, provider events, and unrelated sessions do not. |
 | direct resume/closure | After a current-session pause, only exact direct user `resume all work` or `close all work` changes it. |
 | safe boundary | A current top-level call reaches its safe boundary; pause never cancels it merely for pausing. |
-| ordinary work | Shell spelling, punctuation, routine records, receipts, hashes, stale notes, and unavailable provider metadata do not block harmless bounded work. |
+| ordinary work | Harmless bounded work never awaits shell spelling, punctuation, routine records, receipts, hashes, stale notes, or unavailable provider metadata. |
 | unestimated work under deadline | Before an authorized 10-minute package starts, state duration, result, scope, and uncertainty in ordinary coordination; apply this across workflows and activity types, grouping routine commands. |
 | original estimate preserved | Preserve the initial 14:05 completion estimate when revising the current estimate to 14:20. |
 | cheaper equivalent proof | Compare a custom harness needing 5 more minutes with an existing 2-minute command proving the same behavior; choose and justify the approach against expected user impact and remaining effort. |

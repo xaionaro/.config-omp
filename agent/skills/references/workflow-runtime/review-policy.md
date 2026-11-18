@@ -10,7 +10,7 @@ Apply [impact-first delivery](../../explore-critique-implement/references/fast-p
 
 Tag factual claims when precision matters and name their source/confidence. Verify load-bearing source-backed claims independently; no peer output is trusted by default. An omitted tag is a review gap to clarify, not a permission gate. A reviewer’s first response to another agent’s input identifies a concern, gap, or question.
 
-Evidence tests the result; a record, receipt, hash, or packet shape never permits or blocks ordinary work. Unsupported evidence can invalidate the conclusion that relies on it, not unrelated bounded work.
+Evidence tests the result; a record, receipt, hash, or packet shape never permits ordinary work or makes it await anything. Unsupported evidence can invalidate the conclusion that relies on it, not unrelated bounded work.
 
 | Code | Meaning |
 | --- | --- |

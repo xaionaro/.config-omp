@@ -51,4 +51,4 @@ Staleness starts only after 30 minutes without assignment, output, owned file/Gi
 - Coordinator/lead performs a producer or reviewer role instead of delegating it.
 - A phase, marker, or user-facing closure bypasses required evidence.
 - A required review, proof, or QA finding is relabeled as optional work.
-- A cap, timeout, or local block ends the mission while an internal route remains.
+- A cap, timeout, or local stuck work ends the mission while an internal route remains.

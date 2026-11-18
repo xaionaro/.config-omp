@@ -28,7 +28,7 @@ Every section is mandatory. Empty section: write `N/A — <one-line reason>`.
 | 3 | Decisions | Each: rule + Why + How to apply. |
 | 4 | Tried & ruled out | Approach + why rejected + evidence (cmd output, file:line, link). |
 | 5 | Evidence pointers | Absolute paths, URLs, log paths, commit SHAs, test names. No "earlier in conversation". |
-| 6 | Open questions | Each: question + what answer unblocks + who/where to ask. |
+| 6 | Open questions | Each: question + what awaits the answer + who/where to ask. |
 | 7 | Next action | Exactly one concrete step + verifiable success criterion. Not "investigate X". |
 | 8 | Environment | Cwd, branch, dirty-tree state, running PIDs, env vars, tmux panes, ports. |
 | 9 | Gotchas | Non-obvious traps (flaky test, prod-only behavior, root-only path). |

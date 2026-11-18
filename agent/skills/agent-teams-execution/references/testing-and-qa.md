@@ -14,4 +14,4 @@ Report each defect with criterion, evidence, impact, owner, and reproduction. A 
 
 ## QA quality and boundaries
 
-QA independently reconciles criteria, changed scope, contracts, tests, direct-path evidence, static checks, secrets, ownership, and factual-claim tags. An admitted deviation is compliant; missing or unverified evidence blocks the QA verdict. QA reports the verdict and evidence without declaring mission closure, closing teammates, or suppressing later user follow-up.
+QA independently reconciles criteria, changed scope, contracts, tests, direct-path evidence, static checks, secrets, ownership, and factual-claim tags. An admitted deviation is compliant; the QA verdict awaits any missing or unverified evidence. QA reports the verdict and evidence without declaring mission closure, closing teammates, or suppressing later user follow-up.

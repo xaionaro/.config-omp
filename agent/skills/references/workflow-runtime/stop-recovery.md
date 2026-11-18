@@ -14,6 +14,6 @@ ATE phase, agent role, callback/transcript metadata, peer or sibling markers, hi
 
 An unchanged Stop callback is control metadata, not a new user request. Do not turn it into retries, polling, a final/status reply, or a blocker-resolution loop. A worker-owned dirty path is a normal coordinator handoff and returns normally.
 
-## Actual External Blockers
+## Work awaiting external input
 
-If work is independently blocked by a genuinely unavailable user-owned input, resource, or decision, continue feasible internal work first and communicate the concrete need through the normal workflow. Any workflow-specific state file is optional coordination context; Stop neither requires it nor treats its exact shape or hash as admission evidence.
+If work independently awaits a genuinely unavailable user-owned input, resource, or decision, continue feasible internal work first and communicate the concrete need through the normal workflow. Any workflow-specific state file is optional coordination context; Stop neither requires it nor treats its exact shape or hash as admission evidence.

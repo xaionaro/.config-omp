@@ -6,7 +6,7 @@ Use this module as the ECI Supervisor or the owning outer-workflow Coordinator/L
 
 - Start an outer workflow only when omp selects it. A nested ECI remains owned by outer ATE.
 - Apply [concurrent task scheduling](../../../eci-binding-contract.md#concurrent-tasks) to ECI tasks within the active lifecycle. Stage, checkpoint, and review waits follow the affected task's dependencies; root teardown covers all owned tasks.
-- Before a durable spawn, followup, lane-changing message, or write, identify task, scope, owner, and enough target detail to avoid an accidental cross-scope change. For material ECI work, carry `exact user source → faithful requested outcome → bounded scope`. Missing lineage or a stale label calls for a concise clarification or reassignment; it does not block harmless work.
+- Before a durable spawn, followup, lane-changing message, or write, identify task, scope, owner, and enough target detail to avoid an accidental cross-scope change. For material ECI work, carry `exact user source → faithful requested outcome → bounded scope`. Missing lineage or a stale label calls for a concise clarification or reassignment; harmless work never awaits it.
 - Keep a repair in its current lane when the record shows it is necessary to meet or prove the requested outcome. Do not relabel that repair as a substitute user requirement.
 - Record a discovered concern whose remedy serves an unadmitted separate outcome as an observation or follow-up suggestion after current ECI. It does not create current lane, assignment, code change, review, deadline, forecast, or proof work.
 - Keep prompts and handoffs as readable coordination records. They may support review, but no proof-directory artifact, hash, receipt, ledger prefix, or serialized field list is a prerequisite for normal spawn, followup, exploration, implementation, or verification.
@@ -26,7 +26,7 @@ Every assignment and roster entry names one category and one semantic role. Stat
 | `mixed` | combined / special | Only explicit `combined fact-and-authority`; never infer it. |
 | `implementation` | non-authoritative / ordinary | Producers (Implementers and Fast Owners), Helpers, executors, test/QA, Critic A/B, correctness reviewers. |
 
-Use stable role labels where available. An unfamiliar label or changed profile prompts a quick clarification or a reasonable available assignment; it does not block normal work or require profile hashing. Select models per [model selection](../../explore-critique-implement/SKILL.md#model-selection); record unavailable selector fields plainly.
+Use stable role labels where available. An unfamiliar label or changed profile prompts a quick clarification or a reasonable available assignment; normal work never awaits it, and it requires no profile hashing. Select models per [model selection](../../explore-critique-implement/SKILL.md#model-selection); record unavailable selector fields plainly.
 
 Send selectors as [model selection](../../explore-critique-implement/SKILL.md#model-selection) directs. Treat unavailable or conflicting telemetry as a note for review, not a reason to halt, manufacture evidence, or reject ordinary worker progress.
 
@@ -40,7 +40,7 @@ Common labels include `explorer`→`Explorer`; `researcher`→`researcher`; `bra
 
 - Use role categories as routing defaults: exploration gathers facts; design reviews consequential design choices; implementation changes and tests code. If the exact role is unavailable, use a reasonable available role and schedule independent review where it matters. Do not make a special model, field shape, or role label a normal-work gate.
 
-If work needs a different role, reassign it clearly and use a fresh reviewer where independence matters. Special roles normally use a fresh unique `task` spawn; ordinary Explorer, implementer, and ordinary correctness/fidelity slots may be reusable where their outer workflow permits. Do not create an artifact or model-routing blocker merely to record the reassignment.
+If work needs a different role, reassign it clearly and use a fresh reviewer where independence matters. Special roles normally use a fresh unique `task` spawn; ordinary Explorer, implementer, and ordinary correctness/fidelity slots may be reusable where their outer workflow permits. Do not make work await an artifact or model-routing record merely to record the reassignment.
 
 `PostCompact` is the authoritative compaction refresh signal. Immediately after it, the coordinator/lead re-reads the active outer skill before another decision or tool call. `SessionStart` `startup|resume|clear` is only a best-effort resume/clear reminder. The `PostCompact` hook is read-only; it is a reminder, not proof of rereading.
 
@@ -82,7 +82,7 @@ criterion.
 
 ## Routing packet guidance
 
-Before every spawn, followup, lane-changing `write agent://<id>` message, or durable execution, carry enough context to identify the task, scope, owner, the selected design's unchanged target/change/verification when implementation is involved, and reason for any reroute. Use stable IDs and lineage where helpful. Missing metadata routes a concise clarification or queue; it does not block harmless work or create an admission failure state.
+Before every spawn, followup, lane-changing `write agent://<id>` message, or durable execution, carry enough context to identify the task, scope, owner, the selected design's unchanged target/change/verification when implementation is involved, and reason for any reroute. Use stable IDs and lineage where helpful. Missing metadata routes a concise clarification or queue; harmless work never awaits it, and it creates no admission failure state.
 
 Every prompt states semantic role, exact scope/files/ownership, expected output, fresh-assignment reread rule, matching skills, concurrent-edit warning, relevant verification, and scoped verification and recovery duties. Reviewer/verifier/QA packets also state objective/criteria and the current target/diff. Use concise readable context; no prompt artifact, hash, or ledger prefix gates dispatch.
 
@@ -104,7 +104,7 @@ Preserve substantive critic findings. A stale or missing summary is a coordinati
 
 The optional Critic C prewrite route may be used for selected skip-design work before its first production write. It informs review, not command admission. After write, a separate critic may reconcile actual scope, approved deltas/deviations, and tool evidence when that review is useful.
 
-Nested ECI records outer owner/session/target and does not remove the outer ATE marker. Resolve actual competing writes or teardown targets; do not block nested work solely because a receipt or lock record is absent or malformed.
+Nested ECI records outer owner/session/target and does not remove the outer ATE marker. Resolve actual competing writes or teardown targets; never make nested work await a receipt or lock record solely because it is absent or malformed.
 
 ## Guarded command and completion behavior
 

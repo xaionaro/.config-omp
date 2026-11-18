@@ -13,14 +13,14 @@ Routine health checks and fixes happen in-place in the current session; no separ
 
 ## Experiment Hygiene
 
-Use health criteria relevant to the experiment, its intended conditions, and the device's observed baseline. A suspicious reading is diagnostic evidence, not an automatic blocker or proof that results are contaminated. Preserve a bad state needed to reproduce the issue. Honor platform safety warnings and protections without normalizing ordinary throttling under study.
+Use health criteria relevant to the experiment, its intended conditions, and the device's observed baseline. A suspicious reading is diagnostic evidence; it neither makes work stuck by itself nor proves that results are contaminated. Preserve a bad state needed to reproduce the issue. Honor platform safety warnings and protections without normalizing ordinary throttling under study.
 
 Observe relevant conditions -> make justified changes if needed -> record baseline -> run -> verify -> restore owned changes. Keep observations in existing experiment notes; do not require a separate criteria artifact before work.
 
 ### 1. Health Check And Remediate
 
-Check relevant rows. For comparisons, choose conditions and tolerances from the protocol, device guidance, or repeated baseline observations; these commands suggest observations, not universal pass thresholds. Unavailable signals are unknown; seek equivalent evidence when relevant and limit unsupported claims without blocking unrelated work. Change state only when evidence supports the need, the action is authorized, and its scope and restoration are understood. Avoid broad process killing, cache dropping, radio changes, or unplugging that would erase the failure or alter intended conditions.
-Treat Android load averages as diagnostic context only, never as a health gate. Never block work or kill processes based on a load average alone or a fixed load-average threshold; assess actual CPU activity (`top`) and pressure (`/proc/pressure/cpu`, when available), alongside thermal, battery, and the other checks.
+Check relevant rows. For comparisons, choose conditions and tolerances from the protocol, device guidance, or repeated baseline observations; these commands suggest observations, not universal pass thresholds. Unavailable signals are unknown; seek equivalent evidence when relevant and limit unsupported claims; unrelated work never awaits them. Change state only when evidence supports the need, the action is authorized, and its scope and restoration are understood. Avoid broad process killing, cache dropping, radio changes, or unplugging that would erase the failure or alter intended conditions.
+Treat Android load averages as diagnostic context only, never as a health gate. Never leave work stuck or kill processes based on a load average alone or a fixed load-average threshold; assess actual CPU activity (`top`) and pressure (`/proc/pressure/cpu`, when available), alongside thermal, battery, and the other checks.
 
 | Check          | Command                                                                         | Interpret for this experiment | Possible response when justified |
 | -------------- | ------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------- |

@@ -461,7 +461,7 @@ A closed forecasted lane/root requires actual quoted `completed_at` UTC in its w
 
 State dependencies and parallel work. For parallel children, report the single critical-path deadline; child deadlines remain parallel; never add or sum parallel child deadlines into a parent, root, or mission deadline.
 
-Forecasts are advisory. They never gate work, grant or deny permissions, require artifacts or receipts, create blockers, require parsers, or require per-command ceremony. Missing or stale forecasts are planning-quality defects. Reconcile them alongside safe work without delaying the update.
+Forecasts are advisory. They never gate work, grant or deny permissions, require artifacts or receipts, create stuck claims, require parsers, or require per-command ceremony. Missing or stale forecasts are planning-quality defects. Reconcile them alongside safe work without delaying the update.
 
 Coordinator-to-user updates retain the exact standalone lines defined by the ECI coordinator module. Do not use report lines or the audit history as current forecast storage.
 
@@ -483,7 +483,7 @@ Every row records the UTC addition time, root task ID, new UTC target, and a con
 | close | Record material completion normally. | No date row. |
 | correction | Append a correction naming the prior entry and corrected target. | Append the corrected-target row with reason; never rewrite earlier rows. |
 
-This history is audit-only. It never gates work, grants or denies permission, creates a blocker, or delays ordinary work. It is not a required session record or work prerequisite. Reconcile a missing, stale, or malformed history alongside ordinary work.
+This history is audit-only. It never gates work, grants or denies permission, creates a stuck claim, or delays ordinary work. It is not a required session record or work prerequisite. Reconcile a missing, stale, or malformed history alongside ordinary work.
 
 ## YAML Snapshot Contract
 
@@ -677,7 +677,7 @@ Reject the ledger if any holds:
 - An authoritative project/task source is named without extracting its relevant current-state facts. Resolve forecast details through the linked `forecasts.yaml` record; never extract forecast values into `project-understanding.yaml`.
 - Binding requirements, acceptance criteria, material current-understanding corrections, useful recurrence guards, assumptions, risks, decisions, current state, or evidence are missing.
 - Claims cannot be traced to sources, reports, commands, logs, screenshots, or commits.
-- Obsolete states are retained as if current: stale plans, abandoned hypotheses, finished WIP, resolved blockers, superseded values.
+- Obsolete states are retained as if current: stale plans, abandoned hypotheses, finished WIP, resolved stuck work, superseded values.
 - Entries are timestamped narrative or chronological "what happened next" prose, i.e. log-style.
 - Multiple values for the same fact coexist instead of one current value.
 - Activity logs or copied report bodies replace current-state summaries and links.
