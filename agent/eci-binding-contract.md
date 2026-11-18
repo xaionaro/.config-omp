@@ -265,7 +265,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - When advancing ECI outcomes, do not use or advance on evidence or agent results before delivery; only the actions that need undelivered results await them. Independently verify available results, continue independent ready work, then park. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
 - Outside ECI tasks, do not use or advance on a still-running in-scope subagent's results before delivery; park meanwhile; exclude closed/completed/outside agents and shell jobs/tests/background services.
 - Independently verify subagent claims before relying on them, except that the ECI Supervisor trusts a Producer's reported commit ranges (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
-- Subagents verify assigned work, clear in-scope stuck work, and report recovery needs through ordinary handoff.
+- Subagents verify assigned work, resolve what keeps in-scope work stuck, and report recovery needs through ordinary handoff.
 
 ## Environment/Stop
 

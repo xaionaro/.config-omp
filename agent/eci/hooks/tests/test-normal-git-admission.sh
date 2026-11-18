@@ -395,7 +395,7 @@ run_compound_handoff_boundary_target() {
   kill "$writer" 2>/dev/null || true
   wait "$writer" 2>/dev/null || true
   [ "$status" -eq 0 ] || {
-    printf 'ordinary callback stalled or failed while FD9 was inherited: status=%s\n' "$status" >&2
+    printf 'ordinary callback kept waiting or failed while FD9 was inherited: status=%s\n' "$status" >&2
     return 1
   }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# TODO: run in place in ~/.omp this fails with "legacy generic diagnostic code found" while scratch copies of 0b27698 and f5e908b pass; find which in-place file the legacy-code scan matches.
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$HOOK_DIR/lib/eci-diagnostic.sh"

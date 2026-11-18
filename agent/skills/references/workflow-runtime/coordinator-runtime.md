@@ -40,7 +40,7 @@ Common labels include `explorer`→`Explorer`; `researcher`→`researcher`; `bra
 
 - Use role categories as routing defaults: exploration gathers facts; design reviews consequential design choices; implementation changes and tests code. If the exact role is unavailable, use a reasonable available role and schedule independent review where it matters. Do not make a special model, field shape, or role label a normal-work gate.
 
-If work needs a different role, reassign it clearly and use a fresh reviewer where independence matters. Special roles normally use a fresh unique `task` spawn; ordinary Explorer, implementer, and ordinary correctness/fidelity slots may be reusable where their outer workflow permits. Do not make work await an artifact or model-routing record merely to record the reassignment.
+If work needs a different role, reassign it clearly and use a fresh reviewer where independence matters. Special roles normally use a fresh unique `task` spawn; ordinary Explorer, implementer, and ordinary correctness/fidelity slots may be reusable where their outer workflow permits. Do not make work await an artifact or model-routing record that exists only to document the reassignment.
 
 `PostCompact` is the authoritative compaction refresh signal. Immediately after it, the coordinator/lead re-reads the active outer skill before another decision or tool call. `SessionStart` `startup|resume|clear` is only a best-effort resume/clear reminder. The `PostCompact` hook is read-only; it is a reminder, not proof of rereading.
 

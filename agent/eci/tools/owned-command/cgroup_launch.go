@@ -636,7 +636,7 @@ const (
 	commandChildrenAbsent
 )
 
-// drainCgroupCommand is the launch lifecycle's sole bounded, non-waiting native reaper.
+// drainCgroupCommand is the launch lifecycle's sole bounded WNOHANG native reaper.
 //
 // Example: SIGCHLD wakes this drain; no goroutine remains waiting in Wait4 at expiry.
 func (g *guard) drainCgroupCommand(rootPID int) commandDrain {

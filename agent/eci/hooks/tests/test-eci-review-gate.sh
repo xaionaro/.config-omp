@@ -919,6 +919,7 @@ test_commit_parser_wrappers_and_unknown_fail_closed() {
     esac
     jq -e --arg expected_code "$expected_code" --arg expected_wording "$expected_wording" \
       '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains($expected_code) and contains($expected_wording))' "$out" >/dev/null
+    # TODO: nothing in ~/.omp or ~/.kimi-code emits "do not treat this denial alone as stuck work" (also untrue for the 0b27698 wording); bind this branch to the reason text the ECI_COMMAND_NOT_ALLOWLISTED denial emits, or remove it.
     if [ "$expected_code" = '[ECI_COMMAND_NOT_ALLOWLISTED]' ] &&
       [ "$expected_wording" = 'unrecognized command form' ]; then
       jq -e '

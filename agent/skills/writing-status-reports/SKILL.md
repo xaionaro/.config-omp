@@ -272,7 +272,7 @@ Under time pressure, classify by the lane's next required action. For example: "
 | Action log: "Read files, ran tests, asked agent." | Report resulting state: "Validation path is mapped; unit tests are the remaining gap." |
 | Vague progress: "Made progress." | Name the changed state. |
 | Decision without reason. | Add the tradeoff or constraint that drove it. |
-| Stuck claim without actionable request. | Add stalled impact, owner, exact resume action, and target artifact/path when applicable. |
+| Stuck claim without actionable request. | Add impact, owner, exact resume action, and target artifact/path when applicable. |
 | Verification implied. | Cite evidence or say "not verified yet". |
 | Next focus is "continue". | Name the next concrete work area. |
 

@@ -92,6 +92,7 @@ assert_no_control_routes() {
     'stop-recovery.md' \
     'policy-pressure-tests.md' \
     'review-policy.md'; do
+    # TODO: the Critic A/B/C, E2E row fails here on review-policy.md (also at 0b27698) and fail exits, so the checks for later rows never run; align this list with the router's Critic row.
     [[ "$forbidden" == "$allowed" || "$row" != *"$forbidden"* ]] || fail "$marker routes to a control module outside its role contract: $forbidden"
   done
 }

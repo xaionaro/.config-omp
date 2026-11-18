@@ -973,7 +973,7 @@ func TestRestoreProtectsConsumedHookAliases(t *testing.T) {
 
 // TestRestorePermissionLimitedHookTracePreservesKnownAliases retains a partial dependency prefix.
 //
-// Example: inaccessible content leaves an earlier hook alias protected without stalling file.txt.
+// Example: inaccessible content leaves an earlier hook alias protected while restoring file.txt still succeeds.
 func TestRestorePermissionLimitedHookTracePreservesKnownAliases(t *testing.T) {
 	for _, visitedAlias := range []bool{false, true} {
 		// Permissions belong only to this disposable fixture and are restored for cleanup.

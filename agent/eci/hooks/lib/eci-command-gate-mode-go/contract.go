@@ -257,7 +257,7 @@ type Mode string
 const (
 	// ModePermissive records would-deny events without denying callbacks.
 	ModePermissive Mode = "permissive"
-	// ModeEnforcing rejects denied callbacks while preserving their denial bytes.
+	// ModeEnforcing applies callback denials while preserving their denial bytes.
 	ModeEnforcing Mode = "enforcing"
 )
 

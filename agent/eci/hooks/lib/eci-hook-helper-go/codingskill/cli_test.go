@@ -37,10 +37,10 @@ func TestCLIRoundTrip(t *testing.T) {
 	output.Reset()
 	require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 	var verdict struct {
-		Block bool `json:"block"`
+		Deny bool `json:"block"`
 	}
 	require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-	require.False(t, verdict.Block)
+	require.False(t, verdict.Deny)
 }
 
 // TestCLIReduceHydratesFromBranch credits the transcript's earlier skill reads when a reduce carries no results.
@@ -198,10 +198,10 @@ func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), &output))
 		var verdict struct {
-			Block bool `json:"block"`
+			Deny bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.deny, verdict.Block, tc.reads)
+		require.Equal(t, tc.deny, verdict.Deny, tc.reads)
 	}
 }
 
@@ -287,10 +287,10 @@ func TestCLICheckCarriesAgentName(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Block bool `json:"block"`
+			Deny bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.deny, verdict.Block, tc.agent)
+		require.Equal(t, tc.deny, verdict.Deny, tc.agent)
 	}
 }
 
@@ -312,10 +312,10 @@ func TestCLICheckCarriesEditTargets(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Block bool `json:"block"`
+			Deny bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.deny, verdict.Block, tc.target)
+		require.Equal(t, tc.deny, verdict.Deny, tc.target)
 	}
 }
 
@@ -337,10 +337,10 @@ func TestCLICheckCarriesCwd(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Block bool `json:"block"`
+			Deny bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.deny, verdict.Block, tc.cwd)
+		require.Equal(t, tc.deny, verdict.Deny, tc.cwd)
 	}
 }
 

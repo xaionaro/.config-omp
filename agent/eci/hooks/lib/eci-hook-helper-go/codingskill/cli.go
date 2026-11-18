@@ -48,7 +48,7 @@ type cliInput struct {
 //
 // Example: {"block":true,"reason":"Coding skill gate: writing a.go requires ..."} denies an unread Go write.
 type checkVerdict struct {
-	Block  bool   `json:"block"`
+	Deny   bool   `json:"block"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -121,7 +121,7 @@ func checkCall(
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(output).Encode(checkVerdict{Block: response.Reason != "", Reason: response.Reason})
+	return json.NewEncoder(output).Encode(checkVerdict{Deny: response.Reason != "", Reason: response.Reason})
 }
 
 // reduceResults folds one reduce request's read results into the agent state and replies with that state.

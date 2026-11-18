@@ -17,6 +17,7 @@ remote-host/
 agent/terminal-sessions/
 agent/custom-session-files/
 agent/blobs/
+# TODO: go build in agent/eci/hooks/lib/{eci-command-gate-mode,eci-hook,eci-verexec,eci-worker-git}-go writes untracked binaries (committed once in c6de808, removed in 415b628); ignore those outputs or build with -o into scratch.
 # Built executables and their receipts in agent/eci/bin stay ignored. The negated
 # entries are tracked on-demand wrappers or scripts, not prebuilt binaries.
 agent/eci/bin/*

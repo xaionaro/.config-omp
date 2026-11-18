@@ -260,7 +260,7 @@ assert_receipt_drift_admitted() {
 
   output="$(run_hook "$command" "$MAIN_TRANSCRIPT")"
   [ ! -s "$output" ] || {
-    printf 'runtime receipt drift stalled planner maintenance: %s\n' "$label" >&2
+    printf 'runtime receipt drift denied planner maintenance: %s\n' "$label" >&2
     cat -- "$output" >&2
     exit 1
   }

@@ -8,6 +8,17 @@
 # pin was built.
 # bin/eci-active refuses maintain-planner until a coordinated cutover replaces
 # the selected executable that predates workspace-safe planner builds.
+# TODO: the coordinated cutover also activates the stuck/awaits renames that the
+# status-report and eci-active sources already use: STUCK, stuck_work_risks
+# ("Stuck work/Risks"), lane awaits, ledger state stuck, and stuck_change. Before
+# reselection, migrate each live session's latest-status-report.yaml and
+# project-understanding.yaml; in the reselection commit, switch the names still
+# kept for the pinned executables in tools/status-report/README.md (and drop its
+# names note), skills writing-status-reports, context-ledger, fast-path.md,
+# coordinator.md and policy-pressure-tests.md, hooks/tests/test-status-report-launcher.sh
+# and the eci-requirement-assignment-go integration fixtures; then rebuild the
+# command planner. Site list and migration commands: ledger record
+# work:stuck-awaits-terms:phase2 (session 01a1bbec).
 eci_select_executable() {
   local name=$1 selection line extra version active report assignment leaf
   selection="$eci_home/bin/.selected-executables"
