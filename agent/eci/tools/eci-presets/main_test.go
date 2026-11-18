@@ -155,10 +155,10 @@ func TestReconcilePreservesEditedAndLegacyFiles(t *testing.T) {
 	require.Equal(t, legacy, data)
 }
 
-// TestReconcilePreflightBlocksNonRegularTargets checks that conflicts cause no writes.
+// TestReconcilePreflightRejectsNonRegularTargets checks that conflicts cause no writes.
 //
 // Example: a directory with a preset filename is never overwritten.
-func TestReconcilePreflightBlocksNonRegularTargets(t *testing.T) {
+func TestReconcilePreflightRejectsNonRegularTargets(t *testing.T) {
 	dir := t.TempDir()
 	name := "eci-preset-a.md"
 	require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0700))
