@@ -54,12 +54,12 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 | Tier | Meaning | Examples |
 |---|---|---|
 | `T1` | Directly proves the claim is valid. The claim is a fact. | Specs, RFCs, official docs, or source code; output of a command or probe that demonstrates the claim in reasonably the most direct way |
-| `T2` | Infers the claim's validity under high scrutiny. The claim is a well-scrutinized presumption, not yet a fact. | Peer-reviewed papers, established references |
+| `T2` | Infers the claim's validity under an authoritative source's high scrutiny, not an agent's. The claim is a well-scrutinized presumption, not yet a fact. | Peer-reviewed papers, established references |
 | `T3` | Infers the claim's validity without that scrutiny. The claim is a presumption. | Current-session codebase analysis; inference from logs, runtime state, or documents |
 | `T4` | Common knowledge. Verify independently before relying. | Community posts, blogs, forums |
 | `T5` | Training recall. Promote to T1–T4 or discard. | Recall without a fetched/read source |
 
-- Tier a claim by its row's Meaning. A listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference make it `T3`. Tier community posts, blogs, and forums `T4`, and recall without a fetched/read source `T5`, even where another row's Meaning also fits.
+- Tier a claim by the first row, from `T1` down, whose Meaning its evidence meets. Community posts, blogs, and forums are `T4` evidence, and recall without a fetched/read source is `T5` evidence, whatever any row's Meaning says. Any other listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference are `T3` evidence.
 - `[INFERENCE]` tags a `T3` claim.
 - Label each tagged claim's confidence `high`/`medium`/`low` by how strongly its evidence supports it.
 - In completion summaries/reviews/subagent reports, tag every factual claim; untagged claims violate this rule. Never finalize T5 facts.
