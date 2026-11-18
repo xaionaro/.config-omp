@@ -26,15 +26,25 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Memory test limits use a page-aligned cap, its unaligned neighbor, and an invalid maximum.
+// testMemoryLimit is a page-aligned 64 MiB command cap.
 //
-// Example: the unaligned value exercises kernel page rounding.
-const (
-	testMemoryLimit            = "67108864"
-	testUnalignedMemoryLimit   = "67108865"
-	testAboveKernelMemoryLimit = "9223372036854775808"
-	scopeCollectionLimit       = 5 * time.Second
-)
+// Example: a 200M block exceeds it and is OOM-killed.
+const testMemoryLimit = "67108864"
+
+// testUnalignedMemoryLimit is one byte above testMemoryLimit.
+//
+// Example: the kernel rounds it down to the 64 MiB page boundary.
+const testUnalignedMemoryLimit = "67108865"
+
+// testAboveKernelMemoryLimit is one above the largest value memory.max accepts.
+//
+// Example: setup rejects it after creating the command cgroup.
+const testAboveKernelMemoryLimit = "9223372036854775808"
+
+// scopeCollectionLimit bounds the wait for systemd to remove an empty guard scope.
+//
+// Example: assertScopeCollected fails if a scope outlives 5 seconds.
+const scopeCollectionLimit = 5 * time.Second
 
 // TestCgroupPopulation requires explicit population evidence and rejects malformed emptiness.
 //
@@ -567,6 +577,7 @@ func TestCgroupMemoryLimit(t *testing.T) {
 		{"single-aggregate-member", testMemoryLimit, "40M", 0, false},
 		{"over", testMemoryLimit, "200M", 137, true},
 	} {
+		// Each case launches one capped dd and checks its status, OOM and receipt fields.
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", test.limit, "--", "dd", "if=/dev/zero", "of=/dev/null", "bs="+test.block, "count=1")
@@ -697,103 +708,89 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; exec sleep 10")
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if cmd.ProcessState == nil {
-			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				t.Errorf("interrupt guard during cleanup: %v", err)
-			}
-			_ = cmd.Wait()
-		}
-	})
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	stopGuardOnCleanup(t, cmd)
 	line, err := bufio.NewReader(stdout).ReadString('\n')
-	if err != nil {
-		t.Fatalf("command did not report membership: %v", err)
-	}
+	require.NoError(t, err, "command did not report membership")
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
 	command := filepath.Join("/sys/fs/cgroup", relative)
 	parent := filepath.Dir(command)
 	unit := filepath.Base(parent)
 	unitPath, err := exec.Command("systemctl", "--user", "show", unit, "--property=ControlGroup", "--value").Output()
-	if err != nil || strings.TrimSpace(string(unitPath)) != filepath.Dir(relative) {
-		t.Fatalf("live scope %s: cgroup=%q err=%v", unit, unitPath, err)
-	}
-	listing := scopeListing(t, cmd.Process.Pid)
-	if !strings.Contains(listing, unit) {
-		t.Fatalf("live scope %s missing from listing: %q", unit, listing)
-	}
+	require.NoError(t, err, "live scope %s", unit)
+	require.Equal(t, filepath.Dir(relative), strings.TrimSpace(string(unitPath)), "live scope %s", unit)
+	require.Contains(t, scopeListing(t, cmd.Process.Pid), unit)
 	for name, want := range map[string]string{"memory.max": testMemoryLimit, "memory.swap.max": "0", "memory.oom.group": "1"} {
 		data, err := os.ReadFile(filepath.Join(command, name))
-		if err != nil || strings.TrimSpace(string(data)) != want {
-			t.Fatalf("%s=%q err=%v", name, data, err)
-		}
+		require.NoError(t, err, name)
+		require.Equal(t, want, strings.TrimSpace(string(data)), name)
 	}
-	control, err := os.ReadFile(filepath.Join(parent, "cgroup.subtree_control"))
-	if err != nil || !strings.Contains(" "+strings.Join(strings.Fields(string(control)), " ")+" ", " memory ") {
-		t.Fatalf("controller=%q err=%v", control, err)
-	}
+	control, err := os.ReadFile(filepath.Join(parent, cgroupSubtreeControlFile))
+	require.NoError(t, err)
+	require.Contains(t, strings.Fields(string(control)), memoryController)
 	guard := filepath.Join(parent, memoryGuardLeaf)
-	members, err := os.ReadFile(filepath.Join(guard, "cgroup.procs"))
-	if err != nil || strings.TrimSpace(string(members)) != strconv.Itoa(cmd.Process.Pid) {
-		t.Fatalf("guard membership=%q err=%v", members, err)
-	}
+	members, err := os.ReadFile(filepath.Join(guard, cgroupProcsFile))
+	require.NoError(t, err)
+	require.Equal(t, strconv.Itoa(cmd.Process.Pid), strings.TrimSpace(string(members)))
 	value := make([]byte, 16)
 	n, err := unix.Getxattr(guard, oomdOmitXattr, value)
-	if err != nil {
-		t.Fatalf("read guard omit: %v", err)
-	}
-	if string(value[:n]) != "1" {
-		t.Fatalf("guard omit=%q", value[:n])
-	}
+	require.NoError(t, err, "read guard omit")
+	require.Equal(t, "1", string(value[:n]))
 	guardInfo, err := os.Stat(guard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	monitored := parent
 	for monitored != "/sys/fs/cgroup" && !strings.HasPrefix(filepath.Base(monitored), "user@") {
 		monitored = filepath.Dir(monitored)
 	}
-	if monitored == "/sys/fs/cgroup" {
-		t.Fatal("user manager cgroup not found")
-	}
+	require.NotEqual(t, "/sys/fs/cgroup", monitored, "user manager cgroup not found")
 	monitorInfo, err := os.Stat(monitored)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	guardStat, guardOK := guardInfo.Sys().(*syscall.Stat_t)
 	monitorStat, monitorOK := monitorInfo.Sys().(*syscall.Stat_t)
-	if !guardOK || !monitorOK || guardStat.Uid != monitorStat.Uid {
-		t.Fatalf("oomd owner mismatch: guard=%v monitored=%v", guardInfo.Sys(), monitorInfo.Sys())
-	}
-	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
-		t.Fatal(err)
-	}
+	require.True(t, guardOK && monitorOK, "oomd owner stat: guard=%v monitored=%v", guardInfo.Sys(), monitorInfo.Sys())
+	require.Equal(t, monitorStat.Uid, guardStat.Uid, "oomd owner mismatch")
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
 	err = cmd.Wait()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 125 {
-		t.Fatalf("interrupt status: %v", err)
-	}
+	require.ErrorAs(t, err, &exit, "interrupt status")
+	require.Equal(t, 125, exit.ExitCode(), "interrupt status")
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var receipt struct {
 		HostChildrenSettled bool
 		Memory              json.RawMessage
 	}
-	if err := json.Unmarshal(data, &receipt); err != nil || !receipt.HostChildrenSettled || len(receipt.Memory) == 0 {
-		t.Fatalf("interrupt receipt=%+v err=%v", receipt, err)
-	}
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.True(t, receipt.HostChildrenSettled, "interrupt receipt=%+v", receipt)
+	require.NotEmpty(t, receipt.Memory, "interrupt receipt=%+v", receipt)
 	assertScopeCollected(t, cmd.Process.Pid)
-	if _, err := os.Stat(parent); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("scope directory remains: %v", err)
-	}
+	_, err = os.Stat(parent)
+	require.ErrorIs(t, err, os.ErrNotExist, "scope directory remains")
+}
+
+// stopGuardOnCleanup retires a guard the test did not wait for.
+//
+// Example: a failed assertion before the interrupt still stops the live guard.
+func stopGuardOnCleanup(
+	t *testing.T,
+	cmd *exec.Cmd,
+) {
+	t.Helper()
+	// Signal and reap the guard unless the test already waited; SIGTERM must end it with an exit error.
+	t.Cleanup(func() {
+		if cmd.ProcessState != nil {
+			return
+		}
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			t.Errorf("interrupt guard during cleanup: %v", err)
+		}
+		var exit *exec.ExitError
+		if err := cmd.Wait(); !errors.As(err, &exit) {
+			t.Errorf("guard cleanup wait: want the SIGTERM exit error, got %v", err)
+		}
+	})
 }
 
 // TestCgroupMemoryLimitPairedTopology compares capped and uncapped launches.
@@ -827,9 +824,7 @@ func scopeListing(
 	t.Helper()
 	pattern := fmt.Sprintf("owned-command-%d-*.scope", pid)
 	output, err := exec.Command("systemctl", "--user", "list-units", "--all", "--plain", "--no-legend", pattern).Output()
-	if err != nil {
-		t.Fatalf("list guard scopes: %v", err)
-	}
+	require.NoError(t, err, "list guard scopes")
 	return strings.TrimSpace(string(output))
 }
 
@@ -845,7 +840,12 @@ func assertScopeCollected(
 	defer cancel()
 	conn, err := dbus.Connect(userManagerBusAddress(), dbus.WithContext(ctx))
 	require.NoError(t, err)
-	defer conn.Close()
+	// Close the bus connection after the wait and report a failed close.
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("close user manager bus: %v", err)
+		}
+	}()
 	require.NoError(t, conn.AddMatchSignalContext(ctx,
 		dbus.WithMatchObjectPath(dbus.ObjectPath("/org/freedesktop/systemd1")),
 		dbus.WithMatchInterface("org.freedesktop.systemd1.Manager"),
@@ -872,7 +872,7 @@ func assertScopeCollected(
 				}
 			}
 		case <-ctx.Done():
-			t.Fatalf("scope collection timed out: %v", pending)
+			require.FailNowf(t, "scope collection timed out", "pending scopes: %v", pending)
 		}
 	}
 	require.Empty(t, scopeListing(t, pid))
@@ -886,51 +886,25 @@ func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
 	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if cmd.ProcessState == nil {
-			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				t.Errorf("interrupt guard during cleanup: %v", err)
-			}
-			_ = cmd.Wait()
-		}
-	})
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	stopGuardOnCleanup(t, cmd)
 	line, err := bufio.NewReader(stdout).ReadString('\n')
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
 	guard := filepath.Join("/sys/fs/cgroup", filepath.Dir(relative), memoryGuardLeaf)
 	_, err = os.Stat(guard)
 	require.ErrorIs(t, err, os.ErrNotExist)
-	if _, err := stdin.Write([]byte("done\n")); err != nil {
-		t.Fatal(err)
-	}
-	if err := stdin.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
-	}
+	_, err = stdin.Write([]byte("done\n"))
+	require.NoError(t, err)
+	require.NoError(t, stdin.Close())
+	require.NoError(t, cmd.Wait())
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var receipt map[string]json.RawMessage
-	if err := json.Unmarshal(data, &receipt); err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := receipt["Memory"]; exists {
-		t.Fatalf("uncapped receipt has Memory: %s", data)
-	}
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.NotContains(t, receipt, "Memory", "uncapped receipt has Memory: %s", data)
 }

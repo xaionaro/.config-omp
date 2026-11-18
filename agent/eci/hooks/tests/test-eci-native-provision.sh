@@ -74,6 +74,8 @@ chmod -- 0755 "$base/fixture"
 build_log="$base/build.log"
 cat >"$base/fakebin/go" <<'EOF'
 #!/bin/sh
+# Every invocation records the GOWORK the builder handed to Go.
+printf '%s %s\n' "${GOWORK-unset}" "$1" >>"$FAKE_GO_WORK_LOG"
 case "$1" in
   env) printf '%s\n%s\n' "$FAKE_GOOS" "$FAKE_GOARCH" ;;
   build)
@@ -106,7 +108,10 @@ chmod -- 0755 "$base/fakebin/go"
 
 export HOME="$home" TMPDIR="$base/tmp" PATH="$base/fakebin:/usr/bin:/bin"
 export FAKE_GOOS="$fake_goos" FAKE_GOARCH="$host_goarch" FAKE_GO_FIXTURE="$base/fixture" FAKE_GO_VEREXEC="$base/verexec" FAKE_GO_LOG="$build_log"
+# A foreign caller workspace must not reach the builds.
+export FAKE_GO_WORK_LOG="$base/gowork.log" GOWORK="$base/foreign.go.work"
 : >"$build_log"
+: >"$FAKE_GO_WORK_LOG"
 
 # run_provision <label>: one provisioning call in a fresh shell; stdout, stderr and rc land in $base/out/<label>.*
 run_provision() {
@@ -138,6 +143,10 @@ expect_stdout_empty cold
 expect_err cold "eci-active: building native ECI tools ($cold_list); this takes about 1-2 minutes"
 expect_err cold 'eci-active: built native ECI tools in '
 pass "cold: one build of $all, stdout empty"
+# Every Go invocation, including each build, ran in workspace auto-discovery mode.
+grep -q ' build$' "$FAKE_GO_WORK_LOG" || fail "cold: no recorded go build"
+! grep -v '^auto ' "$FAKE_GO_WORK_LOG" || fail "cold: a Go invocation did not use GOWORK=auto"
+pass "cold: every recorded Go invocation used GOWORK=auto"
 [ "$(rc_of cold)" = 0 ] || fail "cold: rc $(rc_of cold): $(cat -- "$base/out/cold.err")"
 pass "cold: rc 0 after the loader verified the built gate binaries"
 (cd -- "$bin" && for name in $all; do

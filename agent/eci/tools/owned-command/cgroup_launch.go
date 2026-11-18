@@ -55,6 +55,31 @@ const memoryPeakFile = "memory.peak"
 // Example: oom_kill records a workload killed at its limit.
 const memoryEventsFile = "memory.events"
 
+// cgroupControllersFile lists the controllers a cgroup may enable for its children.
+//
+// Example: a delegated scope supports a cap only when it lists memory.
+const cgroupControllersFile = "cgroup.controllers"
+
+// cgroupProcsFile lists and moves a cgroup's member processes.
+//
+// Example: writing the guard's PID moves it into the guard leaf.
+const cgroupProcsFile = "cgroup.procs"
+
+// cgroupSubtreeControlFile enables controllers for a cgroup's children.
+//
+// Example: enableMemoryController is written here before the command leaf is capped.
+const cgroupSubtreeControlFile = "cgroup.subtree_control"
+
+// memoryController names the kernel memory controller in controller lists.
+//
+// Example: hasMemoryController looks for it in cgroup.controllers.
+const memoryController = "memory"
+
+// enableMemoryController is the subtree_control request that enables memoryController.
+//
+// Example: the scope parent enables memory so its command leaf can be capped.
+const enableMemoryController = "+" + memoryController
+
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
 // The supervisor stays outside it, in the scope parent or, with a memory limit,
 // in the sibling guard leaf, and is never included in group retirement.
@@ -188,7 +213,7 @@ func prepareMemoryScope(
 		return fmt.Errorf("memory limit %d is below one page", limit)
 	}
 	scope := filepath.Join("/sys/fs/cgroup", parent)
-	controllers, err := os.ReadFile(filepath.Join(scope, "cgroup.controllers"))
+	controllers, err := os.ReadFile(filepath.Join(scope, cgroupControllersFile))
 	if err != nil {
 		return fmt.Errorf("read available cgroup controllers: %w", err)
 	}
@@ -202,7 +227,7 @@ func prepareMemoryScope(
 	if err := unix.Setxattr(guard, oomdOmitXattr, []byte("1"), 0); err != nil {
 		return fmt.Errorf("exclude guard from oomd selection: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(guard, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(guard, cgroupProcsFile), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
 		return fmt.Errorf("move guard into sibling cgroup: %w", err)
 	}
 	membership, err := os.ReadFile("/proc/self/cgroup")
@@ -212,10 +237,10 @@ func prepareMemoryScope(
 	if strings.TrimSpace(string(membership)) != "0::"+guardCgroup(parent) {
 		return errors.New("guard did not enter sibling cgroup")
 	}
-	if err := os.WriteFile(filepath.Join(scope, "cgroup.subtree_control"), []byte("+memory"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(scope, cgroupSubtreeControlFile), []byte(enableMemoryController), 0600); err != nil {
 		return fmt.Errorf("enable memory controller: %w", err)
 	}
-	enabled, err := os.ReadFile(filepath.Join(scope, "cgroup.subtree_control"))
+	enabled, err := os.ReadFile(filepath.Join(scope, cgroupSubtreeControlFile))
 	if err != nil {
 		return fmt.Errorf("read enabled cgroup controllers: %w", err)
 	}
@@ -230,7 +255,7 @@ func prepareMemoryScope(
 // Example: a delegated scope can enable memory only when it is available.
 func hasMemoryController(data []byte) bool {
 	for _, controller := range strings.Fields(string(data)) {
-		if controller == "memory" {
+		if controller == memoryController {
 			return true
 		}
 	}
@@ -906,7 +931,7 @@ func (c *commandCgroup) readGroup(
 	if !steps.take() {
 		return cgroupTraversalCutoff, nil
 	}
-	file, err := os.Open(filepath.Join(path, "cgroup.procs"))
+	file, err := os.Open(filepath.Join(path, cgroupProcsFile))
 	if errors.Is(err, unix.ENOENT) && path != c.Path {
 		return cgroupTraversalComplete, nil
 	}

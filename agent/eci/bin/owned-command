@@ -20,13 +20,16 @@ Usage: owned-command [guard flags] -- command args...
 
 Builds ECI tools/owned-command automatically and forwards arguments/status.
 Tool builds use workspace auto-discovery from the selected source; the command retains the caller's environment.
+Each call asks Go whether the executable is current. Go compiles whatever GOCACHE lacks (first use, a source
+or workspace change, or a cleared, trimmed or replaced cache); the wrapper then prints a build notice, and that
+build runs in the caller's process tree without a memory cap.
 OWNED_COMMAND_SOURCE: Go module directory override (default ~/.omp/agent/eci/tools/owned-command).
 OWNED_COMMAND_CACHE: generated executable cache (default ${XDG_CACHE_HOME:-$HOME/.cache}/eci/owned-command).
 Linux (cgroup v2 custody) and macOS (process-group backend with a narrower guarantee; see the source README.md). Source changes rebuild before the next invocation. Requires Go, the file-lock and
 build helpers in ~/.omp/agent/eci/hooks/lib, and sha256sum or shasum.
 Cache versions belong to this wrapper; remove old versions only after their callers exit.
 --resolve-executable prepares without executing and prints one absolute cache path.
-Resolve before timed phases; execute that path directly with caller arguments/environment.
+Resolve before capped or timed phases; execute that path directly with caller arguments/environment.
 Resolve again to select changed source/toolchain settings. Retain the path while in use.
 Guard flags and receipt semantics: owned-command -help and the source README.md.
 EOF

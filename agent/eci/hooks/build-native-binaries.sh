@@ -116,7 +116,7 @@ case "$go" in
 esac
 # The host platform comes from the selected toolchain, queried outside any module.
 { IFS= read -r host_os && IFS= read -r host_arch; } \
-  <<<"$(cd / && GOTOOLCHAIN=local GOFLAGS=' ' "$go" env GOHOSTOS GOHOSTARCH)" \
+  <<<"$(cd / && GOTOOLCHAIN=local GOWORK=auto GOFLAGS=' ' "$go" env GOHOSTOS GOHOSTARCH)" \
   || die "$go did not report GOHOSTOS and GOHOSTARCH"
 [ -n "$host_os" ] && [ -n "$host_arch" ] || die "$go reported an empty host platform"
 

@@ -24,17 +24,40 @@ chmod 0755 "$tmp/shim/go"
 
 run_env=(env -i "HOME=$home" "PATH=$tmp/shim:$PATH" "TMPDIR=$tmp" "XDG_CACHE_HOME=$tmp/cache" "ECI_PROOF_ROOT=$tmp/proof" "ECI_SESSION_ID=no-go-run")
 
-# Warm all wrappers before logging the checked calls.
-"${run_env[@]}" bash "$root/bin/eci-active" --help >/dev/null 2>"$tmp/warm-active.err"
-"${run_env[@]}" bash "$root/bin/status-report" >/dev/null 2>&1 || true
-"${run_env[@]}" bash "$root/bin/eci-requirement-assignment" >/dev/null 2>&1 || true
+# expect_call LABEL STATUS MARKER COMMAND...: COMMAND exits with exactly STATUS and its combined
+# output contains MARKER, which only the selected executable prints.
+expect_call() {
+  local label=$1 want=$2 marker=$3 rc=0
+  shift 3
+  "${run_env[@]}" "$@" >"$tmp/$label.out" 2>"$tmp/$label.err" || rc=$?
+  if [ "$rc" != "$want" ] || ! cat "$tmp/$label.out" "$tmp/$label.err" | grep -qF -- "$marker"; then
+    printf 'no-go-run: %s exited %s (want %s) or lacks %s\n' "$label" "$rc" "$want" "$marker" >&2
+    cat "$tmp/$label.out" "$tmp/$label.err" >&2
+    exit 1
+  fi
+}
 
-# Checked calls.
-"${run_env[@]}" bash "$root/bin/eci-active" ledger-append --json '{"event":"decision","summary":"no-go-run probe"}' \
-  >"$tmp/ledger.out" 2>"$tmp/ledger.err"
+# The Go log covers every call below, the warm-up calls included.
+expect_call warm-active 0 'ledger-append --json <event-object>' bash "$root/bin/eci-active" --help
+expect_call warm-status 2 'usage: status-report validate|render' bash "$root/bin/status-report" --help
+expect_call warm-assignment 1 'flag: help requested' bash "$root/bin/eci-requirement-assignment" --help
+
+# ledger-append records the probe in the session log it names, then its status refresh runs the
+# selected status-report, which reports the missing session report. The pinned eci-active appends to
+# a JSON Lines log and prints its path.
+expect_call ledger 0 'ECI high-level log appended at EOF: ' bash "$root/bin/eci-active" ledger-append \
+  --json '{"event":"decision","summary":"no-go-run probe"}'
+ledger_log=$(sed -n 's/^ECI high-level log appended at EOF: //p' "$tmp/ledger.out")
+[ -f "$ledger_log" ] && grep -qF '"summary":"no-go-run probe"' "$ledger_log" || {
+  printf 'no-go-run: ledger-append did not record the probe\n' >&2
+  exit 1
+}
+grep -qF 'status-report refresh: lstat ' "$tmp/ledger.err"
+grep -qF 'latest-status-report.yaml' "$tmp/ledger.err"
+
 printf '{}' >"$tmp/request.json"
-"${run_env[@]}" bash "$root/bin/eci-requirement-assignment" --ledger "$tmp/proof/no-go-run/requirement.yaml" \
-  --request "$tmp/request.json" >"$tmp/ra.out" 2>"$tmp/ra.err" || true
+expect_call assignment 1 'requirement-assignment: requirements, outcome, target, instructions, actor id/role and reason are required' \
+  bash "$root/bin/eci-requirement-assignment" --ledger "$tmp/proof/no-go-run/requirement.yaml" --request "$tmp/request.json"
 
 # Pinned wrappers must not invoke even the Go launcher.
 [ ! -s "$log" ] || { printf 'no-go-run: unexpected Go invocation:\n' >&2; cat "$log" >&2; exit 1; }

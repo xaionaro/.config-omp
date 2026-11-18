@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Select one explicitly retained same-bin deployment; never rebuild on failure.
 # TODO: document how .selected-executables is produced and changed: the v1 line
-# format, that each key is an executable content digest, the manual reselection
-# steps, and the wrapper's 24-hour
-# prune of unselected keys. Nothing in the tree records how the current pin was built.
+# format, that each key is an opaque 64-hex build key, the manual reselection
+# steps, and the wrapper's 24-hour prune of unselected keys. The current pins carry
+# fingerprint-era keys from the builder before f7503e3; they are not content digests
+# and are not checked against the files. Nothing in the tree records how the current
+# pin was built.
 eci_select_executable() {
   local name=$1 selection line extra version active report assignment leaf
   selection="$eci_home/bin/.selected-executables"

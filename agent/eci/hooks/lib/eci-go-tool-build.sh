@@ -50,7 +50,8 @@ eci_go_tool_build() {
   local name=$1 requested=$2 prefix=$3 suffix=$4 estimate=$5
   local source_dir resolved go_launcher go_dir go_version goenv home_real shown
   local bootstrap host_os host_arch compiler_root compiler_version requested_toolchain compiler
-  local tuning native_default executable stage stage_dir digest previous temporary
+  local tuning native_default executable stage stage_dir digest temporary plan announce
+  local prior_stage_digest check_digest cached_digest
   local rc
   local workspace_mode=auto
   local tuning_var
@@ -162,17 +163,27 @@ eci_go_tool_build() {
 
   stage_dir=${prefix%/*}/.$name-stage
   stage=$stage_dir/$name
-  if [ ! -e "$stage" ]; then
+  # Go compiles whatever GOCACHE lacks, so the notice follows Go's own plan: an absent stage, a
+  # failed dry run, or a dry run that runs the compiler, assembler, cgo or linker announces a build.
+  announce=1
+  if [ -e "$stage" ]; then
+    rc=0
+    plan=$(cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -n -buildvcs=false -o "$stage" . 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ] && ! printf '%s\n' "$plan" | grep -Eq 'pkg/tool/[^/ ]+/(compile|asm|cgo|link)([" ]|$)'; then
+      announce=0
+    fi
+  fi
+  if [ "$announce" -eq 1 ]; then
     home_real=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || home_real=
     shown=$source_dir
     case $shown in "$home_real/.omp/"*) shown=${shown#"$home_real/.omp/"} ;; esac
     printf '%s: building %s for %s/%s; this takes %s\n' "$name" "$shown" "$host_os" "$host_arch" "$estimate" >&2
   fi
   mkdir -p -- "$stage_dir" || return 1
-  previous=
+  prior_stage_digest=
   if [ -f "$stage" ]; then
-    previous=$("${eci_sha256_command[@]}" -- "$stage") || return 1
-    previous=${previous%% *}
+    prior_stage_digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
+    prior_stage_digest=${prior_stage_digest%% *}
   fi
   rc=0
   (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
@@ -182,16 +193,16 @@ eci_go_tool_build() {
   fi
   digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
   digest=${digest%% *}
-  if [ "$digest" != "$previous" ]; then
+  if [ "$digest" != "$prior_stage_digest" ]; then
     rc=0
     (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
     if [ "$rc" -ne 0 ]; then
       eci_go_tool_failed "$name" "$source_dir" "$rc" build "${native_env[@]}" "$compiler" build -buildvcs=false -o /dev/null .
       return 1
     fi
-    previous=$("${eci_sha256_command[@]}" -- "$stage") || return 1
-    previous=${previous%% *}
-    if [ "$digest" != "$previous" ]; then
+    check_digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
+    check_digest=${check_digest%% *}
+    if [ "$digest" != "$check_digest" ]; then
       printf '%s: source changed during build; retry invocation\n' "$name" >&2
       return 1
     fi
@@ -202,8 +213,8 @@ eci_go_tool_build() {
       printf '%s: invalid cached executable %s\n' "$name" "$executable" >&2
       return 1
     fi
-    previous=$("${eci_sha256_command[@]}" -- "$executable") || return 1
-    if [ "${previous%% *}" != "$digest" ]; then
+    cached_digest=$("${eci_sha256_command[@]}" -- "$executable") || return 1
+    if [ "${cached_digest%% *}" != "$digest" ]; then
       printf '%s: cached executable digest mismatch: %s\n' "$name" "$executable" >&2
       return 1
     fi

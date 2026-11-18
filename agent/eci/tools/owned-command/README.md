@@ -7,8 +7,13 @@ module into an external cache and forwards arguments and status. Manual build:
 `GOWORK=auto go build -o owned-command .`. The binary is invoked directly; it
 acquires its own containment. Generated executables stay outside Git. The wrapper
 uses workspace auto-discovery from its selected source, not the caller's GOWORK.
+Each wrapper call asks Go whether the executable is current. Go compiles whatever
+GOCACHE lacks: on first use, after a source or workspace change, or after the cache
+is cleared, trimmed or replaced. The wrapper then prints a build notice on stderr,
+and that build runs in the caller's process tree without a memory cap.
 
-For repeated or timed phases, prepare once before starting their budgets:
+For repeated, capped or timed phases, prepare once before starting their budgets
+or caps, so any build happens outside them:
 
 ```sh
 guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable)
@@ -21,7 +26,8 @@ Build diagnostics go to stderr; paths with CR/LF cannot use this line protocol.
 Direct execution inherits its own caller's environment, cwd, arguments and streams.
 Resolve again to select changed source/toolchain settings; retain the selected
 cache version while callers use it. Ordinary wrapper invocations still recheck
-source before each execution.
+source before each execution, and a call that has to compile is a cold build: the
+warm limits apply only to a current executable resolved with the GOCACHE that built it.
 
 ```sh
 owned-command -deadline 3s -receipt receipt.json -- command args...
