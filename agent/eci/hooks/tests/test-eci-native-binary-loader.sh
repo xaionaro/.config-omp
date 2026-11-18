@@ -96,7 +96,7 @@ if [ "$host_goarch" = arm64 ]; then other_arch_macho="$fixtures/macho-amd64"; el
 verexec_on=0
 if [ "$host_os" = Linux ]; then
   verexec_on=1
-  (cd -- "$tests_dir/../lib/eci-verexec-go" && env CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off GOFLAGS=' ' go build -mod=readonly -trimpath -buildvcs=false -o "$fixtures/eci-verexec" .)
+  (cd -- "$tests_dir/../lib/eci-verexec-go" && env CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=auto GOFLAGS=' ' go build -mod=readonly -trimpath -buildvcs=false -o "$fixtures/eci-verexec" .)
   chmod -- 0755 "$fixtures/eci-verexec"
 fi
 

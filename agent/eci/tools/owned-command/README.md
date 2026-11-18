@@ -4,8 +4,9 @@ Shared ECI command-family supervisor for Linux and macOS, maintained at
 `~/.omp/agent/eci/tools/owned-command` independently of application checkouts.
 The installed `~/.omp/agent/eci/bin/owned-command` wrapper builds this canonical
 module into an external cache and forwards arguments and status. Manual build:
-`GOWORK=off go build -o owned-command .`. The binary is invoked directly; it
-acquires its own containment. Generated executables stay outside Git.
+`GOWORK=auto go build -o owned-command .`. The binary is invoked directly; it
+acquires its own containment. Generated executables stay outside Git. The wrapper
+uses workspace auto-discovery from its selected source, not the caller's GOWORK.
 
 For repeated or timed phases, prepare once before starting their budgets:
 
@@ -267,20 +268,20 @@ Build once and run the focused/native controls from this module:
 
 ```sh
 guard_checks_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-command-checks.XXXXXXXX")
-GOWORK=off go build -o "$guard_checks_dir/owned-command" .
-GUARD_TEST_BINARY="$guard_checks_dir/owned-command" GOWORK=off \
+GOWORK=auto go build -o "$guard_checks_dir/owned-command" .
+GUARD_TEST_BINARY="$guard_checks_dir/owned-command" GOWORK=auto \
   go test -count=1 -timeout 2m -v .
 ```
 
 Darwin checks: the cross-builds run on any host; the tests run on macOS natively and on Linux with the build tag.
 
 ```sh
-GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null .
-GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet .
-GOWORK=off GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null .
-GOWORK=off GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go vet .
-GOWORK=off go test -count=1 -v -run '^TestPgroup' .                    # macOS
-GOWORK=off go test -tags pgroupcheck -count=1 -v -run '^TestPgroup' .  # Linux
+GOWORK=auto GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o /dev/null .
+GOWORK=auto GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet .
+GOWORK=auto GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null .
+GOWORK=auto GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go vet .
+GOWORK=auto go test -count=1 -v -run '^TestPgroup' .                    # macOS
+GOWORK=auto go test -tags pgroupcheck -count=1 -v -run '^TestPgroup' .  # Linux
 ```
 
 Tests distinguish deterministic synthetic kernel schedules from native CLI

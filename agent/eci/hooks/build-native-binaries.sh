@@ -192,7 +192,7 @@ for name in "${names[@]}"; do
   # GIT_OPTIONAL_LOCKS=0 git -C "$module" status -suall -- . is non-empty; if it fails (no repository),
   # report unknown status as --gate-repair does.
   (cd -- "$module" && env -u GO386 -u GOAMD64 -u GOARM -u GOARM64 -u GOMIPS -u GOMIPS64 -u GOPPC64 -u GORISCV64 -u GOWASM \
-    GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=off GOFLAGS=' ' GOTOOLCHAIN=local \
+    GOOS="$host_os" GOARCH="$host_arch" CGO_ENABLED=0 GOWORK=auto GOFLAGS=' ' GOTOOLCHAIN=local \
     "$go" build -mod=readonly -trimpath -buildvcs=false -o "$stage/$name" .) \
     || { if [ "$gate_repair" = true ]; then die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\" --gate-repair"; else die "$name build failed; rerun: bash \"$hook_dir/build-native-binaries.sh\""; fi; }
   chmod -- 0755 "$stage/$name"

@@ -100,6 +100,7 @@ func plannerGoTool() (string, error) {
 
 // plannerEnv is the caller's environment without plannerScrubbedEnv, plus the fixed build settings. GOFLAGS is
 // one space: an empty GOFLAGS lets a GOFLAGS entry in the user's go env file apply.
+// Match eci-go-tool-build.sh: discover the module's workspace, not the caller's.
 func plannerEnv(tmp, goos, goarch string) []string {
 	env := make([]string, 0, len(os.Environ())+8)
 	for _, kv := range os.Environ() {
@@ -109,7 +110,7 @@ func plannerEnv(tmp, goos, goarch string) []string {
 		}
 	}
 	return append(env,
-		"CGO_ENABLED=0", "GOFLAGS= ", "GOWORK=off", "GOTOOLCHAIN=local",
+		"CGO_ENABLED=0", "GOFLAGS= ", "GOWORK=auto", "GOTOOLCHAIN=local",
 		"GOOS="+goos, "GOARCH="+goarch, "GOTMPDIR="+tmp, "TMPDIR="+tmp,
 	)
 }

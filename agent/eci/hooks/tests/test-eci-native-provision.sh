@@ -64,7 +64,7 @@ printf 'package main\n\nfunc main() {}\n' >"$base/src/main.go"
 (cd -- "$base/src" && env CGO_ENABLED=0 GOTOOLCHAIN=local "$real_go" build -buildvcs=false -o "$base/fixture" .)
 # On Linux the gate binaries are verified by eci-verexec, so a fake build of it installs the real verifier.
 if [ "$host_os" = Linux ]; then
-  (cd -- "$src_hooks/lib/eci-verexec-go" && env CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off GOFLAGS=' ' "$real_go" build -mod=readonly -trimpath -buildvcs=false -o "$base/verexec" .)
+  (cd -- "$src_hooks/lib/eci-verexec-go" && env CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=auto GOFLAGS=' ' "$real_go" build -mod=readonly -trimpath -buildvcs=false -o "$base/verexec" .)
 else
   cp -- "$base/fixture" "$base/verexec"
 fi

@@ -651,6 +651,7 @@ func TestPlannerGoToolRequiresAbsolutePath(t *testing.T) {
 
 func TestPlannerEnvPinsGOFLAGSAndInheritsModulePolicy(t *testing.T) {
 	t.Setenv("GOFLAGS", "-mod=mod")
+	t.Setenv("GOWORK", "/foreign/workspace/go.work")
 	t.Setenv("GOPROXY", "https://proxy.example")
 	t.Setenv("GOSUMDB", "sum.golang.org")
 	t.Setenv("GOROOT", "/stale/root")
@@ -667,7 +668,7 @@ func TestPlannerEnvPinsGOFLAGSAndInheritsModulePolicy(t *testing.T) {
 	}
 	for key, want := range map[string]string{
 		"GOFLAGS": " ", "GOPROXY": "https://proxy.example", "GOSUMDB": "sum.golang.org",
-		"GOOS": "darwin", "GOARCH": "arm64", "GOTOOLCHAIN": "local", "GOWORK": "off", "CGO_ENABLED": "0",
+		"GOOS": "darwin", "GOARCH": "arm64", "GOTOOLCHAIN": "local", "GOWORK": "auto", "CGO_ENABLED": "0",
 		"GOTMPDIR": "/txn/tmp", "TMPDIR": "/txn/tmp",
 	} {
 		if got := env[key]; len(got) != 1 || got[0] != want {

@@ -19,6 +19,7 @@ Usage: owned-command [guard flags] -- command args...
        owned-command --resolve-executable
 
 Builds ECI tools/owned-command automatically and forwards arguments/status.
+Tool builds use workspace auto-discovery from the selected source; the command retains the caller's environment.
 OWNED_COMMAND_SOURCE: Go module directory override (default ~/.omp/agent/eci/tools/owned-command).
 OWNED_COMMAND_CACHE: generated executable cache (default ${XDG_CACHE_HOME:-$HOME/.cache}/eci/owned-command).
 Linux (cgroup v2 custody) and macOS (process-group backend with a narrower guarantee; see the source README.md). Source changes rebuild before the next invocation. Requires Go, the file-lock and

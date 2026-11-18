@@ -5,10 +5,9 @@
 #
 #   eci_go_tool_build NAME SOURCE_DIR EXECUTABLE_PREFIX EXECUTABLE_SUFFIX FIRST_BUILD_ESTIMATE
 #
-# The caller holds the build lock for the directory of EXECUTABLE_PREFIX. On success the
-# function sets eci_go_tool_executable to PREFIX<key>SUFFIX and returns 0; an executable that
-# already exists for the key is reused without a build. It returns 127 after printing one line
-# when no go is on PATH, and 1 after printing the exact rerun command when a go step fails.
+# The caller holds the build lock. The output path contains the executable's content digest.
+# Every invocation lets Go check its full input graph before reusing or publishing the executable.
+# Missing Go returns 127; a failed Go step returns 1 with an exact rerun command.
 # Module downloads use the caller's GOPROXY and stay verified by go.sum and the checksum
 # database. This file never disables checksum verification.
 # Bash 3.2 with BSD userland: no mapfile, realpath, readlink -f, mv -T, stat -c, or sort without LC_ALL=C.
@@ -20,11 +19,6 @@ else
   eci_sha256_command=(shasum -a 256)
 fi
 
-# Absolute path of this file. Its digest enters every fingerprint, so a recipe change rebuilds.
-case ${BASH_SOURCE[0]} in
-  */*) eci_go_tool_library=$(cd -P -- "${BASH_SOURCE[0]%/*}" && pwd -P)/${BASH_SOURCE[0]##*/} ;;
-  *) eci_go_tool_library=$PWD/${BASH_SOURCE[0]} ;;
-esac
 
 # eci_go_tool_failed NAME SOURCE_DIR RC WHAT COMMAND... prints the exact rerun command, then returns 1.
 eci_go_tool_failed() {
@@ -47,24 +41,6 @@ eci_go_tool_go_directive() {
   return 0
 }
 
-# eci_go_tool_fingerprint reads the locals of eci_go_tool_build through dynamic scope. It runs in
-# a subshell, so its cd does not leak. Fingerprint as in pre-migration source 575bb81, with the cache format bumped and the
-# library digest added so that an earlier recipe's cache entries are not reused.
-eci_go_tool_fingerprint() (
-  cd -- "$source_dir" || return 1
-  printf '%s\n' "$name cache format 3; native host/default ISA; GOFLAGS=space; GO_EXTLINK_ENABLED=0; -buildvcs=false"
-  printf '%s\n' "$source_dir"
-  printf '%s\n' "$go_launcher" "$compiler" "$compiler_root" "$compiler_version" "$requested_toolchain" "$tuning" "$library_digest"
-  "${eci_sha256_command[@]}" -- "$go_launcher" "$compiler" || return 1
-  "${native_env[@]}" "$compiler" version || return 1
-  "${native_env[@]}" "$compiler" env GOOS GOARCH GO111MODULE GOWORK CGO_ENABLED GOFLAGS GO_EXTLINK_ENABLED \
-    GOPATH GOMODCACHE GOEXPERIMENT GOFIPS140 || return 1
-  if [[ -n $tuning ]]; then
-    "${native_env[@]}" "$compiler" env "$tuning" || return 1
-  fi
-  find . -type f \( -name '*.go' -o -name go.mod -o -name go.sum \) -print0 |
-    LC_ALL=C sort -z | xargs -0 "${eci_sha256_command[@]}"
-)
 
 eci_go_tool_build() {
   if [ "$#" -ne 5 ]; then
@@ -74,8 +50,9 @@ eci_go_tool_build() {
   local name=$1 requested=$2 prefix=$3 suffix=$4 estimate=$5
   local source_dir resolved go_launcher go_dir go_version goenv home_real shown
   local bootstrap host_os host_arch compiler_root compiler_version requested_toolchain compiler
-  local tuning native_default library_digest fingerprint after_fingerprint after key executable
-  local build_dir rc
+  local tuning native_default executable stage stage_dir digest previous temporary
+  local rc
+  local workspace_mode=auto
   local tuning_var
   local -a go_config bootstrap_argv tuning_names defaults_env tuning_argv native_env
 
@@ -123,8 +100,9 @@ eci_go_tool_build() {
     go_config=("GOENV=$goenv")
   fi
 
-  # The bootstrap keeps dependency transport, caches and the requested toolchain selection.
-  bootstrap_argv=(env ${go_config[@]+"${go_config[@]}"} GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' \
+  # Workspace mode is never disabled. Go discovers the workspace from the module
+  # directory, not the caller's GOWORK; the launched command keeps its environment.
+  bootstrap_argv=(env ${go_config[@]+"${go_config[@]}"} GO111MODULE=on GOWORK="$workspace_mode" CGO_ENABLED=0 GOFLAGS=' ' \
     GO_EXTLINK_ENABLED=0 "$go_launcher" env GOHOSTOS GOHOSTARCH GOROOT GOVERSION GOTOOLCHAIN)
   rc=0
   bootstrap=$(cd -- "$source_dir" && "${bootstrap_argv[@]}") || rc=$?
@@ -164,10 +142,10 @@ eci_go_tool_build() {
   esac
   # Every query and compilation shares this exact compiler and native policy.
   native_env=(env ${go_config[@]+"${go_config[@]}"} GOROOT="$compiler_root" GOTOOLCHAIN=local GOOS="$host_os" \
-    GOARCH="$host_arch" GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0)
+    GOARCH="$host_arch" GO111MODULE=on GOWORK="$workspace_mode" CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0)
   if [ -n "$tuning" ]; then
     tuning_argv=("${defaults_env[@]}" GOROOT="$compiler_root" GOENV=off GOTOOLCHAIN=local GOOS="$host_os" \
-      GOARCH="$host_arch" GO111MODULE=on GOWORK=off CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
+      GOARCH="$host_arch" GO111MODULE=on GOWORK="$workspace_mode" CGO_ENABLED=0 GOFLAGS=' ' GO_EXTLINK_ENABLED=0 \
       "$compiler" env "$tuning")
     rc=0
     native_default=$(cd -- "$source_dir" && "${tuning_argv[@]}") || rc=$?
@@ -182,61 +160,61 @@ eci_go_tool_build() {
     native_env+=("$tuning=$native_default")
   fi
 
-  library_digest=$("${eci_sha256_command[@]}" -- "$eci_go_tool_library") || {
-    printf '%s: cannot digest %s\n' "$name" "$eci_go_tool_library" >&2
-    return 1
-  }
-  library_digest=${library_digest%% *}
-  fingerprint=$(eci_go_tool_fingerprint) || {
-    printf '%s: cannot fingerprint %s\n' "$name" "$source_dir" >&2
-    return 1
-  }
-  key=$(printf '%s\n' "$fingerprint" | "${eci_sha256_command[@]}") || return 1
-  key=${key%% *}
-  executable=$prefix$key$suffix
-  if [ -x "$executable" ]; then
-    eci_go_tool_executable=$executable
-    return 0
+  stage_dir=${prefix%/*}/.$name-stage
+  stage=$stage_dir/$name
+  if [ ! -e "$stage" ]; then
+    home_real=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || home_real=
+    shown=$source_dir
+    case $shown in "$home_real/.omp/"*) shown=${shown#"$home_real/.omp/"} ;; esac
+    printf '%s: building %s for %s/%s; this takes %s\n' "$name" "$shown" "$host_os" "$host_arch" "$estimate" >&2
   fi
-
-  # One line before a cold build. Paths under the canonical $HOME/.omp print relative to it.
-  home_real=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || home_real=
-  shown=$source_dir
-  case $shown in "$home_real/.omp/"*) shown=${shown#"$home_real/.omp/"} ;; esac
-  printf '%s: building %s for %s/%s; this takes %s\n' "$name" "$shown" "$host_os" "$host_arch" "$estimate" >&2
-
-  build_dir=$(mktemp -d "${prefix%/*}/.$name-build.XXXXXXXX") || {
-    printf '%s: cannot create a build directory under %s\n' "$name" "${prefix%/*}" >&2
-    return 1
-  }
+  mkdir -p -- "$stage_dir" || return 1
+  previous=
+  if [ -f "$stage" ]; then
+    previous=$("${eci_sha256_command[@]}" -- "$stage") || return 1
+    previous=${previous%% *}
+  fi
   rc=0
-  (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$build_dir/$name" .) >&2 || rc=$?
+  (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
   if [ "$rc" -ne 0 ]; then
-    rm -rf -- "$build_dir"
-    # The rerun uses -o /dev/null: it reproduces the diagnostics without writing an executable.
     eci_go_tool_failed "$name" "$source_dir" "$rc" build "${native_env[@]}" "$compiler" build -buildvcs=false -o /dev/null .
     return 1
   fi
-
-  # Source writers do not share this lock. Refuse a snapshot that changed during the build.
-  after_fingerprint=$(eci_go_tool_fingerprint) || after_fingerprint=
-  after=
-  if [ -n "$after_fingerprint" ]; then
-    after=$(printf '%s\n' "$after_fingerprint" | "${eci_sha256_command[@]}") || after=
-    after=${after%% *}
+  digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
+  digest=${digest%% *}
+  if [ "$digest" != "$previous" ]; then
+    rc=0
+    (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      eci_go_tool_failed "$name" "$source_dir" "$rc" build "${native_env[@]}" "$compiler" build -buildvcs=false -o /dev/null .
+      return 1
+    fi
+    previous=$("${eci_sha256_command[@]}" -- "$stage") || return 1
+    previous=${previous%% *}
+    if [ "$digest" != "$previous" ]; then
+      printf '%s: source changed during build; retry invocation\n' "$name" >&2
+      return 1
+    fi
   fi
-  if [ "$after" != "$key" ]; then
-    rm -rf -- "$build_dir"
-    printf '%s: source changed during build; retry invocation\n' "$name" >&2
-    return 1
-  fi
-  # Built executables are 0755 whatever the caller's umask.
-  chmod -- 0755 "$build_dir/$name" || { rm -rf -- "$build_dir"; return 1; }
-
-  if ! mkdir -p -- "${executable%/*}" || ! mv -f -- "$build_dir/$name" "$executable" || ! rmdir -- "$build_dir"; then
-    rm -rf -- "$build_dir"
-    printf '%s: cannot install %s\n' "$name" "$executable" >&2
-    return 1
+  executable=$prefix$digest$suffix
+  if [ -e "$executable" ] || [ -L "$executable" ]; then
+    if [ ! -f "$executable" ] || [ -L "$executable" ]; then
+      printf '%s: invalid cached executable %s\n' "$name" "$executable" >&2
+      return 1
+    fi
+    previous=$("${eci_sha256_command[@]}" -- "$executable") || return 1
+    if [ "${previous%% *}" != "$digest" ]; then
+      printf '%s: cached executable digest mismatch: %s\n' "$name" "$executable" >&2
+      return 1
+    fi
+  else
+    mkdir -p -- "${executable%/*}" || return 1
+    temporary=$(mktemp "${executable%/*}/.$name-publish.XXXXXXXX") || return 1
+    if ! cp -- "$stage" "$temporary" || ! chmod -- 0755 "$temporary" || ! mv -- "$temporary" "$executable"; then
+      rm -f -- "$temporary"
+      printf '%s: cannot install %s\n' "$name" "$executable" >&2
+      return 1
+    fi
   fi
   eci_go_tool_executable=$executable
   return 0
