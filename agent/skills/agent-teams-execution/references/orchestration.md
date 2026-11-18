@@ -28,11 +28,11 @@ Pre-route findings by scope and impact. A root aggregate review starts only with
 
 Before Critic C Packet 1, coordinator validates lineage, ledger/log anchors, prompt artifact, category/profile selectors, and fresh special identity. Packet 1 contains the narrow diff-intention request; the reviewer returns 2–4 `reconstructed intention:` bullets and stops. Packet 2 supplies the full review context. The first response never replaces the final review or post-write reconciliation.
 
-## Debug, BRP, and cap coordination
+## Debug, SWR, and cap coordination
 
 Concrete bugs, failures, flakes, regressions, and QA rejections enter repro/RCA/critic/fix/review handling. Record the regression report before RCA, require a falsifiable cause chain, alternative or falsifying prediction, `regression: yes|no|unknown`, and real-path proof.
 
-Use BRP only after normal handling fails or an approved limit is reached. Accept a local stuck claim only with proof under the Stuck work rule in `~/.omp/agent/RULES.md`. Coordinator starts the required idea, exploration, and independent feasibility roles, preserves the attempt record, and does not treat local stuck work as mission closure. A root aggregate review has at most 10 REJECTED rounds; the next round creates a protocol-limit record and uses blocker-resolution-protocol before escalation.
+Use SWR only after normal handling fails or an approved limit is reached. Accept a local stuck claim only with proof under the Stuck work rule in `~/.omp/agent/RULES.md`. Coordinator starts the required idea, exploration, and independent feasibility roles, preserves the attempt record, and does not treat local stuck work as mission closure. A root aggregate review has at most 10 REJECTED rounds; the next round creates a protocol-limit record and uses stuck-work-resolution before escalation.
 
 ## QA sequencing and closure
 

@@ -12,7 +12,7 @@ ATE coordinates multi-workstream work when explicitly requested: research, desig
 Start only when the user explicitly asks to use ATE or `agent-teams-execution`, subject to omp lifecycle routing. Task size, parallel work, descriptive mentions, and skill-document maintenance alone do not activate ATE. Loading this router alone does not start the team. Once explicitly active, ATE retains its lifecycle until normal closure. Maintain active lineage and a project-understanding ledger; every durable normal route has an admitted lane, assignment, ownership, and full requirement chain. Apply [Recording and citing user requirements](../context-ledger/SKILL.md#recording-and-citing-user-requirements).
 
 - Every worker reads this router plus only its exact role module and named conditional modules. Unknown role, predicate, or link returns to coordinator before work.
-- Coordinator/lead alone load lifecycle, prompt/model admission, blocker, pause, stop, required-critic, shutdown, and pressure-policy modules.
+- Coordinator/lead alone load lifecycle, prompt/model admission, stuck-work, pause, stop, required-critic, shutdown, and pressure-policy modules.
 - Use provider-native agents, stable reusable producer roles, fresh blind reviewers, disjoint write ownership except within nested ECI as linked below, and park until each expected completion auto-delivers (the Parking rule in `~/.omp/agent/RULES.md`).
 - Every root follows research → design → execution → root proof → aggregate review → post-review proof → QA. Do not collapse phases because a request looks small.
 - ATE may contain ECI for bounded uncertain work and retains outer status/lifecycle. Nested tasks use [ECI fast path](../explore-critique-implement/references/fast-path.md), including its scoped shared-tree ownership exception; ATE outside ECI remains unchanged.
@@ -23,7 +23,7 @@ Coordinator/lead routes begin with [coordinator runtime](../references/workflow-
 
 | Role | Required module | Conditional module/predicate |
 | --- | --- | --- |
-| Coordinator, Lead | [orchestration](references/orchestration.md), [coordinator runtime](../references/workflow-runtime/coordinator-runtime.md), [review policy](../references/workflow-runtime/review-policy.md) | [pause-all-work](../references/workflow-runtime/pause-all-work.md), [stop recovery](../references/workflow-runtime/stop-recovery.md), and [policy pressure tests](../references/workflow-runtime/policy-pressure-tests.md) only by predicates; [blocker-resolution-protocol](../blocker-resolution-protocol/SKILL.md) only after normal handling fails |
+| Coordinator, Lead | [orchestration](references/orchestration.md), [coordinator runtime](../references/workflow-runtime/coordinator-runtime.md), [review policy](../references/workflow-runtime/review-policy.md) | [pause-all-work](../references/workflow-runtime/pause-all-work.md), [stop recovery](../references/workflow-runtime/stop-recovery.md), and [policy pressure tests](../references/workflow-runtime/policy-pressure-tests.md) only by predicates; [stuck-work-resolution](../stuck-work-resolution/SKILL.md) only after normal handling fails |
 | Snitch | [snitch](references/snitch.md) | — |
 | Explorer/researcher | [research](references/research.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for assigned source discovery |
 | Designer, Design Reviewer, FDR | [design](references/design.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for design/admission scope |
@@ -41,13 +41,13 @@ Coordinator/lead routes begin with [coordinator runtime](../references/workflow-
 
 ## Followups and boundaries
 
-Question/clarification → research then answer. Trivial config → producer discovery, verifier admission, execution, targeted proof, aggregate review, QA. Bug → debugging/execution, proof, aggregate review, QA. Behavior change/new feature → full pipeline. `blocker-resolution-protocol` starts only after normal routing fails or a documented cap; concrete failure diagnosis uses debugging-discipline first.
+Question/clarification → research then answer. Trivial config → producer discovery, verifier admission, execution, targeted proof, aggregate review, QA. Bug → debugging/execution, proof, aggregate review, QA. Behavior change/new feature → full pipeline. `stuck-work-resolution` starts only after normal routing fails or a documented cap; concrete failure diagnosis uses debugging-discipline first.
 
 Maintenance provenance: [coverage map](references/coverage-map.md).
 
 ## Red flags
 
-- A worker loads coordinator/blocker/pause/stop/teardown/review-runtime/pressure policy without its assignment.
+- A worker loads coordinator/stuck-work/pause/stop/teardown/review-runtime/pressure policy without its assignment.
 - Coordinator/lead implements, researches, or declares success from an agent claim.
 - Reviewers edit their target, lack fresh independent identity, or skip the A/B/C/E2E gate.
 - Root aggregate review starts before root proof, QA starts before post-review proof, or QA approval is treated as automatic mission closure.

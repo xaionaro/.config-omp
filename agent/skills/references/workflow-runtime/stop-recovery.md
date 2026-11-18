@@ -12,7 +12,7 @@ Only a resolved direct scope mistake, cross-session target, or destructive/broad
 
 ATE phase, agent role, callback/transcript metadata, peer or sibling markers, historical proof, ledgers, reports, hashes, and file grammar are advisory. They do not select the callback owner and do not require a checklist, wait report, receipt, or workflow ceremony before ordinary completion.
 
-An unchanged Stop callback is control metadata, not a new user request. Do not turn it into retries, polling, a final/status reply, or a blocker-resolution loop. A worker-owned dirty path is a normal coordinator handoff and returns normally.
+An unchanged Stop callback is control metadata, not a new user request. Do not turn it into retries, polling, a final/status reply, or a stuck-work-resolution loop. A worker-owned dirty path is a normal coordinator handoff and returns normally.
 
 ## Work awaiting external input
 

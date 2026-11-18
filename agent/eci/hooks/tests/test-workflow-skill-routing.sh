@@ -87,7 +87,7 @@ assert_no_control_routes() {
     'references/coordinator.md' \
     'coordinator-runtime.md' \
     'references/orchestration.md' \
-    'blocker-resolution-protocol' \
+    'stuck-work-resolution' \
     'pause-all-work.md' \
     'stop-recovery.md' \
     'policy-pressure-tests.md' \

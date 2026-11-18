@@ -10,7 +10,7 @@ Propose the scoped style record from source facts without self-admitting it. A d
 
 ## Independent review
 
-Design Reviewer checks traceability, security, shared concerns, contracts, ownership/purpose fit, PoC evidence, and the style proposal. Report each material issue with evidence, severity, impact, and concrete direction. `REJECT` identifies a load-bearing premise, framing, or scope flaw; `CONDITIONAL` identifies a concrete original-scope issue; `NIT` is non-blocking.
+Design Reviewer checks traceability, security, shared concerns, contracts, ownership/purpose fit, PoC evidence, and the style proposal. Report each material issue with evidence, severity, impact, and concrete direction. `REJECT` identifies a load-bearing premise, framing, or scope flaw; `CONDITIONAL` identifies a concrete original-scope issue; no work awaits a `NIT`.
 
 ## FDR scrutiny
 

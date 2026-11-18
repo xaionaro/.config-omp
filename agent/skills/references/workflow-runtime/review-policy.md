@@ -68,7 +68,7 @@ A patch amends the selected design instead of replacing it, however major, and m
 
 A clean iteration gate has no remaining `now` issue and all required same-run focused proof; final acceptance also needs the final E2E pair when triggered. Treatments other than `now` and `user decision` are not clean-pass defects. A `user decision` holds final acceptance until a fresh Step 2 critic decides the finding again from the user's quoted answer. Admitted child outcomes retain independent acceptance under the Job contract.
 
-The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria from the original requirements and findings. Review caps and loop-breaker/BRP escalation remain owned by the outer workflow.
+The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria from the original requirements and findings. Review caps and loop-breaker/SWR escalation remain owned by the outer workflow.
 
 ## Independent-review discipline
 
