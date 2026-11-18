@@ -130,7 +130,7 @@ func (i taskWorkIndex) priorityOpen(
 // openWork identifies canonical work with remaining action.
 //
 // Example: openWork identifies canonical work with remaining action.
-func openWork(state workState) bool { return state == workStateActive || state == workStateBlocked }
+func openWork(state workState) bool { return state == workStateActive || state == workStateStuck }
 
 // forecastApplicable uses declared roles and representation to select an active forecast.
 //

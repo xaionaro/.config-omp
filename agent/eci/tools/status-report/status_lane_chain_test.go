@@ -18,7 +18,7 @@ func TestLaneLifecycleChainComposesExplicitTransitions(t *testing.T) {
 	reopen := base
 	reopen.Evidence = "reactivated"
 	reopen.Fields = map[string]string{"next_action": "retry"}
-	reopen.Clear = []string{"lifecycle", "blocker"}
+	reopen.Clear = []string{"lifecycle", "awaits"}
 	closeUpdate := base
 	closeUpdate.Evidence = "accepted"
 	closeUpdate.Fields = map[string]string{"implementation_status": "CLOSED", "completed_at": "2026-11-02T15:25:00Z"}
@@ -47,7 +47,7 @@ func TestLaneLifecycleChainComposesExplicitTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].Blocker != "" || r.Lanes[0].NextAction != "retry" || provenance["next_action"].Line != 2 {
+	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].Awaits != "" || r.Lanes[0].NextAction != "retry" || provenance["next_action"].Line != 2 {
 		t.Fatal("supplied intermediate changes not preserved")
 	}
 	var log strings.Builder
@@ -65,7 +65,7 @@ func TestLaneLifecycleChainComposesExplicitTransitions(t *testing.T) {
 		t.Fatal("pure stale terminal accepted")
 	}
 	mixed := cancel
-	mixed.Fields = map[string]string{"lifecycle": "cancelled", "blocker": "extra"}
+	mixed.Fields = map[string]string{"lifecycle": "cancelled", "awaits": "extra"}
 	if _, _, _, ok := planLaneLifecycleChain([]byte(linkedReport), []syncPendingGroup{makeGroup(1, mixed), groups[1], groups[2]}, ledger, forecasts, nil); !ok {
 		t.Fatal("explicit cancellation fields were dropped")
 	}

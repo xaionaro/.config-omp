@@ -45,14 +45,14 @@ func TestOutcomeIdentityChecks(t *testing.T) {
 func TestOutcomeLinksOptionalOutsideJobs(t *testing.T) {
 	t.Parallel()
 	records := map[string]sourceRecord{"outcome:o": {Type: "outcome"}}
-	unlinked := sourceRecord{Type: "work", Data: workData{State: workStateBlocked}}
+	unlinked := sourceRecord{Type: "work", Data: workData{State: workStateStuck}}
 	for _, id := range []string{"followup:x", "work:none:owed:x"} {
 		require.Empty(t, validateWorkOutcomes(id, unlinked, records), id)
 	}
 	for _, id := range []string{"work:j:job", "work:j:owed:x", "work:j:leaf", "work:followup:x"} {
 		require.Equal(t, []string{"work " + id + " missing outcome links"}, validateWorkOutcomes(id, unlinked, records), id)
 	}
-	dangling := sourceRecord{Type: "work", Data: workData{State: workStateBlocked}, OutcomeRefs: []string{"missing"}}
+	dangling := sourceRecord{Type: "work", Data: workData{State: workStateStuck}, OutcomeRefs: []string{"missing"}}
 	require.Equal(t, []string{"work followup:x has invalid outcome link missing"}, validateWorkOutcomes("followup:x", dangling, records))
 }
 

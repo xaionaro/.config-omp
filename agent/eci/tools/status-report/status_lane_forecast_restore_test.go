@@ -108,13 +108,13 @@ func TestLaneEmptyPriorValuePreservesOwnerEdit(t *testing.T) {
 // Example: A quoted null added after a null baseline stays untouched.
 func TestLaneClearDistinguishesNullFromLiteralText(t *testing.T) {
 	t.Parallel()
-	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    blocker: null\n    implementation_status: IN PROGRESS", 1)
-	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"blocker"}}
-	if _, _, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncNullValue}); !ok {
+	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    awaits: null\n    implementation_status: IN PROGRESS", 1)
+	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"awaits"}}
+	if _, _, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": syncNullValue}); !ok {
 		t.Fatal("matching null baseline rejected")
 	}
-	edited := strings.Replace(original, "blocker: null", `blocker: "null"`, 1)
-	if _, _, ok := applyLaneSyncUpdate([]byte(edited), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncNullValue}); ok {
+	edited := strings.Replace(original, "awaits: null", `awaits: "null"`, 1)
+	if _, _, ok := applyLaneSyncUpdate([]byte(edited), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": syncNullValue}); ok {
 		t.Fatal("literal null overwrote null baseline")
 	}
 }

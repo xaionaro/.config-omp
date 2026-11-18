@@ -167,16 +167,16 @@ func TestLaneTransitionPreservesCommentsAndOwnerCompletion(t *testing.T) {
 // Example: An owner edit prevents a conflicting clear.
 func TestLaneExplicitClearIsAtomicAndPreservesOwnership(t *testing.T) {
 	t.Parallel()
-	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    blocker: waiting\n    next_action: retry\n    implementation_status: IN PROGRESS", 1)
-	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"blocker", "next_action"}}
-	got, effects, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": "waiting"})
-	if !ok || strings.Contains(string(got), "blocker: waiting") || strings.Contains(string(got), "next_action: retry") {
+	original := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    awaits: waiting\n    next_action: retry\n    implementation_status: IN PROGRESS", 1)
+	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Clear: []string{"awaits", "next_action"}}
+	got, effects, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": "waiting"})
+	if !ok || strings.Contains(string(got), "awaits: waiting") || strings.Contains(string(got), "next_action: retry") {
 		require.FailNow(t, "assertion failed", "clear failed")
 	}
 	if err := verifyStatusSyncEffects([]byte(original), got, effects); err != nil {
 		require.FailNow(t, "assertion failed", err)
 	}
-	if _, _, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": "old"}); ok {
+	if _, _, ok := applyLaneSyncUpdate([]byte(original), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": "old"}); ok {
 		require.FailNow(t, "assertion failed", "owner edit overwritten")
 	}
 	update.Clear = []string{"forecast"}
@@ -212,12 +212,12 @@ func TestLaneClearCancellationRequiresActiveCanonicalWork(t *testing.T) {
 // Example: A later owner addition is preserved.
 func TestLanePreviouslyClearedFieldProtectsOwner(t *testing.T) {
 	t.Parallel()
-	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"blocker": "new"}}
-	if _, _, ok := applyLaneSyncUpdate([]byte(linkedReport), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncAbsentValue}); !ok {
-		require.FailNow(t, "assertion failed", "projected absence blocked update")
+	update := syncUpdate{Target: syncTargetLane, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first", RequiredEnvironment: syncEnvironmentImplementation, Fields: map[string]string{"awaits": "new"}}
+	if _, _, ok := applyLaneSyncUpdate([]byte(linkedReport), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": syncAbsentValue}); !ok {
+		require.FailNow(t, "assertion failed", "projected absence denied update")
 	}
-	edited := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    blocker: owner\n    implementation_status: IN PROGRESS", 1)
-	if _, _, ok := applyLaneSyncUpdate([]byte(edited), update, ledgerSource{}, forecastSource{}, map[string]string{"blocker": syncAbsentValue}); ok {
+	edited := strings.Replace(linkedReport, "    implementation_status: IN PROGRESS", "    awaits: owner\n    implementation_status: IN PROGRESS", 1)
+	if _, _, ok := applyLaneSyncUpdate([]byte(edited), update, ledgerSource{}, forecastSource{}, map[string]string{"awaits": syncAbsentValue}); ok {
 		require.FailNow(t, "assertion failed", "owner addition overwritten")
 	}
 }

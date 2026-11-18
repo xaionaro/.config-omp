@@ -31,11 +31,11 @@ func TestDelayedLaneReopen(t *testing.T) {
 
 // TestStaleLaneTransitionPreservesUnreplacedFields checks atomic transaction preservation.
 //
-// Example: An older closure with an unrelated blocker cannot be discarded by reopening.
+// Example: An older closure with an unrelated awaits value cannot be discarded by reopening.
 func TestStaleLaneTransitionPreservesUnreplacedFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","blocker":"hold"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
+	events := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","awaits":"hold"}}]}}}` + "\n" + `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED"}}]}}}` + "\n"
 	if err := writeSessionLog(dir, []byte(events)); err != nil {
 		t.Fatal(err)
 	}

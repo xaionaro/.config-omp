@@ -31,6 +31,6 @@ func TestReviewCancellationChain(t *testing.T) {
 		require.FailNow(t, "assertion failed", err)
 	}
 	if r.Lanes[0].ImplementationStatus != statusClosed || len(r.StatusSync.Groups) != 0 {
-		require.FailNowf(t, "assertion failed", "final completion blocked: status=%s groups=%d", r.Lanes[0].ImplementationStatus, len(r.StatusSync.Groups))
+		require.FailNowf(t, "assertion failed", "final completion held back: status=%s groups=%d", r.Lanes[0].ImplementationStatus, len(r.StatusSync.Groups))
 	}
 }

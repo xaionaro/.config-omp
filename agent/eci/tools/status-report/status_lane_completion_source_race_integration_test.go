@@ -11,7 +11,7 @@ import (
 
 // TestLaneClosureRetriesAgainstChangedCompletionTime checks source snapshot integrity.
 //
-// Example: A changed canonical completion time blocks stale closure until corrected.
+// Example: A changed canonical completion time holds back stale closure until corrected.
 func TestLaneClosureRetriesAgainstChangedCompletionTime(t *testing.T) {
 	t.Parallel()
 	// first requests a closure at the initially observed source time.

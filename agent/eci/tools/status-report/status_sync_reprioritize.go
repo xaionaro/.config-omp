@@ -255,7 +255,7 @@ func syncTaskHasPriority(
 
 // syncHasPriorTargetGroup keeps target-local updates in their original order.
 //
-// Example: A blocked earlier task update is not bypassed by reprioritization.
+// Example: An awaiting earlier task update is not bypassed by reprioritization.
 func syncHasPriorTargetGroup(
 	state syncState,
 	update syncUpdate,

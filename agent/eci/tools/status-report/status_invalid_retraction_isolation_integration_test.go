@@ -40,7 +40,7 @@ func TestInvalidRetractionsPreserveClaimAndIndependentProgress(t *testing.T) {
 				require.Contains(t, report.Progress, "owner claim")
 				require.Contains(t, report.Progress, "independent progress")
 				require.Contains(t, string(result), "# keep")
-				require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 			})
 	}
 }

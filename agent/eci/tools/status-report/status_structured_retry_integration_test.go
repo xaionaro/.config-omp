@@ -9,7 +9,7 @@ import (
 
 // TestStructuredTaskUpdateRetriesAfterOwnerResolvesConflict checks atomic replay.
 //
-// Example: A manually edited effort blocks a paired impact change until restored.
+// Example: A manually edited effort holds back a paired impact change until restored.
 func TestStructuredTaskUpdateRetriesAfterOwnerResolvesConflict(t *testing.T) {
 	t.Parallel()
 	// first establishes the logged ownership baseline for the task effort.

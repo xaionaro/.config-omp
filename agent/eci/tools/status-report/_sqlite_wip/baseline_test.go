@@ -26,13 +26,13 @@ func baselineReload(t *testing.T, data []byte) []byte {t.Helper();value,err:=dec
 
 // baselineSources gives the real replay engine a completed lane and inactive forecast.
 //
-// Example: Only owner protection, rather than invalid canonical work, blocks closure.
+// Example: Only owner protection, rather than invalid canonical work, holds back closure.
 func baselineSources(t *testing.T) (ledgerSource,forecastSource) {t.Helper();var ledger ledgerSource;var forecasts forecastSource;require.NoError(t,yaml.Unmarshal([]byte(strings.Replace(linkedLedger,"owner: one, state: active, next_action: Finish","owner: one, state: completed, completed_at: '2026-11-02T15:25:00Z', next_action: Finish",1)),&ledger));require.NoError(t,yaml.Unmarshal([]byte(strings.Replace(linkedForecasts,"status: active","status: inactive",1)),&forecasts));return ledger,forecasts}
 
-// TestBaselineHeldImplicitForecastBlocksAllReplays checks the missing historical A case.
+// TestBaselineHeldImplicitForecastHoldsBackAllReplays checks the missing historical A case.
 //
 // Example: Retire protects owner B without reconstructing A from current sources.
-func TestBaselineHeldImplicitForecastBlocksAllReplays(t *testing.T) {
+func TestBaselineHeldImplicitForecastHoldsBackAllReplays(t *testing.T) {
  t.Parallel()
  reopen:=`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"IN PROGRESS"}}]}}}`+"\n"
  close:=`{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}`

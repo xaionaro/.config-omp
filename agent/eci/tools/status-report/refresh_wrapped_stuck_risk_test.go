@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRefreshPreservesWrappedBlocker checks insertion after the complete YAML scalar.
+// TestRefreshPreservesWrappedStuckRisk checks insertion after the complete YAML scalar.
 //
 // Example: A wrapped plain risk retains its text and gains a separate diagnostic.
-func TestRefreshPreservesWrappedBlocker(t *testing.T) {
+func TestRefreshPreservesWrappedStuckRisk(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		Name  string
@@ -32,7 +32,7 @@ func TestRefreshPreservesWrappedBlocker(t *testing.T) {
 			func(t *testing.T) {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "latest-status-report.yaml")
-				report := strings.Replace(linkedReport, "blockers_risks: []\nverification:", "blockers_risks:\n"+tc.Block+"# verification note\nverification:", 1)
+				report := strings.Replace(linkedReport, "stuck_risks: []\nverification:", "stuck_risks:\n"+tc.Block+"# verification note\nverification:", 1)
 				require.Contains(t, report, tc.Block)
 				require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
@@ -42,7 +42,7 @@ func TestRefreshPreservesWrappedBlocker(t *testing.T) {
 				require.NoError(t, err)
 				parsed, err := parse(result)
 				require.NoError(t, err)
-				require.Equal(t, []string{tc.Value, refreshDiagnostic}, parsed.Blockers)
+				require.Equal(t, []string{tc.Value, refreshDiagnostic}, parsed.StuckRisks)
 				require.False(t, *parsed.ScopeComplete)
 				require.Contains(t, string(result), tc.Block)
 				require.Contains(t, string(result), "# verification note\nverification:")
@@ -54,15 +54,15 @@ func TestRefreshPreservesWrappedBlocker(t *testing.T) {
 	}
 }
 
-// TestRefreshPreservesLastWrappedBlocker checks a trailing block sequence.
+// TestRefreshPreservesLastWrappedStuckRisk checks a trailing block sequence.
 //
 // Example: Insert before a trailing comment without mixing CRLF line endings.
-func TestRefreshPreservesLastWrappedBlocker(t *testing.T) {
+func TestRefreshPreservesLastWrappedStuckRisk(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "latest-status-report.yaml")
-	report := strings.Replace(linkedReport, "blockers_risks: []\n", "", 1)
-	report += "blockers_risks:\n  - Long trailing risk\n    continues here.\n# keep trailing note\n"
+	report := strings.Replace(linkedReport, "stuck_risks: []\n", "", 1)
+	report += "stuck_risks:\n  - Long trailing risk\n    continues here.\n# keep trailing note\n"
 	report = strings.ReplaceAll(report, "\n", "\r\n")
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "project-understanding.yaml"), []byte(linkedLedger), 0600))
@@ -72,8 +72,8 @@ func TestRefreshPreservesLastWrappedBlocker(t *testing.T) {
 	require.NoError(t, err)
 	parsed, err := parse(result)
 	require.NoError(t, err)
-	require.Contains(t, parsed.Blockers, "Long trailing risk continues here.")
-	require.Contains(t, parsed.Blockers, refreshDiagnostic)
+	require.Contains(t, parsed.StuckRisks, "Long trailing risk continues here.")
+	require.Contains(t, parsed.StuckRisks, refreshDiagnostic)
 	require.False(t, *parsed.ScopeComplete)
 	require.Contains(t, string(result), "    continues here.\r\n")
 	require.Contains(t, string(result), "# keep trailing note\r\n")

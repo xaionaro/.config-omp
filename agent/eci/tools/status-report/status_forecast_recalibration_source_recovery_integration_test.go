@@ -11,7 +11,7 @@ import (
 
 // TestForecastRecalibrationRecoversAfterSourceCorrection checks history consistency.
 //
-// Example: A mismatched current time blocks publication until the source is repaired.
+// Example: A mismatched current time holds back publication until the source is repaired.
 func TestForecastRecalibrationRecoversAfterSourceCorrection(t *testing.T) {
 	t.Parallel()
 	// event records independent progress while canonical history is inconsistent.
@@ -27,9 +27,9 @@ func TestForecastRecalibrationRecoversAfterSourceCorrection(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(linkedReport), 0600))
 	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.ErrorContains(t, refreshTestStatus(dir, "forecast_change"), "current does not match target")
-	blocked, err := os.ReadFile(path)
+	awaiting, err := os.ReadFile(path)
 	require.NoError(t, err)
-	report, err := parse(blocked)
+	report, err := parse(awaiting)
 	require.NoError(t, err)
 	require.NotContains(t, report.Progress, "queued claim")
 	require.Equal(t, "2026-11-02T16:00:00Z", report.Lanes[0].Forecast.Target)

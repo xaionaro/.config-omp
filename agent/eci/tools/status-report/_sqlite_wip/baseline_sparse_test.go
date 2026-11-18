@@ -68,7 +68,7 @@ func TestBaselineSparseSourcesPreservePendingAndRetry(t *testing.T) {
      require.Contains(t,accepted,syncOperationLocator{Kind:syncOperationUpdate,Line:1,Ordinal:1})
     } else {
      require.Equal(t,statusInProgress,parsed.Lanes[0].ImplementationStatus);require.NotNil(t,parsed.Lanes[0].Forecast)
-     require.False(t,*parsed.ScopeComplete);require.NotEmpty(t,parsed.Blockers)
+     require.False(t,*parsed.ScopeComplete);require.NotEmpty(t,parsed.StuckRisks)
      pending,present:=parsed.StatusSync.Groups[key];require.True(t,present);require.Equal(t,1,pending.Line);require.Equal(t,1,pending.Ordinal)
      occurrence,err:=resolveBaselineOperation(rawLog,syncOperationLocator{Kind:syncOperationUpdate,Line:1,Ordinal:1});require.NoError(t,err)
      stored,err:=decodeSyncGroup(pending.Update);require.NoError(t,err);same,err:=sameBaselineOperation(stored,*occurrence.Update);require.NoError(t,err);require.True(t,same)

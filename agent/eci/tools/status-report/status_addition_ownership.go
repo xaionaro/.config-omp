@@ -65,7 +65,7 @@ func additionOwnership(target syncTarget, record json.RawMessage) (map[string]st
 	case syncTargetPriorityEstimate:
 		typed = []string{"min_minutes", "max_minutes", "as_of", "basis", "assumptions", "dependencies", "critical_path"}
 	case syncTargetLane:
-		scalar = []string{"owner", "stage", "implementation_status", "test_status", "prod_status", "blocker", "next_action", "next_milestone", "context", "completed_at", "lifecycle", "root_task_status"}
+		scalar = []string{"owner", "stage", "implementation_status", "test_status", "prod_status", "awaits", "next_action", "next_milestone", "context", "completed_at", "lifecycle", "root_task_status"}
 		typed = []string{"forecast"}
 	case syncTargetRootCompletion, syncTargetRootForecast:
 	default:

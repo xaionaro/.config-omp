@@ -22,10 +22,10 @@ const (
 	//
 	// Example: Use workStateActive when its documented category applies.
 	workStateActive
-	// workStateBlocked marks work awaiting user input.
+	// workStateStuck marks work awaiting user input.
 	//
-	// Example: A pending user decision blocks the work.
-	workStateBlocked
+	// Example: A pending user decision leaves the work stuck.
+	workStateStuck
 	// workStateCompleted identifies this canonical category.
 	//
 	// Example: Use workStateCompleted when its documented category applies.
@@ -46,8 +46,8 @@ func (s *workState) UnmarshalYAML(n *yaml.Node) error {
 	switch n.Value {
 	case "active":
 		*s = workStateActive
-	case "blocked":
-		*s = workStateBlocked
+	case "stuck":
+		*s = workStateStuck
 	case "completed":
 		*s = workStateCompleted
 	case "cancelled":

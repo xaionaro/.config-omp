@@ -38,12 +38,12 @@ func TestLaneRepeatedTerminal(t *testing.T) {
 
 // TestLaneChainKeepsIntermediateAtomicFields checks that unrelated intent is preserved.
 //
-// Example: An intermediate blocker is retained when a later closure is selected.
+// Example: An intermediate awaits value is retained when a later closure is selected.
 func TestLaneChainKeepsIntermediateAtomicFields(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	first := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}` + "\n"
-	middle := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED","blocker":"waiting"}}]}}}` + "\n"
+	middle := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"PAUSED","awaits":"waiting"}}]}}}` + "\n"
 	last := strings.Replace(first, "15:25:00Z", "15:45:00Z", 1)
 	if err := writeSessionLog(dir, []byte(first+middle+last)); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestLaneChainKeepsIntermediateAtomicFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].Blocker != "waiting" || len(r.StatusSync.Groups) != 0 {
+	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].Awaits != "waiting" || len(r.StatusSync.Groups) != 0 {
 		t.Fatalf("atomic intermediate lost: status=%v groups=%d", r.Lanes[0].ImplementationStatus, len(r.StatusSync.Groups))
 	}
 }

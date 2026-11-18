@@ -379,7 +379,7 @@ func applyPendingSyncGroups(
 		})
 	var effects []syncEffect
 	invalid := false
-	blocked := map[string]map[string]bool{}
+	awaiting := map[string]map[string]bool{}
 	for _, key := range keys {
 		group, ok := state.Groups[key]
 		if !ok {
@@ -410,8 +410,8 @@ func applyPendingSyncGroups(
 		}
 		targetIdentity := syncTargetKey(update, "")
 		dependencies := syncGroupDependencies(update)
-		if syncDependenciesOverlap(blocked[targetIdentity], dependencies) {
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+		if syncDependenciesOverlap(awaiting[targetIdentity], dependencies) {
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		if update.Retract {
@@ -430,25 +430,25 @@ func applyPendingSyncGroups(
 				probe := update
 				probe.Fields = map[string]string{"text": "probe", "evidence": "probe"}
 				if syncCorrectionAwaitsPending(*state, probe) {
-					markSyncBlocked(blocked, targetIdentity, dependencies)
+					markSyncAwaiting(awaiting, targetIdentity, dependencies)
 					continue
 				}
 				if latest > update.Corrects || (latest == update.Corrects && !ordinalMatches) {
 					delete(state.Groups, key)
 					invalid = true
 				}
-				markSyncBlocked(blocked, targetIdentity, dependencies)
+				markSyncAwaiting(awaiting, targetIdentity, dependencies)
 				continue
 			}
 			text, hasText := state.Applied[textKey]
 			evidence, hasEvidence := state.Applied[evidenceKey]
 			candidate, ok := retractNarrativeSync(data, update, text, hasText, evidence, hasEvidence)
 			if !ok {
-				markSyncBlocked(blocked, targetIdentity, dependencies)
+				markSyncAwaiting(awaiting, targetIdentity, dependencies)
 				continue
 			}
 			if _, err := parse(candidate); err != nil {
-				markSyncBlocked(blocked, targetIdentity, dependencies)
+				markSyncAwaiting(awaiting, targetIdentity, dependencies)
 				continue
 			}
 			data = candidate
@@ -467,7 +467,7 @@ func applyPendingSyncGroups(
 		}
 		if !syncGroupCorrectionMatches(*state, update) {
 			if syncCorrectionAwaitsPending(*state, update) {
-				markSyncBlocked(blocked, targetIdentity, dependencies)
+				markSyncAwaiting(awaiting, targetIdentity, dependencies)
 				continue
 			}
 			invalid = true
@@ -481,7 +481,7 @@ func applyPendingSyncGroups(
 			continue
 		}
 		if syncGroupAwaitsPriorityEstimate(*state, update, group) {
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		previous := syncGroupPriorValues(*state, update)
@@ -505,19 +505,19 @@ func applyPendingSyncGroups(
 				delete(state.Groups, key)
 				continue
 			}
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		for i := range changes {
 			changes[i].Evidence = syncGroupEvidence(update)
 		}
 		if err := verifyStatusSyncCanonicalEffects(data, candidate, changes, ledger, forecasts); err != nil {
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		values, ok := syncGroupAppliedValues(candidate, update)
 		if !ok {
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		validEffects := true
@@ -529,7 +529,7 @@ func applyPendingSyncGroups(
 			}
 		}
 		if !validEffects {
-			markSyncBlocked(blocked, targetIdentity, dependencies)
+			markSyncAwaiting(awaiting, targetIdentity, dependencies)
 			continue
 		}
 		data = candidate
@@ -628,7 +628,7 @@ func syncGroupDependencies(update syncUpdate) map[string]bool {
 		fields[field] = true
 	}
 	switch update.Target {
-	case syncTargetProgress, syncTargetDecisions, syncTargetBlockers, syncTargetVerification, syncTargetRootForecast:
+	case syncTargetProgress, syncTargetDecisions, syncTargetStuckRisks, syncTargetVerification, syncTargetRootForecast:
 		fields["*"] = true
 	case syncTargetTask:
 		if fields["status"] || fields["evidence"] || fields["lifecycle"] {
@@ -645,7 +645,7 @@ func syncGroupDependencies(update syncUpdate) map[string]bool {
 
 // syncDependenciesOverlap checks whether two transactions share a semantic dependency.
 //
-// Example: A pending owner assignment does not block task acceptance.
+// Example: A pending owner assignment leaves task acceptance free to apply.
 func syncDependenciesOverlap(
 	left map[string]bool,
 	right map[string]bool,
@@ -661,18 +661,18 @@ func syncDependenciesOverlap(
 	return false
 }
 
-// markSyncBlocked retains unresolved dependencies for one target.
+// markSyncAwaiting retains unresolved dependencies for one target.
 //
-// Example: Keep a blocked evidence update ahead of dependent closure.
-func markSyncBlocked(
-	blocked map[string]map[string]bool,
+// Example: Keep an awaiting evidence update ahead of dependent closure.
+func markSyncAwaiting(
+	awaiting map[string]map[string]bool,
 	target string,
 	fields map[string]bool,
 ) {
-	if blocked[target] == nil {
-		blocked[target] = map[string]bool{}
+	if awaiting[target] == nil {
+		awaiting[target] = map[string]bool{}
 	}
 	for field := range fields {
-		blocked[target][field] = true
+		awaiting[target][field] = true
 	}
 }

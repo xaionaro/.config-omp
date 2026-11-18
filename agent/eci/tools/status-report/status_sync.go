@@ -1164,7 +1164,7 @@ func scalarSyncFields(target syncTarget) map[string]bool {
 	case syncTargetTask:
 		return map[string]bool{"status": true, "evidence": true, "owner": true, "context": true, "lifecycle": true}
 	case syncTargetLane:
-		return map[string]bool{"owner": true, "implementation_status": true, "test_status": true, "prod_status": true, "blocker": true, "next_action": true, "next_milestone": true, "context": true, "completed_at": true, "lifecycle": true, "root_task_status": true}
+		return map[string]bool{"owner": true, "implementation_status": true, "test_status": true, "prod_status": true, "awaits": true, "next_action": true, "next_milestone": true, "context": true, "completed_at": true, "lifecycle": true, "root_task_status": true}
 	case syncTargetReport:
 		return map[string]bool{"state": true, "next_focus": true}
 	default:
@@ -1218,7 +1218,7 @@ func validSyncUpdate(update syncUpdate) bool {
 		}
 		if strings.HasSuffix(field, "status") {
 			switch value {
-			case "NEW", "IN PROGRESS", "PAUSED", "BLOCKED", "CLOSED", "unknown":
+			case "NEW", "IN PROGRESS", "PAUSED", "STUCK", "CLOSED", "unknown":
 			default:
 				return false
 			}

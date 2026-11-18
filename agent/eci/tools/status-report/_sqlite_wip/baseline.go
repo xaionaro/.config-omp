@@ -192,7 +192,7 @@ func prepareBaseline(document,log []byte, decisions map[string]baselineMode) ([]
 
 // baselineGroupHeld prevents every fallback path from bypassing an owner-held effect.
 //
-// Example: A held forecast blocks closure but not an unrelated task update.
+// Example: A held forecast holds back closure but not an unrelated task update.
 func baselineGroupHeld(state syncState, update syncUpdate) bool {
  if state.Applied[syncTargetKey(update,"record")].Kind==syncOwnershipHeld{return true}
  for _,field:=range baselineFields(update) {if state.Applied[syncTargetKey(update,field)].Kind==syncOwnershipHeld{return true}}

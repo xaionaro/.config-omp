@@ -121,7 +121,7 @@ func TestRetractNarrativeSyncBlockList(t *testing.T) {
 
 // TestNarrativeEvidenceProtectsEditedText checks ownership of the whole subject.
 //
-// Example: An owner text edit blocks a later automatic evidence update.
+// Example: An owner text edit holds back a later automatic evidence update.
 func TestNarrativeEvidenceProtectsEditedText(t *testing.T) {
 	t.Parallel()
 	source := []byte("progress: [{subject_ref: one, text: revised, evidence: proof}]\n")

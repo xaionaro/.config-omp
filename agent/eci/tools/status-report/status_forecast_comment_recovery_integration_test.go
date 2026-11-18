@@ -14,7 +14,7 @@ import (
 // Example: A source update waits until an annotated projection can be replaced safely.
 func TestForecastProjectionRecoversAfterOwnerCommentResolution(t *testing.T) {
 	t.Parallel()
-	// event adds independent progress while the forecast projection is blocked.
+	// event adds independent progress while the forecast projection is held back.
 	//
 	// Example: Resolving the comment permits the retained event to apply once.
 	const event = `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"queued claim"}}]}}}` + "\n"
@@ -35,14 +35,14 @@ func TestForecastProjectionRecoversAfterOwnerCommentResolution(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
 	require.NoError(t, writeSessionLog(dir, []byte(event)))
 	require.ErrorContains(t, refreshTestStatus(dir, "forecast_change"), "contains comments")
-	blocked, err := os.ReadFile(path)
+	awaiting, err := os.ReadFile(path)
 	require.NoError(t, err)
-	parsed, err := parse(blocked)
+	parsed, err := parse(awaiting)
 	require.NoError(t, err)
 	require.NotContains(t, parsed.Progress, "queued claim")
-	require.Contains(t, string(blocked), "target_basis: old # owner note")
-	resolved := strings.Replace(string(blocked), " # owner note", "", 1)
-	require.NotEqual(t, string(blocked), resolved)
+	require.Contains(t, string(awaiting), "target_basis: old # owner note")
+	resolved := strings.Replace(string(awaiting), " # owner note", "", 1)
+	require.NotEqual(t, string(awaiting), resolved)
 	require.NoError(t, os.WriteFile(path, []byte(resolved), 0600))
 	require.NoError(t, refreshTestStatus(dir, "forecast_change"))
 	result, err := os.ReadFile(path)

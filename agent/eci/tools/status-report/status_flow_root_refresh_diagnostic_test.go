@@ -20,7 +20,7 @@ func TestFlowRootRefreshAddsDiagnosticWithMultilineComment(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal([]byte(linkedReport), &source))
 	source["timeline_state"] = "verified_empty"
 	source["timeline"] = []any{}
-	source["blockers_risks"] = []any{"existing ] risk"}
+	source["stuck_risks"] = []any{"existing ] risk"}
 	encoded, err := json.Marshal(source)
 	require.NoError(t, err)
 	input := strings.TrimSuffix(string(encoded), "}") + ", # preserve owner note\n}\n"
@@ -44,8 +44,8 @@ func TestFlowRootRefreshAddsDiagnosticWithMultilineComment(t *testing.T) {
 	require.Equal(t, statusClosed, report.Tasks[0].Status)
 	require.Equal(t, statusInProgress, report.Tasks[1].Status)
 	require.Contains(t, report.Progress, "verified progress")
-	require.Contains(t, report.Blockers, "existing ] risk")
-	require.Contains(t, report.Blockers, refreshDiagnostic)
+	require.Contains(t, report.StuckRisks, "existing ] risk")
+	require.Contains(t, report.StuckRisks, refreshDiagnostic)
 	require.Contains(t, string(result), "# preserve owner note")
 	require.False(t, *report.ScopeComplete)
 }

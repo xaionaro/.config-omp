@@ -116,7 +116,7 @@ type report struct {
 	State              string               `yaml:"state"`
 	Progress           []string             `yaml:"progress"`
 	Decisions          []any                `yaml:"decisions"`
-	Blockers           []string             `yaml:"blockers_risks"`
+	StuckRisks         []string             `yaml:"stuck_risks"`
 	Verification       []string             `yaml:"verification"`
 	NextFocus          string               `yaml:"next_focus"`
 	ScopeComplete      *bool                `yaml:"scope_complete"`
@@ -166,8 +166,8 @@ func parse(data []byte) (report, error) {
 	if strings.TrimSpace(r.State) == "" || strings.TrimSpace(r.NextFocus) == "" || r.ScopeComplete == nil {
 		return r, fmt.Errorf("state, next_focus and scope_complete are required")
 	}
-	if r.Progress == nil || r.Decisions == nil || r.Blockers == nil || r.Verification == nil || r.Tasks == nil || r.TopPriorities == nil {
-		return r, fmt.Errorf("progress, decisions, blockers_risks, verification, tasks and top_priorities must be lists")
+	if r.Progress == nil || r.Decisions == nil || r.StuckRisks == nil || r.Verification == nil || r.Tasks == nil || r.TopPriorities == nil {
+		return r, fmt.Errorf("progress, decisions, stuck_risks, verification, tasks and top_priorities must be lists")
 	}
 	if r.TimelineState == timelineVerifiedEmpty && len(r.Timeline) > 0 {
 		return r, fmt.Errorf("verified_empty timeline cannot contain entries")
@@ -262,7 +262,7 @@ func render(r report) string {
 		writeValue(&b, v, 1)
 	}
 	b.WriteString("\n")
-	writeList(&b, "Blockers / risks", r.Blockers)
+	writeList(&b, "Stuck work / risks", r.StuckRisks)
 	writeList(&b, "Verification", r.Verification)
 	fmt.Fprintf(&b, "Next focus: %s\n\n", r.NextFocus)
 	byID := map[taskID]task{}

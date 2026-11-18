@@ -300,7 +300,7 @@ func ledgerRecordIssues(
 		issues = append(issues, fmt.Sprintf("work %s missing next action", id))
 	}
 	switch record.Data.State {
-	case workStateActive, workStateBlocked, workStateCompleted, workStateCancelled:
+	case workStateActive, workStateStuck, workStateCompleted, workStateCancelled:
 	default:
 		issues = append(issues, fmt.Sprintf("work %s has unknown state", id))
 	}
@@ -501,7 +501,7 @@ func reconcileAt(
 	}
 	anyOpen := scope.reportOpen
 	for _, w := range works {
-		if w.Data.State == workStateActive || w.Data.State == workStateBlocked {
+		if w.Data.State == workStateActive || w.Data.State == workStateStuck {
 			anyOpen = true
 		}
 	}

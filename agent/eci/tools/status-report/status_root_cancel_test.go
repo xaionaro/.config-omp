@@ -75,7 +75,7 @@ func TestCancelledRootRetirementPreservesComments(t *testing.T) {
 
 // TestCancelledRootRetirementChecksSourceAndPrior exercises removal and its verifier effect.
 //
-// Example: A different recorded owner value blocks removal.
+// Example: A different recorded owner value denies removal.
 func TestCancelledRootRetirementChecksSourceAndPrior(t *testing.T) {
 	t.Parallel()
 	prior := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`

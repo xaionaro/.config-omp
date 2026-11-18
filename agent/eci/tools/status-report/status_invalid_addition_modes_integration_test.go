@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInvalidAdditionModesDoNotBlockIndependentProgress checks malformed producer input.
+// TestInvalidAdditionModesDoNotStallIndependentProgress checks malformed producer input.
 //
 // Example: A task cannot retire a forecast while a valid sibling update still applies.
-func TestInvalidAdditionModesDoNotBlockIndependentProgress(t *testing.T) {
+func TestInvalidAdditionModesDoNotStallIndependentProgress(t *testing.T) {
 	t.Parallel()
 	cases := []struct{ name, addition string }{
 		{"task retires forecast", `{"target":"task","retire_forecast":true,"record":{"id":"3","title":"New","priority":"high","impact":"Useful","effort":{"min_minutes":10,"max_minutes":20,"kind":"elapsed","basis":"guess"},"status":"NEW"}}`},
@@ -37,7 +37,7 @@ func TestInvalidAdditionModesDoNotBlockIndependentProgress(t *testing.T) {
 				require.Len(t, report.PriorityEstimates, 1)
 				require.Empty(t, report.StatusSync.PendingAdditions)
 				require.Empty(t, report.StatusSync.PendingRootAdditions)
-				require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 			})
 	}
 }

@@ -21,7 +21,7 @@ func TestFlowRootCRLFRefreshPreservesContent(t *testing.T) {
 	source["state"] = "Working λ"
 	source["timeline_state"] = "verified_empty"
 	source["timeline"] = []any{}
-	source["blockers_risks"] = []any{"existing ] risk"}
+	source["stuck_risks"] = []any{"existing ] risk"}
 	encoded, err := json.Marshal(source)
 	require.NoError(t, err)
 	input := strings.TrimSuffix(string(encoded), "}") + ", # preserve owner note\r\n}\r\n"
@@ -49,8 +49,8 @@ func TestFlowRootCRLFRefreshPreservesContent(t *testing.T) {
 	require.Equal(t, statusInProgress, report.Tasks[1].Status)
 	require.Equal(t, "Working λ", report.State)
 	require.Contains(t, report.Progress, "verified progress")
-	require.Contains(t, report.Blockers, "existing ] risk")
-	require.Contains(t, report.Blockers, refreshDiagnostic)
+	require.Contains(t, report.StuckRisks, "existing ] risk")
+	require.Contains(t, report.StuckRisks, refreshDiagnostic)
 	require.NotContains(t, strings.ReplaceAll(string(result), "\r\n", ""), "\n")
 	afterComments, err := yamlComments(result)
 	require.NoError(t, err)

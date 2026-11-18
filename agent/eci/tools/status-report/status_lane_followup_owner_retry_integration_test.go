@@ -11,7 +11,7 @@ import (
 
 // TestLaneClosureWaitsForOwnerFollowupRestoration checks atomic source-backed clearing.
 //
-// Example: An edited followup marker blocks closure until the owner restores its prior value.
+// Example: An edited followup marker holds back closure until the owner restores its prior value.
 func TestLaneClosureWaitsForOwnerFollowupRestoration(t *testing.T) {
 	t.Parallel()
 	// followup records the managed marker on an active lane.

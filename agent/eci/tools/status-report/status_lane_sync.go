@@ -10,12 +10,12 @@ import (
 
 // syncAbsentValue marks a field previously removed by projection.
 //
-// Example: Reject an owner-added blocker after a projected clear.
+// Example: Reject an owner-added awaits value after a projected clear.
 const syncAbsentValue = "\x00absent"
 
 // validLaneSyncUpdate accepts scalar fields and explicit optional-field removals.
 //
-// Example: Accept a lane update that clears a blocker.
+// Example: Accept a lane update that clears awaits.
 func validLaneSyncUpdate(update syncUpdate) bool {
 	if update.Target != syncTargetLane || len(update.Values) != 0 || update.Retract || (len(update.Fields) == 0 && len(update.Clear) == 0) {
 		return false
@@ -32,7 +32,7 @@ func validLaneSyncUpdate(update syncUpdate) bool {
 		seen[field] = true
 	}
 	for _, field := range update.Clear {
-		if seen[field] || (field != "lifecycle" && field != "blocker" && field != "next_action" && field != "completed_at" && field != "root_task_status") {
+		if seen[field] || (field != "lifecycle" && field != "awaits" && field != "next_action" && field != "completed_at" && field != "root_task_status") {
 			return false
 		}
 		seen[field] = true

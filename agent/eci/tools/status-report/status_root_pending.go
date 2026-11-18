@@ -21,7 +21,7 @@ type rootLifecycleLocator struct {
 
 // syncPendingRootAddition retains an exact root addition and its source location.
 //
-// Example: A blocked completion remains available for a later source refresh.
+// Example: An awaiting completion remains available for a later source refresh.
 type syncPendingRootAddition struct {
 	Locator  rootLifecycleLocator `json:"locator" yaml:"locator"`
 	Addition syncAddition         `json:"addition" yaml:"addition"`

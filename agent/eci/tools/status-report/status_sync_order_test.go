@@ -122,19 +122,19 @@ func TestSyncMixedTypedAndScalarFieldsStayAtomic(t *testing.T) {
 
 // TestSyncLaneClearThenSetKeepsOwnership checks explicit removal and later update.
 //
-// Example: Resolve a blocker, then record a new blocker on the same lane.
+// Example: Clear an awaits value, then record a new awaits value on the same lane.
 func TestSyncLaneClearThenSetKeepsOwnership(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	report := strings.Replace(linkedReport, "    outcome: First result\n", "    outcome: First result\n    blocker: Waiting\n", 1)
-	first := `{"event":"blocker_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","clear":["blocker"]}]}}}` + "\n"
-	second := `{"event":"blocker_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"blocker":"new blocker"}}]}}}` + "\n"
+	report := strings.Replace(linkedReport, "    outcome: First result\n", "    outcome: First result\n    awaits: Waiting\n", 1)
+	first := `{"event":"stuck_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","clear":["awaits"]}]}}}` + "\n"
+	second := `{"event":"stuck_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"awaits":"new awaits value"}}]}}}` + "\n"
 	require.NoError(t, writeSessionLog(dir, []byte(first+second)))
 	result, _, err := projectLogStatus(dir, []byte(report), ledgerSource{}, forecastSource{})
 	require.NoError(t, err)
 	parsed, err := parse(result)
 	require.NoError(t, err)
-	require.Equal(t, "new blocker", parsed.Lanes[0].Blocker)
+	require.Equal(t, "new awaits value", parsed.Lanes[0].Awaits)
 }
 
 // TestSyncCorrectionWaitsForItsPendingTarget checks causal retry ordering.
@@ -249,7 +249,7 @@ func TestSyncReopenRecordsImplicitCompletionRemoval(t *testing.T) {
 	require.Equal(t, 2, parsed.StatusSync.Latest[key])
 	require.Equal(t, syncAbsentValue, parsed.StatusSync.Applied[key])
 	require.Empty(t, parsed.Lanes[0].CompletedAt)
-	require.Contains(t, strings.Join(parsed.Blockers, " "), "invalid status_update requires manual review")
+	require.Contains(t, strings.Join(parsed.StuckRisks, " "), "invalid status_update requires manual review")
 }
 
 // TestSyncLastPriorityRetirementRequiresExactPrior checks explicit removal.
@@ -262,7 +262,7 @@ func TestSyncLastPriorityRetirementRequiresExactPrior(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-blockers_risks: []
+stuck_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true

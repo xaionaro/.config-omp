@@ -61,7 +61,7 @@ type lane struct {
 	NextMilestone        string              `yaml:"next_milestone"`
 	CompletedAt          string              `yaml:"completed_at"`
 	Forecasted           bool                `yaml:"forecasted"`
-	Blocker              string              `yaml:"blocker"`
+	Awaits               string              `yaml:"awaits"`
 	NextAction           string              `yaml:"next_action"`
 	Context              string              `yaml:"context"`
 	RootTaskStatus       rootTaskStatus      `yaml:"root_task_status"`
@@ -80,7 +80,7 @@ func renderLaneTable(
 	if len(lanes) == 0 {
 		return
 	}
-	fmt.Fprintln(b, "\n| Task ID | Parent ID | Lane | Lane requirement context | Priority group | Calculated priority | Impact | Effort | Stage | Required environment | Owner | Implementation Status | Test Status | Prod Status | Blocker | Next milestone | Forecast deadline / recalibration | Dependencies / critical path | Next proof/action |")
+	fmt.Fprintln(b, "\n| Task ID | Parent ID | Lane | Lane requirement context | Priority group | Calculated priority | Impact | Effort | Stage | Required environment | Owner | Implementation Status | Test Status | Prod Status | Awaits | Next milestone | Forecast deadline / recalibration | Dependencies / critical path | Next proof/action |")
 	fmt.Fprintln(b, "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
 	ids := make([]taskID, 0, len(lanes))
 	byTask := map[taskID][]lane{}
@@ -102,7 +102,7 @@ func renderLaneTable(
 		if strings.TrimSpace(context) == "" || strings.EqualFold(strings.TrimSpace(context), "unknown") {
 			context = "lineage unavailable—reconcile"
 		}
-		vals := []string{string(l.TaskID), string(t.ParentID), l.Outcome, context, string(t.Priority), priorityText(t, scale), t.Impact, effort, l.Stage, l.RequiredEnvironment.String(), l.Owner, l.ImplementationStatus.String(), l.TestStatus.String(), l.ProdStatus.String(), l.Blocker, l.NextMilestone, target, dependencies, l.NextAction}
+		vals := []string{string(l.TaskID), string(t.ParentID), l.Outcome, context, string(t.Priority), priorityText(t, scale), t.Impact, effort, l.Stage, l.RequiredEnvironment.String(), l.Owner, l.ImplementationStatus.String(), l.TestStatus.String(), l.ProdStatus.String(), l.Awaits, l.NextMilestone, target, dependencies, l.NextAction}
 		fmt.Fprint(b, "|")
 		for _, v := range vals {
 			fmt.Fprintf(b, " %s |", timelineCell(v))

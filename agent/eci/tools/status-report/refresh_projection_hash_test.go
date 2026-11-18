@@ -23,7 +23,7 @@ func TestRefreshProjectionAllowsQuotedHash(t *testing.T) {
 		t.Run(tc.name,
 			// Refresh one YAML representation and preserve its unrelated comment.
 			//
-			// Example: A hash inside a quoted scalar does not block the edit.
+			// Example: A hash inside a quoted scalar does not deny the edit.
 			func(t *testing.T) {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "latest-status-report.yaml")

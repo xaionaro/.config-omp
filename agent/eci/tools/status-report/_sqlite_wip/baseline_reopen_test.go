@@ -17,7 +17,7 @@ import (
 func baselineClosedNativeReport(t *testing.T, cancelled bool) []byte {
  t.Helper()
  native:=baselineNativeFixture(t,linkedReport);decoded,err:=decodeReportValue(native);require.NoError(t,err);root:=decoded.(map[string]any);lane:=root["lanes"].([]any)[0].(map[string]any)
- lane["implementation_status"]="CLOSED";lane["completed_at"]="2026-11-02T15:25:00Z";lane["blocker"]="owner-wait";delete(lane,"forecast")
+ lane["implementation_status"]="CLOSED";lane["completed_at"]="2026-11-02T15:25:00Z";lane["awaits"]="owner-wait";delete(lane,"forecast")
  if cancelled {lane["lifecycle"]="cancelled";lane["implementation_status"]=statusInProgress.String();delete(lane,"completed_at")}
  root["owner_extension"]=map[string]any{"precise":json.Number("1.10"),"large":json.Number("1e400")}
  native,err=json.Marshal(root);require.NoError(t,err);_,err=parseDBReport(native);require.NoError(t,err);return native
@@ -37,16 +37,16 @@ func baselineActiveSources(t *testing.T) (ledgerSource,forecastSource) {
 // Example: Neither absent work nor absent forecast evidence permits a half-applied reopening.
 func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
  t.Parallel()
- for _,reactivate:=range []bool{false,true} {for _,missing:=range []string{"ledger","work-record","forecast","forecast-record","forecast-ref","blocked-forecast-ref","roles","unknown-role","state"} {
+ for _,reactivate:=range []bool{false,true} {for _,missing:=range []string{"ledger","work-record","forecast","forecast-record","forecast-ref","stuck-forecast-ref","roles","unknown-role","state"} {
   t.Run(fmt.Sprintf("reactivate=%t/missing=%s",reactivate,missing),
    // The callback retains one complete operation until every required implicit dependency is available.
    //
-   // Example: Source-independent owner and blocker readiness changes still progress on the same lane.
+   // Example: Source-independent owner and awaits readiness changes still progress on the same lane.
    func(t *testing.T) {
     update:=syncUpdate{Target:syncTargetLane,ID:"1",WorkRef:"project-understanding.yaml#/records/work:first",RequiredEnvironment:syncEnvironmentImplementation,Fields:map[string]string{"implementation_status":"IN PROGRESS"}}
     if reactivate {update.Clear=[]string{"lifecycle"};update.Evidence="reactivated"}
     rawUpdate,err:=json.Marshal(update);require.NoError(t,err)
-    log:=[]byte(`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"report","id":"current","fields":{"next_focus":"independent-reopen"}},`+string(rawUpdate)+`,{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"owner":"ready-owner"},"clear":["blocker"]}]}}}`+"\n")
+    log:=[]byte(`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"report","id":"current","fields":{"next_focus":"independent-reopen"}},`+string(rawUpdate)+`,{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"owner":"ready-owner"},"clear":["awaits"]}]}}}`+"\n")
     authored:=baselineClosedNativeReport(t,reactivate);before:=sparseParsed(t,authored)
     prepared,err:=prepareBaseline(authored,log,map[string]baselineMode{"1/u/0":baselinePending,"1/u/1":baselinePending,"1/u/2":baselinePending});require.NoError(t,err)
     ledger,forecasts:=baselineActiveSources(t);sources:=reconciliationSnapshot{ledgerPresent:true,forecastPresent:true,ledger:ledger,forecasts:forecasts}
@@ -55,8 +55,8 @@ func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
     case "work-record":sources.ledger=ledgerSource{Schema:"project-understanding/v1",Sections:map[string]any{},Records:map[string]sourceRecord{}}
     case "forecast":sources.forecastPresent=false;sources.forecasts=forecastSource{}
     case "forecast-record":sources.forecasts=forecastSource{Schema:"forecasts/v1",Records:map[string]map[string]any{}}
-    case "forecast-ref", "blocked-forecast-ref":
-     work:=sources.ledger.Records["work:first"];work.Data.ForecastRef="";if missing=="blocked-forecast-ref" {work.Data.State=workStateBlocked};sources.ledger.Records["work:first"]=work
+    case "forecast-ref", "stuck-forecast-ref":
+     work:=sources.ledger.Records["work:first"];work.Data.ForecastRef="";if missing=="stuck-forecast-ref" {work.Data.State=workStateStuck};sources.ledger.Records["work:first"]=work
     case "roles":
      work:=sources.ledger.Records["work:first"];work.Data.Roles=nil;sources.ledger.Records["work:first"]=work
     case "unknown-role":
@@ -68,7 +68,7 @@ func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
     result,err:=projectDBReportResult(dir,"report_create",projectionSnapshot{Report:baselineReload(t,prepared),ReportPresent:true,Sources:sources},sparseEvaluation,captured,true);require.NoError(t,err)
     receipts:=result.Receipts;document:=result.Document;parsed:=sparseParsed(t,document);require.Equal(t,before.Lanes[0].ImplementationStatus,parsed.Lanes[0].ImplementationStatus);require.Equal(t,before.Lanes[0].CompletedAt,parsed.Lanes[0].CompletedAt);require.Nil(t,parsed.Lanes[0].Forecast)
     require.Equal(t,"independent-reopen",parsed.NextFocus);require.Equal(t,"ready-owner",parsed.Lanes[0].Owner);require.False(t,*parsed.ScopeComplete)
-    decoded,err:=decodeReportValue(document);require.NoError(t,err);lane:=decoded.(map[string]any)["lanes"].([]any)[0].(map[string]any);require.NotContains(t,lane,"blocker")
+    decoded,err:=decodeReportValue(document);require.NoError(t,err);lane:=decoded.(map[string]any)["lanes"].([]any)[0].(map[string]any);require.NotContains(t,lane,"awaits")
     if reactivate {require.Equal(t,"cancelled",lane["lifecycle"])}
     key:=syncGroupKey(1,1);pending,present:=parsed.StatusSync.Groups[key];require.True(t,present);require.Equal(t,1,pending.Line);require.Equal(t,1,pending.Ordinal)
     stored,err:=decodeSyncGroup(pending.Update);require.NoError(t,err);same,err:=sameBaselineOperation(stored,update);require.NoError(t,err);require.True(t,same)
@@ -76,7 +76,7 @@ func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
     require.Contains(t,receipts,syncOperationLocator{Kind:syncOperationUpdate,Line:1,Ordinal:2})
     // Current sources arrive; normal replay retries the same operation without reappend.
     arrivedLedger,arrivedForecasts:=baselineActiveSources(t)
-    if missing=="blocked-forecast-ref" {work:=arrivedLedger.Records["work:first"];work.Data.State=workStateBlocked;arrivedLedger.Records["work:first"]=work}
+    if missing=="stuck-forecast-ref" {work:=arrivedLedger.Records["work:first"];work.Data.State=workStateStuck;arrivedLedger.Records["work:first"]=work}
     arrived:=reconciliationSnapshot{ledgerPresent:true,forecastPresent:true,ledger:arrivedLedger,forecasts:arrivedForecasts}
     retried,err:=projectDBReportResult(dir,"worker_progress",projectionSnapshot{Report:baselineReload(t,document),ReportPresent:true,Sources:arrived},sparseEvaluation,captured,true);require.NoError(t,err)
     complete:=sparseParsed(t,retried.Document);receipts=retried.Receipts;require.Equal(t,statusInProgress,complete.Lanes[0].ImplementationStatus);require.Empty(t,complete.Lanes[0].CompletedAt);require.NotNil(t,complete.Lanes[0].Forecast);require.Equal(t,"First result",complete.Lanes[0].Forecast.Outcome);require.NotContains(t,complete.StatusSync.Groups,key);require.Contains(t,receipts,wanted)
@@ -94,10 +94,10 @@ func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
  }}
 }
 
-// TestBaselineSparseNonApplicableForecastDoesNotBlockReopening uses explicit canonical non-applicability.
+// TestBaselineSparseNonApplicableForecastDoesNotStallReopening uses explicit canonical non-applicability.
 //
 // Example: A known empty role list does not require a lane forecast, regardless of reference spelling.
-func TestBaselineSparseNonApplicableForecastDoesNotBlockReopening(t *testing.T) {
+func TestBaselineSparseNonApplicableForecastDoesNotStallReopening(t *testing.T) {
  t.Parallel()
  for _,referencePresent:=range []bool{false,true} {t.Run(fmt.Sprint(referencePresent),
   // The callback proves reference presence alone cannot create a forecast requirement.

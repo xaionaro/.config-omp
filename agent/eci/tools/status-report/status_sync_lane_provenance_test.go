@@ -40,7 +40,7 @@ func TestLaneChainProvenanceChecksLogAndOwner(t *testing.T) {
 	t.Parallel()
 	raw := []string{
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled"}}]}}}`,
-		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"blocker":"waiting"},"clear":["lifecycle"]}]}}}`,
+		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"awaits":"waiting"},"clear":["lifecycle"]}]}}}`,
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}`,
 	}
 	var groups []syncPendingGroup
@@ -65,7 +65,7 @@ func TestLaneChainProvenanceChecksLogAndOwner(t *testing.T) {
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, log, ledger, forecasts); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, map[string]string{"blocker": "someone else's value"}, log, ledger, forecasts); err == nil {
+	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, map[string]string{"awaits": "someone else's value"}, log, ledger, forecasts); err == nil {
 		t.Fatal("accepted owner conflict")
 	}
 	raw[1] = strings.Replace(raw[1], "waiting", "forged", 1)
@@ -76,11 +76,11 @@ func TestLaneChainProvenanceChecksLogAndOwner(t *testing.T) {
 
 // TestLaneChainProvenanceRepeatedTransitions verifies every event in a longer chain.
 //
-// Example: A second cancellation and reactivation still retain the final supplied blocker.
+// Example: A second cancellation and reactivation still retain the final supplied awaits value.
 func TestLaneChainProvenanceRepeatedTransitions(t *testing.T) {
 	t.Parallel()
 	cancel := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"cancelled","fields":{"lifecycle":"cancelled","context":"retained"}}]}}}`
-	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"blocker":"waiting"},"clear":["lifecycle"]}]}}}`
+	reopen := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"awaits":"waiting"},"clear":["lifecycle"]}]}}}`
 	close := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}`
 	lines := []string{cancel, reopen, cancel, reopen, close}
 	var groups []syncPendingGroup
@@ -105,13 +105,13 @@ func TestLaneChainProvenanceRepeatedTransitions(t *testing.T) {
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, log, ledger, forecasts); err != nil {
 		t.Fatal(err)
 	}
-	omitted := strings.Replace(lines[2], `}]}}}`, `},{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"blocker":"omitted"}}]}}}`, 1)
+	omitted := strings.Replace(lines[2], `}]}}}`, `},{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"awaits":"omitted"}}]}}}`, 1)
 	withOmitted := append([]string(nil), lines...)
 	withOmitted[2] = omitted
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, []byte(strings.Join(withOmitted, "\n")), ledger, forecasts); err == nil {
 		t.Fatal("accepted omitted dependent update")
 	}
-	withOmitted[2] = strings.Replace(omitted, `"fields":{"blocker":"omitted"}`, `"evidence":42,"fields":{"blocker":"omitted"}`, 1)
+	withOmitted[2] = strings.Replace(omitted, `"fields":{"awaits":"omitted"}`, `"evidence":42,"fields":{"awaits":"omitted"}`, 1)
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, []byte(strings.Join(withOmitted, "\n")), ledger, forecasts); err == nil {
 		t.Fatal("accepted malformed omitted lane update")
 	}
@@ -119,7 +119,7 @@ func TestLaneChainProvenanceRepeatedTransitions(t *testing.T) {
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, []byte(strings.Join(withOmitted, "\n")), ledger, forecasts); err != nil {
 		t.Fatalf("rejected unrelated malformed sibling: %v", err)
 	}
-	withOmitted[2] = strings.Replace(omitted, `"blocker":"omitted"`, `"owner":"other"`, 1)
+	withOmitted[2] = strings.Replace(omitted, `"awaits":"omitted"`, `"owner":"other"`, 1)
 	if err := verifyLaneLifecycleChain([]byte(linkedReport), candidate, groups, effects, provenance, nil, []byte(strings.Join(withOmitted, "\n")), ledger, forecasts); err != nil {
 		t.Fatalf("rejected disjoint update: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestLaneChainProvenanceReclosed(t *testing.T) {
 	t.Parallel()
 	lines := []string{
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"first accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z","context":"retained"}}]}}}`,
-		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"implementation_status":"PAUSED","blocker":"waiting"}}]}}}`,
+		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"reopened","fields":{"implementation_status":"PAUSED","awaits":"waiting"}}]}}}`,
 		`{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:45:00Z"}}]}}}`,
 	}
 	var groups []syncPendingGroup

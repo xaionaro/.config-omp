@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIncompleteLaneSelectorsAreDiagnosedWithoutBlockingProgress checks producer input.
+// TestIncompleteLaneSelectorsAreDiagnosedWithoutStallingProgress checks producer input.
 //
 // Example: A lane without a work reference cannot be queued under an ambiguous identity.
-func TestIncompleteLaneSelectorsAreDiagnosedWithoutBlockingProgress(t *testing.T) {
+func TestIncompleteLaneSelectorsAreDiagnosedWithoutStallingProgress(t *testing.T) {
 	t.Parallel()
 	cases := []struct{ name, record string }{
 		{"missing work reference", `{"task_id":"1","outcome":"Result","required_environment":"implementation","implementation_status":"NEW","test_status":"NEW","prod_status":"NEW"}`},
@@ -33,7 +33,7 @@ func TestIncompleteLaneSelectorsAreDiagnosedWithoutBlockingProgress(t *testing.T
 				require.Len(t, report.Lanes, 2)
 				require.Contains(t, report.Progress, "independent progress")
 				require.Empty(t, report.StatusSync.PendingAdditions)
-				require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 			})
 	}
 }

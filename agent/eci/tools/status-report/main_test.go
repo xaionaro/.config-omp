@@ -20,7 +20,7 @@ const validCore = `timestamp: "2026-11-02T15:24:00Z"
 state: Working
 progress: [Implementation started]
 decisions: [Use YAML]
-blockers_risks: [none]
+stuck_risks: [none]
 verification: [pending]
 next_focus: Finish
 scope_complete: false
@@ -650,10 +650,10 @@ func TestCLICommands(t *testing.T) {
 
 // TestStatusAndEstimateVariants covers supported report states and time units.
 //
-// Example: Paused and blocked packages remain incomplete in the progress bar.
+// Example: Paused and stuck packages remain incomplete in the progress bar.
 func TestStatusAndEstimateVariants(t *testing.T) {
 	t.Parallel()
-	for _, state := range []string{"NEW", "IN PROGRESS", "PAUSED", "BLOCKED", "CLOSED", "unknown"} {
+	for _, state := range []string{"NEW", "IN PROGRESS", "PAUSED", "STUCK", "CLOSED", "unknown"} {
 		input := strings.Replace(valid, "status: unknown", "status: "+state, 1)
 		if state == "CLOSED" {
 			input = strings.Replace(input, "status: CLOSED\ntop_priorities:", "status: CLOSED\n    evidence: accepted\ntop_priorities:", 1)
@@ -743,14 +743,14 @@ func TestLaneStatusVariantsPreserveReadiness(t *testing.T) {
     required_environment: prod
     implementation_status: CLOSED
     test_status: PAUSED
-    prod_status: BLOCKED
+    prod_status: STUCK
     root_task_status: FOLLOWUP_PAUSED
     forecast: {outcome: Work, target: unknown, assessment: provisional}
 `
 	r, err := parse([]byte(strings.Replace(valid, "lanes: []", lane, 1)))
 	require.NoError(t, err)
 	out := render(r)
-	for _, v := range []string{"| prod |", "| PAUSED |", "| BLOCKED |", "FOLLOWUP_PAUSED", "Forecast deadline: Work — unknown"} {
+	for _, v := range []string{"| prod |", "| PAUSED |", "| STUCK |", "FOLLOWUP_PAUSED", "Forecast deadline: Work — unknown"} {
 		require.Contains(t, out, v)
 	}
 	for _, field := range []string{"required_environment: []", "implementation_status: {}", "root_task_status: !bad FOLLOWUP"} {

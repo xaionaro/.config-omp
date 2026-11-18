@@ -212,16 +212,16 @@ func prepareInvalidation(
 		return nil, err
 	}
 	root := doc.Content[0]
-	var scope, blockers *yaml.Node
+	var scope, stuckRisks *yaml.Node
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		switch root.Content[i].Value {
 		case "scope_complete":
 			scope = root.Content[i+1]
-		case "blockers_risks":
-			blockers = root.Content[i+1]
+		case "stuck_risks":
+			stuckRisks = root.Content[i+1]
 		}
 	}
-	if scope == nil || blockers == nil || scope.Kind != yaml.ScalarNode || blockers.Kind != yaml.SequenceNode {
+	if scope == nil || stuckRisks == nil || scope.Kind != yaml.ScalarNode || stuckRisks.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("unsupported report fields")
 	}
 	lines := strings.Split(string(original), "\n")
@@ -238,10 +238,10 @@ func prepareInvalidation(
 		return nil, fmt.Errorf("unsupported scope layout")
 	}
 	lines[line] = lines[line][:start] + "false" + lines[line][start+len(scope.Value):]
-	if blockers.Line == scope.Line && blockers.Column > scope.Column {
-		blockers.Column += len("false") - len(scope.Value)
+	if stuckRisks.Line == scope.Line && stuckRisks.Column > scope.Column {
+		stuckRisks.Column += len("false") - len(scope.Value)
 	}
-	lines, err = appendDiagnostic(lines, blockers, diagnostic, nextMappingFieldLine(root, "blockers_risks"))
+	lines, err = appendDiagnostic(lines, stuckRisks, diagnostic, nextMappingFieldLine(root, "stuck_risks"))
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func prepareInvalidation(
 
 // nextMappingFieldLine identifies the field following a named YAML mapping key.
 //
-// Example: Find the line where verification follows blockers.
+// Example: Find the line where verification follows stuck risks.
 func nextMappingFieldLine(
 	root *yaml.Node,
 	key string,
@@ -270,35 +270,35 @@ func nextMappingFieldLine(
 
 // appendDiagnostic adds a missing diagnostic without changing existing entries.
 //
-// Example: Add a new risk to a flow-style blocker list.
+// Example: Add a new risk to a flow-style stuck-risk list.
 func appendDiagnostic(
 	lines []string,
-	blockers *yaml.Node,
+	stuckRisks *yaml.Node,
 	diagnostic string,
 	nextFieldLine int,
 ) ([]string, error) {
-	for _, n := range blockers.Content {
+	for _, n := range stuckRisks.Content {
 		if n.Value == diagnostic {
 			return lines, nil
 		}
 	}
-	if blockers.Style&yaml.FlowStyle == 0 {
-		return appendBlockDiagnostic(lines, blockers, diagnostic, nextFieldLine)
+	if stuckRisks.Style&yaml.FlowStyle == 0 {
+		return appendBlockDiagnostic(lines, stuckRisks, diagnostic, nextFieldLine)
 	}
 	data := []byte(strings.Join(lines, "\n"))
-	start, err := yamlByteOffset(data, blockers.Line, blockers.Column)
+	start, err := yamlByteOffset(data, stuckRisks.Line, stuckRisks.Column)
 	if err != nil {
 		return nil, err
 	}
 	if start < 0 || start >= len(data) {
-		return nil, fmt.Errorf("unsupported blockers layout")
+		return nil, fmt.Errorf("unsupported stuck risks layout")
 	}
 	end, err := flowEnd(data, start, token.SequenceStartType)
 	if err != nil {
 		return nil, err
 	}
 	sep := ""
-	if len(blockers.Content) > 0 {
+	if len(stuckRisks.Content) > 0 {
 		sep = ", "
 	}
 	updated := string(data[:end]) + sep + strconv.Quote(diagnostic) + string(data[end:])
@@ -307,10 +307,10 @@ func appendDiagnostic(
 
 // appendBlockDiagnostic adds a diagnostic to a supported block-style list.
 //
-// Example: Append a diagnostic to an indented blocker list.
+// Example: Append a diagnostic to an indented stuck-risk list.
 func appendBlockDiagnostic(
 	lines []string,
-	blockers *yaml.Node,
+	stuckRisks *yaml.Node,
 	diagnostic string,
 	nextFieldLine int,
 ) ([]string, error) {
@@ -319,23 +319,23 @@ func appendBlockDiagnostic(
 		insert = nextFieldLine - 1
 	}
 	indent := "  "
-	if len(blockers.Content) > 0 {
-		last := blockers.Content[len(blockers.Content)-1]
+	if len(stuckRisks.Content) > 0 {
+		last := stuckRisks.Content[len(stuckRisks.Content)-1]
 		if last.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 || strings.Contains(last.Value, "\n") {
-			return nil, fmt.Errorf("multiline blocker requires manual status refresh")
+			return nil, fmt.Errorf("multiline stuck risk requires manual status refresh")
 		}
 		if last.Line < 1 || last.Line > len(lines) || insert < last.Line || insert > len(lines) {
-			return nil, fmt.Errorf("unsupported blockers layout")
+			return nil, fmt.Errorf("unsupported stuck risks layout")
 		}
 		dash := strings.Index(lines[last.Line-1], "- ")
 		if dash < 0 || strings.TrimSpace(lines[last.Line-1][:dash]) != "" {
-			return nil, fmt.Errorf("unsupported blockers layout")
+			return nil, fmt.Errorf("unsupported stuck risks layout")
 		}
 		indent = lines[last.Line-1][:dash]
 		insert = trimFollowingComments(lines, insert, last.Line)
 	}
 	if insert < 0 || insert > len(lines) {
-		return nil, fmt.Errorf("unsupported blockers layout")
+		return nil, fmt.Errorf("unsupported stuck risks layout")
 	}
 	ending := ""
 	if len(lines) > 0 && strings.HasSuffix(lines[0], "\r") {

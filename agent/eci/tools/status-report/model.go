@@ -28,10 +28,10 @@ const (
 	//
 	// Example: Use it when the report marks work awaiting another lane.
 	statusPaused
-	// statusBlocked marks work awaiting user input.
+	// statusStuck marks work awaiting user input.
 	//
 	// Example: Use it when the report marks work awaiting user input.
-	statusBlocked
+	statusStuck
 	// statusClosed marks accepted work.
 	//
 	// Example: Use it when the report marks accepted work.
@@ -134,8 +134,8 @@ func (s workStatus) String() string {
 		return "IN PROGRESS"
 	case statusPaused:
 		return "PAUSED"
-	case statusBlocked:
-		return "BLOCKED"
+	case statusStuck:
+		return "STUCK"
 	case statusClosed:
 		return "CLOSED"
 	default:
@@ -159,8 +159,8 @@ func (s *workStatus) UnmarshalYAML(n *yaml.Node) error {
 		*s = statusInProgress
 	case "PAUSED":
 		*s = statusPaused
-	case "BLOCKED":
-		*s = statusBlocked
+	case "STUCK":
+		*s = statusStuck
 	case "CLOSED":
 		*s = statusClosed
 	default:

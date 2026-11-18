@@ -160,9 +160,9 @@ func maskKeepModifier(
 	}
 }
 
-// verifyScopeAndDiagnostics checks that scope and blocker changes are permitted.
+// verifyScopeAndDiagnostics checks that scope and stuck-risk changes are permitted.
 //
-// Example: Reject removal of an existing blocker.
+// Example: Reject removal of an existing stuck risk.
 func verifyScopeAndDiagnostics(
 	before map[string]any,
 	after map[string]any,
@@ -172,14 +172,14 @@ func verifyScopeAndDiagnostics(
 	}
 	delete(before, "scope_complete")
 	delete(after, "scope_complete")
-	a, okA := before["blockers_risks"].([]any)
-	b, okB := after["blockers_risks"].([]any)
+	a, okA := before["stuck_risks"].([]any)
+	b, okB := after["stuck_risks"].([]any)
 	if !okA || !okB || len(b) < len(a) {
 		return fmt.Errorf("invalid diagnostic change")
 	}
 	for i, v := range a {
 		if !reflect.DeepEqual(v, b[i]) {
-			return fmt.Errorf("refresh would change existing blockers")
+			return fmt.Errorf("refresh would change existing stuck risks")
 		}
 	}
 	for _, v := range b[len(a):] {
@@ -188,8 +188,8 @@ func verifyScopeAndDiagnostics(
 			return fmt.Errorf("invalid refresh diagnostic")
 		}
 	}
-	delete(before, "blockers_risks")
-	delete(after, "blockers_risks")
+	delete(before, "stuck_risks")
+	delete(after, "stuck_risks")
 	return nil
 }
 

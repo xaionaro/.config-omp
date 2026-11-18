@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments checks replay ordering.
+// TestInvalidCorrectionLocatorsDoNotStallLaterAssignments checks replay ordering.
 //
-// Example: A self-referencing or future correction cannot block a later owner.
-func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
+// Example: A self-referencing or future correction cannot stall a later owner.
+func TestInvalidCorrectionLocatorsDoNotStallLaterAssignments(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, locator string
@@ -24,7 +24,7 @@ func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
 		{"later ordinal", `"corrects":1,"corrects_ordinal":1`},
 	} {
 		t.Run(tc.name,
-			// Verify an impossible locator is diagnosed without blocking valid work.
+			// Verify an impossible locator is diagnosed without stalling valid work.
 			//
 			// Example: The log retains both the invalid correction and assignment.
 			func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, "actual", report.Tasks[0].Owner)
 				require.Empty(t, report.StatusSync.Groups)
-				require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 				require.NoError(t, refreshTestStatus(dir, "assignment_change"))
 				retry, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -49,10 +49,10 @@ func TestInvalidCorrectionLocatorsDoNotBlockLaterAssignments(t *testing.T) {
 	}
 }
 
-// TestPersistedSelfCorrectionDoesNotBlockRetry checks existing queued state.
+// TestPersistedSelfCorrectionDoesNotStallRetry checks existing queued state.
 //
 // Example: A previously saved impossible locator is diagnosed and removed.
-func TestPersistedSelfCorrectionDoesNotBlockRetry(t *testing.T) {
+func TestPersistedSelfCorrectionDoesNotStallRetry(t *testing.T) {
 	t.Parallel()
 	// saved is a previously persisted impossible correction and later assignment.
 	//
@@ -73,7 +73,7 @@ func TestPersistedSelfCorrectionDoesNotBlockRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "actual", report.Tasks[0].Owner)
 	require.Empty(t, report.StatusSync.Groups)
-	require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 }
 
 // TestCorrectionCanNameEarlierSameLineOrdinal checks valid intra-event ordering.
@@ -122,7 +122,7 @@ func TestLegacyFieldSelfCorrectionIsRejected(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, report.Tasks[0].Owner)
 	require.Empty(t, report.StatusSync.Pending)
-	require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 }
 
 // TestLegacySameLineCorrectionUsesUniqueSourceOrdinal checks old pending compatibility.
@@ -201,7 +201,7 @@ func TestLegacyCancellationRejectsSelfCorrectionsBeforeAtomicReplay(t *testing.T
 	require.NotEqual(t, taskLifecycleCancelled, report.Tasks[0].Lifecycle)
 	require.Empty(t, report.Tasks[0].Evidence)
 	require.Empty(t, report.StatusSync.Pending)
-	require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 }
 
 // TestLegacySameLineCorrectionRequiresMatchingPriorField checks provenance.
@@ -237,7 +237,7 @@ func TestLegacySameLineCorrectionRequiresMatchingPriorField(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, "second", report.Tasks[0].Owner)
 				require.Empty(t, report.StatusSync.Pending)
-				require.Contains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 			})
 	}
 }
@@ -584,7 +584,7 @@ func TestLegacyCorrectionRequiresValidCurrentTransaction(t *testing.T) {
 					require.Equal(t, "third", replayedReport.Tasks[0].Owner)
 				} else {
 					require.Equal(t, "first", replayedReport.Tasks[0].Owner)
-					require.Contains(t, replayedReport.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+					require.Contains(t, replayedReport.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 				}
 			})
 	}
@@ -624,8 +624,8 @@ func TestLegacyCorrectionHoldsStructuredCompanions(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, "first", report.Tasks[0].Owner)
 				require.NotEmpty(t, report.StatusSync.Pending)
-				require.Contains(t, report.Blockers, "Status refresh incomplete: status updates remain pending manual reconciliation")
-				require.NotContains(t, report.Blockers, "Status refresh incomplete: invalid status_update requires manual review")
+				require.Contains(t, report.StuckRisks, "Status refresh incomplete: status updates remain pending manual reconciliation")
+				require.NotContains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
 			})
 	}
 }

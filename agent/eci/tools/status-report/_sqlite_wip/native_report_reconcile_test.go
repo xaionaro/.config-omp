@@ -22,7 +22,7 @@ func TestNativeReconcileRequiresVerifiedReceipt(t *testing.T) {
 		t.Run(strconv.FormatBool(invalid), func(t *testing.T) {
 			dir := t.TempDir()
 			log := []byte(`{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"report","id":"current","fields":{"next_focus":"applied"}}]}}}` + "\n")
-			document := []byte(`{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"blockers_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}`)
+			document := []byte(`{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}`)
 			prepared, err := prepareBaseline(document, log, map[string]baselineMode{"1/u/0":baselinePending})
 			require.NoError(t, err)
 			if invalid {

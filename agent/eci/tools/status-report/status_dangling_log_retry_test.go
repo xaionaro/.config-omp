@@ -58,7 +58,7 @@ func TestDanglingLogTargetUsesReadPresenceForPublication(t *testing.T) {
 				require.NoError(t, err)
 				report, err := parse(result)
 				require.NoError(t, err)
-				require.Contains(t, report.Blockers, refreshDiagnostic)
+				require.Contains(t, report.StuckRisks, refreshDiagnostic)
 				require.Contains(t, report.Progress, "Implementation started")
 				if created {
 					require.Contains(t, report.Progress, "created target progress")
@@ -91,7 +91,7 @@ func TestAbsentLogBecomingDanglingStillHasNoReadableHistory(t *testing.T) {
 	require.NoError(t, err)
 	report, err := parse(result)
 	require.NoError(t, err)
-	require.Contains(t, report.Blockers, refreshDiagnostic)
+	require.Contains(t, report.StuckRisks, refreshDiagnostic)
 	require.Contains(t, report.Progress, "Implementation started")
 }
 

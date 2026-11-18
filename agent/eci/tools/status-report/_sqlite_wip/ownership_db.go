@@ -47,7 +47,7 @@ type syncOwnership struct {
 var (
 	// syncAbsentValue represents an owned absent field.
 	//
-	// Example: A cleared blocker remains absent.
+	// Example: A cleared awaits value remains absent.
 	syncAbsentValue = syncOwnership{Kind: syncOwnershipAbsent}
 	// syncNullValue represents an owned null field.
 	//

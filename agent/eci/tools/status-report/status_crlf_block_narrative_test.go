@@ -374,7 +374,7 @@ func TestRefreshEmptyKeptScalarWithReconciliation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"", "new progress"}, report.Progress)
 	require.Contains(t, string(out), "|+ # owner note\r\n")
-	require.NotEmpty(t, report.Blockers)
+	require.NotEmpty(t, report.StuckRisks)
 }
 
 // TestReplayBesideEmptyKeptScalarPreservesExistingItems checks shared scanning.

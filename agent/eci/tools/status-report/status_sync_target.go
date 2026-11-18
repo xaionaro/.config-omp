@@ -37,10 +37,10 @@ const (
 	//
 	// Example: Record a design choice.
 	syncTargetDecisions
-	// syncTargetBlockers selects keyed risks.
+	// syncTargetStuckRisks selects keyed risks.
 	//
-	// Example: Record a blocker.
-	syncTargetBlockers
+	// Example: Record stuck work.
+	syncTargetStuckRisks
 	// syncTargetVerification selects keyed verification entries.
 	//
 	// Example: Record test evidence.
@@ -78,8 +78,8 @@ func (t syncTarget) String() string {
 		return "progress"
 	case syncTargetDecisions:
 		return "decisions"
-	case syncTargetBlockers:
-		return "blockers_risks"
+	case syncTargetStuckRisks:
+		return "stuck_risks"
 	case syncTargetVerification:
 		return "verification"
 	case syncTargetReview:
@@ -110,8 +110,8 @@ func parseSyncTarget(value string) syncTarget {
 		return syncTargetProgress
 	case "decisions":
 		return syncTargetDecisions
-	case "blockers_risks":
-		return syncTargetBlockers
+	case "stuck_risks":
+		return syncTargetStuckRisks
 	case "verification":
 		return syncTargetVerification
 	case "review":
@@ -171,7 +171,7 @@ const (
 	syncEnvironmentImplementation
 	// syncEnvironmentTest selects test readiness.
 	//
-	// Example: Record a blocked test lane.
+	// Example: Record a stuck test lane.
 	syncEnvironmentTest
 	// syncEnvironmentProd selects production readiness.
 	//

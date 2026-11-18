@@ -26,7 +26,7 @@ func TestTaskAdditionOwnershipPreservesSuppliedAndAbsentValues(t *testing.T) {
 
 // TestTaskAdditionOwnershipRejectsLaterOwnerEdit checks its use by projection.
 //
-// Example: A manual effort edit blocks a subsequent logged effort update.
+// Example: A manual effort edit holds back a subsequent logged effort update.
 func TestTaskAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
 	t.Parallel()
 	record := json.RawMessage(`{"effort":{"min_minutes":10,"max_minutes":30,"kind":"elapsed","basis":"educated guess"}}`)
@@ -43,7 +43,7 @@ func TestTaskAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
 
 // TestAdditionOwnershipMatchesTargetEncodings checks each updateable addition target.
 //
-// Example: Remember a review critic and a lane blocker as separate owned fields.
+// Example: Remember a review critic and a lane awaits value as separate owned fields.
 func TestAdditionOwnershipMatchesTargetEncodings(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -53,7 +53,7 @@ func TestAdditionOwnershipMatchesTargetEncodings(t *testing.T) {
 		{syncTargetTask, `{"status":null}`, "status", syncNullValue},
 		{syncTargetReview, `{"critic":"reviewer","rounds":2}`, "critic", `"reviewer"`},
 		{syncTargetPriorityEstimate, `{"min_minutes":2}`, "min_minutes", `2`},
-		{syncTargetLane, `{"blocker":"waiting"}`, "blocker", "waiting"},
+		{syncTargetLane, `{"awaits":"waiting"}`, "awaits", "waiting"},
 		{syncTargetLane, `{"stage":"implementation"}`, "stage", "implementation"},
 	}
 	for _, tc := range cases {
