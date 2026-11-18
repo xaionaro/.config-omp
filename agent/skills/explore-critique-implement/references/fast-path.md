@@ -104,9 +104,11 @@ Main ECI may advance and review iterations concurrently with Fast.
 After the current Job owner confirms genuine Fast completion to the Supervisor, report root-task status
 `FOLLOWUP` while the required sequence below remains unaccepted. Use
 `FOLLOWUP_PAUSED` only when the next required post-Fast action cannot advance
-because it awaits a named in-scope dependency proven a blocker under the Blockers rule in `~/.omp/agent/RULES.md`. Report the dependency, impact,
-owner, and resume condition; return to `FOLLOWUP` when it clears. A user input
-or decision remains `BLOCKED` in the affected lane, never `FOLLOWUP_PAUSED`.
+because it awaits a named in-scope dependency. Report the dependency, impact,
+owner, resume condition, and the proof the Blockers rule in
+`~/.omp/agent/RULES.md` requires for any blocker; return to `FOLLOWUP` when it
+clears. A user input or decision remains `BLOCKED` in the affected lane, never
+`FOLLOWUP_PAUSED`.
 End either root-task status on Supervisor acceptance or explicit user closure.
 Keep these statuses outside lane Implementation/Test/Prod readiness; see
 [status guidance](../../writing-status-reports/SKILL.md#multi-lane-mission-status).

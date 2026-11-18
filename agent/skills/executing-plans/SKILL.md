@@ -39,10 +39,9 @@ After all tasks complete and verified:
 ## When to Stop and Ask for Help
 
 **STOP executing immediately when:**
-- Hit a blocker (missing dependency, test fails, instruction unclear)
+- Hit a blocker proven under the Blockers rule in `~/.omp/agent/RULES.md`
 - Plan has critical gaps preventing starting
 - You don't understand an instruction
-- Verification fails repeatedly
 
 **Ask for clarification rather than guessing.**
 
@@ -52,14 +51,14 @@ After all tasks complete and verified:
 - Partner updates the plan based on your feedback
 - Fundamental approach needs rethinking
 
-**Don't force through blockers** - stop and ask.
+**Don't force through a proven blocker** - stop and ask.
 
 ## Remember
 - Review plan critically first
 - Follow plan steps exactly
 - Don't skip verifications
 - Reference skills when plan says to
-- Stop when blocked, don't guess
+- Stop for a proven blocker; don't guess
 - Follow the [Git policy](../../eci-binding-contract.md#git) for selecting and preserving the SSOT checkout and branch.
 
 ## Integration
