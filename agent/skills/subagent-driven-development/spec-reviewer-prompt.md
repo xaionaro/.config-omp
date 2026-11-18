@@ -42,7 +42,7 @@ Report as [Ref 5] sets.
 
 References
 1. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Every subagent prompt must include' line, quoted when you fill this]"
-2. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its two-stage review sentence, quoted when you fill this]"
+2. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Execute plan by dispatching' sentence, quoted when you fill this]"
 3. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 3 (`<verification-rule>`): "Do not trust the implementer report." / "Read the changed code and compare it to requirements line by line."
 4. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 4 (`<check>`): "- Missing requirements" / "- Claims not backed by code" / "- Extra or unrequested work" / "- Over-engineering" / "- Misunderstood requirements" / "- Wrong problem or wrong implementation approach"
 5. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 5 (`<report>`): "- Spec compliant, if everything matches after code inspection" / "- Issues found, with exact missing or extra behavior and file:line references"

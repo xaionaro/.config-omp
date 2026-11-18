@@ -38,7 +38,8 @@ Fill the prompt with:
 - `BASE_SHA`: [commit before task]
 - `HEAD_SHA`: [current commit]
 - `DESCRIPTION`: [task summary]
-- `REQUEST_SOURCE`: `~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its two-stage review sentence, quoted when you fill this]"`
+- `REQUEST_SOURCE`: `~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Execute plan by dispatching' sentence, quoted when you fill this]"`
+- References entries ending `quoted when you fill this`, in the filled prompt and in entry N+1: the named text, quoted verbatim from its current source
 
 After spawn, print the roster entry: `code-quality-reviewer: <runtime name> [explorer]`.
 

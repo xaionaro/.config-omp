@@ -46,6 +46,7 @@ Launch a dedicated code-reviewer subagent by spawning it; include the filled `re
 - `{HEAD_SHA}` - Ending commit
 - `{DESCRIPTION}` - Brief summary
 - `{REQUEST_SOURCE}` - Exact point and verbatim text of what asks for this review or states `{PLAN_OR_REQUIREMENTS}`; number your own entries after the template's last entry
+- References entries ending `quoted when you fill this` - the named text, quoted verbatim from its current source
 
 For a defect-only review of uncommitted changes, a base-branch diff, or a commit, with no requirements comparison, spawn the `reviewer` agent with: `Follow [Ref 1]. Read skill://review-agent and follow it to review <target>; return actionable findings [Ref 2].` End it with a References list: entry 1 quotes the required reviewer-prompt sentence above, entry 2 quotes the sentence before this one, and your own entries follow from 3.
 
