@@ -45,8 +45,9 @@ Launch a dedicated code-reviewer subagent by spawning it; include the filled `re
 - `{BASE_SHA}` - Starting commit
 - `{HEAD_SHA}` - Ending commit
 - `{DESCRIPTION}` - Brief summary
+- `{REQUEST_SOURCE}` - Exact point and verbatim text of what asks for this review and states `{PLAN_OR_REQUIREMENTS}`; number your own entries after it from 8
 
-For a defect-only review of uncommitted changes, a base-branch diff, or a commit, with no requirements comparison, spawn the `reviewer` agent with the required reviewer-prompt sentence above plus: `Read skill://review-agent and follow it to review <target>; return actionable findings.`
+For a defect-only review of uncommitted changes, a base-branch diff, or a commit, with no requirements comparison, spawn the `reviewer` agent with: `Follow [Ref 1]. Read skill://review-agent and follow it to review <target>; return actionable findings [Ref 2].` End it with a References list: entry 1 quotes the required reviewer-prompt sentence above, entry 2 quotes this sentence, and your own entries follow from 3.
 
 **3. Act on feedback:**
 - Fix P0 and P1 issues immediately

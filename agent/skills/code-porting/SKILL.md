@@ -22,6 +22,7 @@ Every numbered phase below has a separate role and artifact. No role serves dual
 
 Propagate **original user requirements verbatim** to every subagent prompt.
 Every subagent prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+In each prompt, state the line above and each quoted line below as a short label with `[Ref N]`, and quote it with its heading in this skill in the prompt's References list.
 
 When combined phase outputs exceed 6000 words, main thread summarizes before spawning the next agent. Preserve: all feature names, all verdicts with one-line reasoning, all MISSING/OVERTURN entries in full. Never silently drop features.
 

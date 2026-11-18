@@ -68,6 +68,7 @@ Each agent gets:
 - **Role label:** A stable label in the first prompt line
 - **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
 - **Expected output:** Summary of what you found and fixed
+- **Sources:** Mark each constraint with `[Ref N]` and end with a References list, under the Sourced constraints rule in `~/.omp/agent/RULES.md`. For your own decision, such as a scope limit, the entry also quotes the item above that grants it.
 
 ### 3. Dispatch in Parallel
 
@@ -78,17 +79,19 @@ agent_tool_abort = task(
     agent="task",
     task="""Role label: agent-tool-abort
 
-Fix the failures in src/agents/agent-tool-abort.test.ts.
+Fix the failures in src/agents/agent-tool-abort.test.ts [Ref 1].
 
-Scope:
-- Read only the abort-related test and implementation paths needed for this failure.
-- Keep changes focused on abort behavior and its tests.
-- Do not modify batch completion or tool approval race tests.
+Scope: follow [Ref 2].
 
-Stop-hook boundary:
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+Stop-hook boundary: follow [Ref 3].
 
-Return: root cause, changed files, verification run, and remaining risk.
+Return: follow [Ref 4].
+
+References
+1. User request (this session): "[the user's words asking for these fixes]"
+2. Delegator decision, recorded here: "- Read only the abort-related test and implementation paths needed for this failure." / "- Keep changes focused on abort behavior and its tests." / "- Do not modify batch completion or tool approval race tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
 
@@ -96,17 +99,19 @@ batch_completion = task(
     agent="task",
     task="""Role label: batch-completion
 
-Fix the failures in src/agents/batch-completion-behavior.test.ts.
+Fix the failures in src/agents/batch-completion-behavior.test.ts [Ref 1].
 
-Scope:
-- Read only the batch completion test and implementation paths needed for this failure.
-- Keep changes focused on batch completion behavior.
-- Do not modify abort or tool approval race tests.
+Scope: follow [Ref 2].
 
-Stop-hook boundary:
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+Stop-hook boundary: follow [Ref 3].
 
-Return: root cause, changed files, verification run, and remaining risk.
+Return: follow [Ref 4].
+
+References
+1. User request (this session): "[the user's words asking for these fixes]"
+2. Delegator decision, recorded here: "- Read only the batch completion test and implementation paths needed for this failure." / "- Keep changes focused on batch completion behavior." / "- Do not modify abort or tool approval race tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
 
@@ -114,17 +119,19 @@ tool_approval_races = task(
     agent="task",
     task="""Role label: tool-approval-races
 
-Fix the failures in src/agents/tool-approval-race-conditions.test.ts.
+Fix the failures in src/agents/tool-approval-race-conditions.test.ts [Ref 1].
 
-Scope:
-- Read only the tool approval race test and implementation paths needed for this failure.
-- Keep changes focused on approval timing behavior.
-- Do not modify abort or batch completion tests.
+Scope: follow [Ref 2].
 
-Stop-hook boundary:
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+Stop-hook boundary: follow [Ref 3].
 
-Return: root cause, changed files, verification run, and remaining risk.
+Return: follow [Ref 4].
+
+References
+1. User request (this session): "[the user's words asking for these fixes]"
+2. Delegator decision, recorded here: "- Read only the tool approval race test and implementation paths needed for this failure." / "- Keep changes focused on approval timing behavior." / "- Do not modify abort or batch completion tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
 
@@ -153,31 +160,31 @@ Good agent prompts are:
 3. **Specific about output** - What should the agent return?
 4. **Labeled** - First line is `Role label: <stable-role>`
 5. **Bounded** - Includes Stop-hook handling: follow prompts and proof/checklist steps in-session, fix in-scope blockers, and report only out-of-scope blockers.
+6. **Sourced** - Marks each constraint with `[Ref N]` and ends with a References list.
 
 ```markdown
 Role label: agent-tool-abort
 
-Fix the 3 failing tests in src/agents/agent-tool-abort.test.ts:
+Fix the 3 failing tests in src/agents/agent-tool-abort.test.ts [Ref 1]:
 
 1. "should abort tool with partial output capture" - expects 'interrupted at' in message
 2. "should handle mixed completed and aborted tools" - fast tool aborted instead of completed
 3. "should properly track pendingToolCount" - expects 3 results but gets 0
 
-These are timing/race condition issues. Your task:
+These are timing/race condition issues. Your task: follow [Ref 2].
 
-1. Read the test file and understand what each test verifies
-2. Identify root cause - timing issues or actual bugs?
-3. Fix by:
-   - Replacing arbitrary timeouts with event-based waiting
-   - Fixing bugs in abort implementation if found
-   - Adjusting test expectations if testing changed behavior
+Timeouts: follow [Ref 3].
 
-Do NOT just increase timeouts - find the real issue.
+Stop-hook boundary: follow [Ref 4].
 
-Stop-hook boundary:
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+Return: follow [Ref 5].
 
-Return: Summary of what you found and what you fixed.
+References
+1. User request (this session): "[the user's words asking for these fixes]"
+2. Delegator decision, recorded here: "1. Read the test file and understand what each test verifies" / "2. Identify root cause - timing issues or actual bugs?" / "3. Fix by:" / "- Replacing arbitrary timeouts with event-based waiting" / "- Fixing bugs in abort implementation if found" / "- Adjusting test expectations if testing changed behavior" Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Clear goal:** Make these tests pass"
+3. Delegator decision, recorded here: "Do NOT just increase timeouts - find the real issue." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Constraints:** Don't change other code"
+4. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+5. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 ```
 
 ## Common Mistakes
@@ -189,7 +196,7 @@ Return: Summary of what you found and what you fixed.
 **✅ Context:** Paste the error messages and test names
 
 **❌ No constraints:** Agent might refactor everything
-**✅ Constraints:** "Do NOT change production code" or "Fix tests only"
+**✅ Constraints:** "Do NOT change production code [Ref 2]" or "Fix tests only [Ref 2]", with entry 2 quoting your decision and the **Constraints:** item that grants it
 
 **❌ Vague output:** "Fix it" - you don't know what changed
 **✅ Specific:** "Return summary of root cause and changes"

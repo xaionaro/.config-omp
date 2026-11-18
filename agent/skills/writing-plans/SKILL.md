@@ -62,6 +62,8 @@ Order tasks in test-driven-development's [Batch Order](../test-driven-developmen
 ---
 ```
 
+Mark each constraint in the plan with `[Ref N]` and end the plan with a `## References` section, under the Sourced constraints rule in `~/.omp/agent/RULES.md`.
+
 ## Task Structure
 
 ````markdown
