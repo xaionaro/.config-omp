@@ -159,6 +159,9 @@ func hasForecastReference(ledger ledgerSource) bool {
 //
 // Example: Reject a provisional forecast without a target basis.
 func validateRefreshSource(source map[string]any) error {
+	// TODO: check keys in sorted order, or report every unsupported key with
+	// errors.Join; ranging over the map names a random one of several
+	// unsupported fields on each run.
 	for key := range source {
 		if !supportedForecastField(key) {
 			return fmt.Errorf("unsupported source field %s", key)
