@@ -22,7 +22,7 @@
 #  - ":max" parses as reasoning effort in the model field
 #  - whether "turn" counts tool-loop continuations
 #  - whether skipped updates arrive; whether syncBacklog off suppresses them
-#  - whether a blocker interrupts the primary
+#  - whether a highest-severity note interrupts the primary
 #  - reviewInterval 5 vs 1: revisit if a note arrives more than one scheduled review after its evidence
 #  - whether the advisor's project context expands eci-binding-contract.md (AGENTS.md:3 imports it, verified; expansion inferred)
 #  - whether an eviction placeholder appears before the next review
@@ -148,8 +148,8 @@ advisors:
       ## Severity
       | Level | Use for |
       |---|---|
-      | blocker | Irreversible action breaking a rule: pushing or committing unchecked work; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
+      | highest `advise` severity, above `concern` | Irreversible action breaking a rule: pushing or committing unchecked work; deleting another owner's files; producer self-review; completion accepted with a required E2E missing. |
       | concern | Other probable rule break or unproven claim. |
       | nit | Wording, cleanup, a failed or missing read, or an unclassified active state. |
 
-      Give each blocker, concern, or nit the rule file and section, the transcript evidence, and the correction. Omit praise and restated passing checks.
+      Give each note the rule file and section, the transcript evidence, and the correction. Omit praise and restated passing checks.

@@ -1,6 +1,6 @@
 ---
 name: ui-design
-description: Use when writing, reviewing, or modifying any user interface — QML (*.qml, *.qmldir, qmltypes), Qt Widgets, web (HTML/CSS/JSX/TSX/Vue/Svelte), Android (Compose, XML layouts), iOS (SwiftUI), TUI, or any other UI surface — ensures usable, accessible, responsive, performant interfaces and prevents the recurring UI failure modes (layout breaks under resize, hidden state, hardcoded sizes, dead controls, blocking UI thread, no feedback, inaccessible)
+description: Use when writing, reviewing, or modifying any user interface — QML (*.qml, *.qmldir, qmltypes), Qt Widgets, web (HTML/CSS/JSX/TSX/Vue/Svelte), Android (Compose, XML layouts), iOS (SwiftUI), TUI, or any other UI surface — ensures usable, accessible, responsive, performant interfaces and prevents the recurring UI failure modes (layout breaks under resize, hidden state, hardcoded sizes, dead controls, UI thread stuck on long work, no feedback, inaccessible)
 ---
 
 # UI Design
@@ -56,7 +56,7 @@ Forgetting one state is the most common UI bug. Enumerate explicitly per view.
 | 1 s – 10 s | Spinner with what's happening |
 | > 10 s | Progress bar with %, ETA, cancel button |
 
-Never block the UI thread. Long work → background. Show progress. Allow cancel.
+Never make the UI thread wait. Long work → background. Show progress. Allow cancel.
 
 ## Accessibility (non-negotiable)
 
@@ -125,7 +125,7 @@ Never block the UI thread. Long work → background. Show progress. Allow cancel
 | `color: "#aabbcc"` literal in component | Theme |
 | `visible: someExpensiveFlag` on heavy subtree | `Loader { active: someExpensiveFlag }` |
 | `MouseArea { onClicked: { huge JS } }` | Move logic to backend; emit signal |
-| Modal dialog for non-blocking info | Toast/snackbar |
+| Modal dialog for info that needs no response | Toast/snackbar |
 | "Are you sure?" on every save | Just save; offer Undo |
 | Spinner forever on error | Switch to error state |
 | Same icon, two different actions | Differentiate |

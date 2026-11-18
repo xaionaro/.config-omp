@@ -37,7 +37,7 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 - For authored text, use the fewest words that preserve supported meaning and make it recoverable from local context. Keep distinctions whose omission permits a materially different reading. Preserve unknowns and unresolved alternatives. Carry needed context when reusing text.
 - Default to plain engineering prose: rule first, no filler, one idea per sentence. Use `caveman` for requested terse/token-efficient communication.
 - After each ECI compaction, refresh the structured YAML status report and print a proper status report to the user under `writing-status-reports`; compaction alone does not trigger queue-item critique. Resume safe work after reporting.
-- Treat short status queries and explicit requests for a status or progress report as requests for a current-state report. Load `writing-status-reports`; reconcile the YAML, validate, render, and publish the full rendered result. Include state, progress, decisions, blockers/risks, verification, next focus, and the multi-lane table when applicable. Correct known missing sections in the YAML and rerender; use its incomplete fallback only when structural failure prevents rendering.
+- Treat short status queries and explicit requests for a status or progress report as requests for a current-state report. Load `writing-status-reports`; reconcile the YAML, validate, render, and publish the full rendered result. Include state, progress, decisions, stuck work and risks, verification, next focus, and the multi-lane table when applicable. Correct known missing sections in the YAML and rerender; use its incomplete fallback only when structural failure prevents rendering.
 
 ## User requirements
 
@@ -277,7 +277,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Changed-work scan; large scratch | Any changed-work scan, including Gitleaks, is optional advisory only; no work awaits it, and it is never a Stop prerequisite. When default temp is tmpfs, use `$TMPDIR`/`~/tmp/` for large files/objects |
 
 - Use the completion checklist (`~/.omp/agent/eci/hooks/stop-checklist.md`) as manual guidance; completion is not an executable Stop gate.
-- Treat Stop as post-response continuation, not output control: `decision: "block"` creates a continuation prompt but cannot retract a rendered response, and `suppressOutput` is unsupported.
+- Treat Stop as post-response continuation, not output control: a Stop hook's refusal to finish creates a continuation prompt but cannot retract a rendered response, and `suppressOutput` is unsupported.
 - Never claim a Stop hook hides visible terminal output; that guarantee needs client support.
 
 - Treat subagent output as an unreviewed PR: verify success claims by running commands yourself, verify load-bearing facts from primary sources, read every changed line, and check original requirements. Within ECI, the Supervisor trusts a Producer's reported commit ranges, including when it reports them to users (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).

@@ -55,7 +55,7 @@ Read and apply [Coding: Common](../coding-common/SKILL.md) alongside these Pytho
 ## Concurrency
 
 - `asyncio` for I/O-bound concurrency. `concurrent.futures` for CPU-bound parallelism.
-- Never mix blocking I/O into async code — use `asyncio.to_thread()` or `run_in_executor()`.
+- Never mix synchronous I/O that waits into async code — use `asyncio.to_thread()` or `run_in_executor()`.
 - Async context managers (`async with`) for async resource lifecycle.
 - Observable event sources include `asyncio.Event`, `asyncio.Condition`, `Future`, `Queue`, `threading.Event`, signals, callbacks, and `inotify`.
 

@@ -150,7 +150,7 @@ task with a new priority, supply its priority estimate in the same event.
 | `verification_result` | Test, proof, or E2E evidence/verdict. |
 | `requirement_change` | Binding requirement, source, or scope update. |
 | `forecast_change` | Target or forecast recalibration. |
-| `blocker_change` | Block, wait, resume, or recovery. |
+| `blocker_change` | Work stuck, awaiting, resumed, or recovered. |
 | `checkpoint` | Commit or provisional checkpoint. |
 | `lifecycle_change` | Launch, cancellation, closure, or teardown. |
 | `correction` | Mistaken prior entry, referenced by `details.corrects`. |
@@ -542,7 +542,7 @@ Tier/confidence may accompany evidence when useful.
 One mutable fact has one canonical slot. Work owns workflow state/owner/next
 action; outcomes and context never repeat that state. Verification owns observed
 verdict/limits. Keep still-binding requirements, exact sources, acceptance and
-source→outcome→scope after completion; clear obsolete next actions/stuck work.
+source→outcome→scope after completion; clear obsolete next actions and stuck claims.
 Delete superseded requirements only when they no longer constrain the project;
 preserve original source/change in append-only history, linking it from a guard
 when it still explains a current hazard.
@@ -691,5 +691,5 @@ Reject the ledger if any holds:
 This is a planning-quality defect: reconcile it alongside safe work without delaying the update.
 - Section titles or memberships no longer fit the content.
 - The high-level log is missing, was edited or truncated in place, lacks entries for material ledger changes or material forecast-only updates made this session, or duplicates current-state synthesis.
-- The latest status report is missing, lacks a UTC timestamp, predates the last ledger update or material forecast-only update, fails `writing-status-reports` coverage (state, progress, decisions, blockers/risks, verification, next focus), or duplicates ledger structure instead of summarizing changed state.
+- The latest status report is missing, lacks a UTC timestamp, predates the last ledger update or material forecast-only update, fails `writing-status-reports` coverage (state, progress, decisions, stuck work and risks, verification, next focus), or duplicates ledger structure instead of summarizing changed state.
 - Secrets, credentials, or unnecessary personal data are recorded.

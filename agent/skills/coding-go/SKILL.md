@@ -69,7 +69,7 @@ func (n *NodeWithCustomData[C, T]) RemovePushTo(
 
 - `context.Context` is always the first parameter. Never stored in structs.
 - Goroutines via `observability.Go(ctx, func(ctx context.Context) { ... })`, never raw `go`.
-- **Prefer atomics over locks.** Use `sync/atomic` for single-word state (`atomic.Pointer[T]` for pointers). Prefer CAS (`CompareAndSwap` loop) for multi-step non-blocking transitions. Hold a mutex only when the mutation cannot be swapped atomically, guards an invariant atomics cannot express, or performs blocking work.
+- **Prefer atomics over locks.** Use `sync/atomic` for single-word state (`atomic.Pointer[T]` for pointers). Prefer CAS (`CompareAndSwap` loop) for multi-step lock-free transitions. Hold a mutex only when the mutation cannot be swapped atomically, guards an invariant atomics cannot express, or spans work that waits, such as I/O.
 - Mutex unlock always via `defer`. Prefer small functions that lock/defer-unlock at the top, rather than locking inside complex functions with multiple code paths.
 - Observable event sources include channels, `sync.Cond`, `ctx.Done()`, `fsnotify`, callbacks, and signals.
 

@@ -39,7 +39,7 @@ References
 2. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "[its Stop-hook handling item, quoted when you fill this]"
 3. ~/.omp/agent/skills/writing-plans/plan-document-reviewer-prompt.md References, entry 3 (`<check>`): "| Category | Look For |" / "| Completeness | TODOs, placeholders, incomplete tasks, missing steps |" / "| Spec alignment | Plan covers spec requirements, no major scope creep |" / "| Task decomposition | Clear boundaries, actionable steps |" / "| Buildability | An engineer can follow the plan without getting stuck |"
 4. ~/.omp/agent/skills/writing-plans/plan-document-reviewer-prompt.md References, entry 4 (`<calibration>`): "Only flag issues that would break implementation." / "Approve unless requirements are missing, steps contradict, placeholders remain, or tasks are too vague to act on." / "Treat wording, style, and nice-to-have suggestions as advisory."
-5. ~/.omp/agent/skills/writing-plans/plan-document-reviewer-prompt.md References, entry 5 (`<report>`): "## Plan Review" / "**Status:** Approved | Issues Found" / "**Issues (if any):**" / "- [Task X, Step Y]: [specific issue] - [why it matters for implementation]" / "**Recommendations (advisory, do not block approval):**" / "- [suggestions for improvement]"
+5. ~/.omp/agent/skills/writing-plans/plan-document-reviewer-prompt.md References, entry 5 (`<report>`): "## Plan Review" / "**Status:** Approved | Issues Found" / "**Issues (if any):**" / "- [Task X, Step Y]: [specific issue] - [why it matters for implementation]" / "**Recommendations (advisory; approval never awaits them):**" / "- [suggestions for improvement]"
 [Your entries, numbered from 6]
 """
 )

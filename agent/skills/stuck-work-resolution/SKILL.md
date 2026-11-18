@@ -3,7 +3,7 @@ name: stuck-work-resolution
 description: Use when work is stuck, a review loop cannot converge, an ECI or ATE work-progress flow may escalate to the user, or a stop-hook bypass is being considered because progress is stuck
 ---
 
-# Stuck Work Resolution Protocol
+# Stuck Work Resolution (SWR)
 
 No stuck claim without an attempt log. No user escalation or stop-hook bypass while an internal path remains.
 
@@ -11,7 +11,7 @@ No stuck claim without an attempt log. No user escalation or stop-hook bypass wh
 
 | Use | Skip |
 | --- | --- |
-| Agent reports "stuck", "waiting on", or "cannot proceed" | Missing attempt log; bounce back first |
+| Agent reports "stuck" or "cannot proceed" | Missing attempt log; bounce back first |
 | Review pair or ECI loop hits its rejection/retry cap | Ordinary reviewer rejection still inside loop budget |
 | ATE stuck work, review/iteration protocol-limit record, or task-progress pre-user escalation | QA verdict or user followup that already belongs to user |
 | ECI may hard-escalate while staying active | Clean pass or user-closed teardown |
@@ -20,13 +20,13 @@ No stuck claim without an attempt log. No user escalation or stop-hook bypass wh
 
 ## Required Record
 
-Start each Genuine stuck and User-owned stuck record with the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
+Start each Stuck work and Awaits user record with the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
 
 | Record | Required content |
 | --- | --- |
-| Genuine stuck | Obvious resolutions tried, evidence for each, why each failed |
-| Protocol-limit stuck | Rejected artifact, all rejection reasons, fixes attempted, evidence still failing, why the pair or loop cannot converge |
-| User-owned stuck | Required input/resource/decision, why agents/tools cannot obtain it, impact of waiting, next concrete command or question |
+| Stuck work | Obvious resolutions tried, evidence for each, why each failed |
+| Protocol limit | Rejected artifact, all rejection reasons, fixes attempted, evidence still failing, why the pair or loop cannot converge |
+| Awaits user | Required input/resource/decision, why agents/tools cannot obtain it, impact of waiting, next concrete command or question |
 
 Obvious resolutions include re-reading relevant source, retrying once when nondeterminism is plausible, trying a simpler faithful path, checking local specs/docs, and asking the paired reviewer or owner inside the active protocol.
 
@@ -58,7 +58,7 @@ When escalation is unavoidable, report:
 - Original objective and current protocol context.
 - Attempt log and evidence.
 - SWR agents used and their conclusions.
-- Last stuck issue.
+- Last issue keeping the work stuck.
 - Best rejected internal path and why it failed.
 - Exact user-owned input/resource/decision needed.
 

@@ -39,7 +39,7 @@ References
 2. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "[its Stop-hook handling item, quoted when you fill this]"
 3. ~/.omp/agent/skills/brainstorming/spec-document-reviewer-prompt.md References, entry 3 (`<check>`): "| Category | Look For |" / "| Completeness | TODOs, placeholders, "TBD", incomplete sections |" / "| Consistency | Internal contradictions, conflicting requirements |" / "| Clarity | Requirements ambiguous enough to cause wrong implementation |" / "| Scope | Focused enough for one plan, not multiple independent subsystems |" / "| YAGNI | Unrequested features, over-engineering |"
 4. ~/.omp/agent/skills/brainstorming/spec-document-reviewer-prompt.md References, entry 4 (`<calibration>`): "Only flag issues that would break implementation planning." / "Approve unless gaps would produce a flawed plan." / "Treat wording, style, and uneven section detail as advisory."
-5. ~/.omp/agent/skills/brainstorming/spec-document-reviewer-prompt.md References, entry 5 (`<report>`): "## Spec Review" / "**Status:** Approved | Issues Found" / "**Issues (if any):**" / "- [Section X]: [specific issue] - [why it matters for planning]" / "**Recommendations (advisory, do not block approval):**" / "- [suggestions for improvement]"
+5. ~/.omp/agent/skills/brainstorming/spec-document-reviewer-prompt.md References, entry 5 (`<report>`): "## Spec Review" / "**Status:** Approved | Issues Found" / "**Issues (if any):**" / "- [Section X]: [specific issue] - [why it matters for planning]" / "**Recommendations (advisory; approval never awaits them):**" / "- [suggestions for improvement]"
 [Your entries, numbered from 6]
 """
 )
