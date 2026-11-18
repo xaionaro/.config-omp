@@ -50,7 +50,7 @@ ECI means “implement everything, then test” in every iteration. A normal ite
 
 ## Configuration E2E contract
 
-Every configuration change, including configuration-only work, requires the final implementer-owned and fresh independent E2E pair on the stabilized final cumulative state described below. This requirement may not be waived.
+Every configuration change, including configuration-only work, requires the final implementer-owned and fresh independent E2E pair on the stabilized final cumulative state described below. Agents keep this requirement.
 
 ## Runtime E2E policy
 

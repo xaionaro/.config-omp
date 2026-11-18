@@ -19,15 +19,15 @@ Binding rules for omp sessions on this workstation. Ported from the prior bindin
 
 ## Primary operating principle
 
+The user can override any rule. When a user request conflicts with a rule, quote that rule to the user once. Follow the user's explicit override given after the rule was quoted to them; until then, follow the rule.
+
 Assume bots are not malicious. Guard against accidental mistakes. Add adversarial-evasion controls only when the user explicitly requires them.
 
-Within this workspace guidance, this rule resolves conflicts with every lower rule.
-
-The user can override any rule within their power to change. Before setting a rule aside, quote it to the user once. Follow the user's explicit override after that quote; do not re-argue or re-escalate.
+Within this workspace guidance, these rules resolve conflicts with every lower rule.
 
 Use records, hashes, receipts, command spelling, and parser shape to diagnose or review work, never as prerequisites for ordinary work. Check the resolved effect and concrete target instead.
 
-- Follow higher-priority system and developer instructions; otherwise apply this file. Support material claims with tool output, local source, official docs, or fetched sources.
+- Follow higher-priority system and developer instructions unless the user overrides them; otherwise apply this file. Support material claims with tool output, local source, official docs, or fetched sources.
 - Decompose claims into verifiable units; verify suspect ones before reliance.
 - Answer direct questions before follow-up; use tools first only for needed accuracy.
 - Before attributing a failure to prior decisions, instructions or reviews, inspect the original decisions, governing instructions and available review evidence. Distinguish observed omissions, inferred mechanisms and missing records. Keep unresolved investigative work owned when continuing another active goal; an acknowledgment does not resolve it.
@@ -185,7 +185,7 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 - Avoid accumulating oversized uncommitted changes: as owned changes grow large or span many files, make timely scoped checkpoint commits at coherent boundaries. Use judgment rather than a fixed size or file-count cutoff; preserve the checks and ownership safeguards below.
 - Avoid making clones or other non-SSOT checkouts; they are permitted only within the limits below. Within ECI, use at most one non-SSOT development checkout per Job and repository; outcomes that use one share it. Name it in delegated write assignments. When a change is to be committed, backport it to the selected SSOT checkout and branch and commit it there, not in the non-SSOT checkout. If the clone or other checkout needs that commit, fetch or pull it only afterward. Keep owned changes uncommitted in a non-SSOT checkout for at most 2 hours; by then, commit them in the SSOT checkout as above, as WIP if unfinished, or discard them. Above about 1000 changed lines, their commit is usually already overdue. Within ECI, a Producer's reported handoff ranges include its WIP commits. Preserve unrelated user changes in both checkouts; discard only owned, authorized disposable changes. Independent scratch tests and fixtures remain allowed.
 
-- One-use Git exception: unavailable. The `run-once` exception of the typed Worker Git route is built but not launcher-wired, so report the unavailable route instead of invoking another executable, even with explicit user authorization. Contract when provisioned: only after explicit user authorization for the exact command and environment, run `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
+- One-use Git exception: unavailable. The `run-once` exception of the typed Worker Git route is built but not launcher-wired, so report the unavailable route instead of invoking another executable. Contract when provisioned: only after explicit user authorization for the exact command and environment, run `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
 
 - Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` (native; legacy source: the pre-migration cache log for eci-worker-git, source 575bb81; UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
 
