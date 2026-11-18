@@ -79,9 +79,9 @@ Reviewers report only. The assigned Implementer authors the TODO within the ordi
 ## Evidence can reopen design
 
 - The current Job owner sends each Fast report, unchanged, to the Explorer and to the Job's next fresh Step 2 critic, which verifies its discoveries. When the Explorer returns revised options from a Fast report, the Job owner dispatches that critic. The Supervisor retains cross-Job decisions and final acceptance.
-- When that critic decides that the evidence invalidates a selected premise, obsoletes the design, or demonstrates a materially better in-scope approach, the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
+- When that critic decides that the evidence shows a [redesign finding](../../references/workflow-runtime/review-policy.md#gate-evaluation), the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
 - The selected ECI design controls quality, and the within-outcome precedence above controls overlapping main/Fast edits. Neither rule dismisses contradictory evidence. The Fast Producer proposes alternatives; Step 2 selects the authoritative winner.
-- The critic decides minor compatible corrections as contained fixes under [Step 4](../SKILL.md#step-handoffs). Unsupported preferences and ordinary fast edits do not restart design.
+- The critic decides every other correction as a patch under [Step 4](../SKILL.md#step-handoffs). Unsupported preferences and ordinary fast edits do not restart design.
 
 ## Adoption, review, and closure
 
@@ -131,7 +131,7 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
 3. A fresh Step 2 critic independently assesses the current sources and Explorer's options.
    - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).
    - Apply impact-proportional routing before implementation.
-   - Route each `now` finding and each in-scope `revise` or `replace` disposition under [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation): redesign ones and design/API uncertainty return through one complete fresh Steps 1–2 repair batch before implementation; the rest reach the Implementer once as `treatment: now`.
+   - Route each `now` finding and each in-scope `revise` or `replace` disposition under [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation): redesign ones return through one complete fresh Steps 1–2 design batch before implementation; the rest reach the Implementer once as `treatment: now`.
    - Other dispositions require evidence, not implementation.
    - Carry the resulting disposition and evidence into Step 4; never leave it unresolved.
    - Use policy-valid deferred-with-reason only where [review-policy.md#impact-proportional-routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) permits.

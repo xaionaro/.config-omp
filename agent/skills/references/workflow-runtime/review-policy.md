@@ -15,7 +15,7 @@ Evidence tests the result; a record, receipt, hash, or packet shape never permit
 | Code | Meaning |
 | --- | --- |
 | REJECT / REJECTED | Wrong, unsafe, contradictory, or needs redesign; fix now. |
-| CONDITIONAL | Viable but needs concrete bounded text/fix; route by impact. |
+| CONDITIONAL | Viable but needs concrete bounded text/fix. |
 | NIT | Preference only; may be ignored. |
 
 Review every applicable root-cause rationale and regression explanation. Unknown cause or symptom-only mitigation is REJECT unless containment was explicitly requested. Governance/prompt/hook/protocol/reviewer changes also audit mechanism/predicate, emitted wording, strongest supported wording, and a boundary counterexample; reject claims beyond evidence.
@@ -64,11 +64,11 @@ Required E2E uses the shortest faithful real path that proves the original crite
 
 After all required reports, pre-route findings; within ECI, finding decisions follow [Step 4](../../explore-critique-implement/SKILL.md#step-handoffs). Each finding gets one treatment: `now`, valid defer, `ignored-contradictory`, post-ECI observation/follow-up for an unadmitted separate outcome, `user decision` for a decision the critic names as the user's, or `no change` with its reason for a NIT not taken or a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.
 
-A redesign finding is one that no patch to the selected design can fix while meeting [coding-policy requirements](coding-style-admission.md). At least one redesign `now` REJECT/CONDITIONAL, or design/API-uncertain E2E failure, becomes one design-revision issue batch for re-exploration/critique. Every other `now` REJECT/CONDITIONAL or E2E failure, however major, returns in one implementer repair batch with its concrete correction text as that patch. When a design-revision batch exists, that repair batch joins it instead: the next Step 2 keeps the text unless its winner supersedes it, and the next Step 3 implements both.
+A redesign finding is one that no patch to the selected design can fix while meeting [coding-policy requirements](coding-style-admission.md), for example because every patch adds compensating complexity. At least one redesign `now` finding, E2E failures included, becomes one design-revision issue batch for re-exploration/critique. Every other `now` finding, of any level or impact, returns in one implementer repair batch with its patch as concrete correction text. When a design-revision batch exists, that repair batch joins it instead: the next Step 2 keeps the text unless its winner supersedes it, and the next Step 3 implements both.
 
 A clean iteration gate has no remaining `now` issue and all required same-run focused proof; final acceptance also needs the final E2E pair when triggered. Treatments other than `now` and `user decision` are not clean-pass defects. A `user decision` holds final acceptance until a fresh Step 2 critic decides the finding again from the user's quoted answer. Admitted child outcomes retain independent acceptance under the Job contract.
 
-The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria from the original requirements and findings. Route every redesign gate issue through the design loop as one batch. Review caps and loop-breaker/BRP escalation remain owned by the outer workflow.
+The design-revision batch groups all remaining issues by affected artifact/API/contract and includes source reviewer, severity, impact, evidence location, exact issue text, relevant debt/defer reference, and acceptance criteria from the original requirements and findings. Review caps and loop-breaker/BRP escalation remain owned by the outer workflow.
 
 ## Independent-review discipline
 
