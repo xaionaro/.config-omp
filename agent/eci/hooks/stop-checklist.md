@@ -14,7 +14,7 @@ Sibling markers, ATE phases, callback/transcript metadata, checklists, ledgers, 
 
 - Review the result against the user request and run the smallest relevant verification when practical.
 - Preserve unrelated work and do not expose credentials.
-- State a real residual risk or blocker plainly when one exists.
+- State a real residual risk or stuck work plainly when one exists.
 
 These checks help a person make a sound handoff; they are not an artifact, hash, or grammar requirement and do not by themselves justify a Stop denial.
 

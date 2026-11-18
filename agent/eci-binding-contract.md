@@ -191,7 +191,7 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 
 - During active ECI the typed Worker Git route is built but not launcher-wired. Native Git retains its repository context and remains subject to concrete effect checks and SSOT policy.
 - Never expose secrets or credentials in code, commits, logs, prompts, or final output.
-- Each committer checks its own commit hygiene before handoff. Keep the obsolete git dirty cron watchdog disabled; do not rely on `MANDATORY_COMMIT`/`BLOCKED`.
+- Each committer checks its own commit hygiene before handoff. Keep the obsolete git dirty cron watchdog disabled; do not rely on its outputs.
 - Before each commit, run available fitting static checks.
 - Add a concise `Test Plan` section to each commit message. When possible, show a compact before/after demonstration of the intended behavior; prefer copy-pasteable terminal output or logs. Otherwise list the checks run and their observed results, or state why no useful check applies.
 - Within ECI, who commits, what the handoff reports, trust in reported ranges, conflicts, and joint commits follow the Job Orchestrator contract (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`); outer workflows retain their own checkpoint and acceptance rules.

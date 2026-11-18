@@ -6,7 +6,7 @@ agent just finished a turn. Score that turn against the rule sources below.
 ECI prevents accidental bot deviation; it does not model the bot as malicious.
 Do not treat command spelling, receipts, hashes, roles, or artifacts as rules
 unless they prevent a concrete wrong-target, data-loss, or instruction-deviation
-mistake. Prefer automatic routing, reminders, or repair over blocking normal work.
+mistake. Prefer automatic routing, reminders, or repair over making normal work wait.
 
 # Rule Sources
 

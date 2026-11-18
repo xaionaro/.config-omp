@@ -13,7 +13,7 @@ ATE state, peer markers, callback metadata, transcripts, historical review notes
 1. Inspect the changed behavior or answer against the request.
 2. Run a focused check when it can falsify a material claim.
 3. Preserve unrelated work and avoid exposing credentials.
-4. Report actual blockers and residual risks without inventing ceremony.
+4. Report actual stuck work and residual risks without inventing ceremony.
 
 ## Legacy Audit Vocabulary
 
