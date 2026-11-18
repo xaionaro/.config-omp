@@ -6,6 +6,8 @@
 # fingerprint-era keys from the builder before f7503e3; they are not content digests
 # and are not checked against the files. Nothing in the tree records how the current
 # pin was built.
+# The current eci-active pin predates f7503e3; its maintain-planner builds with
+# GOWORK=off and stays unused until the coordinated cutover reselects eci-active.
 eci_select_executable() {
   local name=$1 selection line extra version active report assignment leaf
   selection="$eci_home/bin/.selected-executables"

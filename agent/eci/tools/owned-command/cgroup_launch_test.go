@@ -36,15 +36,40 @@ const testMemoryLimit = "67108864"
 // Example: the kernel rounds it down to the 64 MiB page boundary.
 const testUnalignedMemoryLimit = "67108865"
 
-// testAboveKernelMemoryLimit is one above the largest value memory.max accepts.
+// testAboveKernelMemoryLimit is 2^63 bytes, above PAGE_COUNTER_MAX pages.
 //
-// Example: setup rejects it after creating the command cgroup.
+// Example: the kernel clamps it to max and the guard refuses the mismatched read-back.
 const testAboveKernelMemoryLimit = "9223372036854775808"
 
 // scopeCollectionLimit bounds the wait for systemd to remove an empty guard scope.
 //
 // Example: assertScopeCollected fails if a scope outlives 5 seconds.
 const scopeCollectionLimit = 5 * time.Second
+
+// memoryEventLow names low-protection events in memory.events.
+//
+// Example: receipts contain the low event counter.
+const memoryEventLow = "low"
+
+// memoryEventHigh names high-threshold events in memory.events.
+//
+// Example: receipts contain the high event counter.
+const memoryEventHigh = "high"
+
+// memoryEventMax names maximum-threshold events in memory.events.
+//
+// Example: receipts contain the max event counter.
+const memoryEventMax = "max"
+
+// memoryEventOOM names out-of-memory events in memory.events.
+//
+// Example: receipts contain the oom event counter.
+const memoryEventOOM = "oom"
+
+// memoryEventOOMKill names killed-process events in memory.events.
+//
+// Example: an over-limit workload increments oom_kill.
+const memoryEventOOMKill = "oom_kill"
 
 // TestCgroupPopulation requires explicit population evidence and rejects malformed emptiness.
 //
@@ -561,6 +586,25 @@ func TestCgroupCleanupChargesControlEntries(t *testing.T) {
 	assertCgroupTraversalClosed(t, group.Path)
 }
 
+// TestCgroupMemoryLimitExplicitZero rejects an explicitly disabled cap before launch.
+//
+// Example: passing zero does not create the command marker or a receipt.
+func TestCgroupMemoryLimitExplicitZero(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "launched")
+	receipt := filepath.Join(dir, "receipt.json")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "0", "-receipt", receipt, "--", "/usr/bin/touch", marker)
+	err := cmd.Run()
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit)
+	require.Equal(t, 2, exit.ExitCode())
+	_, err = os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(receipt)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
 // TestCgroupMemoryLimit checks enforced aggregate memory and fail-closed setup.
 //
 // Example: an allocation larger than the cap is killed and reported in the receipt.
@@ -587,7 +631,7 @@ func TestCgroupMemoryLimit(t *testing.T) {
 				require.Equal(t, test.status, status, output)
 				require.True(t, receipt.HostChildrenSettled)
 				require.NotNil(t, receipt.Memory)
-				require.Equal(t, test.oom, receipt.Memory.Events["oom_kill"] > 0)
+				require.Equal(t, test.oom, receipt.Memory.Events[memoryEventOOMKill] > 0)
 				if test.name == "under" {
 					require.Equal(t, MemoryBytes(67108865), receipt.Memory.RequestedMax)
 					require.Equal(t, MemoryBytes(67108864), receipt.Memory.EffectiveMax)
@@ -595,7 +639,7 @@ func TestCgroupMemoryLimit(t *testing.T) {
 					require.True(t, receipt.Memory.OOMGroup)
 					require.Equal(t, guardCgroup(filepath.Dir(receipt.Cgroup)), receipt.Memory.GuardCgroup)
 					require.Greater(t, receipt.Memory.Peak, MemoryBytes(0))
-					for _, name := range []string{"low", "high", "max", "oom", "oom_kill"} {
+					for _, name := range []string{memoryEventLow, memoryEventHigh, memoryEventMax, memoryEventOOM, memoryEventOOMKill} {
 						require.Contains(t, receipt.Memory.Events, name)
 					}
 				}
@@ -620,7 +664,7 @@ func TestCgroupMemoryLimitAboveKernelMaximumFailsClosed(t *testing.T) {
 	var receipt Receipt
 	require.NoError(t, json.Unmarshal(data, &receipt))
 	require.Zero(t, receipt.CommandPID)
-	require.Contains(t, strings.Join(receipt.Errors, "\n"), "memory.max")
+	require.Contains(t, strings.Join(receipt.Errors, "\n"), memoryMaxFile)
 	_, err = os.Stat(marker)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	assertScopeCollected(t, cmd.Process.Pid)
@@ -636,7 +680,7 @@ func TestCgroupMemoryLimitControlChangeFails(t *testing.T) {
 	require.Equal(t, guardFailure, status, output)
 	require.True(t, receipt.HostChildrenSettled)
 	require.Nil(t, receipt.Memory)
-	require.Contains(t, strings.Join(receipt.Errors, "\n"), "memory.max")
+	require.Contains(t, strings.Join(receipt.Errors, "\n"), memoryMaxFile)
 }
 
 // TestCgroupMemoryLimitBelowPageFailsClosed checks setup rollback.
@@ -671,7 +715,7 @@ func TestCgroupMemoryLimitAggregate(t *testing.T) {
 	require.Equal(t, 137, status, output)
 	require.True(t, receipt.HostChildrenSettled)
 	require.NotNil(t, receipt.Memory)
-	require.Greater(t, receipt.Memory.Events["oom_kill"], uint64(0))
+	require.Greater(t, receipt.Memory.Events[memoryEventOOMKill], uint64(0))
 }
 
 // TestCgroupMemoryLimitCancellationRejected checks incompatible launch and cancellation modes.
@@ -718,14 +762,14 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	require.NoError(t, err, "command did not report membership")
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
-	command := filepath.Join("/sys/fs/cgroup", relative)
+	command := filepath.Join(cgroupRoot, relative)
 	parent := filepath.Dir(command)
 	unit := filepath.Base(parent)
 	unitPath, err := exec.Command("systemctl", "--user", "show", unit, "--property=ControlGroup", "--value").Output()
 	require.NoError(t, err, "live scope %s", unit)
 	require.Equal(t, filepath.Dir(relative), strings.TrimSpace(string(unitPath)), "live scope %s", unit)
 	require.Contains(t, scopeListing(t, cmd.Process.Pid), unit)
-	for name, want := range map[string]string{"memory.max": testMemoryLimit, "memory.swap.max": "0", "memory.oom.group": "1"} {
+	for name, want := range map[string]string{memoryMaxFile: testMemoryLimit, memorySwapMaxFile: "0", memoryOOMGroupFile: "1"} {
 		data, err := os.ReadFile(filepath.Join(command, name))
 		require.NoError(t, err, name)
 		require.Equal(t, want, strings.TrimSpace(string(data)), name)
@@ -744,10 +788,10 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	guardInfo, err := os.Stat(guard)
 	require.NoError(t, err)
 	monitored := parent
-	for monitored != "/sys/fs/cgroup" && !strings.HasPrefix(filepath.Base(monitored), "user@") {
+	for monitored != cgroupRoot && !strings.HasPrefix(filepath.Base(monitored), "user@") {
 		monitored = filepath.Dir(monitored)
 	}
-	require.NotEqual(t, "/sys/fs/cgroup", monitored, "user manager cgroup not found")
+	require.NotEqual(t, cgroupRoot, monitored, "user manager cgroup not found")
 	monitorInfo, err := os.Stat(monitored)
 	require.NoError(t, err)
 	guardStat, guardOK := guardInfo.Sys().(*syscall.Stat_t)
@@ -904,7 +948,7 @@ func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
 	require.NoError(t, err)
 	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
-	guard := filepath.Join("/sys/fs/cgroup", filepath.Dir(relative), memoryGuardLeaf)
+	guard := filepath.Join(cgroupRoot, filepath.Dir(relative), memoryGuardLeaf)
 	_, err = os.Stat(guard)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = stdin.Write([]byte("done\n"))

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -25,13 +26,16 @@ func (b *MemoryBytes) String() string {
 	return strconv.FormatUint(uint64(*b), 10)
 }
 
-// Set parses a byte limit using the same syntax as flag.Uint64.
+// Set parses a positive byte limit using the same syntax as flag.Uint64.
 //
-// Example: "0x40" selects a limit of 64 bytes.
+// Example: "0x40" selects a limit of 64 bytes; explicit zero is invalid.
 func (b *MemoryBytes) Set(value string) error {
 	parsed, err := strconv.ParseUint(value, 0, 64)
 	if err != nil {
 		return err
+	}
+	if parsed == 0 {
+		return fmt.Errorf("memory limit must be positive; omit the flag for an uncapped launch")
 	}
 	*b = MemoryBytes(parsed)
 	return nil

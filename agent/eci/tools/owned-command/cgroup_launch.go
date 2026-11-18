@@ -80,6 +80,42 @@ const memoryController = "memory"
 // Example: the scope parent enables memory so its command leaf can be capped.
 const enableMemoryController = "+" + memoryController
 
+// cgroupRoot is the unified cgroup filesystem mount.
+//
+// Example: a delegated relative path resolves below it.
+const cgroupRoot = "/sys/fs/cgroup"
+
+// selfCgroupFile names the supervisor's current cgroup membership.
+//
+// Example: membership is checked before using a delegated scope.
+const selfCgroupFile = "/proc/self/cgroup"
+
+// memorySwapMaxFile names the workload swap limit.
+//
+// Example: a capped workload disables swap.
+const memorySwapMaxFile = "memory.swap.max"
+
+// memoryOOMGroupFile names the group-wide OOM selection control.
+//
+// Example: a workload OOM retires its whole command group.
+const memoryOOMGroupFile = "memory.oom.group"
+
+// memoryMaxFile names the aggregate workload memory limit.
+//
+// Example: a capped command receives its page-rounded maximum.
+const memoryMaxFile = "memory.max"
+
+// selfCgroupMatches reads and compares the supervisor's unified membership.
+//
+// Example: a moved guard must match the delegated guard leaf.
+func selfCgroupMatches(expected string) (bool, error) {
+	membership, err := os.ReadFile(selfCgroupFile)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(membership)) == "0::"+expected, nil
+}
+
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
 // The supervisor stays outside it, in the scope parent or, with a memory limit,
 // in the sibling guard leaf, and is never included in group retirement.
@@ -144,11 +180,11 @@ func acquireCommandCgroup(
 	if !ok || parent == "" || !strings.HasPrefix(parent, "/") || filepath.Clean(parent) != parent {
 		return nil, fmt.Errorf("scope %s returned invalid ControlGroup", unit)
 	}
-	membership, err := os.ReadFile("/proc/self/cgroup")
+	matches, err := selfCgroupMatches(parent)
 	if err != nil {
 		return nil, fmt.Errorf("verify delegated scope %s membership: %w", unit, err)
 	}
-	if strings.TrimSpace(string(membership)) != "0::"+parent {
+	if !matches {
 		return nil, fmt.Errorf("supervisor did not enter delegated scope %s", unit)
 	}
 	if err := ctx.Err(); err != nil {
@@ -160,7 +196,7 @@ func acquireCommandCgroup(
 		}
 	}
 	relative := parent + "/" + commandLeaf
-	path := filepath.Join("/sys/fs/cgroup", relative)
+	path := filepath.Join(cgroupRoot, relative)
 	if err := os.Mkdir(path, 0700); err != nil {
 		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
 	}
@@ -212,7 +248,7 @@ func prepareMemoryScope(
 	if limit.pageFloor() == 0 {
 		return fmt.Errorf("memory limit %d is below one page", limit)
 	}
-	scope := filepath.Join("/sys/fs/cgroup", parent)
+	scope := filepath.Join(cgroupRoot, parent)
 	controllers, err := os.ReadFile(filepath.Join(scope, cgroupControllersFile))
 	if err != nil {
 		return fmt.Errorf("read available cgroup controllers: %w", err)
@@ -230,11 +266,11 @@ func prepareMemoryScope(
 	if err := os.WriteFile(filepath.Join(guard, cgroupProcsFile), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
 		return fmt.Errorf("move guard into sibling cgroup: %w", err)
 	}
-	membership, err := os.ReadFile("/proc/self/cgroup")
+	matches, err := selfCgroupMatches(guardCgroup(parent))
 	if err != nil {
 		return fmt.Errorf("read guard cgroup membership: %w", err)
 	}
-	if strings.TrimSpace(string(membership)) != "0::"+guardCgroup(parent) {
+	if !matches {
 		return errors.New("guard did not enter sibling cgroup")
 	}
 	if err := os.WriteFile(filepath.Join(scope, cgroupSubtreeControlFile), []byte(enableMemoryController), 0600); err != nil {
@@ -275,9 +311,9 @@ type memoryControl struct {
 // Example: the final control is the page-rounded aggregate memory limit.
 func commandMemoryControls(limit MemoryBytes) [3]memoryControl {
 	return [3]memoryControl{
-		{"memory.swap.max", "0"},
-		{"memory.oom.group", "1"},
-		{"memory.max", strconv.FormatUint(uint64(limit.pageFloor()), 10)},
+		{memorySwapMaxFile, "0"},
+		{memoryOOMGroupFile, "1"},
+		{memoryMaxFile, strconv.FormatUint(uint64(limit.pageFloor()), 10)},
 	}
 }
 

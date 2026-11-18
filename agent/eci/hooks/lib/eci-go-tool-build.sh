@@ -12,7 +12,7 @@
 # database. This file never disables checksum verification.
 # Bash 3.2 with BSD userland: no mapfile, realpath, readlink -f, mv -T, stat -c, or sort without LC_ALL=C.
 
-# Digest command as an array so xargs can run it. macOS ships shasum, not sha256sum.
+# Digest command as an array because shasum needs arguments; macOS ships shasum, not sha256sum.
 if [ "$(uname -s)" != Darwin ] && command -v sha256sum >/dev/null 2>&1; then
   eci_sha256_command=(sha256sum)
 else

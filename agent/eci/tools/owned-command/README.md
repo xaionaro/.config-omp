@@ -65,8 +65,9 @@ command membership. A process migrating through another service manager,
 including a nested `owned-command` or `systemd-run`, leaves inherited-family
 coverage; this tool is not a sandbox.
 
-`-memory-max BYTES` opts into an aggregate cgroup-v2 workload limit; zero or
-omission preserves the original topology. The delegated scope has `guard` and
+`-memory-max BYTES` opts into an aggregate cgroup-v2 workload limit; omit the flag
+to preserve the original uncapped topology. Explicit zero is a usage error (exit 2,
+no receipt). The delegated scope has `guard` and
 `command` siblings, so the guard is outside the capped workload. Setup enables
 the memory controller and verifies `memory.max`, `memory.swap.max=0`, and
 `memory.oom.group=1` before launch; missing controls fail closed with status 125.
@@ -182,7 +183,8 @@ XNU and launchd limits are documented only in this section:
   is 0, `HostChildrenSettled` is false, and `Errors` holds one `cancel:` message. A
   malformed cancellation request is refused without a receipt.
 - A launch with a nonzero `-memory-max` is refused with one stderr line and a
-  guard-error receipt; the command does not run.
+  guard-error receipt; the command does not run. Omit the flag for an uncapped
+  launch; explicit zero is a usage error (exit 2, no receipt).
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
 - The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
   `Survivors` holds the root only when it is still unreaped at the end of settlement, and

@@ -125,7 +125,8 @@ build_fixture member
 second=$eci_go_tool_executable
 [ "$(notices member)" = 1 ]
 [ ! "$stage" -ef "$tmp/stage.hold" ]
-[ "$first" != "$second" ] && [ "$("$second")" = two ]
+[ "$first" != "$second" ]
+[ "$("$second")" = two ]
 [ "$(sha "$first")" = "$first_sha" ]
 second_sha=$(sha "$second")
 # A workspace replacement, rather than a local go.mod replacement, changes the build.
@@ -135,12 +136,14 @@ printf 'package member\nconst Value = "replacement"\n' > "$tmp/fixture/replaceme
 printf 'go 1.24.0\nuse ./app\nreplace example.test/member => ./replacement\n' > "$tmp/fixture/go.work"
 build_fixture replacement
 replacement=$eci_go_tool_executable
-[ "$replacement" != "$second" ] && [ "$("$replacement")" = replacement ]
+[ "$replacement" != "$second" ]
+[ "$("$replacement")" = replacement ]
 [ "$(sha "$second")" = "$second_sha" ]
 replacement_sha=$(sha "$replacement")
 printf 'package member\nconst Value = "replacement edited"\n' > "$tmp/fixture/replacement/value.go"
 build_fixture replacement-edit
-[ "$replacement" != "$eci_go_tool_executable" ] && [ "$("$eci_go_tool_executable")" = "replacement edited" ]
+[ "$replacement" != "$eci_go_tool_executable" ]
+[ "$("$eci_go_tool_executable")" = "replacement edited" ]
 [ "$(sha "$replacement")" = "$replacement_sha" ]
 # A workspace that does not use the built module fails with Go's error and the rerun line.
 printf 'go 1.24.0\nuse ./member\n' > "$tmp/fixture/go.work"

@@ -1607,7 +1607,7 @@ func main() {
 	cancelPID := flag.Int("cancel-pid", 0, "cancel this exact host process")
 	cancelBirth := flag.Uint64("cancel-birth", 0, "required /proc stat field 22 identity")
 	var memoryMax MemoryBytes
-	flag.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; zero disables")
+	flag.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; omit to run uncapped")
 	flag.Parse()
 	cancel := ProcessIdentity{PID: *cancelPID, Birth: *cancelBirth}
 	if *receipt == "" || !validArguments(*deadline, *grace, cancel, memoryMax, flag.Args()) {

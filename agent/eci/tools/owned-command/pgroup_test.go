@@ -1034,6 +1034,33 @@ func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
 	t.Logf("holder reaped by the seam: %v; extended at %.3f s, finished at %.3f s", group.holderErr, extendedAt, receipt.ElapsedSeconds)
 }
 
+// TestPgroupMemoryBytesRejectsExplicitZero checks the flag value parser's zero boundary.
+//
+// Example: explicit zero is rejected while a positive limit remains valid.
+func TestPgroupMemoryBytesRejectsExplicitZero(t *testing.T) {
+	t.Parallel()
+	var limit MemoryBytes
+	require.Error(t, limit.Set("0"))
+	require.NoError(t, limit.Set("64"))
+	require.Equal(t, MemoryBytes(64), limit)
+}
+
+// TestPgroupMemoryLimitExplicitZero rejects zero before creating a command or receipt.
+//
+// Example: a zero limit exits with a usage error without touching the marker.
+func TestPgroupMemoryLimitExplicitZero(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "launched")
+	receipt := filepath.Join(dir, "receipt.json")
+	status := pgroupMain([]string{"-memory-max", "0", "-receipt", receipt, "--", "/usr/bin/touch", marker})
+	require.Equal(t, 2, status)
+	_, err := os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(receipt)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
 // TestPgroupMemoryLimitRefused prevents an unsupported cap from launching a command.
 //
 // Example: a Darwin caller gets a guard-error receipt instead of an uncapped workload.
