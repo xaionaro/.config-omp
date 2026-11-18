@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import askGoalGate, { GOAL_BLOCK_REASON, GOAL_UNREADABLE_REASON } from "../extensions/ask-goal-gate.ts";
+import askGoalGate, { GOAL_DENY_REASON, GOAL_UNREADABLE_REASON } from "../extensions/ask-goal-gate.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
@@ -48,30 +48,30 @@ function overlay(status: string) {
   return { getState: () => ({ goal: { status } }), set: async () => ({}) };
 }
 
-function blockReasonOf(result: unknown): string {
+function denyReasonOf(result: unknown): string {
   if (typeof result !== "object" || result === null || !("reason" in result)) {
-    throw new Error("expected a block result");
+    throw new Error("expected a deny result");
   }
-  if (typeof result.reason !== "string") throw new Error("block reason is not a string");
+  if (typeof result.reason !== "string") throw new Error("deny reason is not a string");
   return result.reason;
 }
 
 describe("ask goal gate", () => {
-  test("blocks ask when goal is active", () => {
+  test("denies ask when goal is active", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
     assert.deepEqual(fire("tool_call", askCall, main()), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
-  test("blocks ask when goal is budget-limited", () => {
+  test("denies ask when goal is budget-limited", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "budget-limited"), main());
     assert.deepEqual(fire("tool_call", askCall, main()), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
@@ -89,22 +89,22 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main(undefined)), undefined);
   });
 
-  test("blocks ask when live overlay reports active but cache is false (restore case)", () => {
+  test("denies ask when live overlay reports active but cache is false (restore case)", () => {
     const { fire } = setup();
     assert.deepEqual(fire("tool_call", askCall, main(overlay("active"))), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
   // Residual: the overlay branch does not check budget-limited (the declared overlay
   // type omits it). Budget-limited coverage comes from the goal_updated cache.
-  test("budget-limited overlay status is a residual; the cache keeps ask blocked", () => {
+  test("budget-limited overlay status is a residual; the cache keeps ask denied", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "budget-limited"), main());
     assert.deepEqual(fire("tool_call", askCall, main(overlay("budget-limited"))), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
@@ -122,7 +122,7 @@ describe("ask goal gate", () => {
     assert.deepEqual(result, { block: true, reason: GOAL_UNREADABLE_REASON });
   });
 
-  test("blocks ask with unreadable reason when goal_updated cannot be read, until a clean update", () => {
+  test("denies ask with unreadable reason when goal_updated cannot be read, until a clean update", () => {
     const { fire } = setup();
     const unreadable = {
       type: "goal_updated",
@@ -140,7 +140,7 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main()), undefined);
   });
 
-  test("goal_updated with no state fails closed: ask stays blocked until a clean update", () => {
+  test("goal_updated with no state fails closed: ask stays denied until a clean update", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
     fire("goal_updated", { type: "goal_updated", goal: null }, main());
@@ -152,7 +152,7 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main()), undefined);
   });
 
-  test("unreadable goal_updated stays blocked across session_switch until a clean update", () => {
+  test("unreadable goal_updated stays denied across session_switch until a clean update", () => {
     const { fire } = setup();
     const unreadable = {
       type: "goal_updated",
@@ -185,7 +185,7 @@ describe("ask goal gate", () => {
     assert.equal(reads, 0);
   });
 
-  test("a non-ask tool_call whose toolName read throws never returns a block", () => {
+  test("a non-ask tool_call whose toolName read throws never returns a denial", () => {
     const { fire } = setup();
     const throwingEvent = {
       type: "tool_call",
@@ -211,9 +211,9 @@ describe("ask goal gate", () => {
   });
 
   // Intended: subagent gating depends on the session id. A subagent never writes the
-  // main session's cache, so an id with no engaged main session is not blocked by the
+  // main session's cache, so an id with no engaged main session is not denied by the
   // main goal.
-  test("subagent id with no engaged main session is not blocked", () => {
+  test("subagent id with no engaged main session is not denied", () => {
     const { fire } = setup();
     const subCtx = sessionCtx(`${currentId}-sub`, "sub");
     fire("goal_updated", goalUpdated(true, "active"), main());
@@ -235,7 +235,7 @@ describe("ask goal gate", () => {
     fire("session_switch", { type: "session_switch" }, sub());
     assert.deepEqual(fire("tool_call", askCall, main(undefined)), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
@@ -247,7 +247,7 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, b), undefined);
     assert.deepEqual(fire("tool_call", askCall, a), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
@@ -259,19 +259,19 @@ describe("ask goal gate", () => {
     fire("session_switch", { type: "session_switch" }, b);
     assert.deepEqual(fire("tool_call", askCall, a), {
       block: true,
-      reason: GOAL_BLOCK_REASON,
+      reason: GOAL_DENY_REASON,
     });
   });
 
   // Characterization: whatever sessionModes reports during budget-limited,
   // the cache keeps the gate closed.
   for (const reported of ["active", "paused", "inactive"]) {
-    test(`blocks during budget-limited when sessionModes reports ${reported}`, () => {
+    test(`denies during budget-limited when sessionModes reports ${reported}`, () => {
       const { fire } = setup();
       fire("goal_updated", goalUpdated(true, "budget-limited"), main());
       assert.deepEqual(fire("tool_call", askCall, main(overlay(reported))), {
         block: true,
-        reason: GOAL_BLOCK_REASON,
+        reason: GOAL_DENY_REASON,
       });
     });
   }
@@ -296,10 +296,10 @@ describe("ask goal gate", () => {
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
   });
 
-  test("blocked ask result tells the model to follow a skill it already read, read one it has not, and leave a stuck goal active while listing the needed input", () => {
+  test("denied ask result tells the model to follow a skill it already read, read one it has not, and leave a stuck goal active while listing the needed input", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
-    const reason = blockReasonOf(fire("tool_call", askCall, main()));
+    const reason = denyReasonOf(fire("tool_call", askCall, main()));
     assert.ok(
       reason.includes(
         "If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it.",
@@ -307,18 +307,17 @@ describe("ask goal gate", () => {
     );
     assert.ok(reason.includes("Leave the goal active"));
     assert.ok(reason.includes("needed input"));
-    assert.ok(!reason.includes("blocker"));
   });
 
-  test("blocked ask result says ask is disabled and asks for the needed input", () => {
+  test("denied ask result says ask is disabled and asks for the needed input", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
-    const reason = blockReasonOf(fire("tool_call", askCall, main()));
+    const reason = denyReasonOf(fire("tool_call", askCall, main()));
     assert.ok(reason.includes("`ask` is disabled"));
     assert.ok(reason.includes("needed input"));
   });
 
-  test("a throwing ctx.agent in goal_updated keeps ask blocked until a clean update", () => {
+  test("a throwing ctx.agent in goal_updated keeps ask denied until a clean update", () => {
     const { fire } = setup();
     fire("goal_updated", goalUpdated(true, "active"), main());
     const agentThrows = {

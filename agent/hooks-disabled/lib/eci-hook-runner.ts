@@ -340,13 +340,13 @@ export type PreToolVerdict = { block: true; reason: string } | undefined;
 
 /**
  * PreToolUse translation. Fail-closed: spawn error, timeout, non-zero exit, non-JSON or
- * unrecognized output all block. Empty stdout with exit 0 allows.
- * Deny → block with the script's permissionDecisionReason.
+ * unrecognized output all deny. Empty stdout with exit 0 allows.
+ * Deny → deny with the script's permissionDecisionReason.
  */
 export function preToolVerdict(run: HookRun, label: string): PreToolVerdict {
 	const fail = (why: string): PreToolVerdict => ({
 		block: true,
-		reason: `ECI hook ${label} ${why}; blocking (fail-closed).`,
+		reason: `ECI hook ${label} ${why}; denying (fail-closed).`,
 	});
 	const outcome = run.outcome;
 	if (outcome.kind === "spawn-error") return fail(`could not run (${outcome.message.trim()})`);
@@ -390,9 +390,9 @@ const nativeRepairSteps: Readonly<Record<string, string>> = {
 	"cannot be hashed": " Repair: install shasum on PATH (the verifier runs shasum -a 256) and retry.",
 };
 
-/** Blocks an unchecked Bash call without exposing callback data; names the same-actor repair step. */
+/** Denies an unchecked Bash call without exposing callback data; names the same-actor repair step. */
 export function bashGateUnavailable(detail: string, step = sourceRepairStep): PreToolVerdict {
-	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is blocked.${step} If Bash stays blocked, continue non-Bash work and report the failure.` };
+	return { block: true, reason: `ECI Bash gate unavailable (${detail}); the call is denied.${step} If Bash stays denied, continue non-Bash work and report the failure.` };
 }
 
 const nativeRepairReasons = [

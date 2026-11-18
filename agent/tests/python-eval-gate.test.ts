@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import pythonEvalGate, { PYTHON_EVAL_BLOCK_REASON } from "../extensions/python-eval-gate.ts";
+import pythonEvalGate, { PYTHON_EVAL_DENY_REASON } from "../extensions/python-eval-gate.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
@@ -21,11 +21,11 @@ function setup() {
 
 describe("python eval gate", () => {
   for (const language of ["py", "python"]) {
-    test(`blocks eval ${language} cells with the script route`, () => {
+    test(`denies eval ${language} cells with the script route`, () => {
       const result = setup()("eval", { language, code: "print(1)" });
-      assert.deepEqual(result, { block: true, reason: PYTHON_EVAL_BLOCK_REASON });
-      assert.match(PYTHON_EVAL_BLOCK_REASON, /\[ECI_PYTHON_SCRIPT_REQUIRED\]/);
-      assert.match(PYTHON_EVAL_BLOCK_REASON, /#!\/usr\/bin\/python3/);
+      assert.deepEqual(result, { block: true, reason: PYTHON_EVAL_DENY_REASON });
+      assert.match(PYTHON_EVAL_DENY_REASON, /\[ECI_PYTHON_SCRIPT_REQUIRED\]/);
+      assert.match(PYTHON_EVAL_DENY_REASON, /#!\/usr\/bin\/python3/);
     });
   }
 

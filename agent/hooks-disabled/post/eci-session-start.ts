@@ -1,5 +1,5 @@
 // omp session_start snapshot → session-snapshot.sh. Its additionalContext is delivered
-// as a hidden custom message on the next turn without starting a turn. Advisory: never blocks.
+// as a hidden custom message on the next turn without starting a turn. Advisory: never denies.
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { advisoryContext, basePayload, identityFor, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
 

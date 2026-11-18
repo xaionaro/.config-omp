@@ -1,5 +1,5 @@
 // omp UserPromptSubmit reminder → prompt-task-reminder.sh. Its additionalContext becomes
-// a hidden custom message for this turn via before_agent_start. Advisory: cannot block.
+// a hidden custom message for this turn via before_agent_start. Advisory: cannot deny.
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { advisoryContext, basePayload, identityFor, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
 

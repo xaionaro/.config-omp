@@ -114,10 +114,10 @@ describe("adapter", () => {
 			expect(await handler(write, context(dir))).toEqual({ additionalContext: "guard warning" });
 		});
 		await withStubLauncher("printf 'not json\\n'", async (handler, dir) => {
-			expect(await handler(write, context(dir))).toEqual({ block: true, reason: "ECI hook eci-edit-gate returned non-JSON output; blocking (fail-closed)." });
+			expect(await handler(write, context(dir))).toEqual({ block: true, reason: "ECI hook eci-edit-gate returned non-JSON output; denying (fail-closed)." });
 		});
 		await withStubLauncher("printf '%s\\n' '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] helper missing' >&2; exit 2", async (handler, dir) => {
-			expect(await handler(write, context(dir))).toEqual({ block: true, reason: "ECI hook eci-edit-gate exited 2: [ECI_HOOK_NATIVE_GATE_UNAVAILABLE] helper missing; blocking (fail-closed)." });
+			expect(await handler(write, context(dir))).toEqual({ block: true, reason: "ECI hook eci-edit-gate exited 2: [ECI_HOOK_NATIVE_GATE_UNAVAILABLE] helper missing; denying (fail-closed)." });
 		});
 		await withStubLauncher("", async (handler, dir) => {
 			rmSync(join(dir, ".omp/agent/eci/hooks/eci-edit-gate.sh"));
@@ -127,7 +127,7 @@ describe("adapter", () => {
 		});
 	});
 
-	test("blocks an edit with no inspectable target without running the launcher", async () => {
+	test("denies an edit with no inspectable target without running the launcher", async () => {
 		await withStubLauncher("", async (handler, dir) => {
 			const verdict = await handler({ toolName: "edit", input: { input: "" } }, context(dir)) as { block: boolean; reason: string };
 			expect(verdict.block).toBe(true);
@@ -137,7 +137,7 @@ describe("adapter", () => {
 		});
 	});
 
-	test("blocks when the shared budget is spent before the launcher starts", async () => {
+	test("denies when the shared budget is spent before the launcher starts", async () => {
 		const clock = spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValue(21_000);
 		try {
 			await withStubLauncher("", async (handler, dir) => {
@@ -151,7 +151,7 @@ describe("adapter", () => {
 		}
 	});
 
-	test("blocks a launcher that exceeds the remaining budget with an exact reproduction", async () => {
+	test("denies a launcher that exceeds the remaining budget with an exact reproduction", async () => {
 		const clock = spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValue(19_980);
 		try {
 			await withStubLauncher("sleep 10", async (handler, dir) => {
@@ -249,7 +249,7 @@ describe.skipIf(!chain)("real launcher, helper and dispatcher", () => {
 		expect(await handler(sloppy("ordinary.txt"), context(repo))).toBeUndefined();
 	}, 60_000);
 
-	test("an unusable TMPDIR does not block an ordinary edit", async () => {
+	test("an unusable TMPDIR does not deny an ordinary edit", async () => {
 		const saved = process.env.TMPDIR;
 		process.env.TMPDIR = join(HOME, "missing-tmp");
 		try {

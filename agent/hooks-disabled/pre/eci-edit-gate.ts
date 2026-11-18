@@ -11,7 +11,7 @@ import { ensureHookBinary, waitForProvision } from "../../eci/native-hook-binary
 const SCRIPT = "eci-edit-gate.sh";
 // With the runner's KILL_GRACE_SEC + DRAIN_SEC group cleanup this ends within 27 seconds,
 // inside omp's default 30-second tool_call handler budget (extensionHandlers.toolCallTimeoutMs).
-// A lower configured budget makes the host block the call first.
+// A lower configured budget makes the host deny the call first.
 const EDIT_GATE_DEADLINE_SEC = 20;
 const INSPECTION_RECOVERY = "Correct the edit and retry, or read the exact file and use Write for the intended content; Write remains subject to the same target checks.";
 

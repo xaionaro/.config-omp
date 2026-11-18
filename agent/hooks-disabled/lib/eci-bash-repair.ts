@@ -29,7 +29,7 @@ export function registerBashGateRepair(pi: ExtensionAPI): void {
 			const first = await probe();
 			const firstDecision = bashGateDecision(first);
 			if (firstDecision.kind === "allow") {
-				return { content: [{ type: "text", text: "The fixed true probe was accepted; nothing was rebuilt. Retry the blocked Bash call once; if blocked again, continue non-Bash work and report it." }], details: {} };
+				return { content: [{ type: "text", text: "The fixed true probe was accepted; nothing was rebuilt. Retry the denied Bash call once; if denied again, continue non-Bash work and report it." }], details: {} };
 			}
 			if (firstDecision.kind === "deny") {
 				return { isError: true, content: [{ type: "text", text: `The gate returned a denial for the fixed true probe: ${firstDecision.reason} Nothing was rebuilt; continue non-Bash work and report the denial.` }], details: {} };

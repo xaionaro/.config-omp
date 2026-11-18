@@ -75,7 +75,7 @@ test("passes the script exit code through", async () => {
 	expect(run.outcome).toEqual(exited(3));
 });
 
-test("PreToolUse: a nonzero exit blocks even with empty stdout; exit 0 with empty stdout allows", async () => {
+test("PreToolUse: a nonzero exit denies even with empty stdout; exit 0 with empty stdout allows", async () => {
 	const failed = await runEciHook(script("die.sh", "echo boom >&2\nexit 1\n"), {}, id, 10);
 	expect(failed.stdout).toBe("");
 	expect(preToolVerdict(failed, "validate-bash")?.reason).toContain("exited 1: boom");
@@ -121,7 +121,7 @@ test("session-start factory emits a hidden advisory and suppresses failed hooks"
 	}
 });
 
-test("Bash failures block with fixed diagnostics without exposing hook data", () => {
+test("Bash failures deny with fixed diagnostics without exposing hook data", () => {
 	const denial = (reason: unknown) => JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 	for (const run of [
 		{ outcome: { kind: "spawn-error" as const, message: "secret" }, stdout: "", stderr: "" },
@@ -188,7 +188,7 @@ test("recognized native failures offer fixed repair guidance", () => {
 	}
 });
 
-test("Bash factory exceptions block with conditional repair guidance without exposing the exception", async () => {
+test("Bash factory exceptions deny with conditional repair guidance without exposing the exception", async () => {
 	let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | undefined;
 	eciBashGate({ on: (_name: string, callback: typeof handler) => { handler = callback; }, zod: { object: () => ({}) }, registerTool: () => {} } as never);
 	expect(handler).toBeDefined();
@@ -320,7 +320,7 @@ test("Bash recovery rewrites only exact requests with a native gate denial", asy
 	}
 });
 
-test("Bash wrapper blocks when its verifier or planner is unavailable without a marker", async () => {
+test("Bash wrapper denies when its verifier or planner is unavailable without a marker", async () => {
 	const source = join(import.meta.dir, "../../eci/hooks");
 	const hooks = join(dir, "hooks");
 	mkdirSync(join(hooks, "lib"), { recursive: true });
@@ -352,7 +352,7 @@ test("a deadline stops the hook with SIGTERM", async () => {
 	const run = await runEciHook(script("sleep.sh", "exec sleep 30\n"), {}, id, 1);
 	expect(run.outcome).toEqual(deadline("graceful"));
 	expect(Date.now() - started).toBeLessThan(5000);
-	expect(preToolVerdict(run, "t")).toEqual({ block: true, reason: "ECI hook t timed out; blocking (fail-closed)." });
+	expect(preToolVerdict(run, "t")).toEqual({ block: true, reason: "ECI hook t timed out; denying (fail-closed)." });
 });
 
 for (const policy of ["deadline-only", "owned-group"] as const) {
@@ -496,7 +496,7 @@ test("other hook consumers retain normal-exit behavior", async () => {
 	}
 });
 
-test("deadline after leader exit still blocks inherited output", async () => {
+test("deadline after leader exit still denies inherited output", async () => {
 	const pidFile = join(dir, "inherited-deadline.pid");
 	const envelope = JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "partial" } });
 	const hook = script("inherited-deadline.sh", `printf '%s\\n' '${envelope}'\nsleep 30 &\necho $! > '${pidFile}'\nexit 0\n`);

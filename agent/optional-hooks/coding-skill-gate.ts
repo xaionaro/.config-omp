@@ -134,7 +134,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event, ctx): Promise<Verdict> => {
 		const current = generation;
 		let editTargets: string[] | undefined;
-		// Set once the engine says this call is checked: by agent role, or by a gated write target. Only checked calls block on failure.
+		// Set once the engine says this call is checked: by agent role, or by a gated write target. Only checked calls are denied on failure.
 		let gated = false;
 		// TODO: a write to conflict://<id> or conflict://* rewrites files whose markers an earlier read registered but names no file, so no path-based skill read is required, even for ~/.omp instruction files or code; fix by remembering the files of reads that register conflict ids and checking them as that write's targets.
 		let paths = event.toolName === "write" && typeof event.input.path === "string" ? [event.input.path] : [];

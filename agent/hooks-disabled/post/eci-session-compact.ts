@@ -1,5 +1,5 @@
 // omp session_compact refresh → eci-post-compact-refresh.sh. Its stdout is always `{}`,
-// so nothing is returned to omp. Failures are non-blocking (session_compact cannot block).
+// so nothing is returned to omp. Failures are ignored (session_compact cannot deny or delay compaction).
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { basePayload, identityFor, runEciHook, scriptPath } from "../lib/eci-hook-runner.ts";
 
