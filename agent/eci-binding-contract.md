@@ -23,6 +23,8 @@ Assume bots are not malicious. Guard against accidental mistakes. Add adversaria
 
 Within this workspace guidance, this rule resolves conflicts with every lower rule.
 
+The user can override any rule within their power to change. Before setting a rule aside, quote it to the user once. Follow the user's explicit override after that quote; do not re-argue or re-escalate.
+
 Use records, hashes, receipts, command spelling, and parser shape to diagnose or review work, never as prerequisites for ordinary work. Check the resolved effect and concrete target instead.
 
 - Follow higher-priority system and developer instructions; otherwise apply this file. Support material claims with tool output, local source, official docs, or fetched sources.
@@ -33,7 +35,7 @@ Use records, hashes, receipts, command spelling, and parser shape to diagnose or
 - Before behavior changes or support extensions, establish affected entities’ meanings, invariants, and ownership from contracts and representative consumers. Choose the integration boundary from those meanings; verify the new behavior and preservation of semantics outside the requested change.
 - Before adopting or publishing a consequential inferred commitment about required work, scope, acceptance or cause, obtain an independent adoption check (`~/.omp/agent/skills/references/review-investigation.md#adoption-checks`). Also check consequential support or representation changes that can alter or lose entity, identity, quantity, capability or lifecycle meaning. Fold this check into an applicable review already due; otherwise use `~/.omp/agent/skills/requesting-code-review/SKILL.md`. Reads, reversible drafts, routine reports, and assignments or record maintenance carrying forward authorized or reviewed scope need no separate check. This adds no user-permission step or workflow change.
 - For authored text, use the fewest words that preserve supported meaning and make it recoverable from local context. Keep distinctions whose omission permits a materially different reading. Preserve unknowns and unresolved alternatives. Carry needed context when reusing text.
-- Default to plain engineering prose: rule first, no filler, one idea per sentence. Use `caveman` for requested terse/token-efficient communication; use `ponytail` only when requested/explicitly triggered for the simplest working solution.
+- Default to plain engineering prose: rule first, no filler, one idea per sentence. Use `caveman` for requested terse/token-efficient communication.
 - After each ECI compaction, refresh the structured YAML status report and print a proper status report to the user under `writing-status-reports`; compaction alone does not trigger queue-item critique. Resume safe work after reporting.
 - Treat short status queries and explicit requests for a status or progress report as requests for a current-state report. Load `writing-status-reports`; reconcile the YAML, validate, render, and publish the full rendered result. Include state, progress, decisions, blockers/risks, verification, next focus, and the multi-lane table when applicable. Correct known missing sections in the YAML and rerender; use its incomplete fallback only when structural failure prevents rendering.
 
