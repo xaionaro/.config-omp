@@ -74,7 +74,7 @@ eci_runtime_build_missing() (
     fi
     # Concurrent session starts serialize per module and recheck after waiting.
     exec {lock_fd}>"$module/.eci-go-build.lock" || return 1
-    eci_file_lock_acquire_fd "$lock_fd" blocking || return 1
+    eci_file_lock_acquire_fd "$lock_fd" wait || return 1
     if [ ! -x "$binary" ]; then
       compiler="$(command -v go)" || {
         printf 'ECI runtime build: could not build %s: install Go and put go on PATH\n' "$name" >&2

@@ -41,7 +41,7 @@ lock_path="$(eci_lock_path 2>/dev/null || true)"
 if [ -n "$lock_path" ] &&
   { [ ! -e "$lock_path" ] || [ -f "$lock_path" ]; } && [ ! -L "$lock_path" ]; then
   if exec {eci_lock_fd}>>"$lock_path" 2>/dev/null &&
-    eci_file_lock_acquire_fd "$eci_lock_fd" nonblocking 2>/dev/null; then
+    eci_file_lock_acquire_fd "$eci_lock_fd" try 2>/dev/null; then
     lock_held=true
     trap 'eci_file_lock_release_fd "$eci_lock_fd" 2>/dev/null || true' EXIT
   else

@@ -179,9 +179,9 @@ eci_native_provision() (
     return 1
   fi
   exec 7>>"$lock" || return 1
-  if ! eci_file_lock_acquire_fd 7 nonblocking 2>/dev/null; then
+  if ! eci_file_lock_acquire_fd 7 try 2>/dev/null; then
     printf 'eci-active: waiting for a concurrent native build\n' >&2
-    eci_file_lock_acquire_fd 7 blocking || return 1
+    eci_file_lock_acquire_fd 7 wait || return 1
   fi
   eci_native_provision_locked || rc=$?
   eci_file_lock_release_fd 7 || [ "$rc" -ne 0 ] || rc=1

@@ -219,7 +219,7 @@ test_eci_active_ledger_append_waits_then_fails_on_busy_session_lock() {
   # lock no longer applies.
   local session_lock="$TMP_ROOT/home/.agent/context/sessions/t00-session/.eci-session.lock"
   exec {lock_fd}>>"$session_lock"
-  eci_file_lock_acquire_fd "$lock_fd" nonblocking
+  eci_file_lock_acquire_fd "$lock_fd" try
 
   local started=$SECONDS
   if HOME="$TMP_ROOT/home" ECI_PROOF_ROOT="$proof_root" ECI_SESSION_ID=t00-session ECI_LOCK_WAIT_SECONDS=1 \
@@ -269,7 +269,7 @@ test_session_start_skips_pruning_when_mutation_lock_is_busy() {
   touch -t 202001010000 "$old_dir" "$old_dir/eci_active"
   mkdir -p "$proof_root"
   exec {lock_fd}>>"$proof_root/.eci-active.lock"
-  eci_file_lock_acquire_fd "$lock_fd" nonblocking
+  eci_file_lock_acquire_fd "$lock_fd" try
   out="$TMP_ROOT/lock.out"
   run_snapshot "$proof_root" resume "$out" t00-session "$source_repo"
   [ -e "$old_dir/eci_active" ]

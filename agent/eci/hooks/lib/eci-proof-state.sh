@@ -1050,7 +1050,7 @@ eci_accidental_override_consume() {
   if ! exec {lock_fd}>>"$lock_path" 2>/dev/null; then
     return 1
   fi
-  if ! eci_file_lock_acquire_fd "$lock_fd" nonblocking 2>/dev/null; then
+  if ! eci_file_lock_acquire_fd "$lock_fd" try 2>/dev/null; then
     eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
     return 1
   fi

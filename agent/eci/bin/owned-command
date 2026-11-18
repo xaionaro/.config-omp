@@ -59,7 +59,7 @@ mkdir -p -- "$cache_dir"
 cache_dir=$(cd -P -- "$cache_dir" && pwd -P)
 # One builder per cache. Immutable filenames remain safe after unlocking and exec.
 exec 9>"$cache_dir/build.lock"
-eci_file_lock_acquire_fd 9 blocking
+eci_file_lock_acquire_fd 9 wait
 # The shared build step prints the cold-build notice and the rerun line on failure, both on stderr.
 eci_go_tool_build owned-command "$source_dir" "$cache_dir/" /owned-command 'about 1-2 minutes' || exit $?
 executable=$eci_go_tool_executable

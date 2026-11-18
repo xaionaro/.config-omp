@@ -12,14 +12,14 @@ eci_file_lock_acquire_fd() {
   local descriptor="${1:-}" mode="${2:-}" platform
 
   [[ "$descriptor" =~ $eci_file_lock_descriptor_re ]] || return 2
-  case "$mode" in blocking|nonblocking) ;; *) return 2 ;; esac
+  case "$mode" in wait|try) ;; *) return 2 ;; esac
   platform="$(command uname -s)" || return $?
 
   case "$platform:$mode" in
-    Darwin:blocking) command lockf -s "$descriptor" ;;
-    Darwin:nonblocking) command lockf -s -t 0 "$descriptor" ;;
-    Linux:blocking) command flock -x "$descriptor" ;;
-    Linux:nonblocking) command flock -n -x "$descriptor" ;;
+    Darwin:wait) command lockf -s "$descriptor" ;;
+    Darwin:try) command lockf -s -t 0 "$descriptor" ;;
+    Linux:wait) command flock -x "$descriptor" ;;
+    Linux:try) command flock -n -x "$descriptor" ;;
     *)
       printf 'unsupported file-lock platform or mode: %s/%s\n' "$platform" "$mode" >&2
       return 1

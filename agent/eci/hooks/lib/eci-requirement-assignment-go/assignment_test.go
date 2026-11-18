@@ -325,7 +325,7 @@ func TestPublicationFailureEmitsNothing(t *testing.T) {
 
 // TestLogFailureReportsSavedSnapshot permits explicit retry without pretending to roll back.
 //
-// Example: an unsafe log destination blocks assignment output after successful publication.
+// Example: an unsafe log destination prevents assignment output after successful publication.
 func TestLogFailureReportsSavedSnapshot(t *testing.T) {
 	f := newCLIFixture(t)
 	require.NoError(t, os.Mkdir(filepath.Join(filepath.Dir(f.Ledger), "high_level_log.jsonl"), 0700))

@@ -6,7 +6,7 @@ import (
 	"syscall"
 )
 
-// lockFileExclusive takes a blocking exclusive flock on path, creating it if needed. Symlinks are refused.
+// lockFileExclusive takes an exclusive flock on path, waiting until it is free and creating the file if needed. Symlinks are refused.
 func lockFileExclusive(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {

@@ -210,9 +210,9 @@ fi
 
 # Cooperate with planner maintenance and runtime synchronization on the same lock.
 exec 6>>"$lock"
-if ! eci_file_lock_acquire_fd 6 nonblocking 2>/dev/null; then
+if ! eci_file_lock_acquire_fd 6 try 2>/dev/null; then
   echo "build-native-binaries: waiting for publication lock" >&2
-  eci_file_lock_acquire_fd 6 blocking || die "cannot acquire publication lock $lock"
+  eci_file_lock_acquire_fd 6 wait || die "cannot acquire publication lock $lock"
 fi
 if [ "$gate_repair" = true ]; then
   if eci_runtime_verify eci-command-plan; then

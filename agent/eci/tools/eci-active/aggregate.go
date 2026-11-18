@@ -344,7 +344,7 @@ type reviewGate struct {
 	cwd   string
 }
 
-// refresh prints the non-blocking refresh reminder that the pre-migration source's gate emits for missing or stale review metadata.
+// refresh prints the advisory refresh reminder that the pre-migration source's gate emits for missing or stale review metadata.
 func (g reviewGate) refresh(reason, target string) {
 	fmt.Fprintf(os.Stdout, "ECI review refresh needed: phase=%s target=%s reason=%s; ordinary work continues; workflow must route one fresh named least-restriction critic for the current diff.\n",
 		g.phase, target, reason)

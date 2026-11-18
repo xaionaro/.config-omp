@@ -27,7 +27,7 @@ bin_dir=$(cd -P -- "$bin_dir" && pwd -P)
 source "$eci_home/hooks/lib/eci-file-lock.sh"
 source "$eci_home/hooks/lib/eci-go-tool-build.sh"
 exec 9>"$bin_dir/.status-report-build.lock"
-eci_file_lock_acquire_fd 9 blocking
+eci_file_lock_acquire_fd 9 wait
 source "$eci_home/hooks/lib/eci-executable-selection.sh"
 eci_select_executable status-report || exit $?
 executable=$eci_go_tool_executable

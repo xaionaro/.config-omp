@@ -158,7 +158,7 @@ test_stale_review_history_is_nonblocking() {
   setup_fixture
   (
     exec 9>>"$proof_root/.eci-active.lock"
-    eci_file_lock_acquire_fd 9 nonblocking
+    eci_file_lock_acquire_fd 9 try
     : >"$lock_ready"
     sleep 0.2
   ) &
@@ -302,7 +302,7 @@ test_singleton_commit_history_and_lock_are_nonblocking() {
   identity_before="$(eci_sha256_hex "$proof_root/$session_id/eci-critic-identities.ledger")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
-    eci_file_lock_acquire_fd 9 nonblocking
+    eci_file_lock_acquire_fd 9 try
     : >"$lock_ready"
     sleep 0.2
   ) &
@@ -332,7 +332,7 @@ test_singleton_off_history_and_lock_are_nonblocking() {
   anchor_before="$(eci_sha256_hex "$proof_root/$session_id/eci-acceptance-anchor")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
-    eci_file_lock_acquire_fd 9 nonblocking
+    eci_file_lock_acquire_fd 9 try
     : >"$lock_ready"
     sleep 0.2
   ) &
@@ -360,7 +360,7 @@ assert_aggregate_history_phase_is_nonblocking() {
   anchor_before="$(eci_sha256_hex "$proof_root/$session_id/eci-aggregate.repo-a.acceptance-anchor")"
   (
     exec 9>>"$proof_root/.eci-active.lock"
-    eci_file_lock_acquire_fd 9 nonblocking
+    eci_file_lock_acquire_fd 9 try
     : >"$lock_ready"
     sleep 0.2
   ) &

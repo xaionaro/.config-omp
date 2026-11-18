@@ -29,7 +29,7 @@ type diagRule struct {
 var diagRules = []diagRule{
 	{[]string{"*command identity*", "*unsupported wrapper*", "*unrecognized command form*"}, "ECI_COMMAND_IDENTITY_INVALID"},
 	{[]string{"*pre-reviewer*", "*pre reviewer*"}, "ECI_PRE_REVIEWER_SKILL_OR_DELEGATION_REQUIRED"},
-	{[]string{"*external-review*", "*external review*"}, "ECI_STOP_REVIEW_VIOLATION_BLOCKED"},
+	{[]string{"*external-review*", "*external review*"}, "ECI_STOP_REVIEW_VIOLATION_DENIED"},
 	{[]string{"*git-mutation*", "*git mutation*"}, "ECI_GIT_MUTATION_APPROVAL_REQUIRED"},
 	{[]string{"*agent-dispatch*", "*Agent envelope*"}, "ECI_FIRST_AGENT_DISPATCH_REQUIRED"},
 	{[]string{"*'ECI_STOP_STATE_UNAVAILABLE'*"}, "ECI_STOP_STATE_UNAVAILABLE"},
@@ -52,7 +52,7 @@ var diagRules = []diagRule{
 	{[]string{"*acceptance_version*", "*acceptance version*"}, "ECI_REVIEW_ACCEPTANCE_VERSION_DENIED"},
 	{[]string{"*version*"}, "ECI_REVIEW_VERSION_DENIED"},
 	{[]string{"*git push*"}, "ECI_GIT_PUSH_DENIED"},
-	{[]string{"*no-progress*", "*no progress*", "*no terminal output*", "*blocked on 3 times*"}, "ECI_NO_PROGRESS_BLOCK_DENIED"},
+	{[]string{"*no-progress*", "*no progress*", "*no terminal output*"}, "ECI_NO_PROGRESS_DENIED"},
 	{[]string{"*lock*"}, "ECI_REVIEW_LOCK_DENIED"},
 	{[]string{"*could not*", "*cannot*", "*unable*"}, "ECI_REVIEW_IO_DENIED"},
 	{[]string{"*unsafe *path*", "*unsafe resolved*path*"}, "ECI_UNSAFE_PATH_DENIED"},

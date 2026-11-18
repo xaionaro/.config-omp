@@ -8,7 +8,7 @@ TMP_ROOT="$(mktemp -d "${ECI_TMPDIR:-${HOME:?}/tmp}/eci-file-lock.XXXXXX")"
 children=()
 cleanup() {
   local child
-  # Unblock our known children cooperatively, then reap their callers. Killing
+  # Release our known children cooperatively, then reap their callers. Killing
   # only the caller shells can orphan a compiler waiting on the private FIFO.
   if [ -n "${owner_fd:-}" ]; then
     eci_file_lock_release_fd "$owner_fd" 2>/dev/null || true
@@ -59,7 +59,7 @@ write_lock_stub flock
 for descriptor in 0 1 2; do
   (
     status=0
-    eci_file_lock_acquire_fd "$descriptor" blocking 2>/dev/null || status=$?
+    eci_file_lock_acquire_fd "$descriptor" wait 2>/dev/null || status=$?
     [ "$status" -eq 2 ]
     status=0
     eci_file_lock_release_fd "$descriptor" 2>/dev/null || status=$?
@@ -71,9 +71,9 @@ done
 exec {darwin_fd}>>"$TMP_ROOT/darwin.lock"
 write_platform_stub Darwin
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
-  eci_file_lock_acquire_fd "$darwin_fd" blocking
+  eci_file_lock_acquire_fd "$darwin_fd" wait
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
-  eci_file_lock_acquire_fd "$darwin_fd" nonblocking
+  eci_file_lock_acquire_fd "$darwin_fd" try
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
   eci_file_lock_release_fd "$darwin_fd"
 grep -Eq '/lockf <-s> <[0-9]+>$' "$CALL_LOG"
@@ -84,9 +84,9 @@ grep -Eq '/lockf <-s> <-t> <0> </dev/fd/[0-9]+> </usr/bin/true>$' "$CALL_LOG"
 exec {linux_fd}>>"$TMP_ROOT/linux.lock"
 write_platform_stub Linux
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
-  eci_file_lock_acquire_fd "$linux_fd" blocking
+  eci_file_lock_acquire_fd "$linux_fd" wait
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
-  eci_file_lock_acquire_fd "$linux_fd" nonblocking
+  eci_file_lock_acquire_fd "$linux_fd" try
 PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
   eci_file_lock_release_fd "$linux_fd"
 grep -Eq '/flock <-x> <[0-9]+>$' "$CALL_LOG"
@@ -95,7 +95,7 @@ grep -Eq '/flock <-u> <[0-9]+>$' "$CALL_LOG"
 
 write_platform_stub Plan9
 if PATH="$FAKE_BIN:$BASE_PATH" ECI_FILE_LOCK_TEST_LOG="$CALL_LOG" \
-    eci_file_lock_acquire_fd 9 blocking 2>/dev/null; then
+    eci_file_lock_acquire_fd 9 wait 2>/dev/null; then
   printf '%s\n' 'unsupported platform unexpectedly acquired a lock' >&2
   exit 1
 fi
@@ -138,7 +138,7 @@ wait_for_linux_lock_waiter() {
     END { exit !found }
   ' /proc/locks; do
     if ! kill -0 "$child" 2>/dev/null || [ "$SECONDS" -ge "$deadline" ]; then
-      printf 'no blocked FLOCK waiter for %s before child exit/deadline\n' "$path" >&2
+      printf 'no FLOCK waiter for %s before child exit/deadline\n' "$path" >&2
       return 1
     fi
     sleep 0.01
@@ -147,19 +147,19 @@ wait_for_linux_lock_waiter() {
 }
 
 if [ "$NATIVE_PLATFORM" = Linux ]; then
-  exec {owner_fd}>>"$TMP_ROOT/blocking.lock"
-  eci_file_lock_acquire_fd "$owner_fd" nonblocking
+  exec {owner_fd}>>"$TMP_ROOT/wait.lock"
+  eci_file_lock_acquire_fd "$owner_fd" try
   bash -c '
     source "$1"
     exec 8>>"$2"
-    eci_file_lock_acquire_fd 8 blocking || exit
+    eci_file_lock_acquire_fd 8 wait || exit
     printf "acquired\n" >"$3"
     eci_file_lock_release_fd 8
-  ' bash "$ROOT/hooks/lib/eci-file-lock.sh" "$TMP_ROOT/blocking.lock" \
+  ' bash "$ROOT/hooks/lib/eci-file-lock.sh" "$TMP_ROOT/wait.lock" \
     "$TMP_ROOT/waiter-acquired" &
   waiter=$!
   children+=("$waiter")
-  wait_for_linux_lock_waiter "$TMP_ROOT/blocking.lock" "$waiter"
+  wait_for_linux_lock_waiter "$TMP_ROOT/wait.lock" "$waiter"
   [ ! -e "$TMP_ROOT/waiter-acquired" ]
   eci_file_lock_release_fd "$owner_fd"
   owner_fd=''
@@ -177,9 +177,9 @@ native_lock_available() {
 }
 exec {native_fd}>>"$TMP_ROOT/native.lock"
 native_inode="$(ls -i "$TMP_ROOT/native.lock" | awk '{print $1}')"
-PATH="$BASE_PATH" eci_file_lock_acquire_fd "$native_fd" nonblocking
+PATH="$BASE_PATH" eci_file_lock_acquire_fd "$native_fd" try
 exec {contended_fd}>>"$TMP_ROOT/native.lock"
-if eci_file_lock_acquire_fd "$contended_fd" nonblocking; then
+if eci_file_lock_acquire_fd "$contended_fd" try; then
   printf '%s\n' 'contended helper acquisition unexpectedly succeeded' >&2
   exit 1
 fi
@@ -217,7 +217,7 @@ eval "exec ${duplicate_fd}>&-"
 [ "$native_inode" = "$(ls -i "$TMP_ROOT/native.lock" | awk '{print $1}')" ]
 
 # A process that exits without an explicit release must not leave a stale lock.
-bash -c 'source "$1"; exec 9>>"$2"; eci_file_lock_acquire_fd 9 blocking' \
+bash -c 'source "$1"; exec 9>>"$2"; eci_file_lock_acquire_fd 9 wait' \
   bash "$ROOT/hooks/lib/eci-file-lock.sh" "$TMP_ROOT/exited.lock"
 native_lock_available "$TMP_ROOT/exited.lock"
 
@@ -230,7 +230,7 @@ eci_lock_path() { printf '%s\n' "$PROOF_LOCK"; }
 eci_accidental_override_record_is_valid() { return 0; }
 printf '%s\n' 'fixture record' >"$PROOF_RECORD"
 exec {proof_lock_fd}>>"$PROOF_LOCK"
-eci_file_lock_acquire_fd "$proof_lock_fd" nonblocking
+eci_file_lock_acquire_fd "$proof_lock_fd" try
 if eci_accidental_override_consume session validate-bash lock-test-session "$ROOT" payload; then
   printf '%s\n' 'proof-state consumed while its common lock was busy' >&2
   exit 1

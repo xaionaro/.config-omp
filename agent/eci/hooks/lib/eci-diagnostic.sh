@@ -40,7 +40,7 @@ eci_diagnostic_code_for_reason() {
   case "$reason" in
     *command\ identity*|*unsupported\ wrapper*|*unrecognized\ command\ form*) printf '%s' "ECI_COMMAND_IDENTITY_INVALID" ;;
     *pre-reviewer*|*pre\ reviewer*) printf '%s' "ECI_PRE_REVIEWER_SKILL_OR_DELEGATION_REQUIRED" ;;
-    *external-review*|*external\ review*) printf '%s' "ECI_STOP_REVIEW_VIOLATION_BLOCKED" ;;
+    *external-review*|*external\ review*) printf '%s' "ECI_STOP_REVIEW_VIOLATION_DENIED" ;;
     *git-mutation*|*git\ mutation*) printf '%s' "ECI_GIT_MUTATION_APPROVAL_REQUIRED" ;;
     *agent-dispatch*|*Agent\ envelope*) printf '%s' "ECI_FIRST_AGENT_DISPATCH_REQUIRED" ;;
     *'ECI_STOP_STATE_UNAVAILABLE'*) printf '%s' "ECI_STOP_STATE_UNAVAILABLE" ;;
@@ -63,7 +63,7 @@ eci_diagnostic_code_for_reason() {
     *acceptance_version*|*acceptance\ version*) printf '%s' "ECI_REVIEW_ACCEPTANCE_VERSION_DENIED" ;;
     *version*) printf '%s' "ECI_REVIEW_VERSION_DENIED" ;;
     *git\ push*) printf '%s' "ECI_GIT_PUSH_DENIED" ;;
-    *no-progress*|*no\ progress*|*no\ terminal\ output*|*blocked\ on\ 3\ times*) printf '%s' "ECI_NO_PROGRESS_BLOCK_DENIED" ;;
+    *no-progress*|*no\ progress*|*no\ terminal\ output*) printf '%s' "ECI_NO_PROGRESS_DENIED" ;;
     *lock*) printf '%s' "ECI_REVIEW_LOCK_DENIED" ;;
     *could\ not*|*cannot*|*unable*) printf '%s' "ECI_REVIEW_IO_DENIED" ;;
     *unsafe\ *path*|*unsafe\ resolved*path*) printf '%s' "ECI_UNSAFE_PATH_DENIED" ;;

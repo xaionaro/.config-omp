@@ -293,7 +293,7 @@ lock_free=0
 (
   exec 7>>"$bin/.native-provision.lock"
   source "$eci/hooks/lib/eci-file-lock.sh"
-  eci_file_lock_acquire_fd 7 nonblocking
+  eci_file_lock_acquire_fd 7 try
 ) && lock_free=1
 kill "$linger_pid" 2>/dev/null || true
 [ "$lock_free" = 1 ] || fail "builder fails: the provisioning lock is still held while a child keeps its descriptor"
@@ -409,7 +409,7 @@ before_lock=$(digest_of "$bin/eci-command-plan")
 mkfifo "$base/publish-wait"
 exec 8>>"$bin/.planner-importer.publish.lock"
 source "$eci/hooks/lib/eci-file-lock.sh"
-eci_file_lock_acquire_fd 8 blocking || fail "cannot hold publication lock"
+eci_file_lock_acquire_fd 8 wait || fail "cannot hold publication lock"
 "$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/locked.out" 2>"$base/publish-wait" &
 locked_builder=$!
 IFS= read -r waiting_line <"$base/publish-wait" || fail "builder exited before waiting"
@@ -427,7 +427,7 @@ foreign_digest=$(digest_of "$bin/eci-command-plan")
 mkdir "$bin/.planner-importer.txn.foreign"
 mkfifo "$base/conflict-wait"
 exec 8>>"$bin/.planner-importer.publish.lock"
-eci_file_lock_acquire_fd 8 blocking || fail "cannot hold publication lock for conflict"
+eci_file_lock_acquire_fd 8 wait || fail "cannot hold publication lock for conflict"
 "$BASH" "$eci/hooks/build-native-binaries.sh" eci-command-plan >"$base/out/conflict-builder.out" 2>"$base/conflict-wait" &
 locked_builder=$!
 IFS= read -r waiting_line <"$base/conflict-wait" || fail "conflict builder exited before waiting"

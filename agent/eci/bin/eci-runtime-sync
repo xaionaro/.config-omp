@@ -254,7 +254,7 @@ planner_sync() (
   trap 'exit 143' TERM
   exec {lock_fd}<>"$local_bin/$PLANNER_LOCK_NAME" || return 1
   planner_publication_event before-lock "$local_bin/$PLANNER_LOCK_NAME" || return 1
-  eci_file_lock_acquire_fd "$lock_fd" blocking || return 1
+  eci_file_lock_acquire_fd "$lock_fd" wait || return 1
   planner_publication_event after-lock "$local_bin/$PLANNER_LOCK_NAME" || return 1
   for name in "$@"; do
     planner_tool_ready "$requested_home/bin" "$name" || requested_ok=false

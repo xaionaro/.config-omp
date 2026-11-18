@@ -17,7 +17,7 @@ import (
 var refreshEvents = map[string]bool{
 	"worker_progress": true, "assignment_change": true, "review_result": true,
 	"decision": true, "verification_result": true, "requirement_change": true,
-	"forecast_change": true, "blocker_change": true, "checkpoint": true,
+	"forecast_change": true, "stuck_change": true, "checkpoint": true,
 	"lifecycle_change": true, "correction": true,
 }
 
