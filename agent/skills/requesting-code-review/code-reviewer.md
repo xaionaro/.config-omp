@@ -13,10 +13,6 @@ Follow [Ref 1].
 
 {DESCRIPTION}
 
-## Requirements/Plan
-
-{PLAN_REFERENCE}
-
 ## Git Range to Review
 
 **Base:** {BASE_SHA}
