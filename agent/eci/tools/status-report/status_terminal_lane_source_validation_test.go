@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTerminalLaneAdditionWaitsForMatchingSources checks independent source conflicts.
+// TestTerminalLaneAdditionAwaitsMatchingSources checks independent source conflicts.
 //
 // Example: A changed completion time cannot publish a stale lane record.
-func TestTerminalLaneAdditionWaitsForMatchingSources(t *testing.T) {
+func TestTerminalLaneAdditionAwaitsMatchingSources(t *testing.T) {
 	t.Parallel()
 	// event supplies a completed lane without an active report forecast.
 	//

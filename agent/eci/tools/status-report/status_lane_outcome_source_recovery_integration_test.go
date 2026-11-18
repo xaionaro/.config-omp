@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLaneAdditionWaitsForMatchingCanonicalOutcome checks source-backed retry.
+// TestLaneAdditionAwaitsMatchingCanonicalOutcome checks source-backed retry.
 //
 // Example: A lane is added only after the linked outcome agrees with its event.
-func TestLaneAdditionWaitsForMatchingCanonicalOutcome(t *testing.T) {
+func TestLaneAdditionAwaitsMatchingCanonicalOutcome(t *testing.T) {
 	t.Parallel()
 	// source links active lane work to an initially inconsistent outcome.
 	//

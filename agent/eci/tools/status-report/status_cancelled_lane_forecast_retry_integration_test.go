@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCancelledLaneWaitsForForecastRetirementOnDisk checks both source transitions.
+// TestCancelledLaneAwaitsForecastRetirementOnDisk checks both source transitions.
 //
 // Example: Cancelling work alone does not authorize a lane while its forecast is active.
-func TestCancelledLaneWaitsForForecastRetirementOnDisk(t *testing.T) {
+func TestCancelledLaneAwaitsForecastRetirementOnDisk(t *testing.T) {
 	t.Parallel()
 	// source is active canonical lane work with a linked forecast.
 	//

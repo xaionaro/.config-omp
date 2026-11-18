@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRootForecastWaitsForCorrectCanonicalKind checks source-backed retry.
+// TestRootForecastAwaitsCorrectCanonicalKind checks source-backed retry.
 //
 // Example: A root forecast remains pending while its source is classified as a lane.
-func TestRootForecastWaitsForCorrectCanonicalKind(t *testing.T) {
+func TestRootForecastAwaitsCorrectCanonicalKind(t *testing.T) {
 	t.Parallel()
 	// root is active work that explicitly uses a root forecast.
 	//

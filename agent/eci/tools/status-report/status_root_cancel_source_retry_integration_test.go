@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCancelledRootWaitsForForecastRetirementOnDisk checks source-backed retry.
+// TestCancelledRootAwaitsForecastRetirementOnDisk checks source-backed retry.
 //
 // Example: A cancelled root retains its report forecast while the source is still active.
-func TestCancelledRootWaitsForForecastRetirementOnDisk(t *testing.T) {
+func TestCancelledRootAwaitsForecastRetirementOnDisk(t *testing.T) {
 	t.Parallel()
 	// root is cancelled work whose canonical forecast has not yet been retired.
 	//

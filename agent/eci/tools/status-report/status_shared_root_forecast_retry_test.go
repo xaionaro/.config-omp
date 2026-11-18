@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSharedRootForecastWaitsForConsistentOutcomes checks shared source ownership.
+// TestSharedRootForecastAwaitsConsistentOutcomes checks shared source ownership.
 //
 // Example: Conflicting work outcomes keep a root forecast pending until reconciled.
-func TestSharedRootForecastWaitsForConsistentOutcomes(t *testing.T) {
+func TestSharedRootForecastAwaitsConsistentOutcomes(t *testing.T) {
 	t.Parallel()
 	// event supplies a root forecast shared by two active work records.
 	//

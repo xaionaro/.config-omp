@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTimelineSnapshotWaitsForOwnerCommentResolution checks persisted replacement.
+// TestTimelineSnapshotAwaitsOwnerCommentResolution checks persisted replacement.
 //
 // Example: A commented timeline stays intact until the owner removes its annotation.
-func TestTimelineSnapshotWaitsForOwnerCommentResolution(t *testing.T) {
+func TestTimelineSnapshotAwaitsOwnerCommentResolution(t *testing.T) {
 	t.Parallel()
 	// event contains a complete four-hour timeline with source evidence.
 	//

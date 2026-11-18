@@ -62,10 +62,10 @@ func TestLegacyWithdrawalKeepsOwnerAuthoredSubject(t *testing.T) {
 	require.Empty(t, report.StatusSync.Pending)
 }
 
-// TestLegacyWithdrawalWaitsForSourceProvenance preserves unresolved legacy state.
+// TestLegacyWithdrawalAwaitsSourceProvenance preserves unresolved legacy state.
 //
 // Example: Missing source events cannot authorize or publish a withdrawn claim.
-func TestLegacyWithdrawalWaitsForSourceProvenance(t *testing.T) {
+func TestLegacyWithdrawalAwaitsSourceProvenance(t *testing.T) {
 	t.Parallel()
 	// saved retains a claim and retraction when their original events are unavailable.
 	//

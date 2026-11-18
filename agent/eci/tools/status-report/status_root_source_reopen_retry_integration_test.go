@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRootReopenWaitsForCanonicalSourcesOnDisk checks a persisted lifecycle retry.
+// TestRootReopenAwaitsCanonicalSourcesOnDisk checks a persisted lifecycle retry.
 //
 // Example: A completed root is reopened only after work and forecast become active.
-func TestRootReopenWaitsForCanonicalSourcesOnDisk(t *testing.T) {
+func TestRootReopenAwaitsCanonicalSourcesOnDisk(t *testing.T) {
 	t.Parallel()
 	// root is completed canonical work with its forecast retired.
 	//

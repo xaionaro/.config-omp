@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLaneReopenWaitsForCompleteForecastOnDisk checks source-backed retry.
+// TestLaneReopenAwaitsCompleteForecastOnDisk checks source-backed retry.
 //
 // Example: An active forecast needs both a target and outcome before reopening.
-func TestLaneReopenWaitsForCompleteForecastOnDisk(t *testing.T) {
+func TestLaneReopenAwaitsCompleteForecastOnDisk(t *testing.T) {
 	t.Parallel()
 	// closeEvent retires the first lane's completed forecast.
 	//

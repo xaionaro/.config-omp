@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLaneCorrectionWaitsForCanonicalCompletionOnDisk checks persisted causality.
+// TestLaneCorrectionAwaitsCanonicalCompletionOnDisk checks persisted causality.
 //
 // Example: A corrected closure stays pending until the source reaches its corrected time.
-func TestLaneCorrectionWaitsForCanonicalCompletionOnDisk(t *testing.T) {
+func TestLaneCorrectionAwaitsCanonicalCompletionOnDisk(t *testing.T) {
 	t.Parallel()
 	// first is an early completion reported before canonical work finishes.
 	//

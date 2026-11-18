@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCancelledLaneAdditionWaitsForCancelledSource checks source-backed retry.
+// TestCancelledLaneAdditionAwaitsCancelledSource checks source-backed retry.
 //
 // Example: A cancellation remains pending while the source still reports active work.
-func TestCancelledLaneAdditionWaitsForCancelledSource(t *testing.T) {
+func TestCancelledLaneAdditionAwaitsCancelledSource(t *testing.T) {
 	t.Parallel()
 	// event adds a cancelled lane with explicit evidence.
 	//

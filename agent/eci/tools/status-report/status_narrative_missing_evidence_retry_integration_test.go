@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNarrativeRetractionWaitsForOwnerEvidenceRestoration checks persisted ownership.
+// TestNarrativeRetractionAwaitsOwnerEvidenceRestoration checks persisted ownership.
 //
 // Example: A deleted proof prevents retraction until the owner restores it.
-func TestNarrativeRetractionWaitsForOwnerEvidenceRestoration(t *testing.T) {
+func TestNarrativeRetractionAwaitsOwnerEvidenceRestoration(t *testing.T) {
 	t.Parallel()
 	// first publishes one managed claim with its supporting evidence.
 	//

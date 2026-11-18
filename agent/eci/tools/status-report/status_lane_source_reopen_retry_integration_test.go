@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLaneReopenWaitsForActiveForecastOnDisk checks source-backed retry.
+// TestLaneReopenAwaitsActiveForecastOnDisk checks source-backed retry.
 //
 // Example: A reopened work item remains closed until its forecast is reactivated.
-func TestLaneReopenWaitsForActiveForecastOnDisk(t *testing.T) {
+func TestLaneReopenAwaitsActiveForecastOnDisk(t *testing.T) {
 	t.Parallel()
 	// closeEvent records a completed lane whose canonical work and forecast are terminal.
 	//

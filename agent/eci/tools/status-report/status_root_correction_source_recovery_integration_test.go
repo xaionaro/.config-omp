@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRootCorrectionWaitsForCanonicalCompletionOnDisk checks persisted lineage.
+// TestRootCorrectionAwaitsCanonicalCompletionOnDisk checks persisted lineage.
 //
 // Example: A corrected completion applies only after its source reaches the corrected time.
-func TestRootCorrectionWaitsForCanonicalCompletionOnDisk(t *testing.T) {
+func TestRootCorrectionAwaitsCanonicalCompletionOnDisk(t *testing.T) {
 	t.Parallel()
 	// source starts active and later records the corrected completion time.
 	//

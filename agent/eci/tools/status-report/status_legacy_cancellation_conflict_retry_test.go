@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLegacyCancellationWaitsForOwnerEvidenceResolution checks atomic retry.
+// TestLegacyCancellationAwaitsOwnerEvidenceResolution checks atomic retry.
 //
 // Example: An edited reason prevents cancellation until the owned value is restored.
-func TestLegacyCancellationWaitsForOwnerEvidenceResolution(t *testing.T) {
+func TestLegacyCancellationAwaitsOwnerEvidenceResolution(t *testing.T) {
 	t.Parallel()
 	// saved is a historical field-wise cancellation and its evidence baseline.
 	//

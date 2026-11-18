@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIndependentRootCompletionWaitsForItsOwnSource checks source isolation.
+// TestIndependentRootCompletionAwaitsItsOwnSource checks source isolation.
 //
 // Example: One ready root completes while a sibling waits for canonical completion.
-func TestIndependentRootCompletionWaitsForItsOwnSource(t *testing.T) {
+func TestIndependentRootCompletionAwaitsItsOwnSource(t *testing.T) {
 	t.Parallel()
 	// sources contain one completed and one still-active root.
 	//

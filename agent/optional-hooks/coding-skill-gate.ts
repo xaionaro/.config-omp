@@ -172,7 +172,7 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				const response = await invoke("check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets, cwd: ctx.cwd, agentName } });
 				if (current !== generation) throw new Error("session changed; retry the call");
 				if (response === null || typeof response !== "object") throw new Error("invalid engine verdict");
-				// TODO: read only "deny" once the helper writes it (ledger record work:stuck-awaits-terms:phase2); until then the helper keeps its pre-rename key, the only one that sessions loaded before this line can read.
+				// TODO: read only "deny" once the helper writes it (ledger record work:stuck-awaits-terms:phase2); until then the helper keeps its pre-rename key, the only one that omp processes loaded before this line can read.
 				const deny = "deny" in response ? response.deny : (response as { block?: unknown }).block;
 				if (typeof deny !== "boolean") throw new Error("invalid engine verdict");
 				if (!deny) return undefined;

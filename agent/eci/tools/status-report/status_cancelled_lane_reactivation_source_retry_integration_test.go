@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCancelledLaneReactivationWaitsForSources checks persisted lifecycle retry.
+// TestCancelledLaneReactivationAwaitsSources checks persisted lifecycle retry.
 //
 // Example: A withdrawn lane resumes only after its work and forecast reactivate.
-func TestCancelledLaneReactivationWaitsForSources(t *testing.T) {
+func TestCancelledLaneReactivationAwaitsSources(t *testing.T) {
 	t.Parallel()
 	// cancel records the owner's withdrawal of the lane.
 	//

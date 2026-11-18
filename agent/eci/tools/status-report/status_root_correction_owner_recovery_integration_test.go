@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRootCorrectionWaitsForOwnerPriorRestoration checks source-backed ownership.
+// TestRootCorrectionAwaitsOwnerPriorRestoration checks source-backed ownership.
 //
 // Example: An owner-edited completion is preserved until its exact prior is restored.
-func TestRootCorrectionWaitsForOwnerPriorRestoration(t *testing.T) {
+func TestRootCorrectionAwaitsOwnerPriorRestoration(t *testing.T) {
 	t.Parallel()
 	// source is completed canonical work backing the original root completion.
 	//

@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLegacyNarrativeEvidenceWaitsForOwnedText checks source attribution on retry.
+// TestLegacyNarrativeEvidenceAwaitsOwnedText checks source attribution on retry.
 //
 // Example: Preserve a manual claim edit before applying its pending proof update.
-func TestLegacyNarrativeEvidenceWaitsForOwnedText(t *testing.T) {
+func TestLegacyNarrativeEvidenceAwaitsOwnedText(t *testing.T) {
 	t.Parallel()
 	// saved contains the managed claim and a pending proof change.
 	//
