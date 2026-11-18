@@ -1,6 +1,6 @@
 ---
 name: blocker-resolution-protocol
-description: Use when work is blocked, a review loop cannot converge, an ECI or ATE work-progress flow may escalate to the user, or a stop-hook bypass is being considered because progress is stuck
+description: Use when work is blocked or waiting on something, a review loop cannot converge, an ECI or ATE work-progress flow may escalate to the user, or a stop-hook bypass is being considered because progress is stuck
 ---
 
 # Blocker Resolution Protocol
@@ -19,6 +19,15 @@ No blocker without an attempt log. No user escalation or stop-hook bypass while 
 | Work blocker exposed by lifecycle/process-control recovery | Lifecycle/process-control recovery with no separate concrete work blocker |
 
 ## Required Record
+
+Every blocker, stuck or awaiting (dependency, capacity, device, another Job, user answer, review), carries two T1 proofs (`~/.omp/agent/eci-binding-contract.md` ## Evidence):
+
+| Proof | Shows |
+| --- | --- |
+| Cause | The work itself cannot progress. A firing check proves only the check; a threshold, setting, policy, or gate the team chose counts only with T1 proof the work needs it. |
+| No workaround | Each reasonable workaround fails. Skip far-fetched ones. |
+
+A claim lacking either proof is not a blocker; keep working. Example: a watcher refusing to start below its 2 GiB threshold is no blocker until T1 shows capture needs 2 GiB.
 
 | Record | Required content |
 | --- | --- |
@@ -65,6 +74,7 @@ When escalation is unavoidable, report:
 | Symptom | Fix |
 | --- | --- |
 | "I'm blocked" without attempts | Bounce back; require the Required Record |
+| Blocker or wait backed by a firing gate, summary, or recall | Bounce back; require T1 proof of cause and of no reasonable workaround |
 | Brainstormer filters or chooses | Re-prompt: ideas only |
 | Explorer trusts another agent summary | Re-read source/docs independently |
 | User asked before BRP finishes | Continue internal unblocking |
