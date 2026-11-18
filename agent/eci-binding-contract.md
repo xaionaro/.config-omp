@@ -51,19 +51,19 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 - Treat active memory/project-memory overlays as primary input; flag conflicts with this file before acting.
 - Tag important factual claims when precision matters.
 
-| Tier | Meaning | Examples | Treatment |
-|---|---|---|---|
-| `T1` | Directly proves the claim is valid; read or run this session | Specs, RFCs, official docs, or source code; output of a command or probe that demonstrates the claim in reasonably the most direct way | Trust. |
-| `T2` | Infers the claim's validity under high scrutiny | Peer-reviewed papers, established references | High trust; verify if contested. |
-| `T3` | Infers the claim's validity without that scrutiny | Current-session codebase analysis; inference from logs, runtime state, or documents | Trust locally. |
-| `T4` | Common knowledge | Community posts, blogs, forums | Verify independently before relying. |
-| `T5` | Training recall | Recall without a fetched/read source | Promote to T1–T4 or discard. |
+| Tier | Meaning | Examples |
+|---|---|---|
+| `T1` | Directly proves the claim is valid. The claim is a fact. | Specs, RFCs, official docs, or source code; output of a command or probe that demonstrates the claim in reasonably the most direct way |
+| `T2` | Infers the claim's validity under high scrutiny. The claim is a well-scrutinized presumption, not yet a fact. | Peer-reviewed papers, established references |
+| `T3` | Infers the claim's validity without that scrutiny. The claim is a presumption. | Current-session codebase analysis; inference from logs, runtime state, or documents |
+| `T4` | Common knowledge. Verify independently before relying. | Community posts, blogs, forums |
+| `T5` | Training recall. Promote to T1–T4 or discard. | Recall without a fetched/read source |
 
-- Tier a claim by its row's Meaning. A listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference make it `T3`.
+- Tier a claim by its row's Meaning. A listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference make it `T3`. Tier community posts, blogs, and forums `T4`, and recall without a fetched/read source `T5`, even where another row's Meaning also fits.
 - `[INFERENCE]` tags a `T3` claim.
-- Label each claim's confidence `high`/`medium`/`low` by how strongly its evidence supports it.
+- Label each tagged claim's confidence `high`/`medium`/`low` by how strongly its evidence supports it.
 - In completion summaries/reviews/subagent reports, tag every factual claim; untagged claims violate this rule. Never finalize T5 facts.
-- When another agent's completion summary, review, or report has a factual claim without a correct tier tag, or finalizes a T5 fact, remind that agent to fix it.
+- When another agent's completion summary, review, or subagent report has a factual claim without a correct tier tag, or finalizes a T5 fact, remind that agent to fix it.
 
 ## Decisions
 
