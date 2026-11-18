@@ -15,7 +15,7 @@ Evidence tests the result; a record, receipt, hash, or packet shape never permit
 | Code | Meaning |
 | --- | --- |
 | REJECT / REJECTED | Wrong, unsafe, or contradictory; fix now. |
-| CONDITIONAL | Viable but needs concrete bounded text/fix. |
+| CONDITIONAL | Viable but needs a concrete [patch](#gate-evaluation). |
 | NIT | Preference only; may be ignored. |
 
 Review every applicable root-cause rationale and regression explanation. Unknown cause or symptom-only mitigation is REJECT unless containment was explicitly requested. Governance/prompt/hook/protocol/reviewer changes also audit mechanism/predicate, emitted wording, strongest supported wording, and a boundary counterexample; reject claims beyond evidence.
