@@ -20,7 +20,7 @@ No blocker without an attempt log. No user escalation or stop-hook bypass while 
 
 ## Required Record
 
-Start each Genuine blocker and User-owned blocker record with the proof the Blockers rule in `~/.omp/agent/RULES.md` requires.
+Start each Genuine blocker and User-owned blocker record with the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
 
 | Record | Required content |
 | --- | --- |

@@ -39,7 +39,7 @@ Progress reports changed state and completed outcomes, not files read, commands 
 - Lead with state, then include only categories that changed or matter now.
 - Name exact affected area, requirement, command, file, or decision when relevant.
 - Use "not verified yet" instead of implying unrun checks passed.
-- For blockers/risks, state impact, owner, and exact unblock action; user blockers must name the user's action and target artifact/path when applicable, e.g. `review docs/design.md`. Give each blocker the proof the Blockers rule in `~/.omp/agent/RULES.md` requires.
+- For blockers/risks, state impact, owner, and exact unblock action; user blockers must name the user's action and target artifact/path when applicable, e.g. `review docs/design.md`. Give each blocker the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
 - Preserve parent/child work: use a tree, or include `Task ID` and `Parent ID` columns; do not flatten children into peer lanes.
 - If task IDs exist, make them hierarchical, e.g. `1`, `1.3`, `1.3.2`, and sort children under their parent.
 - In material ECI status, show `exact user source → faithful requested outcome → bounded scope` in readable form. Do not broaden the outcome through a generic paraphrase or relabel a reason, discovery, or inferred safeguard as a user requirement.
@@ -230,7 +230,7 @@ identify it by Job/parent chain and outcome, e.g.
 | `Root-task status` | Use |
 | --- | --- |
 | `FOLLOWUP` | Genuine Fast completion is confirmed and required post-Fast work remains unaccepted, unless the next required post-Fast action cannot advance because it awaits a named in-scope dependency. |
-| `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, resume condition, and the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker; return to `FOLLOWUP` when it clears. |
+| `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, resume condition, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires for any stuck claim; return to `FOLLOWUP` when it clears. |
 
 These statuses cover only the mandatory post-Fast sequence, not separate-outcome
 observations. A user input or decision remains `BLOCKED` in the affected lane,
@@ -283,7 +283,7 @@ Under time pressure, classify by the lane's next required action. For example: "
 | State | One-line current state is clear. |
 | Progress | Describes outcomes, not effort. |
 | Decisions | Includes reason for chosen path. |
-| Blockers/Risks | Includes impact, owner, exact unblock action, and target artifact/path when applicable; each blocker carries the proof the Blockers rule in `~/.omp/agent/RULES.md` requires. |
+| Blockers/Risks | Includes impact, owner, exact unblock action, and target artifact/path when applicable; each blocker carries the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires. |
 | Verification | Evidence is cited or absence is explicit. |
 | Next Focus | Names the next concrete work area. |
 | Concision | No raw activity log or filler. |
@@ -294,7 +294,7 @@ Under time pressure, classify by the lane's next required action. For example: "
 | Requirement context | Known context is readable and accurate. |
 | Lane statuses | Each Implementation/Test/Prod status is exactly `NEW`, `IN PROGRESS`, `PAUSED`, `BLOCKED`, or `CLOSED`. |
 | PAUSED semantics | A lane waiting for progress from another in-scope lane, with no user input/decision pending, is labeled `PAUSED`, not `BLOCKED`. |
-| BLOCKED semantics | A lane unable to make more progress until the user supplies a named input/decision is labeled `BLOCKED` with `owner=user`, an exact unblock action, and the proof the Blockers rule in `~/.omp/agent/RULES.md` requires; dependency-only waiting is not `BLOCKED`. |
+| BLOCKED semantics | A lane unable to make more progress until the user supplies a named input/decision is labeled `BLOCKED` with `owner=user`, an exact unblock action, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires; dependency-only waiting is not `BLOCKED`. |
 | Dependency propagation | If a dependency lane is `BLOCKED` on user input, the dependent lane remains `PAUSED` until its own next required action needs user input. |
 | Status separation | Source-level completion, test E2E, and production E2E are never merged into one status. |
 | Lane forecasts | A material changed-state update names each active lane's milestone and one named-outcome forecast with critical-path treatment. Changed lane/root forecasts restate their current canonical line with prior/current UTCs, why moved, and supporting evidence. Closed lanes record a completion timestamp instead of a deadline or recalibration. Parallel child deadlines remain parallel under one critical-path deadline. |

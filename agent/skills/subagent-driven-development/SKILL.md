@@ -118,7 +118,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 2. If the task requires more reasoning, re-dispatch with a more capable model
 3. If the task is too large, break it into smaller pieces
 
-**BLOCKED:** Check the report for the proof the Blockers rule in `~/.omp/agent/RULES.md` requires. Without that proof, handle the report as NEEDS_CONTEXT: an unproven claim is work still to do. With it, escalate to the human with that proof, including when the plan itself is wrong.
+**BLOCKED:** Check the report for the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires. Without that proof, handle the report as NEEDS_CONTEXT: an unproven claim is work still to do. With it, escalate to the human with that proof, including when the plan itself is wrong.
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 

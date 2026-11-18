@@ -32,7 +32,7 @@ Before Critic C Packet 1, coordinator validates lineage, ledger/log anchors, pro
 
 Concrete bugs, failures, flakes, regressions, and QA rejections enter repro/RCA/critic/fix/review handling. Record the regression report before RCA, require a falsifiable cause chain, alternative or falsifying prediction, `regression: yes|no|unknown`, and real-path proof.
 
-Use BRP only after normal handling fails or an approved limit is reached. Accept a local block only with proof under the Blockers rule in `~/.omp/agent/RULES.md`. Coordinator starts the required idea, exploration, and independent feasibility roles, preserves the attempt record, and does not treat a local block as mission closure. A root aggregate review has at most 10 REJECTED rounds; the next round creates a protocol-limit record and uses blocker-resolution-protocol before escalation.
+Use BRP only after normal handling fails or an approved limit is reached. Accept a local stuck claim only with proof under the Stuck work rule in `~/.omp/agent/RULES.md`. Coordinator starts the required idea, exploration, and independent feasibility roles, preserves the attempt record, and does not treat local stuck work as mission closure. A root aggregate review has at most 10 REJECTED rounds; the next round creates a protocol-limit record and uses blocker-resolution-protocol before escalation.
 
 ## QA sequencing and closure
 

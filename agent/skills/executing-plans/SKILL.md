@@ -18,7 +18,7 @@ Load plan, review critically, execute all tasks, report when complete.
 ### Step 1: Load and Review Plan
 1. Read plan file
 2. Review critically - identify any questions or concerns about the plan
-3. If concerns: raise them with your human partner and start answer-independent tasks; wait before starting only for a blocker proven under the Blockers rule in `~/.omp/agent/RULES.md`.
+3. If concerns: raise them with your human partner and start answer-independent tasks; wait before starting only for stuck work proven under the Stuck work rule in `~/.omp/agent/RULES.md`.
 4. If no concerns: Create the plan (todo list) and proceed
 
 ### Step 2: Execute Tasks
@@ -39,7 +39,7 @@ After all tasks complete and verified:
 ## When to Stop and Ask for Help
 
 **STOP executing immediately when:**
-- Hit a blocker proven under the Blockers rule in `~/.omp/agent/RULES.md`, such as a critical plan gap or an instruction only your partner can clarify
+- Hit stuck work proven under the Stuck work rule in `~/.omp/agent/RULES.md`, such as a critical plan gap or an instruction only your partner can clarify
 
 **Ask for clarification rather than guessing.**
 
@@ -54,7 +54,7 @@ After all tasks complete and verified:
 - Follow plan steps exactly
 - Don't skip verifications
 - Reference skills when plan says to
-- Stop for a proven blocker; don't guess
+- Stop for proven stuck work; don't guess
 - Follow the [Git policy](../../eci-binding-contract.md#git) for selecting and preserving the SSOT checkout and branch.
 
 ## Integration
