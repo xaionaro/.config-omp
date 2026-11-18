@@ -109,7 +109,7 @@ Use stable Explorer and implementer identities across iterations, plus the Fast 
 
 For a concrete bug, capture its statement, repro, available evidence, and missing evidence in a readable current coordination note or report. Apply debugging-discipline's direct-fix or RCA proof and reporting requirements, including regression evidence when RCA is needed. Do not make a fixed file path, artifact, or report schema a prerequisite for investigation.
 
-An isolated disposable repro/PoC may run before style review. Normal issue handling precedes BRP. For a genuine stall, proven under [Required Record](../../blocker-resolution-protocol/SKILL.md#required-record), record the useful attempts and choose an Explorer, brainstormer, or feasibility validator as needed (dispatched by the current Job owner); do not make a fixed blocker artifact or role sequence a prerequisite for continued ordinary work.
+An isolated disposable repro/PoC may run before style review. Normal issue handling precedes BRP. For a genuine stall, proven under the Blockers rule in `~/.omp/agent/RULES.md`, record the useful attempts and choose an Explorer, brainstormer, or feasibility validator as needed (dispatched by the current Job owner); do not make a fixed blocker artifact or role sequence a prerequisite for continued ordinary work.
 
 ## Brainstormer, loop-breaker, and caps
 

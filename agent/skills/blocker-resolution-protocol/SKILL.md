@@ -1,6 +1,6 @@
 ---
 name: blocker-resolution-protocol
-description: Use when work is blocked or waiting on something, a review loop cannot converge, an ECI or ATE work-progress flow may escalate to the user, or a stop-hook bypass is being considered because progress is stuck
+description: Use when work is blocked, a review loop cannot converge, an ECI or ATE work-progress flow may escalate to the user, or a stop-hook bypass is being considered because progress is stuck
 ---
 
 # Blocker Resolution Protocol
@@ -20,15 +20,7 @@ No blocker without an attempt log. No user escalation or stop-hook bypass while 
 
 ## Required Record
 
-A blocker claims the outcome cannot advance. Prove that claim with T1 evidence (`~/.omp/agent/eci-binding-contract.md` ## Evidence) for every blocker, stuck or awaiting. An observed error, refusal, missing resource, failed command, or awaited event proves only itself; connect it to the outcome:
-
-| Proof | Shows |
-| --- | --- |
-| Prevents | The condition stops the required work, not just one chosen path or step. |
-| Not ours | Our own choices, configuration, process, plan, assumptions, or assignable work cannot change it. Change or do those instead. |
-| No workaround | Each reasonable route fails: another tool, route, or owner; a narrower faithful step; independent work removing the dependency. Skip far-fetched ones. |
-
-A claim lacking any proof is not a blocker; keep working. Example: a watcher refusing to start below its 2 GiB threshold is no blocker until T1 shows capture needs 2 GiB.
+Start every record with the proof the Blockers rule in `~/.omp/agent/RULES.md` requires.
 
 | Record | Required content |
 | --- | --- |
@@ -75,7 +67,6 @@ When escalation is unavoidable, report:
 | Symptom | Fix |
 | --- | --- |
 | "I'm blocked" without attempts | Bounce back; require the Required Record |
-| Blocker or wait backed only by an observed failure, summary, or recall | Bounce back; require the Required Record T1 proofs |
 | Brainstormer filters or chooses | Re-prompt: ideas only |
 | Explorer trusts another agent summary | Re-read source/docs independently |
 | User asked before BRP finishes | Continue internal unblocking |
