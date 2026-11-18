@@ -46,7 +46,7 @@ Same cycle as code TDD, different test format.
 
 This is TDD's Verify RED - you MUST see what agents naturally do without the skill.
 
-Launch skill-test agents by spawning subagents; quote in each prompt the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
+Launch skill-test agents by spawning subagents; quote in each prompt the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks).
 
 **Process:**
 

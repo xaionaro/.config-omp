@@ -11,7 +11,7 @@ Use this skill only when the user explicitly requested subagents, delegation, or
 
 Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
 Dispatch every subagent by spawning it; shell-wrapped omp agents are forbidden.
-Every subagent prompt must quote the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
+Every subagent prompt must quote the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks).
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 

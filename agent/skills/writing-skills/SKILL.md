@@ -537,7 +537,7 @@ Follow the TDD cycle:
 ### RED: Write Failing Test (Baseline)
 
 Write the pressure scenarios before the skill. After writing the skill, run each with a subagent WITHOUT it and document exact behavior:
-- Launch skill-test agents by spawning subagents; quote in each prompt the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
+- Launch skill-test agents by spawning subagents; quote in each prompt the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks).
 - What choices did they make?
 - What rationalizations did they use (verbatim)?
 - Which pressures triggered violations?

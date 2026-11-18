@@ -15,7 +15,7 @@ Compact omp-native guidance for authoring skill files. Use with
 | References | Refer to other skills by bare omp-local names: `test-driven-development`, `harness-tuning`. |
 | Loading | Avoid forced file-load syntax and home-directory paths in cross-references. |
 | Agents | Test by spawning subagents. Do not run agents through shell commands. |
-| Stop-hook handling | Subagent prompts must include the Stop-hook handling line below. |
+| Stop-hook handling | Subagent prompts must quote the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks). |
 | Evidence | Verify behavior before claiming the skill works. |
 
 ## Description Pattern
@@ -92,7 +92,7 @@ Treat skill authoring as TDD for process documentation, in test-driven-developme
 | GREEN | Add the smallest guidance that blocks the violations that prompted it, then run the scenarios with it. |
 | REFACTOR | Re-test, close new loopholes, remove redundant text. |
 
-Spawn a subagent for subagent tests. Its prompt must quote the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
+Spawn a subagent for subagent tests. Its prompt must quote the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks).
 
 Do not shell-wrap agents. Use the standard agent management path available in the session.
 
