@@ -59,7 +59,7 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 | `T4` | Common knowledge. Verify independently before relying. | Community posts, blogs, forums |
 | `T5` | Training recall. Promote to T1–T4 or discard. | Recall without a fetched/read source |
 
-- Tier a claim by the first row, from `T1` down, whose Meaning its evidence meets. Community posts, blogs, and forums are `T4` evidence, and recall without a fetched/read source is `T5` evidence, whatever any row's Meaning says. Any other listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference are `T3` evidence.
+- Tier a claim by the first row, from `T1` down, whose Meaning its evidence meets. Community posts, blogs, and forums are `T4` evidence, and any model's recall without a fetched/read source is `T5` evidence, whatever any row's Meaning says. Any other listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference are `T3` evidence.
 - `[INFERENCE]` tags a `T3` claim.
 - Label each tagged claim's confidence `high`/`medium`/`low` by how strongly its evidence supports it.
 - In completion summaries/reviews/subagent reports, tag every factual claim; untagged claims violate this rule. Never finalize T5 facts.
