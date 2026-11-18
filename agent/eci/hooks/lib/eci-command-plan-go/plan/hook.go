@@ -164,14 +164,14 @@ const hookCallbackRepair = "send exactly one JSON object with tool_name and tool
 
 // hookUnavailable reports a callback that could not reach a decision, with its repair step.
 //
-// Example: malformed input blocks the tool call instead of silently allowing it.
+// Example: malformed input denies the tool call instead of silently allowing it.
 func hookUnavailable(
 	diagnostics io.Writer,
 	operation string,
 	repair string,
 ) int {
-	// The call is blocked by the exit status even when the diagnostic is unwritable.
-	_, _ = fmt.Fprintf(diagnostics, "command hook: %s failed; could not decide; the tool call is blocked; repair: %s\n", operation, repair)
+	// The call is denied by the exit status even when the diagnostic is unwritable.
+	_, _ = fmt.Fprintf(diagnostics, "command hook: %s failed; could not decide; the tool call is denied; repair: %s\n", operation, repair)
 	return 2
 }
 

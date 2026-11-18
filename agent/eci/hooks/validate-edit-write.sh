@@ -5,14 +5,14 @@
 set -Eeuo pipefail
 
 # A deny decision that cannot be written exits 2 with a stderr message: the tool
-# call is blocked, and the hook never exits 1 with no output.
+# call is denied, and the hook never exits 1 with no output.
 deny_write_failed() {
-  printf '%s\n' "$1: could not write the deny decision to stdout; the tool call is blocked" >&2 || true
+  printf '%s\n' "$1: could not write the deny decision to stdout; the tool call is denied" >&2 || true
   exit 2
 }
 # A deny decision is written to stdout.  bash replaces a closed stdout with
 # /dev/null, and a stdout whose target cannot be checked (no /proc) cannot be
-# shown to reach the caller; the tool call is blocked with a stderr message.
+# shown to reach the caller; the tool call is denied with a stderr message.
 deny_stdout_usable() {
   [ -e /proc/self/fd/1 ] && ! [ /proc/self/fd/1 -ef /dev/null ]
 }

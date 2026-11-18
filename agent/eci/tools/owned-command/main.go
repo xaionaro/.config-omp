@@ -138,7 +138,7 @@ type pendingAcquisition struct {
 	Cancel      bool
 }
 
-// nativeResult describes one nonblocking native wait.
+// nativeResult describes one non-waiting native wait.
 //
 // Example: a terminal root result preserves its actual status once.
 type nativeResult struct {
@@ -197,7 +197,7 @@ type processKernel interface {
 		fd int,
 		sig syscall.Signal,
 	) error
-	// Wait performs one nonblocking consuming native wait including clone children.
+	// Wait performs one non-waiting consuming native wait including clone children.
 	//
 	// Example: only ECHILD completes a drain.
 	Wait() nativeResult
@@ -369,7 +369,7 @@ func readNumericProcess(
 	path string,
 	pid int,
 ) (processStat, error) {
-	// Blocking NewFile avoids procfs netpoll setup; ReadAll avoids a preliminary fstat.
+	// A waiting-mode NewFile avoids procfs netpoll setup; ReadAll avoids a preliminary fstat.
 	// Retry only EINTR, preserving os.Open semantics without a driver timer or cutoff.
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	for errors.Is(err, unix.EINTR) {
@@ -493,7 +493,7 @@ func (linuxKernel) Send(
 	return unix.PidfdSendSignal(fd, unix.Signal(sig), nil, 0)
 }
 
-// Wait performs one nonblocking native reap including clone children.
+// Wait performs one non-waiting native reap including clone children.
 //
 // Example: pid zero means native children remain; only ECHILD completes the drain.
 func (linuxKernel) Wait() nativeResult {

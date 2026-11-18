@@ -320,7 +320,7 @@ func (run *pgroupRunner) dueChannels() (<-chan time.Time, <-chan time.Time, <-ch
 	return killDue, finalDue, probeDue
 }
 
-// reap collects the root without blocking. EINTR is retried at once. Any other error is recorded once, and it
+// reap collects the root without waiting. EINTR is retried at once. Any other error is recorded once, and it
 // starts retirement as a guard error because the root can no longer be observed.
 //
 // Example: a root that is still running reports nothing and waits for the next SIGCHLD.

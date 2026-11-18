@@ -253,7 +253,7 @@ if [ "$aggregate_plan_present" != true ] && baseline_context_is_valid; then
   fi
 
   # A valid lone file is the recoverable half-publication case. Preserve unsafe
-  # or malformed partial state for refresh/recovery; it never blocks ordinary work.
+  # or malformed partial state for refresh/recovery; it never denies ordinary work.
   if [ "$baseline_present" = true ] && [ "$binding_present" = false ] &&
     [ ! -e "$baseline_binding" ] && [ ! -L "$baseline_binding" ]; then
     publish_baseline_binding || true

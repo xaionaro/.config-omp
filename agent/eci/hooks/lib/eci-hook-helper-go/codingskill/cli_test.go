@@ -129,7 +129,7 @@ func TestCLICheckIgnoresRequestWhileDisabled(t *testing.T) {
 
 // TestCLIReduceCreditsReadsWhileDisabled keeps recording skill reads while the gate is disabled, so they still count after it is re-enabled.
 //
-// Example: coding-common and coding-go read while disabled allow a Go write after the disable file is deleted; a Python write still blocks.
+// Example: coding-common and coding-go read while disabled allow a Go write after the disable file is deleted; a Python write is still denied.
 func TestCLIReduceCreditsReadsWhileDisabled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -163,7 +163,7 @@ func TestCLIReduceCreditsReadsWhileDisabled(t *testing.T) {
 	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
 }
 
-// TestCLICheckFailsWhenDisableFileIsUnknown fails the check when the disable file's presence cannot be determined, so the bridge blocks instead of guessing.
+// TestCLICheckFailsWhenDisableFileIsUnknown fails the check when the disable file's presence cannot be determined, so the bridge denies instead of guessing.
 //
 // Example: with HOME unset, check returns an error naming ~/.omp/agent and writes no verdict.
 func TestCLICheckFailsWhenDisableFileIsUnknown(t *testing.T) {
@@ -184,12 +184,12 @@ func TestCLICheckFailsWhenDisableFileIsUnknown(t *testing.T) {
 
 // TestCLIAcceptsLegacyReadsObject keeps running bridges that still hold object-form state working.
 //
-// Example: {"reads":{"coding-common":true,"coding-go":true}} allows a Go write; without coding-go it blocks.
+// Example: {"reads":{"coding-common":true,"coding-go":true}} allows a Go write; without coding-go it is denied.
 func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, tc := range []struct {
 		reads string
-		block bool
+		deny  bool
 	}{
 		{`{"coding-common":true,"coding-go":true}`, false},
 		{`{"coding-common":true}`, true},
@@ -201,7 +201,7 @@ func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 			Block bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.block, verdict.Block, tc.reads)
+		require.Equal(t, tc.deny, verdict.Block, tc.reads)
 	}
 }
 
@@ -272,12 +272,12 @@ func TestDescribeListsGatedExtensions(t *testing.T) {
 
 // TestCLICheckCarriesAgentName gates an ECI agent's task through check.
 //
-// Example: an orchestrator task call is blocked until its role reads finish.
+// Example: an orchestrator task call is denied until its role reads finish.
 func TestCLICheckCarriesAgentName(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, tc := range []struct {
 		agent AgentName
-		block bool
+		deny  bool
 	}{
 		{"eci-preset-orchestrator-openai-default", true},
 		{"main", false},
@@ -290,19 +290,19 @@ func TestCLICheckCarriesAgentName(t *testing.T) {
 			Block bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.block, verdict.Block, tc.agent)
+		require.Equal(t, tc.deny, verdict.Block, tc.agent)
 	}
 }
 
 // TestCLICheckCarriesEditTargets checks the edit targets the host resolved instead of the raw edit input.
 //
-// Example: an edit the host resolved to a.go is blocked even when its input names notes.txt.
+// Example: an edit the host resolved to a.go is denied even when its input names notes.txt.
 func TestCLICheckCarriesEditTargets(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, tc := range []struct {
 		target string
 		input  string
-		block  bool
+		deny   bool
 	}{
 		{"a.go", "notes.txt", true},
 		{"notes.txt", "a.go", false},
@@ -315,7 +315,7 @@ func TestCLICheckCarriesEditTargets(t *testing.T) {
 			Block bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.block, verdict.Block, tc.target)
+		require.Equal(t, tc.deny, verdict.Block, tc.target)
 	}
 }
 
@@ -326,8 +326,8 @@ func TestCLICheckCarriesCwd(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	for _, tc := range []struct {
-		cwd   string
-		block bool
+		cwd  string
+		deny bool
 	}{
 		{filepath.Join(home, ".omp"), true},
 		{home, false},
@@ -340,7 +340,7 @@ func TestCLICheckCarriesCwd(t *testing.T) {
 			Block bool `json:"block"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.block, verdict.Block, tc.cwd)
+		require.Equal(t, tc.deny, verdict.Block, tc.cwd)
 	}
 }
 

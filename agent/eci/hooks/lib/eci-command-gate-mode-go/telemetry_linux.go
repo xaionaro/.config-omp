@@ -28,7 +28,7 @@ const (
 	telemetryReadFlags = syscall.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
 	// telemetryAppendFlags append to the active generation without following aliases.
 	telemetryAppendFlags = syscall.O_WRONLY | syscall.O_APPEND | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
-	// telemetryLockFlags open the nonblocking rotation lock without following aliases.
+	// telemetryLockFlags open the non-waiting rotation lock without following aliases.
 	telemetryLockFlags = syscall.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
 )
 
@@ -140,7 +140,7 @@ const (
 	RotationOutcomeAppended RotationOutcome = "appended"
 	// RotationOutcomeRotated identifies an append preceded by fixed-family rotation.
 	RotationOutcomeRotated RotationOutcome = "rotated"
-	// RotationOutcomeLockContended identifies the nonblocking lock fallback.
+	// RotationOutcomeLockContended identifies the non-waiting lock fallback.
 	RotationOutcomeLockContended RotationOutcome = "lock-contended"
 )
 
@@ -473,7 +473,7 @@ func statFollow(path string) (fileIdentity, error) {
 type telemetryPurpose string
 
 const (
-	// telemetryPurposeRotationLock identifies the nonblocking lock file.
+	// telemetryPurposeRotationLock identifies the non-waiting lock file.
 	telemetryPurposeRotationLock telemetryPurpose = "rotation-lock"
 	// telemetryPurposeAppend identifies the active append generation.
 	telemetryPurposeAppend telemetryPurpose = "log-append"
@@ -503,7 +503,7 @@ func (file *telemetryFileHandle) close() {
 	file.fd = -1
 }
 
-// openTelemetryFile opens one regular telemetry file with bounded nonblocking flags.
+// openTelemetryFile opens one regular telemetry file with bounded non-waiting flags.
 //
 // Example: FIFO, socket, symlink, and hard-link entries are rejected before use.
 func openTelemetryFile(parent *configDirectoryHandle, name string, purpose telemetryPurpose, create bool) (*telemetryFileHandle, error) {

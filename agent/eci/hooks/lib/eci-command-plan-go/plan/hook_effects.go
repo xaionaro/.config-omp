@@ -1128,7 +1128,7 @@ func hookSessionsOperandDiagnostic(
 const hookCodeLiveBashGateRemoval DiagnosticCode = "ECI_LIVE_BASH_GATE_REMOVAL_DENIED"
 
 // liveBashGateRelativePaths lists provider files every Bash callback executes.
-// Removing one blocks every later Bash call, including the shell repair route,
+// Removing one denies every later Bash call, including the shell repair route,
 // so the same actor could not restore it with Bash. Other hook files stay ordinary targets.
 //
 // Example: hooks/lib/eci-bash-guard.sh is sourced by hooks/validate-bash.sh.
@@ -1184,7 +1184,7 @@ func inspectHookLiveGateRemoval(
 					continue
 				}
 				diagnostic := diagnosticForToken(hookCodeLiveBashGateRemoval,
-					name+" removes or relocates live Bash-gate file "+hook+" through "+target+"; afterwards every Bash call is blocked, including the shell repair route",
+					name+" removes or relocates live Bash-gate file "+hook+" through "+target+"; afterwards every Bash call is denied, including the shell repair route",
 					record.Segment, argument.offset, argument,
 					"edit the file in place with Edit or Write; for index-only removal use git rm --cached; to remove or relocate it here intentionally, prefix this command with "+string(hookLiveRemovalAcknowledgment)+" and restore the file with Write before the next Bash call",
 					"live-bash-gate-removal")

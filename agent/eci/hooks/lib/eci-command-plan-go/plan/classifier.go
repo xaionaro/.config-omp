@@ -3894,7 +3894,7 @@ func inspectSegment(
 	}
 	if request.Marker == MarkerActive && wholeSingleSegmentPlan && request.ShellDepth == 0 {
 		if target, ok := isPreCommitHookModeRepair(current.argv); ok {
-			// Hook-mode repair is an Emergency Unblock exception for one complete
+			// Hook-mode repair is an emergency resume exception for one complete
 			// direct plan. A compound plan retains its ordinary segment policy.
 			switch request.Role {
 			case RoleWorker:
@@ -7083,7 +7083,7 @@ func inspectLiveControlExact(
 ) *Diagnostic {
 	// A bounded alias index can be incomplete when a session has many control
 	// records. Its completeness is diagnostic metadata, never a reason to
-	// block a visible concrete write target. Exact marker paths below remain
+	// deny a visible concrete write target. Exact marker paths below remain
 	// independently checked.
 	for argumentIndex, argument := range argv[1:] {
 		if !isSourceWriterOperand(argv, argumentIndex+1) {

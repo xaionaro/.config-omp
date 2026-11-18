@@ -87,7 +87,7 @@ func TestInvocationLogInventoriesEveryRoute(t *testing.T) {
 
 // TestInvocationLogUnavailablePreservesExecution checks special targets and failed warning output.
 //
-// Example: a FIFO never blocks the CLI or prevents an acknowledged alias from executing once.
+// Example: a FIFO never stalls the CLI or prevents an acknowledged alias from executing once.
 func TestInvocationLogUnavailablePreservesExecution(t *testing.T) {
 	for _, kind := range []string{"directory", "fifo", "symlink", "warning-sink"} {
 		// Each storage failure must preserve validation and the native exit status.

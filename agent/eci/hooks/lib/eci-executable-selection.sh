@@ -6,7 +6,7 @@
 # fingerprint-era keys from the builder before f7503e3; they are not content digests
 # and are not checked against the files. Nothing in the tree records how the current
 # pin was built.
-# bin/eci-active blocks maintain-planner until a coordinated cutover replaces
+# bin/eci-active refuses maintain-planner until a coordinated cutover replaces
 # the selected executable that predates workspace-safe planner builds.
 eci_select_executable() {
   local name=$1 selection line extra version active report assignment leaf

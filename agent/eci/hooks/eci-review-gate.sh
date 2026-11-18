@@ -238,7 +238,7 @@ fi
 # R11 review is intentionally current-diff-only. Old manifests, anchors,
 # receipts, identity ledgers, role/provider/model/provenance metadata, hashes,
 # canonical JSON, and locks describe historical workflow attempts; they cannot
-# block ordinary progress. A current unsafe cwd/repository/target still fails,
+# deny ordinary progress. A current unsafe cwd/repository/target still fails,
 # while a missing or stale current review is a fresh-critic workflow reminder.
 if [ "$aggregate_mode" = true ]; then
   allow_aggregate_current_target_or_refresh \

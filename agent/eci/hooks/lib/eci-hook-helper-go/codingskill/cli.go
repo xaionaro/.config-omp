@@ -44,7 +44,7 @@ type cliInput struct {
 	Call    cliEvent         `json:"call"`
 }
 
-// checkVerdict is the check reply: whether the host blocks the call, and the denial text when it does.
+// checkVerdict is the check reply: whether the host denies the call, and the denial text when it does.
 //
 // Example: {"block":true,"reason":"Coding skill gate: writing a.go requires ..."} denies an unread Go write.
 type checkVerdict struct {
@@ -98,7 +98,7 @@ func checkCall(
 		return err
 	}
 	if disabled {
-		// Read to EOF anyway: the bridge writes the whole request, and a helper that exits first breaks that pipe, which the bridge reports as a block.
+		// Read to EOF anyway: the bridge writes the whole request, and a helper that exits first breaks that pipe, which the bridge reports as a denial.
 		if _, err := io.Copy(io.Discard, input); err != nil {
 			return err
 		}

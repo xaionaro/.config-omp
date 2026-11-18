@@ -43,7 +43,7 @@ const (
 	TelemetryParentDirectoryName = "eci"
 	// TelemetryFileName is the active command-gate telemetry file name.
 	TelemetryFileName = "would-deny.jsonl"
-	// RotationLockName serializes nonblocking telemetry rotation attempts.
+	// RotationLockName serializes non-waiting telemetry rotation attempts.
 	RotationLockName = ".rotation.lock"
 	// TelemetryUnavailableMessage is the bounded permissive-mode warning.
 	TelemetryUnavailableMessage = "eci-command-gate-mode: telemetry unavailable\n"
@@ -255,9 +255,9 @@ type EventContext struct {
 type Mode string
 
 const (
-	// ModePermissive records would-deny events without blocking callbacks.
+	// ModePermissive records would-deny events without denying callbacks.
 	ModePermissive Mode = "permissive"
-	// ModeEnforcing blocks denied callbacks while preserving their denial bytes.
+	// ModeEnforcing rejects denied callbacks while preserving their denial bytes.
 	ModeEnforcing Mode = "enforcing"
 )
 
@@ -287,7 +287,7 @@ const (
 
 // ModeState is the effective mode and the state explaining its source.
 //
-// Example: ModeState{Mode: ModePermissive, ConfigState: ConfigStateInvalidBytes} retains the diagnostic without blocking ordinary work.
+// Example: ModeState{Mode: ModePermissive, ConfigState: ConfigStateInvalidBytes} retains the diagnostic without denying ordinary work.
 type ModeState struct {
 	Mode        Mode
 	ConfigState ConfigState

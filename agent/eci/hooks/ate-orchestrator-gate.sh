@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse hook: coordinator role metadata is non-blocking for edits.
+# PreToolUse hook: coordinator role metadata never denies edits.
 
 set -euo pipefail
 

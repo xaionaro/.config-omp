@@ -2,7 +2,7 @@
 # omp edit gate launcher: runs the receipt-verified eci-hook-helper edit-gate mode (line 3: bash guard).
 case "${BASH_SOURCE[0]}" in */*) . "${BASH_SOURCE[0]%/*}/lib/eci-bash-guard.sh" PreToolUse ;; *) . ./lib/eci-bash-guard.sh PreToolUse ;; esac
 # The helper runs pretooluse-edit-dispatch.sh once per target of the request on stdin.
-# Any launcher or helper failure exits 2 with a stderr reason, so the adapter blocks.
+# Any launcher or helper failure exits 2 with a stderr reason, so the adapter denies the call.
 set -Eeuo pipefail
 gate_unavailable() {
   printf '[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] %s\n' "$1" >&2 || true

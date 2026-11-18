@@ -25,7 +25,7 @@ import (
 const (
 	// dispatchLabel names the dispatcher in fail-closed denial reasons.
 	//
-	// Example: "ECI hook pretooluse-edit-dispatch exited 3; blocking (fail-closed)."
+	// Example: "ECI hook pretooluse-edit-dispatch exited 3; denying (fail-closed)."
 	dispatchLabel = "pretooluse-edit-dispatch"
 
 	// hookEventPreToolUse is the only hook event the edit gate serves.
@@ -55,7 +55,7 @@ const (
 	// Example: a dispatcher allow, or the gate's advisory-only result.
 	decisionAllow = "allow"
 
-	// decisionDeny is the hook permission decision that blocks the call.
+	// decisionDeny is the hook permission decision that denies the call.
 	//
 	// Example: a guard's concrete target denial.
 	decisionDeny = "deny"
@@ -496,9 +496,9 @@ func dispatchOutputDenial(output []byte) string {
 
 // failClosed words a denial caused by the dispatcher's own failure.
 //
-// Example: failClosed("exited 3") is "ECI hook pretooluse-edit-dispatch exited 3; blocking (fail-closed).".
+// Example: failClosed("exited 3") is "ECI hook pretooluse-edit-dispatch exited 3; denying (fail-closed).".
 func failClosed(why string) string {
-	return fmt.Sprintf("ECI hook %s %s; blocking (fail-closed).", dispatchLabel, why)
+	return fmt.Sprintf("ECI hook %s %s; denying (fail-closed).", dispatchLabel, why)
 }
 
 // requestedSpelling notes the requested spelling when normalization changed
@@ -524,7 +524,7 @@ func denyDecision(reason string) *hookDecision {
 }
 
 // Write keeps the first inputBudget bytes and reports every byte consumed so
-// the child never blocks on a full pipe.
+// the child never waits on a full pipe.
 //
 // Example: exec.Cmd copies the dispatcher's stdout into it.
 func (b *boundedBuffer) Write(p []byte) (int, error) {

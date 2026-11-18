@@ -108,7 +108,7 @@ func TestProofRootIdentitiesProtectPhysicalWrites(t *testing.T) {
 				t.Fatalf("refused restore changed state: %q %v", got, err)
 			}
 			if err := executeFixtureOperation(t, root, "stage-content", "--", "file.txt"); err != nil {
-				t.Fatalf("read operation blocked by proof resolution: %v", err)
+				t.Fatalf("read operation denied by proof resolution: %v", err)
 			}
 		})
 	}

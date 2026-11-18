@@ -701,7 +701,7 @@ eci_control_basename() {
     eci-wait-repair-authorize|eci-wait-repair-authorize.*)
       return 0
       ;;
-    eci_active|eci_active.*|goal_state|goal_state.*|eci_wait|eci_wait.*|eci_user_owned_wait.md|eci_user_owned_wait.md.*|eci-coordinator-edit|eci-coordinator-edit.*|eci-additional-repository|eci-additional-repository.*|eci-permissive-mode|eci-permissive-mode.*|eci-permissive-authorize|eci-permissive-authorize.*|.eci-permissive-mode|.eci-permissive-mode.*|.eci-permissive-authorize|.eci-permissive-authorize.*|eci-required-critics.json|eci-required-critics.json.*|eci-required-critics.*|eci-critic-identities.ledger|eci-critic-identities.ledger.*|eci-acceptance-anchor|eci-acceptance-anchor.*|eci-acceptance-transaction|eci-acceptance-transaction.*|eci-teardown-complete|eci-teardown-complete.*|eci-prewrite-admitted.*|eci-baseline-binding|eci-baseline-binding.*|baseline_head|baseline_head.*|eci-commit-admitted|eci-commit-admitted.*|eci-user-closed.ledger|eci-user-closed.ledger.*|eci-aggregate-plan.json|eci-aggregate-plan.json.*|eci-aggregate-teardown-complete|eci-aggregate-teardown-complete.*|eci-aggregate.*|eci-accidental-mistake-override|eci-accidental-mistake-override.*|.eci-accidental-mistake-override|.eci-accidental-mistake-override.*|.eci-accidental-mistake-override.claim|ate_nested_eci_active|ate_nested_eci_active.*|ate_nested_eci_completion|ate_nested_eci_completion.*|eci-blocker-report.md|stop_timestamps|stop_loop_state|stop_loop_state.*|disengage.md|user-closed.md|proof.md|instructions.md|project-understanding.yaml|project-understanding.yaml.*|high_level_log.jsonl|high_level_log.jsonl.*|high_level_log.anchor|high_level_log.anchor.*|high_level_log.jsonl.tmp.*|latest-status-report.md|latest-status-report.yaml|forecasts.yaml)
+    eci_active|eci_active.*|goal_state|goal_state.*|eci_wait|eci_wait.*|eci_user_owned_wait.md|eci_user_owned_wait.md.*|eci-coordinator-edit|eci-coordinator-edit.*|eci-additional-repository|eci-additional-repository.*|eci-permissive-mode|eci-permissive-mode.*|eci-permissive-authorize|eci-permissive-authorize.*|.eci-permissive-mode|.eci-permissive-mode.*|.eci-permissive-authorize|.eci-permissive-authorize.*|eci-required-critics.json|eci-required-critics.json.*|eci-required-critics.*|eci-critic-identities.ledger|eci-critic-identities.ledger.*|eci-acceptance-anchor|eci-acceptance-anchor.*|eci-acceptance-transaction|eci-acceptance-transaction.*|eci-teardown-complete|eci-teardown-complete.*|eci-prewrite-admitted.*|eci-baseline-binding|eci-baseline-binding.*|baseline_head|baseline_head.*|eci-commit-admitted|eci-commit-admitted.*|eci-user-closed.ledger|eci-user-closed.ledger.*|eci-aggregate-plan.json|eci-aggregate-plan.json.*|eci-aggregate-teardown-complete|eci-aggregate-teardown-complete.*|eci-aggregate.*|eci-accidental-mistake-override|eci-accidental-mistake-override.*|.eci-accidental-mistake-override|.eci-accidental-mistake-override.*|.eci-accidental-mistake-override.claim|ate_nested_eci_active|ate_nested_eci_active.*|ate_nested_eci_completion|ate_nested_eci_completion.*|stop_timestamps|stop_loop_state|stop_loop_state.*|disengage.md|user-closed.md|proof.md|instructions.md|project-understanding.yaml|project-understanding.yaml.*|high_level_log.jsonl|high_level_log.jsonl.*|high_level_log.anchor|high_level_log.anchor.*|high_level_log.jsonl.tmp.*|latest-status-report.md|latest-status-report.yaml|forecasts.yaml)
       return 0
       ;;
     *)
@@ -1945,7 +1945,7 @@ eci_aggregate_manifest_evidence_is_scoped() {
 # artifacts are local coordination residue, not competing authority: bots here
 # are non-malicious and this support layer catches accidental deviation rather
 # than enforcing an adversarial security boundary. Keep observing residue for
-# diagnostics, but do not follow, rewrite, or block selected safe aggregate
+# diagnostics, but do not follow, rewrite, or deny selected safe aggregate
 # work because of it. The historical predicate name remains for callers.
 eci_aggregate_coordination_residue_seen=false
 eci_aggregate_normal_evidence_is_absent() {
@@ -2893,7 +2893,7 @@ $counts
 EOF
 
   if [ "${retired:-0}" -ne 0 ]; then
-    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Report a blocker requiring user input while ECI remains active.\n' "$subject"
+    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Report a stuck claim awaiting user input while ECI remains active.\n' "$subject"
   elif [ "${accepted:-0}" -ne 1 ]; then
     printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:.\n' "$subject"
   fi

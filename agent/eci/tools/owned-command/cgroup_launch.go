@@ -463,7 +463,7 @@ func newCgroupWatch(
 	return &cgroupWatch{Group: group, StopFD: fd, RootFD: rootFD, Updates: make(chan error, 1), Done: make(chan struct{})}, nil
 }
 
-// Run blocks on population changes or its private stop event and owns no native waits.
+// Run waits for population changes or its private stop event and owns no native waits.
 //
 // Example: rapid changes coalesce because the driver rereads current state.
 func (w *cgroupWatch) Run(ctx context.Context) {
@@ -636,9 +636,9 @@ const (
 	commandChildrenAbsent
 )
 
-// drainCgroupCommand is the launch lifecycle's sole bounded, nonblocking native reaper.
+// drainCgroupCommand is the launch lifecycle's sole bounded, non-waiting native reaper.
 //
-// Example: SIGCHLD wakes this drain; no goroutine remains blocked in Wait4 at expiry.
+// Example: SIGCHLD wakes this drain; no goroutine remains waiting in Wait4 at expiry.
 func (g *guard) drainCgroupCommand(rootPID int) commandDrain {
 	for count := 0; count < drainBudget; count++ {
 		g.consumeNotices()
@@ -676,7 +676,7 @@ func (g *guard) drainCgroupCommand(rootPID int) commandDrain {
 // runCgroupCommand uses inherited kernel membership and native exit events for launch mode.
 // Setup failures happen before command creation and enter the ordinary 125 receipt path.
 //
-// Example: an idle command blocks on native exit, a notice or the command deadline.
+// Example: an idle command waits for native exit, a notice or the command deadline.
 func (g *guard) runCgroupCommand(
 	args []string,
 	memoryMax MemoryBytes,

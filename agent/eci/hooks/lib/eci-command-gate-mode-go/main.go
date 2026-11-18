@@ -71,7 +71,7 @@ func run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		state, stateErr := TelemetryStoreFromEnvironment()
 		if stateErr != nil {
 			// A missing or unsafe telemetry root must not turn permissive
-			// finalization into a blocker. finalizeDenial emits the fixed
+			// finalization into a denial. finalizeDenial emits the fixed
 			// warning after reduction/storage fails.
 			state = TelemetryStore{}
 		}

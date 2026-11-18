@@ -6774,7 +6774,7 @@ func TestCompoundPlanEnvironmentInspectionRemainsOrdinary(t *testing.T) {
 // syntax remains ordinary and parser capacity falls through to the existing
 // target-aware route.
 //
-// Example: `printf ok; printf $(date)` is admitted rather than blocked for
+// Example: `printf ok; printf $(date)` is admitted rather than denied for
 // dynamic expansion alone.
 func TestCompoundPlanSyntaxDoesNotBecomePermissionBoundary(t *testing.T) {
 	t.Parallel()

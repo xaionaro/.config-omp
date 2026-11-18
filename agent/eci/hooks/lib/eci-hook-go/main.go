@@ -14,7 +14,7 @@ import (
 
 const (
 	reasonNativeGateUnavailable = "[ECI_HOOK_NATIVE_GATE_UNAVAILABLE] "
-	// exitUndeliverable blocks the tool call when the deny JSON cannot be written.
+	// exitUndeliverable denies the tool call when the deny JSON cannot be written.
 	exitUndeliverable = 2
 	exitUsage         = 64
 )
@@ -50,10 +50,10 @@ func bashGate(stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	return plan.RunHook(stdin, stdout, stderr)
 }
 
-// deny writes one PreToolUse denial; an unwritable denial exits 2 so the call stays blocked.
+// deny writes one PreToolUse denial; an unwritable denial exits 2 so the call stays denied.
 func deny(stdout, stderr io.Writer, hook, reason string) int {
 	if err := writeDeny(stdout, reason); err != nil {
-		fmt.Fprintf(stderr, "%s: could not write the deny decision to stdout; the tool call is blocked\n", hook)
+		fmt.Fprintf(stderr, "%s: could not write the deny decision to stdout; the tool call is denied\n", hook)
 		return exitUndeliverable
 	}
 	return 0

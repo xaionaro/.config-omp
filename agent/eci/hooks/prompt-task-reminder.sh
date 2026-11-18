@@ -8,12 +8,12 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
 # A deny decision is written to stdout.  bash replaces a closed stdout with
 # /dev/null, and a stdout whose target cannot be checked (no /proc) cannot be
-# shown to reach the caller; the prompt is blocked with a stderr message.
+# shown to reach the caller; the prompt is denied with a stderr message.
 deny_stdout_usable() {
   [ -e /proc/self/fd/1 ] && ! [ /proc/self/fd/1 -ef /dev/null ]
 }
 prompt_write_failed() {
-  printf '%s\n' 'prompt-task-reminder: could not write the deny decision to stdout; the prompt is blocked' >&2 || true
+  printf '%s\n' 'prompt-task-reminder: could not write the deny decision to stdout; the prompt is denied' >&2 || true
   exit 2
 }
 # Verify the native hook helper before any reminder is emitted, so a deny never mixes with reminder output.

@@ -191,15 +191,15 @@ func TestEditGateFailsClosedOnDispatcherFailure(t *testing.T) {
 		body string
 		want string
 	}{
-		"non-zero exit":   {"printf '%s\\n' 'guard crashed' >&2; exit 17", "ECI hook pretooluse-edit-dispatch exited 17: guard crashed; blocking (fail-closed)."},
-		"non-JSON":        {"printf '%s\\n' 'not json'", "ECI hook pretooluse-edit-dispatch returned non-JSON output; blocking (fail-closed)."},
-		"wrong event":     {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","permissionDecision":"deny"}}'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; blocking (fail-closed)."},
-		"wrong type":      {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":1}}'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; blocking (fail-closed)."},
-		"array":           {`printf '%s\n' '[]'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; blocking (fail-closed)."},
-		"bad decision":    {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'`, "ECI hook pretooluse-edit-dispatch returned unsupported permissionDecision; blocking (fail-closed)."},
-		"oversized":       {"head -c 70000 /dev/zero | tr '\\0' ' '; printf x", "ECI hook pretooluse-edit-dispatch returned more than 65536 bytes of output; blocking (fail-closed)."},
+		"non-zero exit":   {"printf '%s\\n' 'guard crashed' >&2; exit 17", "ECI hook pretooluse-edit-dispatch exited 17: guard crashed; denying (fail-closed)."},
+		"non-JSON":        {"printf '%s\\n' 'not json'", "ECI hook pretooluse-edit-dispatch returned non-JSON output; denying (fail-closed)."},
+		"wrong event":     {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","permissionDecision":"deny"}}'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; denying (fail-closed)."},
+		"wrong type":      {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":1}}'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; denying (fail-closed)."},
+		"array":           {`printf '%s\n' '[]'`, "ECI hook pretooluse-edit-dispatch returned unrecognized output; denying (fail-closed)."},
+		"bad decision":    {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'`, "ECI hook pretooluse-edit-dispatch returned unsupported permissionDecision; denying (fail-closed)."},
+		"oversized":       {"head -c 70000 /dev/zero | tr '\\0' ' '; printf x", "ECI hook pretooluse-edit-dispatch returned more than 65536 bytes of output; denying (fail-closed)."},
 		"reasonless deny": {`printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"}}'`, "denied by ECI hook pretooluse-edit-dispatch"},
-		"killed":          {"kill -9 $$", "ECI hook pretooluse-edit-dispatch was ended by a signal; blocking (fail-closed)."},
+		"killed":          {"kill -9 $$", "ECI hook pretooluse-edit-dispatch was ended by a signal; denying (fail-closed)."},
 	}
 	for name, tc := range cases {
 		t.Run(name,

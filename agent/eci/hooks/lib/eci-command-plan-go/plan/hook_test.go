@@ -164,7 +164,7 @@ func TestRunHookEnvelope(t *testing.T) {
 	}
 	for _, input := range []string{`{`, `{"tool_name":"Bash"} trailing`, `{"tool_name":"Bash"} {}`} {
 		var output bytes.Buffer
-		require.Equal(t, 2, RunHook(strings.NewReader(input), &output, io.Discard), "malformed callback must block")
+		require.Equal(t, 2, RunHook(strings.NewReader(input), &output, io.Discard), "malformed callback must deny")
 		require.Empty(t, output.String())
 	}
 	closed, err := os.CreateTemp(t.TempDir(), "closed-output")
@@ -174,13 +174,13 @@ func TestRunHookEnvelope(t *testing.T) {
 		`{"session_id":"hook-envelope","tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"rm -rf /"}}`,
 		`{`,
 	} {
-		require.Equal(t, 2, RunHook(strings.NewReader(input), closed, io.Discard), "an undeliverable denial must block")
+		require.Equal(t, 2, RunHook(strings.NewReader(input), closed, io.Discard), "an undeliverable denial must deny")
 	}
 }
 
 // TestRunHookMalformedReportsToDiagnosticWriter keeps errors separate from decisions.
 //
-// Example: malformed JSON blocks the call and reports the failure to its caller.
+// Example: malformed JSON denies the call and reports the failure to its caller.
 func TestRunHookMalformedReportsToDiagnosticWriter(t *testing.T) {
 	var output, diagnostic bytes.Buffer
 	require.Equal(t, 2, RunHook(strings.NewReader("{"), &output, &diagnostic))
@@ -625,10 +625,10 @@ func TestHookControlIndexKeepsAllObservedAliases(t *testing.T) {
 	}
 }
 
-// TestHookMalformedIdentityBlocks verifies malformed callback JSON fails closed.
+// TestHookMalformedIdentityDenies verifies malformed callback JSON fails closed.
 //
-// Example: session_id [] blocks with or without a legacy marker.
-func TestHookMalformedIdentityBlocks(t *testing.T) {
+// Example: session_id [] denies with or without a legacy marker.
+func TestHookMalformedIdentityDenies(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("ECI_PROOF_ROOT", root)
 	malformed := `{"session_id":[],"tool_name":"Bash","cwd":"/tmp","tool_input":{"command":"true"}}`

@@ -110,20 +110,20 @@ func TestCgroupPopulation(t *testing.T) {
 //
 // Example: a bus accepting connections without authenticating cannot hide interruption as a generic error.
 func TestCgroupInterruptedSetupReportsSignal(t *testing.T) {
-	assertCgroupBlockedSetup(t, true)
+	assertCgroupDeniedSetup(t, true)
 }
 
 // TestCgroupStalledSetupReportsBudget distinguishes manager acquisition timeout from command runtime.
 //
 // Example: a non-authenticating bus exhausts setup without launching a requested child.
 func TestCgroupStalledSetupReportsBudget(t *testing.T) {
-	assertCgroupBlockedSetup(t, false)
+	assertCgroupDeniedSetup(t, false)
 }
 
-// assertCgroupBlockedSetup checks prelaunch ownership against a deliberately non-authenticating bus.
+// assertCgroupDeniedSetup checks prelaunch ownership against a deliberately non-authenticating bus.
 //
 // Example: interruption preserves its cause, while timeout names the independent setup budget.
-func assertCgroupBlockedSetup(t *testing.T, interrupt bool) {
+func assertCgroupDeniedSetup(t *testing.T, interrupt bool) {
 	t.Helper()
 	directory := t.TempDir()
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(directory, "bus"), Net: "unix"})
@@ -213,7 +213,7 @@ func TestCgroupMembersIncludesNestedGroups(t *testing.T) {
 
 // TestCgroupWatchStopJoinsBeforeDescriptorClose exercises the private stop event.
 //
-// Example: shutdown wakes a blocked poll and closes its descriptor exactly once.
+// Example: shutdown wakes a waiting poll and closes its descriptor exactly once.
 func TestCgroupWatchStopJoinsBeforeDescriptorClose(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "events")
 	if err != nil {
@@ -716,7 +716,7 @@ func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
 
 // TestCgroupMemoryLimitAggregate covers detached descendants in the same aggregate.
 //
-// Example: two individually smaller blocked writes exceed the family cap together.
+// Example: two writes, each under the cap, exceed the family cap together.
 func TestCgroupMemoryLimitAggregate(t *testing.T) {
 	t.Parallel()
 	script := `exec 3<&0; dd if=/dev/zero bs=40M count=1 2>/dev/null | { exec 4<&0; read x <&3; } & setsid sh -c 'dd if=/dev/zero bs=40M count=1 2>/dev/null | { exec 4<&0; read x <&3; }' & wait`

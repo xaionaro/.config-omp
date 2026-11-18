@@ -1228,10 +1228,10 @@ func TestHookRecordRepositoryDoesNotOverwriteConcurrentRecord(t *testing.T) {
 	require.Equal(t, "sentinel", string(data))
 }
 
-// TestHookRepositoryRootBlockedConfigReportsTimeout exercises cancellation during Git.
+// TestHookRepositoryRootHangingConfigReportsTimeout exercises cancellation during Git.
 //
 // Example: a FIFO include cannot turn a killed root lookup into a non-repository result.
-func TestHookRepositoryRootBlockedConfigReportsTimeout(t *testing.T) {
+func TestHookRepositoryRootHangingConfigReportsTimeout(t *testing.T) {
 	root, repository := contextFixture(t)
 	output, err := hookGitOutput(context.Background(), repository, "init", "-q")
 	require.NoErrorf(t, err, "%s", output)
@@ -1243,7 +1243,7 @@ func TestHookRepositoryRootBlockedConfigReportsTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	require.ErrorIs(t, hookTouchedRepository(ctx, Request{CWD: repository, ActiveSession: "blocked"}), context.DeadlineExceeded)
+	require.ErrorIs(t, hookTouchedRepository(ctx, Request{CWD: repository, ActiveSession: "hanging"}), context.DeadlineExceeded)
 	require.Less(t, time.Since(start), 2*time.Second)
 	_, err = os.Stat(filepath.Join(root, "touched-repos"))
 	require.ErrorIs(t, err, os.ErrNotExist)

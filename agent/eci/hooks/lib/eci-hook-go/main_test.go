@@ -25,10 +25,10 @@ func TestBashGateDeniesUnknownProofRoot(t *testing.T) {
 	}
 }
 
-// TestBashGateMalformedCallbackBlocks reports the planner failure and its repair step.
+// TestBashGateMalformedCallbackDenies reports the planner failure and its repair step.
 //
 // Example: malformed input exits two with a repair diagnostic and no decision JSON.
-func TestBashGateMalformedCallbackBlocks(t *testing.T) {
+func TestBashGateMalformedCallbackDenies(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"bash-gate"}, strings.NewReader("{"), &stdout, &stderr)

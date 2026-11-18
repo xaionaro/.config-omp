@@ -195,7 +195,7 @@ func selfCheck(binDir int, euid uint32, host []byte, hostOK bool) *denial {
 
 // openVerified is L4-L20 for a target in the trusted bin directory. The returned descriptor is O_CLOEXEC.
 //
-// Example: openVerified(binDir, "eci-hook-helper", ...) on a FIFO named eci-hook-helper denies L4 without blocking.
+// Example: openVerified(binDir, "eci-hook-helper", ...) on a FIFO named eci-hook-helper denies L4 without waiting.
 func openVerified(binDir int, name string, euid uint32, host []byte, hostOK bool) (int, *denial) {
 	var path syscall.Stat_t
 	// L4: the bash test was [ -L p ] || [ ! -f p ].

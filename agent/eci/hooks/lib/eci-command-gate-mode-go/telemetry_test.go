@@ -452,7 +452,7 @@ func TestTelemetryStoreRotatesOnlyFixedGenerations(t *testing.T) {
 	}
 }
 
-// TestTelemetryStoreContendedRotationDoesNotWait checks the nonblocking lock fallback.
+// TestTelemetryStoreContendedRotationDoesNotWait checks the non-waiting lock fallback.
 //
 // Example: a held rotation lock still appends one event without waiting for a lock release.
 func TestTelemetryStoreContendedRotationDoesNotWait(t *testing.T) {

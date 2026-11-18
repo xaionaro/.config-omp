@@ -185,11 +185,11 @@ func TestRestoreOpaqueVisibilityRecheck(t *testing.T) {
 // Example: hooks -> dir/private records dir before private prevents inspection of the hook.
 func TestRestoreObservedPrefixSurvivesOpaqueLookup(t *testing.T) {
 	root, _, sentinel := fixtureRestoreAlias(t, "internal")
-	blocked := filepath.Join(root, "ordinary/private")
-	if err := os.Mkdir(blocked, 0755); err != nil {
+	private := filepath.Join(root, "ordinary/private")
+	if err := os.Mkdir(private, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(blocked, "validate-bash.sh"), []byte("live\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(private, "validate-bash.sh"), []byte("live\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(filepath.Join(root, "hooks"), filepath.Join(root, "old-hooks")); err != nil {
@@ -198,12 +198,12 @@ func TestRestoreObservedPrefixSurvivesOpaqueLookup(t *testing.T) {
 	if err := os.Symlink("dir/private", filepath.Join(root, "hooks")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(blocked, 0000); err != nil {
+	if err := os.Chmod(private, 0000); err != nil {
 		t.Fatal(err)
 	}
 	// Restore the owned directory so fixture cleanup remains possible.
 	t.Cleanup(func() {
-		if err := os.Chmod(blocked, 0755); err != nil {
+		if err := os.Chmod(private, 0755); err != nil {
 			t.Error(err)
 		}
 	})
@@ -503,7 +503,7 @@ func TestRestoreObservedNoHookKeepsConfiguredAliasMovable(t *testing.T) {
 
 // fixtureRestoreAlias creates an exact tracked leaf beneath one owned alias shape.
 //
-// Example: a regular-file alias blocks dir/nested/file without touching its sentinel.
+// Example: a regular-file alias shadows dir/nested/file without touching its sentinel.
 func fixtureRestoreAlias(
 	t *testing.T,
 	kind string,
@@ -973,17 +973,17 @@ func TestRestoreProtectsConsumedHookAliases(t *testing.T) {
 
 // TestRestorePermissionLimitedHookTracePreservesKnownAliases retains a partial dependency prefix.
 //
-// Example: inaccessible content leaves an earlier hook alias protected without blocking file.txt.
+// Example: inaccessible content leaves an earlier hook alias protected without stalling file.txt.
 func TestRestorePermissionLimitedHookTracePreservesKnownAliases(t *testing.T) {
 	for _, visitedAlias := range []bool{false, true} {
 		// Permissions belong only to this disposable fixture and are restored for cleanup.
 		t.Run(strconv.FormatBool(visitedAlias), func(t *testing.T) {
 			root, _, _ := fixtureRestoreAlias(t, "internal")
-			blocked := filepath.Join(root, "ordinary/inaccessible")
-			if err := os.Mkdir(blocked, 0755); err != nil {
+			inaccessible := filepath.Join(root, "ordinary/inaccessible")
+			if err := os.Mkdir(inaccessible, 0755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(blocked, "source"), []byte("live\n"), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(inaccessible, "source"), []byte("live\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
 			hook := filepath.Join(root, "hooks/validate-bash.sh")
@@ -997,23 +997,23 @@ func TestRestorePermissionLimitedHookTracePreservesKnownAliases(t *testing.T) {
 			if err := os.Symlink(target, hook); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Chmod(blocked, 0000); err != nil {
+			if err := os.Chmod(inaccessible, 0000); err != nil {
 				t.Fatal(err)
 			}
 			// Restore owned permissions even if the assertions fail.
 			t.Cleanup(func() {
-				if err := os.Chmod(blocked, 0755); err != nil {
+				if err := os.Chmod(inaccessible, 0755); err != nil {
 					t.Error(err)
 				}
 			})
-			if _, err := os.Lstat(filepath.Join(blocked, "source")); !errors.Is(err, os.ErrPermission) {
+			if _, err := os.Lstat(filepath.Join(inaccessible, "source")); !errors.Is(err, os.ErrPermission) {
 				t.Skipf("permission boundary unavailable: %v", err)
 			}
 			if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("changed\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
 			if err := executeFixtureOperation(t, root, "restore", "--source", "head", "--destination", "worktree", "--", "file.txt"); err != nil {
-				t.Fatalf("unrelated restore blocked: %v", err)
+				t.Fatalf("unrelated restore failed: %v", err)
 			}
 			if got, err := os.ReadFile(filepath.Join(root, "file.txt")); err != nil || string(got) != "base\n" {
 				t.Fatalf("unrelated content incorrect: %q %v", got, err)

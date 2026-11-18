@@ -682,7 +682,7 @@ func TestFIFOAfterStatDoesNotHang(t *testing.T) {
 			t.Fatalf("got %+v", d)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("open of a FIFO blocked")
+		t.Fatal("open of a FIFO hung")
 	}
 }
 

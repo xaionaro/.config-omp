@@ -6,10 +6,10 @@ set -Eeuo pipefail
 
 hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # Write one deny decision to stdout.  A failed write exits 2 with a stderr
-# message naming the failure: the edit is blocked, and the hook never exits 1
+# message naming the failure: the edit is denied, and the hook never exits 1
 # with no output.
 dispatch_write_deny() {
-  printf '%s\n' "$1" || { printf '%s\n' 'pretooluse-edit-dispatch: could not write the deny decision to stdout; the edit is blocked' >&2 || true; exit 2; }
+  printf '%s\n' "$1" || { printf '%s\n' 'pretooluse-edit-dispatch: could not write the deny decision to stdout; the edit is denied' >&2 || true; exit 2; }
 }
 # Child-health failures are advisory: malformed output or stderr from a child
 # never turns an edit into a denial by itself.  Failure denials depend on the
@@ -54,7 +54,7 @@ if ! . "$hook_dir/lib/eci-proof-state.sh" 2>/dev/null || ! declare -F eci_marker
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[ECI_HOOK_LIB_UNAVAILABLE] ECI edit dispatch denied by pretooluse-edit-dispatch.sh: lib/eci-proof-state.sh or a library it sources failed to load; diagnose them using Bash (bash -n), then repair and retry"}}')"
   exit 0
 fi
-# Report dispatcher failures on stderr.  omp blocks any non-zero exit, but
+# Report dispatcher failures on stderr.  omp denies any non-zero exit, but
 # Codex and Claude Code run the edit after a hook exit other than 2, so with
 # an active or unknown marker the failure denies explicitly; a deny that cannot
 # be written exits 2.  With no marker the failing status is kept.  A subshell
@@ -340,11 +340,11 @@ done
 
 if [ -n "$candidate_output" ]; then
   # The child's deny is the decision.  A failed write under an active or unknown
-  # marker blocks the edit (exit 2); with no marker the source status is kept.
+  # marker denies the edit (exit 2); with no marker the source status is kept.
   jq -c . "$candidate_output" || {
     candidate_status=$?
     if eci_marker_active_or_unknown; then
-      printf '%s\n' 'pretooluse-edit-dispatch: could not write the gate child deny decision to stdout; the edit is blocked' >&2 || true
+      printf '%s\n' 'pretooluse-edit-dispatch: could not write the gate child deny decision to stdout; the edit is denied' >&2 || true
       exit 2
     fi
     exit "$candidate_status"

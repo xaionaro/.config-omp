@@ -187,7 +187,7 @@ markdown_only_edit() {
 # hash here would make metadata a prerequisite for ordinary coordinator work.
 # A later PostToolUse reconciler could regenerate the anchor from the actual
 # log bytes; until one exists, a coordinator's own bounded update remains
-# nonblocking rather than becoming a lifecycle-artifact denial.
+# allowed rather than becoming a lifecycle-artifact denial.
 current_session_working_document() {
   local path="${1:-}" owner_session
 

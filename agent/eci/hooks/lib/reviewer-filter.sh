@@ -59,7 +59,7 @@ filter_violations() {
     REVIEWER_FILTER_RESULT="$filtered"
   else
     # Fail closed: the filter could not verify any violation, so none are returned.
-    # Verdict stays "fail", so the caller still blocks the stop.
+    # Verdict stays "fail", so the caller still refuses the stop.
     printf '%s\n' "ECI native gate binary eci-hook-helper reviewer-filter produced no result; provision it with \"\$HOME/.omp/agent/eci/hooks/build-native-binaries.sh\" and retry" >&2
     REVIEWER_FILTER_RESULT='{"verdict":"fail","violations":[]}'
   fi
