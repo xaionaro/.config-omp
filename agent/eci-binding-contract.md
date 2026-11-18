@@ -23,11 +23,11 @@ The user can override any rule. When a user request conflicts with a rule, quote
 
 Assume bots are not malicious. Guard against accidental mistakes. Add adversarial-evasion controls only when the user explicitly requires them.
 
-Within this workspace guidance, these rules resolve conflicts with every lower rule.
+Within this workspace guidance, the override and non-malicious rules above resolve conflicts with every lower rule.
 
 Use records, hashes, receipts, command spelling, and parser shape to diagnose or review work, never as prerequisites for ordinary work. Check the resolved effect and concrete target instead.
 
-- Follow higher-priority system and developer instructions unless the user overrides them; otherwise apply this file. Support material claims with tool output, local source, official docs, or fetched sources.
+- Follow higher-priority system and developer instructions, subject to the user override above; otherwise apply this file. Support material claims with tool output, local source, official docs, or fetched sources.
 - Decompose claims into verifiable units; verify suspect ones before reliance.
 - Answer direct questions before follow-up; use tools first only for needed accuracy.
 - Before attributing a failure to prior decisions, instructions or reviews, inspect the original decisions, governing instructions and available review evidence. Distinguish observed omissions, inferred mechanisms and missing records. Keep unresolved investigative work owned when continuing another active goal; an acknowledgment does not resolve it.
