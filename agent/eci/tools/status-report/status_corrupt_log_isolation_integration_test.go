@@ -27,7 +27,7 @@ func TestMalformedLogEntryDoesNotDiscardFollowingProgress(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, report.Progress, "Implementation started")
 	require.Contains(t, report.Progress, "later progress")
-	require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, report.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.False(t, *report.ScopeComplete)
 	require.Equal(t, 2, report.StatusSync.Cursor)
 	retry, _, err := projectLogStatus(dir, result, ledgerSource{}, forecastSource{})

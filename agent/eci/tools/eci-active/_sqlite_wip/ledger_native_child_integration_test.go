@@ -24,7 +24,7 @@ func TestNativeInitializationWithReportChild(t *testing.T) {
 	require.NoError(t, err, "%s", output)
 	require.NoError(t, os.Rename(built, child))
 
-	input := `{"expect":"uninitialized","ledger":{"present":true,"sections":{},"records":{}},"forecasts":{"present":false},"report":{"present":true,"document":{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}},"decisions":{},"log":{"present":false,"device":"","inode":"","bytes_base64":""}}}`
+	input := `{"expect":"uninitialized","ledger":{"present":true,"sections":{},"records":{}},"forecasts":{"present":false},"report":{"present":true,"document":{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}},"decisions":{},"log":{"present":false,"device":"","inode":"","bytes_base64":""}}}`
 	stdout, stderr, code := fx.runInput(t, 0, input, "ledger-init", "--stdin")
 	require.Zero(t, code, "%s", stderr)
 	_, err = decodeNativeObservation([]byte(stdout))

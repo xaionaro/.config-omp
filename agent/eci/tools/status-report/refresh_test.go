@@ -335,7 +335,7 @@ func TestRefreshProjectsFullScenario(t *testing.T) {
 
 // TestInvalidatePreservesBlockListIndentation verifies the refresh behavior.
 //
-// Example: An indented stuck-risk list retains its existing item.
+// Example: An indented stuck-work/risk list retains its existing item.
 func TestInvalidatePreservesBlockListIndentation(t *testing.T) {
 	t.Parallel()
 	for _, indent := range []string{"", "  "} {
@@ -344,18 +344,18 @@ func TestInvalidatePreservesBlockListIndentation(t *testing.T) {
 			//
 			// Example: Exercise one table-driven case.
 			func(t *testing.T) {
-				report := strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks:\n"+indent+"- existing", 1)
+				report := strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks:\n"+indent+"- existing", 1)
 				updated, err := prepareInvalidation([]byte(report), refreshDiagnostic)
 				require.NoError(t, err)
 				parsed, err := parse(updated)
 				require.NoError(t, err)
-				require.Contains(t, parsed.StuckRisks, "existing")
-				require.Contains(t, parsed.StuckRisks, refreshDiagnostic)
+				require.Contains(t, parsed.StuckWorkRisks, "existing")
+				require.Contains(t, parsed.StuckWorkRisks, refreshDiagnostic)
 			})
 	}
-	report := strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks:\n  - |\n    multiple\n    lines", 1)
+	report := strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks:\n  - |\n    multiple\n    lines", 1)
 	_, err := prepareInvalidation([]byte(report), refreshDiagnostic)
-	require.ErrorContains(t, err, "multiline stuck risk")
+	require.ErrorContains(t, err, "multiline stuck-work/risk entry")
 }
 
 // TestRefreshUpdatesBlockSourceProjection verifies the refresh behavior.
@@ -552,15 +552,15 @@ func TestRefreshRejectsStaleRecalibrationFields(t *testing.T) {
 
 // TestInvalidateFlowListPreservesQuotedClosingBracket verifies the refresh behavior.
 //
-// Example: A bracket inside a quoted stuck risk remains intact.
+// Example: A bracket inside a quoted stuck-work/risk entry remains intact.
 func TestInvalidateFlowListPreservesQuotedClosingBracket(t *testing.T) {
 	t.Parallel()
-	original := strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks: ['risk ] here', 'don''t ] split', \"quoted \\\" ] here\"]", 1)
+	original := strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks: ['risk ] here', 'don''t ] split', \"quoted \\\" ] here\"]", 1)
 	updated, err := prepareInvalidation([]byte(original), refreshDiagnostic)
 	require.NoError(t, err)
 	parsed, err := parse(updated)
 	require.NoError(t, err)
-	require.Equal(t, []string{"risk ] here", "don't ] split", "quoted \" ] here", refreshDiagnostic}, parsed.StuckRisks)
+	require.Equal(t, []string{"risk ] here", "don't ] split", "quoted \" ] here", refreshDiagnostic}, parsed.StuckWorkRisks)
 	again, err := prepareInvalidation(updated, refreshDiagnostic)
 	require.NoError(t, err)
 	require.Equal(t, updated, again)
@@ -729,7 +729,7 @@ func TestVerifyRefreshRejectsUnsupportedForecastChanges(t *testing.T) {
 		{"unbacked target", strings.Replace(linkedReport, "target: '2026-11-02T16:00:00Z'", "target: '2026-11-02T19:00:00Z'", 1), "unexpected projected target"},
 		{"readiness", strings.Replace(linkedReport, "test_status: NEW", "test_status: PAUSED", 1), "unprojected"},
 		{"unlinked reference", strings.Replace(linkedReport, "forecasts.yaml#/records/first", "forecasts.yaml#/records/other", 1), "unprojected"},
-		{"invented diagnostic", strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks: [invented]", 1), "invalid refresh diagnostic"},
+		{"invented diagnostic", strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks: [invented]", 1), "invalid refresh diagnostic"},
 		{"scope revival", strings.Replace(linkedReport, "scope_complete: true", "scope_complete: false", 1), "invalid scope change"},
 	}
 	for _, tc := range tests {
@@ -747,19 +747,19 @@ func TestVerifyRefreshRejectsUnsupportedForecastChanges(t *testing.T) {
 	}
 }
 
-// TestVerifyRefreshPreservesStuckRisksAndLinkedFields verifies the refresh behavior.
+// TestVerifyRefreshPreservesStuckWorkRisksAndLinkedFields verifies the refresh behavior.
 //
-// Example: Existing stuck risks cannot be replaced by a refresh.
-func TestVerifyRefreshPreservesStuckRisksAndLinkedFields(t *testing.T) {
+// Example: Existing stuck-work/risk entries cannot be replaced by a refresh.
+func TestVerifyRefreshPreservesStuckWorkRisksAndLinkedFields(t *testing.T) {
 	t.Parallel()
 	var ledger ledgerSource
 	var forecasts forecastSource
 	require.NoError(t, yaml.Unmarshal([]byte(linkedLedger), &ledger))
 	require.NoError(t, yaml.Unmarshal([]byte(linkedForecasts), &forecasts))
-	original := strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks: [existing]", 1)
+	original := strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks: [existing]", 1)
 	candidates := []struct{ name, text, errorText string }{
-		{"remove stuck risk", strings.Replace(original, "stuck_risks: [existing]", "stuck_risks: []", 1), "invalid diagnostic change"},
-		{"replace stuck risk", strings.Replace(original, "stuck_risks: [existing]", "stuck_risks: [different]", 1), "existing stuck risks"},
+		{"remove stuck-work/risk entry", strings.Replace(original, "stuck_work_risks: [existing]", "stuck_work_risks: []", 1), "invalid diagnostic change"},
+		{"replace stuck-work/risk entry", strings.Replace(original, "stuck_work_risks: [existing]", "stuck_work_risks: [different]", 1), "existing stuck-work/risk entries"},
 		{"forecast evidence", strings.Replace(original, "evidence: initial}", "evidence: fabricated}", 1), "unexpected projected evidence"},
 		{"unlinked task", strings.Replace(original, "work:first", "work:unknown", 1), "unprojected"},
 	}
@@ -811,7 +811,7 @@ func TestRequirementChangePreservesSingleLineReportWithUnicode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Working λ", parsed.State)
 	require.False(t, *parsed.ScopeComplete)
-	require.Contains(t, parsed.StuckRisks, refreshDiagnostic)
+	require.Contains(t, parsed.StuckWorkRisks, refreshDiagnostic)
 }
 
 // TestVerifyRefreshRejectsUnlinkedForecastEdit verifies the refresh behavior.
@@ -828,7 +828,7 @@ func TestVerifyRefreshRejectsUnlinkedForecastEdit(t *testing.T) {
 // Example: Existing diagnostic and comment text remains present.
 func TestVerifyRefreshRejectsDiagnosticAndCommentLoss(t *testing.T) {
 	t.Parallel()
-	original := strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks: [existing] # important note", 1)
+	original := strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks: [existing] # important note", 1)
 	cases := []struct{ name, text, issue string }{
 		{"diagnostic removed", strings.Replace(original, "[existing]", "[]", 1), "invalid diagnostic change"},
 		{"comment removed", strings.Replace(original, " # important note", "", 1), "comments"},

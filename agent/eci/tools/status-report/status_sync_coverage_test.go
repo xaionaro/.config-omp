@@ -14,7 +14,7 @@ import (
 // Example: Production remains distinct from implementation through metadata.
 func TestSyncWireSelectorsRoundTrip(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"task", "lane", "report", "progress", "decisions", "stuck_risks", "verification", "review", "priority_estimate"} {
+	for _, name := range []string{"task", "lane", "report", "progress", "decisions", "stuck_work_risks", "verification", "review", "priority_estimate"} {
 		var target syncTarget
 		require.NoError(t, json.Unmarshal([]byte(`"`+name+`"`), &target))
 		require.NotEqual(t, syncTargetUnknown, target)

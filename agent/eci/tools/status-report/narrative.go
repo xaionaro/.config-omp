@@ -32,7 +32,7 @@ func normalizeNarratives(data []byte) ([]byte, error) {
 	changed := false
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, list := root.Content[i].Value, root.Content[i+1]
-		if key != "progress" && key != "decisions" && key != "stuck_risks" && key != "verification" {
+		if key != "progress" && key != "decisions" && key != "stuck_work_risks" && key != "verification" {
 			continue
 		}
 		if list.Kind != yaml.SequenceNode {

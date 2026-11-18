@@ -37,10 +37,10 @@ const (
 	//
 	// Example: Record a design choice.
 	syncTargetDecisions
-	// syncTargetStuckRisks selects keyed risks.
+	// syncTargetStuckWorkRisks selects keyed risks.
 	//
 	// Example: Record stuck work.
-	syncTargetStuckRisks
+	syncTargetStuckWorkRisks
 	// syncTargetVerification selects keyed verification entries.
 	//
 	// Example: Record test evidence.
@@ -78,8 +78,8 @@ func (t syncTarget) String() string {
 		return "progress"
 	case syncTargetDecisions:
 		return "decisions"
-	case syncTargetStuckRisks:
-		return "stuck_risks"
+	case syncTargetStuckWorkRisks:
+		return "stuck_work_risks"
 	case syncTargetVerification:
 		return "verification"
 	case syncTargetReview:
@@ -110,8 +110,8 @@ func parseSyncTarget(value string) syncTarget {
 		return syncTargetProgress
 	case "decisions":
 		return syncTargetDecisions
-	case "stuck_risks":
-		return syncTargetStuckRisks
+	case "stuck_work_risks":
+		return syncTargetStuckWorkRisks
 	case "verification":
 		return syncTargetVerification
 	case "review":

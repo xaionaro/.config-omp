@@ -19,7 +19,7 @@ func TestPriorityRetirementRetriesAfterOwnerRestoresEstimate(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-stuck_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true

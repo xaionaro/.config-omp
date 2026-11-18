@@ -11,7 +11,7 @@ import (
 
 // TestCancelledLaneReactivationWaitsForOwnerLifecycleRestoration checks ownership.
 //
-// Example: An owner-removed cancellation marker holds back the automatic reopening.
+// Example: The automatic reopening awaits resolution of an owner-removed cancellation marker.
 func TestCancelledLaneReactivationWaitsForOwnerLifecycleRestoration(t *testing.T) {
 	t.Parallel()
 	// cancel projects cancellation while canonical work and forecast are terminal.

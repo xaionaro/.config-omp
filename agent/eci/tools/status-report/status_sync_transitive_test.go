@@ -9,7 +9,7 @@ import (
 
 // TestReviewTransitiveDependency keeps overlapping transactions in order.
 //
-// Example: An owner conflict holds back an atomic owner and evidence update and its dependent closure.
+// Example: An atomic owner and evidence update and its dependent closure await resolution of an owner conflict.
 func TestReviewTransitiveDependency(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

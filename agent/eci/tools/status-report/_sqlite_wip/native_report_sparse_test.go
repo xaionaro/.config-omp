@@ -24,7 +24,7 @@ CREATE TABLE forecasts(id TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE report(id INTEGER PRIMARY KEY, document_json TEXT, revision INTEGER);
 INSERT INTO ledger_meta VALUES(1, ?, '0123456789abcdef0123456789abcdef', 3, 0, 0)`, filepath.Base(dir)); require.NoError(t, err)
 	require.NoError(t, db.Close())
-	input := `{"base":{"database_id":"0123456789abcdef0123456789abcdef","generation":"3"},"document":{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}},"decisions":{},"log":{"present":false,"device":"","inode":"","bytes_base64":""}}`
+	input := `{"base":{"database_id":"0123456789abcdef0123456789abcdef","generation":"3"},"document":{"timestamp":"2026-11-02T15:24:00Z","state":"Working","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}},"decisions":{},"log":{"present":false,"device":"","inode":"","bytes_base64":""}}`
 	var out, diagnostics bytes.Buffer
 	code := run([]string{"report-create-locked",dir,"--stdin"},bytes.NewBufferString(input),&out,&diagnostics)
 	require.Equal(t, 0, code, diagnostics.String())
@@ -34,5 +34,5 @@ INSERT INTO ledger_meta VALUES(1, ?, '0123456789abcdef0123456789abcdef', 3, 0, 0
 	require.NoError(t,db.QueryRow(`SELECT generation FROM ledger_meta`).Scan(&generation))
 	require.Equal(t,4,generation)
 	report, err := parseDBReport([]byte(document)); require.NoError(t,err)
-	require.NotEmpty(t,report.StuckRisks)
+	require.NotEmpty(t,report.StuckWorkRisks)
 }

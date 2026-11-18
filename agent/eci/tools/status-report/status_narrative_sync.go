@@ -14,7 +14,7 @@ import (
 // Example: A progress update identifies its subject and supplies text.
 func validNarrativeSyncUpdate(u syncUpdate) bool {
 	switch u.Target {
-	case syncTargetProgress, syncTargetDecisions, syncTargetStuckRisks, syncTargetVerification:
+	case syncTargetProgress, syncTargetDecisions, syncTargetStuckWorkRisks, syncTargetVerification:
 	default:
 		return false
 	}

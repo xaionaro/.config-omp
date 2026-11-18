@@ -21,7 +21,7 @@ func TestRefreshPreservesYAMLContent(t *testing.T) {
 		report string
 		keep   []string
 	}{
-		{name: "quoted stuck risk bracket", report: strings.Replace(linkedReport, "stuck_risks: []", "stuck_risks: ['risk ] here']", 1), keep: []string{"'risk ] here'"}},
+		{name: "quoted stuck-work/risk entry bracket", report: strings.Replace(linkedReport, "stuck_work_risks: []", "stuck_work_risks: ['risk ] here']", 1), keep: []string{"'risk ] here'"}},
 		{name: "flow comment before fields", report: strings.Replace(linkedReport, forecast, strings.Replace(forecast, "forecast: {", "forecast: {\n      # context } untouched\n      ", 1), 1), keep: []string{"# context } untouched"}},
 		{name: "flow comment after opening", report: strings.Replace(linkedReport, forecast, strings.Replace(forecast, "forecast: {", "forecast: {# context } untouched\n      ", 1), 1), keep: []string{"# context } untouched"}},
 		{name: "unicode and quoted delimiters", report: strings.Replace(linkedReport, forecast, strings.Replace(forecast, "outcome: First result", "outcome: 'λ, ] # ''quoted'''", 1)+" # keep forecast comment", 1), keep: []string{"λ, ] # ''quoted''", "# keep forecast comment"}},

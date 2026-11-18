@@ -8,7 +8,7 @@ import (
 
 // TestRootChainKeepsScalarPayloadDiagnostic checks invalid unrelated payload isolation.
 //
-// Example: A scalar status update does not stall a valid root lifecycle chain.
+// Example: A valid root lifecycle chain does not await a scalar status update.
 func TestRootChainKeepsScalarPayloadDiagnostic(t *testing.T) {
 	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
@@ -26,7 +26,7 @@ func TestRootChainKeepsScalarPayloadDiagnostic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, r.RootForecasts, 1)
 	require.Empty(t, r.StatusSync.PendingRootAdditions)
-	require.Contains(t, r.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, r.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.NotNil(t, r.ScopeComplete)
 	require.False(t, *r.ScopeComplete)
 }

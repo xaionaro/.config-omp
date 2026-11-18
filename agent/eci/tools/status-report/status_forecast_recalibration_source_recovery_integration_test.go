@@ -11,7 +11,7 @@ import (
 
 // TestForecastRecalibrationRecoversAfterSourceCorrection checks history consistency.
 //
-// Example: A mismatched current time holds back publication until the source is repaired.
+// Example: With a mismatched current time, publication awaits the source repair.
 func TestForecastRecalibrationRecoversAfterSourceCorrection(t *testing.T) {
 	t.Parallel()
 	// event records independent progress while canonical history is inconsistent.

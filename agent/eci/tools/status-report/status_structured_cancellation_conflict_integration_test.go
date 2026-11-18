@@ -12,7 +12,7 @@ import (
 
 // TestStructuredCancellationWaitsForOwnerEvidence checks atomic recovery.
 //
-// Example: A changed reason holds back the whole cancellation until its owner restores it.
+// Example: The whole cancellation awaits the owner restoring a changed reason.
 func TestStructuredCancellationWaitsForOwnerEvidence(t *testing.T) {
 	t.Parallel()
 	// prior records the reason that sync owns before the cancellation.

@@ -367,9 +367,9 @@ func applyExpectedSyncEffect(
 		if !ok {
 			return fmt.Errorf("diagnostic must be a string")
 		}
-		items, ok := root["stuck_risks"].([]any)
+		items, ok := root["stuck_work_risks"].([]any)
 		if !ok {
-			return fmt.Errorf("missing stuck risks")
+			return fmt.Errorf("missing stuck-work/risk list")
 		}
 		root["scope_complete"] = false
 		for _, item := range items {
@@ -377,7 +377,7 @@ func applyExpectedSyncEffect(
 				return nil
 			}
 		}
-		root["stuck_risks"] = append(items, value)
+		root["stuck_work_risks"] = append(items, value)
 		return nil
 	case syncEffectSet:
 		value, err := decodeSyncEffectValue(effect)
@@ -572,7 +572,7 @@ func syncEffectSection(target syncTarget) (string, string, error) {
 		return "root_completions", "work_ref", nil
 	case syncTargetRootForecast:
 		return "root_forecasts", "forecast_ref", nil
-	case syncTargetProgress, syncTargetDecisions, syncTargetStuckRisks, syncTargetVerification:
+	case syncTargetProgress, syncTargetDecisions, syncTargetStuckWorkRisks, syncTargetVerification:
 		return target.String(), "subject_ref", nil
 	default:
 		return "", "", fmt.Errorf("unknown target")

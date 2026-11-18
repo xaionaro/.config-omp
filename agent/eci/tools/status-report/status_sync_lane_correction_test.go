@@ -29,7 +29,7 @@ func TestDelayedDocumentedLaneCorrection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].CompletedAt != "2026-11-02T15:45:00Z" || len(r.StatusSync.Groups) != 0 {
-		t.Fatalf("documented correction held back by stale historical closure: status=%s completed_at=%s groups=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].CompletedAt, len(r.StatusSync.Groups))
+		t.Fatalf("documented correction awaits stale historical closure: status=%s completed_at=%s groups=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].CompletedAt, len(r.StatusSync.Groups))
 	}
 }
 

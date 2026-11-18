@@ -94,10 +94,10 @@ func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
  }}
 }
 
-// TestBaselineSparseNonApplicableForecastDoesNotStallReopening uses explicit canonical non-applicability.
+// TestBaselineReopeningDoesNotAwaitSparseNonApplicableForecast uses explicit canonical non-applicability.
 //
 // Example: A known empty role list does not require a lane forecast, regardless of reference spelling.
-func TestBaselineSparseNonApplicableForecastDoesNotStallReopening(t *testing.T) {
+func TestBaselineReopeningDoesNotAwaitSparseNonApplicableForecast(t *testing.T) {
  t.Parallel()
  for _,referencePresent:=range []bool{false,true} {t.Run(fmt.Sprint(referencePresent),
   // The callback proves reference presence alone cannot create a forecast requirement.

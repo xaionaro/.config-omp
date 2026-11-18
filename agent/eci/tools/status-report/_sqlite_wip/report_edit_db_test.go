@@ -167,7 +167,7 @@ func TestReportEditTransaction(t *testing.T) {
 	_, err = db.Exec(`CREATE TABLE report(id INTEGER PRIMARY KEY, document_json TEXT NOT NULL, revision INTEGER NOT NULL);
 CREATE TABLE ledger_meta(id INTEGER PRIMARY KEY, database_id TEXT NOT NULL, session_id TEXT NOT NULL, generation INTEGER NOT NULL);
 INSERT INTO ledger_meta VALUES(1, '0123456789abcdef0123456789abcdef', 'session', 3);
-INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"},"status_sync":{"cursor":7,"applied":{},"latest":{},"pending":{"p":{"line":1,"update":{}}}}}', 2)`)
+INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"},"status_sync":{"cursor":7,"applied":{},"latest":{},"pending":{"p":{"line":1,"update":{}}}}}', 2)`)
 	require.NoError(t, err)
 	base := nativeReportBase{DatabaseID: "0123456789abcdef0123456789abcdef", Generation: 3}
 	edit, err := parseReportEdit(`{"ops":[{"op":"set","path":["state"],"expect":{"kind":"value","value":"old"},"value":"new"}]}`)
@@ -219,7 +219,7 @@ func TestReportEditLockedCommand(t *testing.T) {
 CREATE TABLE report(id INTEGER PRIMARY KEY, document_json TEXT NOT NULL, revision INTEGER NOT NULL);
 CREATE TABLE ledger_meta(id INTEGER PRIMARY KEY, database_id TEXT NOT NULL, session_id TEXT NOT NULL, generation INTEGER NOT NULL);
 INSERT INTO ledger_meta VALUES(1, '0123456789abcdef0123456789abcdef', ?, 0);
-INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0)`, filepath.Base(dir))
+INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0)`, filepath.Base(dir))
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 	var diagnostics, output bytes.Buffer
@@ -259,7 +259,7 @@ func TestReportEditRejectsLinkedDatabase(t *testing.T) {
 CREATE TABLE report(id INTEGER PRIMARY KEY, document_json TEXT NOT NULL, revision INTEGER NOT NULL);
 CREATE TABLE ledger_meta(id INTEGER PRIMARY KEY, database_id TEXT NOT NULL, session_id TEXT NOT NULL, generation INTEGER NOT NULL);
 INSERT INTO ledger_meta VALUES(1, '0123456789abcdef0123456789abcdef', 'session', 0);
-INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0)`)
+INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"old","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0)`)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 	original, err := os.ReadFile(path)

@@ -212,16 +212,16 @@ func prepareInvalidation(
 		return nil, err
 	}
 	root := doc.Content[0]
-	var scope, stuckRisks *yaml.Node
+	var scope, stuckWorkRisks *yaml.Node
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		switch root.Content[i].Value {
 		case "scope_complete":
 			scope = root.Content[i+1]
-		case "stuck_risks":
-			stuckRisks = root.Content[i+1]
+		case "stuck_work_risks":
+			stuckWorkRisks = root.Content[i+1]
 		}
 	}
-	if scope == nil || stuckRisks == nil || scope.Kind != yaml.ScalarNode || stuckRisks.Kind != yaml.SequenceNode {
+	if scope == nil || stuckWorkRisks == nil || scope.Kind != yaml.ScalarNode || stuckWorkRisks.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("unsupported report fields")
 	}
 	lines := strings.Split(string(original), "\n")
@@ -238,10 +238,10 @@ func prepareInvalidation(
 		return nil, fmt.Errorf("unsupported scope layout")
 	}
 	lines[line] = lines[line][:start] + "false" + lines[line][start+len(scope.Value):]
-	if stuckRisks.Line == scope.Line && stuckRisks.Column > scope.Column {
-		stuckRisks.Column += len("false") - len(scope.Value)
+	if stuckWorkRisks.Line == scope.Line && stuckWorkRisks.Column > scope.Column {
+		stuckWorkRisks.Column += len("false") - len(scope.Value)
 	}
-	lines, err = appendDiagnostic(lines, stuckRisks, diagnostic, nextMappingFieldLine(root, "stuck_risks"))
+	lines, err = appendDiagnostic(lines, stuckWorkRisks, diagnostic, nextMappingFieldLine(root, "stuck_work_risks"))
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func prepareInvalidation(
 
 // nextMappingFieldLine identifies the field following a named YAML mapping key.
 //
-// Example: Find the line where verification follows stuck risks.
+// Example: Find the line where verification follows stuck-work/risk entries.
 func nextMappingFieldLine(
 	root *yaml.Node,
 	key string,
@@ -270,35 +270,35 @@ func nextMappingFieldLine(
 
 // appendDiagnostic adds a missing diagnostic without changing existing entries.
 //
-// Example: Add a new risk to a flow-style stuck-risk list.
+// Example: Add a new risk to a flow-style stuck-work/risk list.
 func appendDiagnostic(
 	lines []string,
-	stuckRisks *yaml.Node,
+	stuckWorkRisks *yaml.Node,
 	diagnostic string,
 	nextFieldLine int,
 ) ([]string, error) {
-	for _, n := range stuckRisks.Content {
+	for _, n := range stuckWorkRisks.Content {
 		if n.Value == diagnostic {
 			return lines, nil
 		}
 	}
-	if stuckRisks.Style&yaml.FlowStyle == 0 {
-		return appendBlockDiagnostic(lines, stuckRisks, diagnostic, nextFieldLine)
+	if stuckWorkRisks.Style&yaml.FlowStyle == 0 {
+		return appendBlockDiagnostic(lines, stuckWorkRisks, diagnostic, nextFieldLine)
 	}
 	data := []byte(strings.Join(lines, "\n"))
-	start, err := yamlByteOffset(data, stuckRisks.Line, stuckRisks.Column)
+	start, err := yamlByteOffset(data, stuckWorkRisks.Line, stuckWorkRisks.Column)
 	if err != nil {
 		return nil, err
 	}
 	if start < 0 || start >= len(data) {
-		return nil, fmt.Errorf("unsupported stuck risks layout")
+		return nil, fmt.Errorf("unsupported stuck-work/risk list layout")
 	}
 	end, err := flowEnd(data, start, token.SequenceStartType)
 	if err != nil {
 		return nil, err
 	}
 	sep := ""
-	if len(stuckRisks.Content) > 0 {
+	if len(stuckWorkRisks.Content) > 0 {
 		sep = ", "
 	}
 	updated := string(data[:end]) + sep + strconv.Quote(diagnostic) + string(data[end:])
@@ -307,10 +307,10 @@ func appendDiagnostic(
 
 // appendBlockDiagnostic adds a diagnostic to a supported block-style list.
 //
-// Example: Append a diagnostic to an indented stuck-risk list.
+// Example: Append a diagnostic to an indented stuck-work/risk list.
 func appendBlockDiagnostic(
 	lines []string,
-	stuckRisks *yaml.Node,
+	stuckWorkRisks *yaml.Node,
 	diagnostic string,
 	nextFieldLine int,
 ) ([]string, error) {
@@ -319,23 +319,23 @@ func appendBlockDiagnostic(
 		insert = nextFieldLine - 1
 	}
 	indent := "  "
-	if len(stuckRisks.Content) > 0 {
-		last := stuckRisks.Content[len(stuckRisks.Content)-1]
+	if len(stuckWorkRisks.Content) > 0 {
+		last := stuckWorkRisks.Content[len(stuckWorkRisks.Content)-1]
 		if last.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 || strings.Contains(last.Value, "\n") {
-			return nil, fmt.Errorf("multiline stuck risk requires manual status refresh")
+			return nil, fmt.Errorf("multiline stuck-work/risk entry requires manual status refresh")
 		}
 		if last.Line < 1 || last.Line > len(lines) || insert < last.Line || insert > len(lines) {
-			return nil, fmt.Errorf("unsupported stuck risks layout")
+			return nil, fmt.Errorf("unsupported stuck-work/risk list layout")
 		}
 		dash := strings.Index(lines[last.Line-1], "- ")
 		if dash < 0 || strings.TrimSpace(lines[last.Line-1][:dash]) != "" {
-			return nil, fmt.Errorf("unsupported stuck risks layout")
+			return nil, fmt.Errorf("unsupported stuck-work/risk list layout")
 		}
 		indent = lines[last.Line-1][:dash]
 		insert = trimFollowingComments(lines, insert, last.Line)
 	}
 	if insert < 0 || insert > len(lines) {
-		return nil, fmt.Errorf("unsupported stuck risks layout")
+		return nil, fmt.Errorf("unsupported stuck-work/risk list layout")
 	}
 	ending := ""
 	if len(lines) > 0 && strings.HasSuffix(lines[0], "\r") {

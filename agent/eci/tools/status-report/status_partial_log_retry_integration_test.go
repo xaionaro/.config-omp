@@ -38,7 +38,7 @@ func TestRefreshRetriesIncompleteFinalLogEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, report.Progress, "event recovered")
 	require.Contains(t, report.Progress, "earlier event")
-	require.Contains(t, report.StuckRisks, "Status refresh incomplete: unterminated invalid final log entry; complete or terminate it before retry")
+	require.Contains(t, report.StuckWorkRisks, "Status refresh incomplete: unterminated invalid final log entry; complete or terminate it before retry")
 	require.NotNil(t, report.ScopeComplete)
 	require.False(t, *report.ScopeComplete)
 	require.Equal(t, 1, report.StatusSync.Cursor)
@@ -88,7 +88,7 @@ func TestLogFinalLineCompatibility(t *testing.T) {
 	require.NoError(t, err)
 	report, err = parse(result)
 	require.NoError(t, err)
-	require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, report.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.Equal(t, 1, report.StatusSync.Cursor)
 }
 

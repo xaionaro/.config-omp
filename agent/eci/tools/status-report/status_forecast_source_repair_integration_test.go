@@ -29,7 +29,7 @@ func TestRefreshRecoversLogAfterForecastSourceRepair(t *testing.T) {
 	report, err := parse(failed)
 	require.NoError(t, err)
 	require.NotContains(t, report.Progress, "queued while source broken")
-	require.NotEmpty(t, report.StuckRisks)
+	require.NotEmpty(t, report.StuckWorkRisks)
 	require.NoError(t, os.WriteFile(forecastPath, []byte(linkedForecasts), 0600))
 	require.NoError(t, refreshTestStatus(dir, "decision"))
 	result, err := os.ReadFile(path)

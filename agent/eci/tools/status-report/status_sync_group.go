@@ -628,7 +628,7 @@ func syncGroupDependencies(update syncUpdate) map[string]bool {
 		fields[field] = true
 	}
 	switch update.Target {
-	case syncTargetProgress, syncTargetDecisions, syncTargetStuckRisks, syncTargetVerification, syncTargetRootForecast:
+	case syncTargetProgress, syncTargetDecisions, syncTargetStuckWorkRisks, syncTargetVerification, syncTargetRootForecast:
 		fields["*"] = true
 	case syncTargetTask:
 		if fields["status"] || fields["evidence"] || fields["lifecycle"] {

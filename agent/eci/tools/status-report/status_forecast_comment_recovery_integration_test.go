@@ -14,7 +14,7 @@ import (
 // Example: A source update waits until an annotated projection can be replaced safely.
 func TestForecastProjectionRecoversAfterOwnerCommentResolution(t *testing.T) {
 	t.Parallel()
-	// event adds independent progress while the forecast projection is held back.
+	// event adds independent progress while the forecast projection awaits the comment's resolution.
 	//
 	// Example: Resolving the comment permits the retained event to apply once.
 	const event = `{"event":"decision","details":{"status_update":{"updates":[{"target":"progress","id":"one","fields":{"text":"queued claim"}}]}}}` + "\n"

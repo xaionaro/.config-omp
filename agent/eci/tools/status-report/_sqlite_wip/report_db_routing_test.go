@@ -29,7 +29,7 @@ CREATE TABLE sections(id TEXT, value TEXT);
 CREATE TABLE records(id TEXT, value TEXT);
 CREATE TABLE forecasts(id TEXT, value TEXT);
 INSERT INTO ledger_meta VALUES(1, 0, '0123456789abcdef0123456789abcdef', 1, 0);
-INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"Database state","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0);`)
+INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"Database state","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}', 0);`)
 	require.NoError(t, err)
 	instant := time.Date(2026, 11, 2, 15, 25, 0, 0, time.UTC)
 	var out, diagnostics bytes.Buffer
@@ -39,7 +39,7 @@ INSERT INTO report VALUES(1, '{"timestamp":"2026-11-02T15:24:00Z","state":"Datab
 	require.NotContains(t, out.String(), "not a report")
 	out.Reset()
 	diagnostics.Reset()
-	input := `{"timestamp":"2026-11-02T15:24:00Z","state":"Input state","progress":[],"decisions":[],"stuck_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}`
+	input := `{"timestamp":"2026-11-02T15:24:00Z","state":"Input state","progress":[],"decisions":[],"stuck_work_risks":[],"verification":[],"next_focus":"Next","scope_complete":true,"tasks":[],"top_priorities":[],"completion_estimate":{"min_minutes":10,"max_minutes":20,"as_of":"2026-11-02T15:24:00Z","basis":"guess","assumptions":"none","dependencies":"none","critical_path":"work"}}`
 	code = runAt([]string{"render", "--session-dir", dir, "-"}, bytes.NewBufferString(input), &out, &diagnostics, instant)
 	require.Equal(t, 0, code, diagnostics.String())
 	require.Contains(t, out.String(), "Input state")
@@ -78,7 +78,7 @@ func TestReportLegacyRouting(t *testing.T) {
 state: Legacy state
 progress: []
 decisions: []
-stuck_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Next
 scope_complete: true

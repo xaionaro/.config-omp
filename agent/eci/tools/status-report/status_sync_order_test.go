@@ -249,7 +249,7 @@ func TestSyncReopenRecordsImplicitCompletionRemoval(t *testing.T) {
 	require.Equal(t, 2, parsed.StatusSync.Latest[key])
 	require.Equal(t, syncAbsentValue, parsed.StatusSync.Applied[key])
 	require.Empty(t, parsed.Lanes[0].CompletedAt)
-	require.Contains(t, strings.Join(parsed.StuckRisks, " "), "invalid status_update requires manual review")
+	require.Contains(t, strings.Join(parsed.StuckWorkRisks, " "), "invalid status_update requires manual review")
 }
 
 // TestSyncLastPriorityRetirementRequiresExactPrior checks explicit removal.
@@ -262,7 +262,7 @@ func TestSyncLastPriorityRetirementRequiresExactPrior(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-stuck_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true

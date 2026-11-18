@@ -54,7 +54,7 @@ const linkedReport = `timestamp: '2026-11-02T15:24:00Z'
 state: Working
 progress: [Implementation started]
 decisions: [Use YAML]
-stuck_risks: []
+stuck_work_risks: []
 verification: [pending]
 next_focus: Finish
 scope_complete: true

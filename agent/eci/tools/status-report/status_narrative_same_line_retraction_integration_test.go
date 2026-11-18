@@ -53,7 +53,7 @@ func TestNarrativeRetractionUsesLatestSameLineOrdinal(t *testing.T) {
 					require.Equal(t, []string{"Implementation started"}, after.Progress)
 				} else {
 					require.Contains(t, after.Progress, "managed claim (evidence: latest proof)")
-					require.Contains(t, after.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+					require.Contains(t, after.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 				}
 				require.NoError(t, refreshTestStatus(dir, "correction"))
 				retry, err := os.ReadFile(path)

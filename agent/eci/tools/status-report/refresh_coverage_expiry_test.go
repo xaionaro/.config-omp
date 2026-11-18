@@ -70,7 +70,7 @@ func refreshCoverageReport(
 state: Working
 progress: []
 decisions: []
-stuck_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true
@@ -116,7 +116,7 @@ records:
 	require.NoError(t, err)
 	unchanged := after
 	unchanged.ScopeComplete = before.ScopeComplete
-	unchanged.StuckRisks = before.StuckRisks
+	unchanged.StuckWorkRisks = before.StuckWorkRisks
 	require.Equal(t, before, unchanged)
 	sourceAfter, err := os.ReadFile(filepath.Join(dir, "project-understanding.yaml"))
 	require.NoError(t, err)

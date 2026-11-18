@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestIndependentLaneOwnerConflict checks disjoint held-back assignments.
+// TestIndependentLaneOwnerConflict checks disjoint awaiting assignments.
 //
 // Example: Preserve an owner edit while applying a later lane reopening.
 func TestIndependentLaneOwnerConflict(t *testing.T) {
@@ -40,6 +40,6 @@ func TestIndependentLaneOwnerConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.Lanes[0].ImplementationStatus != statusPaused || len(r.StatusSync.Groups) != 1 || r.Lanes[0].Owner != "manual" {
-		t.Fatalf("independent owner conflict holds back valid reopening: status=%s owner=%s groups=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].Owner, len(r.StatusSync.Groups))
+		t.Fatalf("valid reopening awaits independent owner conflict: status=%s owner=%s groups=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].Owner, len(r.StatusSync.Groups))
 	}
 }

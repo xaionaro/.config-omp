@@ -16,7 +16,7 @@ func TestRootCompletionRecoversAfterOwnerRestoresPrior(t *testing.T) {
 	t.Parallel()
 	// roots are two independent canonical completions.
 	//
-	// Example: The second root is not held back by the first root's owner edit.
+	// Example: The second root does not await the first root's owner edit.
 	const roots = `  root-outcome-one: {section: progress, type: outcome, data: {description: First root}}
   root-outcome-two: {section: progress, type: outcome, data: {description: Second root}}
   root-one:

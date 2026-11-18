@@ -23,7 +23,7 @@ func TestMalformedStatusSiblingDoesNotDiscardValidClosure(t *testing.T) {
 	require.Equal(t, "accepted safe sibling", r.Tasks[0].Evidence)
 	require.NotNil(t, r.ScopeComplete)
 	require.False(t, *r.ScopeComplete)
-	require.Contains(t, r.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, r.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.Equal(t, 1, r.StatusSync.Cursor)
 	again, _, err := projectLogStatus(dir, out, ledgerSource{}, forecastSource{})
 	require.NoError(t, err)

@@ -26,7 +26,7 @@ func TestTaskAdditionOwnershipPreservesSuppliedAndAbsentValues(t *testing.T) {
 
 // TestTaskAdditionOwnershipRejectsLaterOwnerEdit checks its use by projection.
 //
-// Example: A manual effort edit holds back a subsequent logged effort update.
+// Example: A subsequent logged effort update awaits resolution of a manual effort edit.
 func TestTaskAdditionOwnershipRejectsLaterOwnerEdit(t *testing.T) {
 	t.Parallel()
 	record := json.RawMessage(`{"effort":{"min_minutes":10,"max_minutes":30,"kind":"elapsed","basis":"educated guess"}}`)

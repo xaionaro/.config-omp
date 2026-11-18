@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSyncOwnerConflictDoesNotStallDisjointTaskClosure checks independent fields.
+// TestSyncDisjointTaskClosureDoesNotAwaitOwnerConflict checks independent fields.
 //
 // Example: Preserve an owner edit while accepting the same task with evidence.
-func TestSyncOwnerConflictDoesNotStallDisjointTaskClosure(t *testing.T) {
+func TestSyncDisjointTaskClosureDoesNotAwaitOwnerConflict(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	first := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"projected"}}]}}}` + "\n"
@@ -32,10 +32,10 @@ func TestSyncOwnerConflictDoesNotStallDisjointTaskClosure(t *testing.T) {
 	require.NotEmpty(t, report.StatusSync.Groups)
 }
 
-// TestSyncEvidenceConflictHoldsBackDependentTaskClosure checks atomic acceptance.
+// TestSyncDependentTaskClosureAwaitsEvidenceConflict checks atomic acceptance.
 //
 // Example: An owner-edited proof prevents a later closure from replacing it.
-func TestSyncEvidenceConflictHoldsBackDependentTaskClosure(t *testing.T) {
+func TestSyncDependentTaskClosureAwaitsEvidenceConflict(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	first := `{"event":"verification_result","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"evidence":"projected"}}]}}}` + "\n"

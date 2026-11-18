@@ -54,9 +54,10 @@ completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24
 	updated, err := os.ReadFile(reportPath)
 	require.NoError(t, err)
 	var parsed struct {
-		ScopeComplete bool     `yaml:"scope_complete"`
-		StuckRisks    []string `yaml:"blockers_risks"`
-		Tasks         []struct {
+		ScopeComplete  bool     `yaml:"scope_complete"`
+		// The report key stays the pinned status-report's name until the coordinated cutover.
+		StuckWorkRisks []string `yaml:"blockers_risks"`
+		Tasks          []struct {
 			ID       string `yaml:"id"`
 			Status   string `yaml:"status"`
 			Evidence string `yaml:"evidence"`
@@ -64,7 +65,7 @@ completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24
 	}
 	require.NoError(t, yaml.Unmarshal(updated, &parsed))
 	require.False(t, parsed.ScopeComplete)
-	require.Contains(t, parsed.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, parsed.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.Len(t, parsed.Tasks, 1)
 	require.Equal(t, "1", parsed.Tasks[0].ID)
 	require.Equal(t, "CLOSED", parsed.Tasks[0].Status)

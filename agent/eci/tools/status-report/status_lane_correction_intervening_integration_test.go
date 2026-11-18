@@ -8,7 +8,7 @@ import (
 
 // TestLaneCorrectionAcrossInterveningUpdate checks source ordering and isolation.
 //
-// Example: A disjoint owner assignment survives while a malformed dependent update holds back closure.
+// Example: A disjoint owner assignment survives while closure awaits resolution of a malformed dependent update.
 func TestLaneCorrectionAcrossInterveningUpdate(t *testing.T) {
 	t.Parallel()
 	// first is an old completion which does not match current canonical work.
@@ -49,7 +49,7 @@ func TestLaneCorrectionAcrossInterveningUpdate(t *testing.T) {
 					require.Equal(t, statusInProgress, report.Lanes[0].ImplementationStatus)
 					require.Empty(t, report.Lanes[0].CompletedAt)
 					require.NotEmpty(t, report.StatusSync.Groups)
-					require.Contains(t, report.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+					require.Contains(t, report.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 				}
 			})
 	}

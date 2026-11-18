@@ -8,7 +8,7 @@ import (
 
 // TestRootChainKeepsMalformedSiblingDiagnostic checks valid root replay beside malformed input.
 //
-// Example: An invalid scalar record stays diagnosed without stalling an unrelated root chain.
+// Example: An invalid scalar record stays diagnosed while an unrelated root chain proceeds.
 func TestRootChainKeepsMalformedSiblingDiagnostic(t *testing.T) {
 	t.Parallel()
 	forecast := `{"forecast_ref":"forecasts.yaml#/records/f","outcome":"Result","target":"2026-11-02T16:00:00Z","assessment":"complete"}`
@@ -28,7 +28,7 @@ func TestRootChainKeepsMalformedSiblingDiagnostic(t *testing.T) {
 	require.Len(t, r.RootCompletions, 1)
 	require.Equal(t, "2026-11-02T15:10:00Z", r.RootCompletions[0].CompletedAt)
 	require.Empty(t, r.StatusSync.PendingRootAdditions)
-	require.Contains(t, r.StuckRisks, "Status refresh incomplete: invalid status_update requires manual review")
+	require.Contains(t, r.StuckWorkRisks, "Status refresh incomplete: invalid status_update requires manual review")
 	require.NotNil(t, r.ScopeComplete)
 	require.False(t, *r.ScopeComplete)
 }
