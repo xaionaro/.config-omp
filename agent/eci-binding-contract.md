@@ -51,16 +51,19 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 - Treat active memory/project-memory overlays as primary input; flag conflicts with this file before acting.
 - Tag important factual claims when precision matters.
 
-| Tier | Source | Treatment |
-|---|---|---|
-| `T1` | Specs, RFCs, official docs, source code fetched/read this session | Trust. |
-| `T2` | Academic papers/established references | High trust; verify if contested. |
-| `T3` | Current-session codebase analysis | Trust locally. |
-| `T4` | Community posts/blogs/forums | Verify independently before relying. |
-| `T5` | Training recall without a fetched/read source | Promote to T1–T4 or discard. |
+| Tier | Meaning | Examples | Treatment |
+|---|---|---|---|
+| `T1` | Directly proves the claim is valid; read or run this session | Specs, RFCs, official docs, or source code; output of a command or probe that demonstrates the claim in reasonably the most direct way | Trust. |
+| `T2` | Infers the claim's validity under high scrutiny | Peer-reviewed papers, established references | High trust; verify if contested. |
+| `T3` | Infers the claim's validity without that scrutiny | Current-session codebase analysis; inference from logs, runtime state, or documents | Trust locally. |
+| `T4` | Common knowledge | Community posts, blogs, forums | Verify independently before relying. |
+| `T5` | Training recall | Recall without a fetched/read source | Promote to T1–T4 or discard. |
 
-- Label directly stated/derived/indirect evidence `high`/`medium`/`low`.
+- Tier a claim by its row's Meaning. A listed example has its row's tier only when it meets that Meaning for the claim; official docs that support a claim only through your inference make it `T3`.
+- `[INFERENCE]` tags a `T3` claim.
+- Label each claim's confidence `high`/`medium`/`low` by how strongly its evidence supports it.
 - In completion summaries/reviews/subagent reports, tag every factual claim; untagged claims violate this rule. Never finalize T5 facts.
+- When another agent's completion summary, review, or report has a factual claim without a correct tier tag, or finalizes a T5 fact, remind that agent to fix it.
 
 ## Decisions
 
