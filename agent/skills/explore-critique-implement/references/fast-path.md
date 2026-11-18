@@ -78,7 +78,7 @@ Reviewers report only. The assigned Implementer authors the TODO within the ordi
 
 ## Evidence can reopen design
 
-- The current Job owner sends each Fast report, unchanged, to the Explorer and to the Job's next fresh Step 2 critic, which verifies its discoveries. When the Explorer returns revised options from a Fast report, the Job owner dispatches that critic. The Supervisor retains cross-Job decisions and final acceptance.
+- The current Job owner sends each Fast report, unchanged, to the Job's next fresh Step 2 critic, which verifies its discoveries, and to the Explorer of any running Step 1. The Supervisor retains cross-Job decisions and final acceptance.
 - When that critic decides that the evidence shows a [redesign finding](../../references/workflow-runtime/review-policy.md#gate-evaluation), the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
 - The selected ECI design controls quality, and the within-outcome precedence above controls overlapping main/Fast edits. Neither rule dismisses contradictory evidence. The Fast Producer proposes alternatives; Step 2 selects the authoritative winner.
 - The critic decides every other correction as a patch under [Step 4](../SKILL.md#step-handoffs). Unsupported preferences and ordinary fast edits do not restart design.
@@ -150,6 +150,6 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
    - Aggregate all required critics and the final E2E pair when triggered, resolve remaining `now` findings, and verify coverage of the current state before completing the normal path or accepting the task.
    - Earlier reviews alone cannot satisfy this sequence.
 
-Reopened provisional Fast completion invalidates this sequence even without resumed writes. Resumed Fast writes invalidate this sequence; after Fast finishes again, repeat it. Restart from fresh Step 1 after renewed genuine Fast completion. Later main-path or interacting task edits refresh affected review and verification; material design findings return through Steps 1–2. Independent sibling tasks keep advancing.
+Reopened provisional Fast completion invalidates this sequence even without resumed writes. Resumed Fast writes invalidate this sequence; after Fast finishes again, repeat it. Restart from fresh Step 1 after renewed genuine Fast completion. Later main-path or interacting task edits refresh affected review and verification; [redesign findings](../../references/workflow-runtime/review-policy.md#gate-evaluation) return through Steps 1–2. Independent sibling tasks keep advancing.
 
 Cancellation uses user closure, never a clean pass or substitute Fast completion. Preserve changes and evidence, observe task-owned writers stopped, and keep uncancelled siblings active under the existing closure rules.
