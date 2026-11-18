@@ -282,8 +282,8 @@ run_hook() {
         exec 9<<<"$fd9_token"
       elif [ "$fd9_mode" = sentinel ]; then
         exec 9<<<"sentinel"
-      elif [ "$fd9_mode" = blocking ]; then
-        exec 9<"${COMPOUND_FD9_FIFO:?missing blocking FD9 FIFO}"
+      elif [ "$fd9_mode" = waiting ]; then
+        exec 9<"${COMPOUND_FD9_FIFO:?missing waiting FD9 FIFO}"
       fi
       case "$probe_required" in
         present) export PROBE_REQUIRED=present ;;
@@ -314,7 +314,7 @@ run_compound_handoff_boundary_target() {
   local inner fifo writer hook_pid status output nonlive_session nonlive_dir nonlive_marker
 
   inner="$TMP_ROOT/compound-handoff-inner"
-  fifo="$TMP_ROOT/compound-handoff-blocking.fifo"
+  fifo="$TMP_ROOT/compound-handoff-waiting.fifo"
   mkdir -p -- "$inner"
   printf '%s\n' ordinary >"$inner/eci_active"
   mkfifo -- "$fifo"
@@ -368,7 +368,7 @@ run_compound_handoff_boundary_target() {
   # activate recursive metadata merely because the descriptor exists.
   assert_allowed "printf ordinary" worker configured absent "$REPO" '[]' false none sentinel
 
-  # A blocking inherited descriptor proves the adapter gates its read behind
+  # A waiting inherited descriptor proves the adapter gates its read behind
   # structurally eligible handoff metadata. The callback must finish before
   # the writer closes the FIFO.
   (
@@ -377,7 +377,7 @@ run_compound_handoff_boundary_target() {
     sleep 12
   ) &
   writer=$!
-  COMPOUND_FD9_FIFO="$fifo" run_hook "printf ordinary" worker configured absent "$REPO" '[]' false true none blocking >"$TMP_ROOT/blocking-run.out" &
+  COMPOUND_FD9_FIFO="$fifo" run_hook "printf ordinary" worker configured absent "$REPO" '[]' false true none waiting >"$TMP_ROOT/waiting-run.out" &
   hook_pid=$!
   status=0
   for _ in $(seq 1 80); do
@@ -395,7 +395,7 @@ run_compound_handoff_boundary_target() {
   kill "$writer" 2>/dev/null || true
   wait "$writer" 2>/dev/null || true
   [ "$status" -eq 0 ] || {
-    printf 'ordinary callback blocked or failed while FD9 was inherited: status=%s\n' "$status" >&2
+    printf 'ordinary callback stalled or failed while FD9 was inherited: status=%s\n' "$status" >&2
     return 1
   }
 

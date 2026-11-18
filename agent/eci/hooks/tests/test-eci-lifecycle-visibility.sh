@@ -60,7 +60,7 @@ assert_visibility_allowed() {
     exit 1
   }
   [ ! -s "$output" ] || {
-    printf 'read-only lifecycle was blocked: role=%s command=%s\n' "$role" "$command" >&2
+    printf 'read-only lifecycle was denied: role=%s command=%s\n' "$role" "$command" >&2
     cat -- "$output" >&2
     exit 1
   }

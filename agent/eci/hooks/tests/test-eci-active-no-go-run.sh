@@ -43,12 +43,12 @@ expect_call warm-status 2 'usage: status-report validate|render' bash "$root/bin
 expect_call warm-assignment 1 'flag: help requested' bash "$root/bin/eci-requirement-assignment" --help
 
 # The old pinned planner must not be invoked until a coordinated cutover.
-expect_call blocked-planner 1 'maintain-planner unavailable until coordinated cutover' \
+expect_call denied-planner 1 'maintain-planner unavailable until coordinated cutover' \
   bash "$root/bin/eci-active" maintain-planner
 for marker in 'build-native-binaries.sh' 'eci-runtime-sync" planner-apply'; do
-  grep -qF "$marker" "$tmp/blocked-planner.err" || {
-    printf 'no-go-run: blocked-planner missing %s\n' "$marker" >&2
-    cat "$tmp/blocked-planner.err" >&2
+  grep -qF "$marker" "$tmp/denied-planner.err" || {
+    printf 'no-go-run: denied-planner missing %s\n' "$marker" >&2
+    cat "$tmp/denied-planner.err" >&2
     exit 1
   }
 done

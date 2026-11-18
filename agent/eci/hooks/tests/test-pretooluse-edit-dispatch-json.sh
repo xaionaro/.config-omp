@@ -115,7 +115,7 @@ run_home_authority_case() {
     return 1
   }
   [ ! -s "$output" ] || {
-    printf 'dispatcher %s-HOME case unexpectedly blocked a normal edit:\n' "$label" >&2
+    printf 'dispatcher %s-HOME case unexpectedly denied a normal edit:\n' "$label" >&2
     cat -- "$output" >&2
     return 1
   }

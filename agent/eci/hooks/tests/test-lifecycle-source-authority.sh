@@ -93,7 +93,7 @@ HOME="$fixture_kimi_home" ECI_HOME="$poisoned_eci" KIMI_CODE_HOME="$fixture_kimi
   ECI_PROOF_ROOT="$proof_root" \
   bash "$fixture_kimi/hooks/eci-active-gate.sh" <"$ledger_input" >"$ledger_output"
 if [ -s "$ledger_output" ]; then
-  fail "Kimi current-session ledger edit was blocked: $(cat -- "$ledger_output")"
+  fail "Kimi current-session ledger edit was denied: $(cat -- "$ledger_output")"
 fi
 
 if [ "$failures" -ne 0 ]; then

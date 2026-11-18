@@ -1777,7 +1777,7 @@ test_validate_edit_write_allows_aliased_proof_dir() {
   expect_no_output "$out"
 }
 
-test_validate_edit_write_blocks_symlinked_alias_dir() {
+test_validate_edit_write_denies_symlinked_alias_dir() {
   local proof_root input out alias_dir alias_target
   proof_root="$(fresh_proof_root edit-write-symlink-alias)"
   alias_target="$TMP_ROOT/edit-write-symlink-alias-target"
@@ -1794,7 +1794,7 @@ test_validate_edit_write_blocks_symlinked_alias_dir() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "unsafe session-scoped edit path"
 }
 
-test_eci_gate_blocks_relative_control_path_write() {
+test_eci_gate_denies_relative_control_path_write() {
   local proof_root input out marker relative_path
   proof_root="$(fresh_proof_root gate-write-relative-control)"
   mkdir -p "$proof_root/t00-session"
@@ -1811,7 +1811,7 @@ test_eci_gate_blocks_relative_control_path_write() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
-test_validate_edit_write_blocks_notebookedit_other_sid_proof() {
+test_validate_edit_write_denies_notebookedit_other_sid_proof() {
   local proof_root input out
   proof_root="$(fresh_proof_root edit-write-notebook-other)"
   mkdir -p "$TMP_ROOT/home/.agent/context/sessions/other-session"
@@ -1843,7 +1843,7 @@ test_validate_apply_patch_allows_aliased_proof_dir() {
   expect_no_output "$out"
 }
 
-test_validate_apply_patch_blocks_symlinked_alias_dir() {
+test_validate_apply_patch_denies_symlinked_alias_dir() {
   local proof_root input out alias_dir alias_target patch_path patch_text
   proof_root="$(fresh_proof_root apply-patch-symlink-alias)"
   alias_target="$TMP_ROOT/apply-patch-symlink-alias-target"
@@ -1862,7 +1862,7 @@ test_validate_apply_patch_blocks_symlinked_alias_dir() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "unsafe session-scoped patch path"
 }
 
-test_eci_gate_blocks_relative_control_path_apply_patch() {
+test_eci_gate_denies_relative_control_path_apply_patch() {
   local proof_root input out marker relative_path patch_text
   proof_root="$(fresh_proof_root gate-apply-patch-relative-control)"
   mkdir -p "$proof_root/t00-session"
@@ -1880,7 +1880,7 @@ test_eci_gate_blocks_relative_control_path_apply_patch() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "ECI_CONTROL_OWNER_REQUIRED"
 }
 
-test_validate_apply_patch_blocks_other_sid_proof() {
+test_validate_apply_patch_denies_other_sid_proof() {
   local proof_root input out patch_path patch_text
   proof_root="$(fresh_proof_root apply-patch-other-session)"
   mkdir -p "$TMP_ROOT/home/.agent/context/sessions/other-session"
@@ -1896,7 +1896,7 @@ test_validate_apply_patch_blocks_other_sid_proof() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "other-session"
 }
 
-test_validate_apply_patch_blocks_uuid_sid_despite_alias_marker() {
+test_validate_apply_patch_denies_uuid_sid_despite_alias_marker() {
   local proof_root input out uuid_dir patch_path patch_text
   proof_root="$(fresh_proof_root apply-patch-uuid-alias)"
   uuid_dir="$TMP_ROOT/home/.agent/context/sessions/019e55e6-6d85-7181-b197-43aa5708609b"
@@ -2009,7 +2009,7 @@ write_apply_patch_input() {
     '{session_id:"t00-session",tool_name:"apply_patch",tool_input:{patch:$patch}}' >"$output"
 }
 
-test_validate_direct_and_apply_block_subagent_ledger_paths() {
+test_validate_direct_and_apply_deny_subagent_ledger_paths() {
   local proof_root ledger_dir transcript ledger tool input out tag
   proof_root="$(fresh_proof_root direct-subagent-ledger)"
   ledger_dir="$TMP_ROOT/home/.agent/context/sessions/t00-session"
@@ -2094,7 +2094,7 @@ test_validate_direct_and_apply_allow_main_ledger_paths() {
 }
 
 test_validate_bash_allows_write_into_submodule() {
-  # Submodule write blocking is the file-edit tools' job (Edit/Write/MultiEdit
+  # Submodule write denial is the file-edit tools' job (Edit/Write/MultiEdit
   # via validate-edit-write.sh). Bash is intentionally NOT gated on submodule
   # paths, so normal script/build workflows in submodules still work.
   local repo sub input out
@@ -2192,7 +2192,7 @@ test_ate_gate_allows_markdown_edits_for_coordinator() {
   expect_no_output "$out"
 }
 
-test_validate_apply_patch_blocks_local_gomod_replace_from_patch() {
+test_validate_apply_patch_denies_local_gomod_replace_from_patch() {
   local out
   out="$TMP_ROOT/apply-patch-gomod.out"
   run_hook "$out" "$ROOT/hooks/validate-apply-patch.sh" "$FIXTURES/validate-apply-patch-gomod.json" || return 1
@@ -2200,7 +2200,7 @@ test_validate_apply_patch_blocks_local_gomod_replace_from_patch() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "local relative replace"
 }
 
-test_validate_apply_patch_blocks_local_gomod_replace_on_move_destination() {
+test_validate_apply_patch_denies_local_gomod_replace_on_move_destination() {
   local out
   out="$TMP_ROOT/apply-patch-gomod-move.out"
   run_hook "$out" "$ROOT/hooks/validate-apply-patch.sh" "$FIXTURES/validate-apply-patch-gomod-move.json" || return 1
@@ -2208,7 +2208,7 @@ test_validate_apply_patch_blocks_local_gomod_replace_on_move_destination() {
     json_field_contains "$out" '.hookSpecificOutput.permissionDecisionReason // empty' "local relative replace"
 }
 
-test_validate_apply_patch_blocks_block_form_local_gomod_replace() {
+test_validate_apply_patch_denies_block_form_local_gomod_replace() {
   local out
   out="$TMP_ROOT/apply-patch-gomod-block.out"
   run_hook "$out" "$ROOT/hooks/validate-apply-patch.sh" "$FIXTURES/validate-apply-patch-gomod-block.json" || return 1
@@ -2399,43 +2399,43 @@ expect_uncapped_make_platform_decision() {
   fi
 }
 
-test_validate_bash_blocks_direct_make_without_memory_cap() {
+test_validate_bash_denies_direct_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "make test" "bash-make-direct")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_env_make_without_memory_cap() {
+test_validate_bash_denies_env_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "env make test" "bash-make-env")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_sudo_make_without_memory_cap() {
+test_validate_bash_denies_sudo_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "sudo make test" "bash-make-sudo")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_command_make_without_memory_cap() {
+test_validate_bash_denies_command_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "command -- make test" "bash-make-command")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_exec_make_without_memory_cap() {
+test_validate_bash_denies_exec_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "exec -- make test" "bash-make-exec")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_time_make_without_memory_cap() {
+test_validate_bash_denies_time_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "time make test" "bash-make-time")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_time_format_make_without_memory_cap() {
+test_validate_bash_denies_time_format_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command \
     "/usr/bin/time -f '%M' make test" \
@@ -2443,43 +2443,43 @@ test_validate_bash_blocks_time_format_make_without_memory_cap() {
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_nice_make_without_memory_cap() {
+test_validate_bash_denies_nice_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "nice make test" "bash-make-nice")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_timeout_make_without_memory_cap() {
+test_validate_bash_denies_timeout_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "timeout 30s make test" "bash-make-timeout")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_bash_c_make_without_memory_cap() {
+test_validate_bash_denies_bash_c_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "bash -c 'make test'" "bash-make-bash-c")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_bash_lc_make_without_memory_cap() {
+test_validate_bash_denies_bash_lc_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "bash -lc 'make test'" "bash-make-bash-lc")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_sh_c_make_without_memory_cap() {
+test_validate_bash_denies_sh_c_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "sh -c 'make test'" "bash-make-sh-c")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_xargs_make_without_memory_cap() {
+test_validate_bash_denies_xargs_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command "printf test | xargs make" "bash-make-xargs")" || return 1
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_find_exec_make_without_memory_cap() {
+test_validate_bash_denies_find_exec_make_without_memory_cap() {
   local out
   out="$(run_validate_bash_command \
     "find . -maxdepth 0 -exec make test \\;" \
@@ -2527,7 +2527,7 @@ test_validate_bash_allows_prlimit_attached_v_capped_make() {
   expect_no_output "$out"
 }
 
-test_validate_bash_blocks_systemd_run_without_memorymax_for_make() {
+test_validate_bash_denies_systemd_run_without_memorymax_for_make() {
   local out
   out="$(run_validate_bash_command \
     "systemd-run --scope make test" \
@@ -2535,7 +2535,7 @@ test_validate_bash_blocks_systemd_run_without_memorymax_for_make() {
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make() {
+test_validate_bash_denies_systemd_run_unit_without_memorymax_for_make() {
   local out
   out="$(run_validate_bash_command \
     "systemd-run --scope -u build make test" \
@@ -2543,7 +2543,7 @@ test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make() {
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_systemd_run_memoryhigh_for_make() {
+test_validate_bash_denies_systemd_run_memoryhigh_for_make() {
   local out
   out="$(run_validate_bash_command \
     "systemd-run --scope -p MemoryHigh=1G make test" \
@@ -2551,7 +2551,7 @@ test_validate_bash_blocks_systemd_run_memoryhigh_for_make() {
   expect_uncapped_make_platform_decision "$out"
 }
 
-test_validate_bash_blocks_prlimit_unlimited_cap_for_make() {
+test_validate_bash_denies_prlimit_unlimited_cap_for_make() {
   local out
   out="$(run_validate_bash_command \
     "prlimit --as=unlimited make test" \
@@ -3063,26 +3063,26 @@ run_case "validate-edit-write allows NotebookEdit on own proof dir" \
   test_validate_edit_write_allows_notebookedit_same_sid_proof
 run_case "validate-edit-write allows aliased proof dir" \
   test_validate_edit_write_allows_aliased_proof_dir
-run_case "validate-edit-write blocks symlinked alias dir" \
-  test_validate_edit_write_blocks_symlinked_alias_dir
-run_case "ECI gate blocks relative control path for Write" \
-  test_eci_gate_blocks_relative_control_path_write
-run_case "validate-edit-write blocks NotebookEdit on another session proof dir" \
-  test_validate_edit_write_blocks_notebookedit_other_sid_proof
+run_case "validate-edit-write denies symlinked alias dir" \
+  test_validate_edit_write_denies_symlinked_alias_dir
+run_case "ECI gate denies relative control path for Write" \
+  test_eci_gate_denies_relative_control_path_write
+run_case "validate-edit-write denies NotebookEdit on another session proof dir" \
+  test_validate_edit_write_denies_notebookedit_other_sid_proof
 run_case "validate-apply-patch allows aliased proof dir" \
   test_validate_apply_patch_allows_aliased_proof_dir
-run_case "validate-apply-patch blocks symlinked alias dir" \
-  test_validate_apply_patch_blocks_symlinked_alias_dir
-run_case "ECI gate blocks relative control path for apply_patch" \
-  test_eci_gate_blocks_relative_control_path_apply_patch
-run_case "validate-apply-patch blocks edits to another session proof dir" \
-  test_validate_apply_patch_blocks_other_sid_proof
-run_case "validate-apply-patch blocks UUID proof dir despite alias marker" \
-  test_validate_apply_patch_blocks_uuid_sid_despite_alias_marker
+run_case "validate-apply-patch denies symlinked alias dir" \
+  test_validate_apply_patch_denies_symlinked_alias_dir
+run_case "ECI gate denies relative control path for apply_patch" \
+  test_eci_gate_denies_relative_control_path_apply_patch
+run_case "validate-apply-patch denies edits to another session proof dir" \
+  test_validate_apply_patch_denies_other_sid_proof
+run_case "validate-apply-patch denies UUID proof dir despite alias marker" \
+  test_validate_apply_patch_denies_uuid_sid_despite_alias_marker
 run_case "validate-bash allows subagent low-level work" \
   test_validate_bash_allows_subagent_low_level_work
-run_case "validate direct/apply blocks subagent ledger paths" \
-  test_validate_direct_and_apply_block_subagent_ledger_paths
+run_case "validate direct/apply denies subagent ledger paths" \
+  test_validate_direct_and_apply_deny_subagent_ledger_paths
 run_case "validate direct/apply allows main-thread ledger paths" \
   test_validate_direct_and_apply_allow_main_ledger_paths
 run_case "validate-bash allows writes into a git submodule" \
@@ -3100,11 +3100,11 @@ run_case "validate-edit-write allows remote Write go.mod replace" \
 run_case "validate-edit-write allows remote MultiEdit go.mod replace" \
   test_validate_edit_write_allows_remote_multiedit_gomod_replace
 run_case "validate-apply-patch parses tool_input.patch go.mod replaces" \
-  test_validate_apply_patch_blocks_local_gomod_replace_from_patch
-run_case "validate-apply-patch blocks go.mod replace on Move to destination" \
-  test_validate_apply_patch_blocks_local_gomod_replace_on_move_destination
-run_case "validate-apply-patch blocks block-form go.mod local replace" \
-  test_validate_apply_patch_blocks_block_form_local_gomod_replace
+  test_validate_apply_patch_denies_local_gomod_replace_from_patch
+run_case "validate-apply-patch denies go.mod replace on Move to destination" \
+  test_validate_apply_patch_denies_local_gomod_replace_on_move_destination
+run_case "validate-apply-patch denies block-form go.mod local replace" \
+  test_validate_apply_patch_denies_block_form_local_gomod_replace
 run_case "validate-apply-patch allows remote go.mod replace" \
   test_validate_apply_patch_allows_remote_gomod_replace
 run_case "validate-apply-patch allows unrelated non-plan edit" \
@@ -3130,33 +3130,33 @@ run_case "validate-bash allows in-place imports paths" \
 run_case "validate-bash allows vendor test with tmp redirect" \
   test_validate_bash_allows_vendor_test_with_tmp_redirect
 run_case "validate-bash platform decision for direct uncapped make" \
-  test_validate_bash_blocks_direct_make_without_memory_cap
+  test_validate_bash_denies_direct_make_without_memory_cap
 run_case "validate-bash platform decision for env uncapped make" \
-  test_validate_bash_blocks_env_make_without_memory_cap
+  test_validate_bash_denies_env_make_without_memory_cap
 run_case "validate-bash platform decision for sudo uncapped make" \
-  test_validate_bash_blocks_sudo_make_without_memory_cap
+  test_validate_bash_denies_sudo_make_without_memory_cap
 run_case "validate-bash platform decision for command uncapped make" \
-  test_validate_bash_blocks_command_make_without_memory_cap
+  test_validate_bash_denies_command_make_without_memory_cap
 run_case "validate-bash platform decision for exec uncapped make" \
-  test_validate_bash_blocks_exec_make_without_memory_cap
+  test_validate_bash_denies_exec_make_without_memory_cap
 run_case "validate-bash platform decision for time uncapped make" \
-  test_validate_bash_blocks_time_make_without_memory_cap
+  test_validate_bash_denies_time_make_without_memory_cap
 run_case "validate-bash platform decision for time format uncapped make" \
-  test_validate_bash_blocks_time_format_make_without_memory_cap
+  test_validate_bash_denies_time_format_make_without_memory_cap
 run_case "validate-bash platform decision for nice uncapped make" \
-  test_validate_bash_blocks_nice_make_without_memory_cap
+  test_validate_bash_denies_nice_make_without_memory_cap
 run_case "validate-bash platform decision for timeout uncapped make" \
-  test_validate_bash_blocks_timeout_make_without_memory_cap
+  test_validate_bash_denies_timeout_make_without_memory_cap
 run_case "validate-bash platform decision for bash -c uncapped make" \
-  test_validate_bash_blocks_bash_c_make_without_memory_cap
+  test_validate_bash_denies_bash_c_make_without_memory_cap
 run_case "validate-bash platform decision for bash -lc uncapped make" \
-  test_validate_bash_blocks_bash_lc_make_without_memory_cap
+  test_validate_bash_denies_bash_lc_make_without_memory_cap
 run_case "validate-bash platform decision for sh -c uncapped make" \
-  test_validate_bash_blocks_sh_c_make_without_memory_cap
+  test_validate_bash_denies_sh_c_make_without_memory_cap
 run_case "validate-bash platform decision for xargs uncapped make" \
-  test_validate_bash_blocks_xargs_make_without_memory_cap
+  test_validate_bash_denies_xargs_make_without_memory_cap
 run_case "validate-bash platform decision for find -exec uncapped make" \
-  test_validate_bash_blocks_find_exec_make_without_memory_cap
+  test_validate_bash_denies_find_exec_make_without_memory_cap
 run_case "validate-bash allows systemd-run property capped make" \
   test_validate_bash_allows_systemd_run_property_capped_make
 run_case "validate-bash allows systemd-run short property capped make" \
@@ -3168,13 +3168,13 @@ run_case "validate-bash allows prlimit --as capped make" \
 run_case "validate-bash allows prlimit attached -v capped make" \
   test_validate_bash_allows_prlimit_attached_v_capped_make
 run_case "validate-bash platform decision for systemd-run without MemoryMax" \
-  test_validate_bash_blocks_systemd_run_without_memorymax_for_make
+  test_validate_bash_denies_systemd_run_without_memorymax_for_make
 run_case "validate-bash platform decision for systemd-run unit without MemoryMax" \
-  test_validate_bash_blocks_systemd_run_unit_without_memorymax_for_make
+  test_validate_bash_denies_systemd_run_unit_without_memorymax_for_make
 run_case "validate-bash platform decision for systemd-run MemoryHigh-only" \
-  test_validate_bash_blocks_systemd_run_memoryhigh_for_make
+  test_validate_bash_denies_systemd_run_memoryhigh_for_make
 run_case "validate-bash platform decision for prlimit unlimited make" \
-  test_validate_bash_blocks_prlimit_unlimited_cap_for_make
+  test_validate_bash_denies_prlimit_unlimited_cap_for_make
 run_case "validate-bash allows non-make command with make substring" \
   test_validate_bash_allows_non_make_command_with_make_substring
 run_case "validate-bash allows printf make word" \

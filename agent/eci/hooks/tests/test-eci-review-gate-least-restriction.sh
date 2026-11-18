@@ -151,7 +151,7 @@ assert_live_hooks_unchanged() {
     fail 'pretooluse edit-dispatch source was changed'
 }
 
-test_stale_review_history_is_nonblocking() {
+test_stale_review_history_never_denies() {
   local out="$TMP_ROOT/stale-history.out" err="$TMP_ROOT/stale-history.err"
   local lock_ready="$TMP_ROOT/lock-ready" holder
 
@@ -168,12 +168,12 @@ test_stale_review_history_is_nonblocking() {
   if ! run_gate >"$out" 2>"$err"; then
     cat "$err" >&2
     wait "$holder" || true
-    fail 'stale history blocked the current in-repository diff'
+    fail 'stale history denied the current in-repository diff'
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || {
     cat "$out" >&2
-    fail 'the nonblocking review reminder omitted the required workflow critic'
+    fail 'the advisory review reminder omitted the required workflow critic'
   }
 }
 
@@ -204,7 +204,7 @@ test_unparseable_historical_manifest_is_a_reminder() {
   printf 'old malformed review metadata\n' >"$manifest"
   if ! run_gate >"$out" 2>"$err"; then
     cat "$err" >&2
-    fail 'unparseable historical metadata blocked ordinary work'
+    fail 'unparseable historical metadata denied ordinary work'
   fi
   grep -Fq 'review refresh needed' "$out" || {
     cat "$out" >&2
@@ -237,7 +237,7 @@ assert_singleton_manifest_shape_is_a_reminder() {
 
   if ! run_gate >"$out" 2>"$err"; then
     cat "$err" >&2
-    fail "singleton $shape review metadata blocked ordinary work"
+    fail "singleton $shape review metadata denied ordinary work"
   fi
   grep -Fq 'review refresh needed' "$out" || {
     cat "$out" >&2
@@ -292,7 +292,7 @@ test_symlinked_current_target_resolves_within_repo() {
   }
 }
 
-test_singleton_commit_history_and_lock_are_nonblocking() {
+test_singleton_commit_history_and_lock_never_deny() {
   local out="$TMP_ROOT/commit.out" err="$TMP_ROOT/commit.err"
   local lock_ready="$TMP_ROOT/commit-lock-ready" holder receipt_before identity_before
 
@@ -312,7 +312,7 @@ test_singleton_commit_history_and_lock_are_nonblocking() {
   if ! run_singleton_gate commit >"$out" 2>"$err"; then
     cat "$err" >&2
     wait "$holder" || true
-    fail 'historical singleton commit state or lock blocked current work'
+    fail 'historical singleton commit state or lock denied current work'
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail 'commit did not route a fresh critic reminder'
@@ -322,7 +322,7 @@ test_singleton_commit_history_and_lock_are_nonblocking() {
     fail 'commit rewrote historical identities'
 }
 
-test_singleton_off_history_and_lock_are_nonblocking() {
+test_singleton_off_history_and_lock_never_deny() {
   local out="$TMP_ROOT/off.out" err="$TMP_ROOT/off.err"
   local lock_ready="$TMP_ROOT/off-lock-ready" holder marker_before anchor_before
 
@@ -342,7 +342,7 @@ test_singleton_off_history_and_lock_are_nonblocking() {
   if ! run_singleton_gate off >"$out" 2>"$err"; then
     cat "$err" >&2
     wait "$holder" || true
-    fail 'historical singleton off state or lock blocked current work'
+    fail 'historical singleton off state or lock denied current work'
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail 'off did not route a fresh critic reminder'
@@ -352,7 +352,7 @@ test_singleton_off_history_and_lock_are_nonblocking() {
     fail 'off gate rewrote historical anchor state'
 }
 
-assert_aggregate_history_phase_is_nonblocking() {
+assert_aggregate_history_phase_never_denies() {
   local phase="$1" out="$TMP_ROOT/aggregate-$1.out" err="$TMP_ROOT/aggregate-$1.err"
   local lock_ready="$TMP_ROOT/aggregate-$1-lock-ready" holder anchor_before
 
@@ -370,7 +370,7 @@ assert_aggregate_history_phase_is_nonblocking() {
   if ! run_aggregate_gate "$phase" >"$out" 2>"$err"; then
     cat "$err" >&2
     wait "$holder" || true
-    fail "historical aggregate $phase state or lock blocked current work"
+    fail "historical aggregate $phase state or lock denied current work"
   fi
   wait "$holder"
   grep -Fq 'fresh named least-restriction critic' "$out" || fail "aggregate $phase did not route a fresh critic reminder"
@@ -378,10 +378,10 @@ assert_aggregate_history_phase_is_nonblocking() {
     fail "aggregate $phase gate rewrote historical anchor state"
 }
 
-test_aggregate_history_and_lock_are_nonblocking() {
-  assert_aggregate_history_phase_is_nonblocking final
-  assert_aggregate_history_phase_is_nonblocking commit
-  assert_aggregate_history_phase_is_nonblocking off
+test_aggregate_history_and_lock_never_deny() {
+  assert_aggregate_history_phase_never_denies final
+  assert_aggregate_history_phase_never_denies commit
+  assert_aggregate_history_phase_never_denies off
 }
 
 test_aggregate_outside_current_target_still_fails() {
@@ -489,7 +489,7 @@ assert_aggregate_plan_shape_is_a_reminder() {
 
   if ! run_aggregate_gate final >"$out" 2>"$err"; then
     cat "$err" >&2
-    fail "aggregate $shape plan metadata blocked ordinary work"
+    fail "aggregate $shape plan metadata denied ordinary work"
   fi
   grep -Fq 'review refresh needed' "$out" || {
     cat "$out" >&2
@@ -507,15 +507,15 @@ test_aggregate_plan_shapes_are_advisory() {
 }
 
 assert_live_hooks_unchanged
-test_stale_review_history_is_nonblocking
+test_stale_review_history_never_denies
 test_symlinked_current_target_escape_still_fails
 test_unparseable_historical_manifest_is_a_reminder
 test_singleton_manifest_shapes_are_advisory
 test_symlinked_current_review_cwd_resolves_within_repo
 test_symlinked_current_target_resolves_within_repo
-test_singleton_commit_history_and_lock_are_nonblocking
-test_singleton_off_history_and_lock_are_nonblocking
-test_aggregate_history_and_lock_are_nonblocking
+test_singleton_commit_history_and_lock_never_deny
+test_singleton_off_history_and_lock_never_deny
+test_aggregate_history_and_lock_never_deny
 test_aggregate_outside_current_target_still_fails
 test_aggregate_symlink_current_target_resolves_within_repo
 test_aggregate_repository_alias_escape_still_fails

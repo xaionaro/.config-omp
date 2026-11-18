@@ -93,7 +93,7 @@ assert_allowed() {
 
   run_hook "$command"
   [ ! -s "$OUTPUT" ] || {
-    printf 'legacy override state incorrectly blocked ordinary work: command=%s\n' \
+    printf 'legacy override state incorrectly denied ordinary work: command=%s\n' \
       "$command" >&2
     cat -- "$OUTPUT" >&2
     exit 1

@@ -34,13 +34,13 @@ wait_report_fixture() {
   {
     printf '# ECI User-Owned Wait\n'
     printf 'state: user-owned-wait\n'
-    printf 'blocker_id: wait-repair-test\n'
+    printf 'stuck_id: wait-repair-test\n'
     printf 'state_fingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
     printf 'owner: user\n'
     printf 'brp_result: exhausted-no-feasible-internal-path\n'
     printf 'user_owned_input: unobtainable\n'
-    printf 'unblock_kind: input\n'
-    printf 'unblock: user-owned repair fixture\n'
+    printf 'resume_kind: input\n'
+    printf 'resume: user-owned repair fixture\n'
   } >"$report"
 }
 
@@ -65,7 +65,7 @@ cp -- "$marker" "$marker_before"
 cp -- "$repo/.git/index" "$index_before"
 cp -- "$repo/README" "$worktree_before"
 
-# A missing final LF is malformed and remains a blocking Stop condition.
+# A missing final LF is malformed and remains a Stop condition that refuses to finish.
 truncate --size=-1 -- "$state"
 input="$TMP_ROOT/input.json"
 jq -cn --arg cwd "$fixture_cwd" --arg sid "$session_id" \

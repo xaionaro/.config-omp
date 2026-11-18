@@ -86,7 +86,7 @@ run_hook() {
 # assert_empty fails when the hook produced any response for $1.
 assert_empty() {
   [ ! -s "$OUTPUT" ] || {
-    printf '%s\n' "$ROLE: $1 was blocked:" >&2
+    printf '%s\n' "$ROLE: $1 was denied:" >&2
     cat -- "$OUTPUT" >&2
     exit 1
   }

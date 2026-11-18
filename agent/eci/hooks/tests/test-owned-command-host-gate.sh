@@ -61,7 +61,7 @@ path=$PATH
 if [ "$host" = Linux ]; then
   mkdir -p "$tmp/darwin"
   write_uname "$tmp/darwin" Darwin
-  # Linux stand-in for the Darwin lockf forms that eci-file-lock.sh calls: blocking acquire (2 arguments), nonblocking
+  # Linux stand-in for the Darwin lockf forms that eci-file-lock.sh calls: waiting acquire (2 arguments), try
   # acquire (4 arguments) and release (5 arguments). Each call is logged so the test can see that the stand-in ran.
   # The release form is `lockf -s -t 0 /dev/fd/N COMMAND`: argument 3 is the timeout 0, and argument 4 names fd N.
   cat >"$tmp/darwin/lockf" <<EOF

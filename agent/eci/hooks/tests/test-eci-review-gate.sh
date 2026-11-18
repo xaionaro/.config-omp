@@ -636,7 +636,7 @@ test_main_commit_boundary_requires_manifest() {
   ' "$out" >/dev/null
 }
 
-test_reviewed_dirty_commit_and_off_review_are_nonblocking() {
+test_reviewed_dirty_commit_and_off_review_never_deny() {
   local repo proof_root sid session_dir
   repo="$TMP_ROOT/reviewed-commit-repo"
   proof_root="$TMP_ROOT/reviewed-commit-proof"
@@ -925,7 +925,7 @@ test_commit_parser_wrappers_and_unknown_fail_closed() {
         .hookSpecificOutput.permissionDecisionReason |
         contains("delegate bounded implementation, exploration, debugging, or test work to an ECI worker/subagent") and
         contains("wait for and collect its result") and
-        contains("do not treat this denial alone as a blocker")
+        contains("do not treat this denial alone as stuck work")
       ' "$out" >/dev/null
     fi
   done
@@ -1604,7 +1604,7 @@ test_lock_receipt_spoof_is_ignored() {
   grep -Fq 'lock' "$TMP_ROOT/spoof.err"
 }
 
-test_clean_teardown_history_is_nonblocking() {
+test_clean_teardown_history_never_denies() {
   local source="$ROOT/bin/eci-active"
   grep -Fq 'reconcile_teardown_history' "$source"
   grep -Fq 'validate_disengage_report "$report_path"' "$source"
@@ -1629,7 +1629,7 @@ if [ "${ECI_EMIT_CURRENT_MANIFEST:-0}" = 1 ]; then
   exit 0
 fi
 
-test_reviewed_dirty_commit_and_off_review_are_nonblocking
+test_reviewed_dirty_commit_and_off_review_never_deny
 test_manifest_write_is_role_neutral_and_target_safe
 test_malformed_commit_identity_does_not_skip_active_gate
 test_commit_parser_wrappers_and_unknown_fail_closed
@@ -1651,5 +1651,5 @@ test_unanchored_identity_row_is_rejected
 test_spawn_and_report_identity_bindings_are_required
 test_nested_marker_lifecycle_is_role_neutral_and_target_safe
 test_lock_receipt_spoof_is_ignored
-test_clean_teardown_history_is_nonblocking
+test_clean_teardown_history_never_denies
 printf '%s\n' 'ECI required-critic review gate tests: PASS'

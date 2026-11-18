@@ -56,7 +56,7 @@ assert_dynamic_pipeline_allowed() {
     exit 1
   }
   [ ! -s "$output" ] || {
-    printf 'dynamic pipeline was blocked by syntax alone: role=%s\n' "$role" >&2
+    printf 'dynamic pipeline was denied by syntax alone: role=%s\n' "$role" >&2
     cat -- "$output" >&2
     exit 1
   }
@@ -72,7 +72,7 @@ assert_ordinary_pipeline_allowed() {
     exit 1
   }
   [ ! -s "$output" ] || {
-    printf '%s\n' 'finite inspection pipeline was blocked without a concrete target effect:' >&2
+    printf '%s\n' 'finite inspection pipeline was denied without a concrete target effect:' >&2
     cat -- "$output" >&2
     exit 1
   }

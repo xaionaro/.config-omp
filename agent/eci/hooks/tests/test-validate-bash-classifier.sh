@@ -983,7 +983,7 @@ assert_git_broad_effect_denied() {
 assert_git_whole_reset_denied() {
   assert_git_broad_effect_denied "$1" "${2:-run_hook}" ECI_WHOLE_TREE_RESET=1
 }
-# Removing or relocating a live Bash-gate file blocks every later Bash call; the
+# Removing or relocating a live Bash-gate file denies every later Bash call; the
 # denial names the in-place, index-only and acknowledged routes.
 assert_live_gate_removal_denied() {
   local command="$1" runner="${2:-run_hook}" output

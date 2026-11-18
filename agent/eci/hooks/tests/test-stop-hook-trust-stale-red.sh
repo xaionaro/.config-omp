@@ -2,7 +2,7 @@
 
 # Intentionally RED until ECI rejects a stale trust record for an enabled,
 # user-level Stop hook.  A modified Stop command must not be silently omitted
-# from the active hook engine while ECI relies on it to block finalization.
+# from the active hook engine while ECI relies on it to refuse finalization.
 #
 # This test only asks the app server to discover hooks.  It never invokes a
 # Stop hook and changes only an isolated temporary ECI_HOME.

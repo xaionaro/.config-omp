@@ -88,7 +88,7 @@ assert_broad_denied() {
   jq -e '.hookSpecificOutput.permissionDecision == "deny" and
     (.hookSpecificOutput.permissionDecisionReason | contains("[ECI_BROAD_DESTRUCTIVE_DENIED]"))' "$output" >/dev/null
 }
-# Removing or relocating a live Bash-gate file blocks every later Bash call, so it
+# Removing or relocating a live Bash-gate file denies every later Bash call, so it
 # is denied with the in-place, index-only and acknowledged routes.
 assert_live_gate_denied() {
   local command="$1" output="$TMP_ROOT/live-gate-denial.json"

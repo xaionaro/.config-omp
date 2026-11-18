@@ -48,14 +48,14 @@ run_active on 'aggregate coordination residue fixture' >/dev/null
 printf '%s\n' 'legacy_metadata: harmless historic marker context' >>"$session_dir/eci_active"
 run_active aggregate-migrate "$plan_source" >/dev/null
 
-assert_residue_does_not_block_selected_stage() {
+assert_residue_does_not_deny_selected_stage() {
   local label="$1" residue="$2" outside="$3" stage_output before after
 
   printf '%s\n' "safe selected aggregate change: $label" >>"$repo/$target_path"
   stage_output="$TMP_ROOT/$label-stage.out"
   if ! run_active aggregate-stage repo-a -- "$target_path" >"$stage_output" 2>&1; then
     cat -- "$stage_output" >&2
-    printf 'ordinary aggregate stage was blocked by %s coordination residue\n' "$label" >&2
+    printf 'ordinary aggregate stage was denied by %s coordination residue\n' "$label" >&2
     exit 1
   fi
   git -C "$repo" diff --cached --name-only | grep -Fqx "$target_path"
@@ -94,7 +94,7 @@ case "${1:-all}" in
 regular)
   regular_residue="$session_dir/eci_wait"
   printf '%s\n' 'stale user-owned wait metadata from an earlier coordination attempt' >"$regular_residue"
-  assert_residue_does_not_block_selected_stage regular "$regular_residue" '../outside.txt'
+  assert_residue_does_not_deny_selected_stage regular "$regular_residue" '../outside.txt'
   [ -f "$regular_residue" ] && [ ! -L "$regular_residue" ]
   ;;
 symlink)
@@ -102,14 +102,14 @@ symlink)
   symlink_residue="$session_dir/eci_wait"
   printf '%s\n' 'foreign residue must not be followed or changed' >"$foreign_residue"
   ln -s -- "$foreign_residue" "$symlink_residue"
-  assert_residue_does_not_block_selected_stage symlink "$symlink_residue" '../outside.txt'
+  assert_residue_does_not_deny_selected_stage symlink "$symlink_residue" '../outside.txt'
   [ -L "$symlink_residue" ]
   grep -Fqx 'foreign residue must not be followed or changed' "$foreign_residue"
   ;;
 plan-metadata)
   plan_residue="$session_dir/eci-aggregate-plan.json"
   rewrite_plan_as_local_residue
-  assert_residue_does_not_block_selected_stage plan-metadata "$plan_residue" '../outside.txt'
+  assert_residue_does_not_deny_selected_stage plan-metadata "$plan_residue" '../outside.txt'
   [ -f "$plan_residue" ] && [ ! -L "$plan_residue" ]
   ;;
 all)

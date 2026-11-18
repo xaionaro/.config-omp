@@ -242,7 +242,7 @@ pass "symlink at eci-hook-helper: rc nonzero, nothing built, symlink kept"
 expect_err gate-symlink 'ECI native gate binary eci-hook-helper is unavailable or unverified (is missing or a symlink)'
 pass "symlink at eci-hook-helper: the loader's reason is printed"
 
-# 8. A symlink at eci-worker-git gets one advisory and does not block the gate set.
+# 8. A symlink at eci-worker-git gets one advisory and does not deny the gate set.
 rm -f -- "$bin/eci-hook-helper" "$bin/eci-worker-git"
 ln -s -- "$base/link-target" "$bin/eci-worker-git"
 : >"$build_log"
@@ -420,7 +420,7 @@ wait "$locked_builder" || fail "builder failed after publication lock released"
 [ "$(digest_of "$bin/eci-command-plan")" != "$before_lock" ] || fail "builder did not publish after lock release"
 pass "builder waits for another publisher before changing the managed pair"
 
-# A retained foreign conflict blocks both normal provisioning and an already-waiting builder.
+# A retained foreign conflict stops both normal provisioning and an already-waiting builder.
 printf f >>"$bin/eci-command-plan"
 rm "$bin/eci-command-plan.sha256"
 foreign_digest=$(digest_of "$bin/eci-command-plan")
@@ -442,7 +442,7 @@ run_provision conflict
 expect_err conflict 'retained planner conflict for eci-command-plan'
 [ "$(digest_of "$bin/eci-command-plan")" = "$foreign_digest" ] || fail "provisioning changed the foreign binary"
 [ ! -e "$bin/eci-command-plan.sha256" ] || fail "provisioning created a receipt over the foreign binary"
-pass "recorded foreign pair blocks provisioning and an already-waiting builder"
+pass "recorded foreign pair stops provisioning and an already-waiting builder"
 
 # Explicit repair retains both leaves and all conflict markers without touching old backups.
 printf 'receipt before repair\n' >"$bin/eci-command-plan.sha256"

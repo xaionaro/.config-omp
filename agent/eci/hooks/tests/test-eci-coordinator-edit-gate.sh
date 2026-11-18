@@ -32,7 +32,7 @@ cmp -- "$fixture_hooks/pretooluse-edit-dispatch.sh" <(sed '2{/^exit 0$/d;}' -- "
 
 # Simulate only the advisory child validator's health.  The real active-ECI
 # gate remains installed beside it, so this fixture proves a malformed or
-# failed validator cannot hide a concrete control-target block.
+# failed validator cannot hide a concrete control-target denial.
 wrap_advisory_validator() {
   local validator_name="$1" validator_path
 
@@ -253,7 +253,7 @@ assert_empty_output malformed-patch "$malformed_patch_output"
 failed_patch_output="$(run_dispatch failed-patch "$normal_patch_input" '' fail)"
 assert_gate_failed_deny failed-patch "$failed_patch_output"
 
-# The full copied dispatcher must also remain non-blocking for a coordinator
+# The full copied dispatcher must also never deny a coordinator
 # ordinary repository edit.  Before the ATE gate fix this reproduces its
 # independent ECI_ORCHESTRATOR_ROLE_DENIED response.
 coordinator_dispatch_output="$(run_dispatch coordinator-dispatch "$normal_input" coordinator)"
@@ -297,7 +297,7 @@ assert_control_deny malformed-control-patch "$malformed_control_patch_output"
 failed_control_patch_output="$(run_dispatch failed-control-patch "$control_patch_input" '' fail)"
 assert_control_deny failed-control-patch "$failed_control_patch_output"
 
-# A healthy validator still blocks a proof target that resolves to another
+# A healthy validator still denies a proof target that resolves to another
 # session. This is target ownership, not a role or artifact requirement.
 other_session=other-session
 cross_session_path="$proof_root/$other_session/ordinary.md"

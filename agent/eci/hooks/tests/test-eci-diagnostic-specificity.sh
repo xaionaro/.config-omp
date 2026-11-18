@@ -12,7 +12,7 @@ assert_code() {
 }
 
 assert_code ECI_UNSAFE_PATH_DENIED 'Refusing unsafe session-scoped edit path marker.'
-assert_code ECI_GIT_PUSH_DENIED 'git push is blocked.'
+assert_code ECI_GIT_PUSH_DENIED 'git push is denied.'
 assert_code ECI_REVIEW_MANIFEST_DENIED 'review gate denied malformed manifest.'
 
 unknown="$(eci_diagnostic_code_for_reason 'mystery policy / input')"
