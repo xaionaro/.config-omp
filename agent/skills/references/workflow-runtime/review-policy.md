@@ -40,7 +40,7 @@ Examples: a changed persistence model, ownership rule, public contract, or data/
 
 ## Three-critic review
 
-For ECI Job-level review dispatch and evidence coordination, follow the [Job Orchestrator contract](../../explore-critique-implement/references/task-orchestrator.md#worker-and-helper-boundaries). The current Job owner dispatches the Job's required reviews; a fresh Step 2 critic decides ECI finding treatment, and the ECI Supervisor retains acceptance. The outer Coordinator/Lead retains review assignments and acceptance for the outer workflow.
+For ECI Job-level review dispatch and evidence coordination, follow the [Job Orchestrator contract](../../explore-critique-implement/references/task-orchestrator.md#worker-and-helper-boundaries). The current Job owner dispatches the Job's required reviews; ECI finding treatment follows [Step 4](../../explore-critique-implement/SKILL.md#step-handoffs), and the ECI Supervisor retains acceptance. The outer Coordinator/Lead retains review assignments and acceptance for the outer workflow.
 
 For governed code, use fresh blind Critic A (coding requirements), Critic B (correctness/fidelity), and fresh special Critic C (long-term health) in parallel. Name at least one critic to check that controls prevent accidental mistakes without treating bots as malicious. ECI E2E follows the [router's cadence, scope, and timing policy](../../explore-critique-implement/SKILL.md#e2e-cadence-scope-and-timing).
 
@@ -62,7 +62,7 @@ Required E2E uses the shortest faithful real path that proves the original crite
 
 ## Gate evaluation
 
-After all required reports, pre-route findings; within ECI, the [finding decisions](../../explore-critique-implement/SKILL.md#step-handoffs) follow Step 4, which sends the unchanged reports to a fresh Step 2 critic when any has a REJECT, CONDITIONAL, or E2E failure. Each finding gets one treatment: `now`, valid defer, `ignored-contradictory`, post-ECI observation/follow-up for an unadmitted separate outcome, `user decision` for a decision the critic names as the user's, or `no change` with its reason for a NIT not taken or a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.
+After all required reports, pre-route findings; within ECI, finding decisions follow [Step 4](../../explore-critique-implement/SKILL.md#step-handoffs). Each finding gets one treatment: `now`, valid defer, `ignored-contradictory`, post-ECI observation/follow-up for an unadmitted separate outcome, `user decision` for a decision the critic names as the user's, or `no change` with its reason for a NIT not taken or a finding that cited evidence refutes or shows resolved or superseded; a finding with separable parts counts as one finding per part.
 
 At least one substantive `now` REJECT/CONDITIONAL, or design/API-uncertain E2E failure, becomes one design-revision issue batch for re-exploration/critique. A trivial `now` REJECT/CONDITIONAL or trivial E2E failure returns in one implementer repair batch. When a design-revision batch exists, that repair batch joins it instead with its concrete correction text: the next Step 2 keeps the text unless its winner supersedes it, and the next Step 3 implements both.
 
