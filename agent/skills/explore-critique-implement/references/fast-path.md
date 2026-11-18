@@ -78,7 +78,7 @@ Reviewers report only. The assigned Implementer authors the TODO within the ordi
 
 ## Evidence can reopen design
 
-- The current Job owner sends each Fast report, unchanged, to the Job's next fresh Step 2 critic, which verifies its discoveries, and to the Explorer of any running Step 1. The Supervisor retains cross-Job decisions and final acceptance.
+- The current Job owner sends each Fast report, unchanged, to the Explorer of any running Step 1 and to a fresh Step 2 critic, which verifies its discoveries: the pending one, or one the Job owner dispatches at once when the report shows evidence against the selected design. The Supervisor retains cross-Job decisions and final acceptance.
 - When that critic decides that the evidence shows a [redesign finding](../../references/workflow-runtime/review-policy.md#gate-evaluation), the current Job owner returns affected work to Steps 1–2. Suspend only dependent implementation/review; keep independent work moving. The Supervisor retains cross-Job decisions.
 - The selected ECI design controls quality, and the within-outcome precedence above controls overlapping main/Fast edits. Neither rule dismisses contradictory evidence. The Fast Producer proposes alternatives; Step 2 selects the authoritative winner.
 - The critic decides every other correction as a patch under [Step 4](../SKILL.md#step-handoffs). Unsupported preferences and ordinary fast edits do not restart design.

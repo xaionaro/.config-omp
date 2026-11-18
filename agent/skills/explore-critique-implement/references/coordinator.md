@@ -127,7 +127,7 @@ The disengage report has `## ECI completion certificate` with exactly one `clean
 
 ## Coordinator red flags
 
-- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or per-fix rounds, or a main-path iteration skips a step that the iteration rule requires. This includes treating part of an iteration's work, such as one assignment, contribution, commit, component, or contained fix, as an iteration boundary or counting its checks as the iteration's focused proof, in a dispatch, owner brief, user answer, work tree, or forecast. It also includes Step 3 work that fixes and tests pending defects one at a time, holds a fix for its part's author, or makes a Producer wait for another Producer's tests. See the [iteration rule](../SKILL.md#iteration-rule).
+- A Job's main path is split into separately designed, implemented, tested, or reviewed stages or per-fix rounds, or a main-path iteration skips a step that the iteration rule requires. This includes treating part of an iteration's work, such as one assignment, contribution, commit, component, or patch, as an iteration boundary or counting its checks as the iteration's focused proof, in a dispatch, owner brief, user answer, work tree, or forecast. It also includes Step 3 work that fixes and tests pending defects one at a time, holds a fix for its part's author, or makes a Producer wait for another Producer's tests. See the [iteration rule](../SKILL.md#iteration-rule).
 - A critic prompt lacks lineage/full chain, original requirements, concrete winner text, or applies a defer/debt as implementation.
 - A fresh critic is replaced by a producer, a same-role followup, or serial review.
 - A known bug is sent to BRP before debugging discipline/attempt record.
