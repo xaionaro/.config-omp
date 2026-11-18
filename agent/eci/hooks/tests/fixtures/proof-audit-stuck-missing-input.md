@@ -1,6 +1,6 @@
 ## Summary
 
-- Fixture for an audit blocker missing input.
+- Fixture for an audit stuck record missing input.
 
 ## Verification
 
@@ -8,7 +8,7 @@
 
 ## Requirements
 
-- Fixture covers blocker field validation.
+- Fixture covers stuck field validation.
 
 ## Root Cause
 
@@ -20,18 +20,18 @@
 
 ## Pre-Mortem
 
-- Most likely flaw is accepting incomplete blockers.
+- Most likely flaw is accepting incomplete stuck records.
 
 ## Adversarial Critique
 
-- Objection considered: blockers need enough data for recovery.
+- Objection considered: stuck records need enough data for recovery.
 
 ## Rule-Compliance Self-Audit
 
 Violation: missing input
 Rule: AGENTS.md
 Correction:
-  blocker:
+  stuck:
   command: bash hooks/tests/run.sh
 
 ## Gaps

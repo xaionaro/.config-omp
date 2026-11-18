@@ -8,4 +8,4 @@ hard-escalation: fixture ECI escalation proof.
 
 ## Incomplete compliance
 
-- Fixture blocker remains; ECI should stay active.
+- Fixture stuck work remains; ECI should stay active.

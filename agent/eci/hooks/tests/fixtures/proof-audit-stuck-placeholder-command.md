@@ -1,6 +1,6 @@
 ## Summary
 
-- Fixture for an audit blocker missing command.
+- Fixture for an audit stuck record placeholder command.
 
 ## Verification
 
@@ -8,7 +8,7 @@
 
 ## Requirements
 
-- Fixture covers blocker field validation.
+- Fixture covers placeholder stuck-record command rejection.
 
 ## Root Cause
 
@@ -20,19 +20,20 @@
 
 ## Pre-Mortem
 
-- Most likely flaw is accepting incomplete blockers.
+- Most likely flaw is accepting placeholder recovery commands.
 
 ## Adversarial Critique
 
-- Objection considered: blockers need an executable recovery command.
+- Objection considered: placeholder commands do not resume future work.
 
 ## Rule-Compliance Self-Audit
 
-Violation: missing command
+Violation: placeholder command
 Rule: AGENTS.md
 Correction:
-  blocker:
+  stuck:
   input: missing review decision
+  command: TBD
 
 ## Gaps
 

@@ -141,9 +141,9 @@ hooks/tests/fixtures/eci-proof-complete.md	-	mapped	agent/eci/hooks/tests/fixtur
 hooks/tests/fixtures/eci-write-code.json	-	mapped	agent/eci/hooks/tests/fixtures/eci-write-code.json	-	-
 hooks/tests/fixtures/eci-write-markdown.json	-	mapped	agent/eci/hooks/tests/fixtures/eci-write-markdown.json	-	-
 hooks/tests/fixtures/hard-eci-proof-complete.md	-	mapped	agent/eci/hooks/tests/fixtures/hard-eci-proof-complete.md	-	-
-hooks/tests/fixtures/proof-audit-blocker-missing-command.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-blocker-missing-command.md	-	-
-hooks/tests/fixtures/proof-audit-blocker-missing-input.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-blocker-missing-input.md	-	-
-hooks/tests/fixtures/proof-audit-blocker-placeholder-command.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-blocker-placeholder-command.md	-	-
+hooks/tests/fixtures/proof-audit-blocker-missing-command.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-stuck-missing-command.md	-	-
+hooks/tests/fixtures/proof-audit-blocker-missing-input.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-stuck-missing-input.md	-	-
+hooks/tests/fixtures/proof-audit-blocker-placeholder-command.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-stuck-placeholder-command.md	-	-
 hooks/tests/fixtures/proof-audit-clean-empty-source.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-clean-empty-source.md	-	-
 hooks/tests/fixtures/proof-audit-fake-commit.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-fake-commit.md	-	-
 hooks/tests/fixtures/proof-audit-old-commit-template.md	-	mapped	agent/eci/hooks/tests/fixtures/proof-audit-old-commit-template.md	-	-
