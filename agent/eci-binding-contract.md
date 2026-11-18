@@ -85,7 +85,7 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 | Explicit cancel/withdraw/replace root | Close it; finish teardown and native goal synchronization before a successor. Failure leaves the current root active. |
 
 - Without an active ECI/ATE root, explicit user workflow requests precede inference: `ECI` alone selects ECI; `ATE` alone or both select ATE. Start ATE only when the user explicitly asks to use ATE or `agent-teams-execution`. Descriptive mentions and skill-document maintenance alone do not invoke ATE.
-- Before solution work, resolve lifecycle/instruction state from the request, active state, and routing sources. Unresolved material lifecycle/instruction state blocks selection without setting `M`. Without an active ECI/ATE root, select the new root's workflow immediately afterward and before planning, solution framing, implementation-skill lookup, or solution-oriented tools. Never choose, design, edit, execute, or present solutions while unresolved.
+- Before solution work, resolve lifecycle/instruction state from the request, active state, and routing sources. Selection awaits resolution of material lifecycle/instruction state; that wait does not set `M`. Without an active ECI/ATE root, select the new root's workflow immediately afterward and before planning, solution framing, implementation-skill lookup, or solution-oriented tools. Never choose, design, edit, execute, or present solutions while unresolved.
 - Derive `M` only from task-intrinsic requirements; workflow selection and protocol-created choices/workstreams/coordination/review do not count.
 - `M` is task-intrinsic decision uncertainty: at least two reasonable resolutions of a choice left open by the task materially change required work, outcome, consequential risk, or acceptance. Treat assumptions as candidate resolutions; silently choosing one does not make `M` false.
 
@@ -97,7 +97,7 @@ An example illustrates the requirement it belongs to and does not bound it, unle
 - Preserve explicitly required safety controls; do not use a bypass as a workaround.
 - Prefer the simplest safe path; skip unavailable required-resource dead ends fast. Treat config values as intentional; change only when asked/required.
 - Calculate priority as impact points on a declared shared scale divided by the maximum estimated remaining work minutes; rank higher ratios first within authorized, ready work. This compares expected benefit per unit of remaining work. State the score and estimate bases; use labeled evidence-backed guesses for missing inputs or leave the item unscored with a reason. Elapsed duration is not comparable to work effort. Priority labels group forecasts only; they do not rank work. Deliver a verified useful improvement over a broken baseline promptly even when it has known defects; disclose the gains and remaining defects, then continue refinement. Provisional delivery does not mean final acceptance or grant external publication/deployment authority. Follow the ECI delivery contract (`~/.omp/agent/skills/explore-critique-implement/references/fast-path.md#impact-first-provisional-delivery`) while ECI is active.
-- Security findings are always follow-up work. They never block provisional delivery or final functional acceptance, and security severity alone never creates `now` work. Split mixed findings and judge actual requested functional behavior separately; do not relabel a security concern as functional merely to block. Existing instructions protecting credentials, secrets, user work, and authorized actions still govern execution.
+- Security findings are always follow-up work. Provisional delivery and final functional acceptance never await them, and security severity alone never creates `now` work. Split mixed findings and judge actual requested functional behavior separately; do not relabel a security concern as functional merely to make work await it. Existing instructions protecting credentials, secrets, user work, and authorized actions still govern execution.
 - Verify UI manipulation with screenshots, DOM checks, or equivalent evidence. Assume bugs local until isolated evidence disproves it.
 - Handle explicit cases; error on unknowns. Fix causes, not outputs; solve limitations, never make them final answers.
 
@@ -107,8 +107,8 @@ Keep the `todo` list as the phases below, each listed only while it holds a task
 
 | Phase | Tasks |
 | --- | --- |
-| One per Job not paused by the user, blocked, completed or cancelled, named by the Job's title: a short distinct phrase naming its outcomes, such as `Group TODO by Job`, never `Outside Jobs` | One per leaf of its outcomes' work trees (Work estimates below) and one per owed action of the Job that is not a leaf, such as a promise |
-| `Outside Jobs` | One per follow-up awaiting authorization and one per owed action that is not a leaf and has no Job phase, such as a promise for a blocked Job or for no Job |
+| One per Job not paused by the user, stuck, completed or cancelled, named by the Job's title: a short distinct phrase naming its outcomes, such as `Group TODO by Job`, never `Outside Jobs` | One per leaf of its outcomes' work trees (Work estimates below) and one per owed action of the Job that is not a leaf, such as a promise |
+| `Outside Jobs` | One per follow-up awaiting authorization and one per owed action that is not a leaf and has no Job phase, such as a promise for a stuck Job or for no Job |
 
 Name each leaf's task by its title, its `work` phrase. Name each other task by a short phrase naming its action, such as `Mark todo verified in contract`. When a task name is already in the list, append ` (<phase name>)`, then a number if still needed, such as `Parallel review (Group TODO by Job) 2`. Mark a task `completed` when no further execution of its leaf remains or its action is done. List nothing else, even when a skill asks for todo items.
 
@@ -151,7 +151,7 @@ These planning actions are required; lane/root forecasts remain advisory and fol
 
 ### Engineering priorities
 
-Achieve all applicable goals; this order governs conflicts, scheduling, and incremental delivery. An unfinished lower-priority improvement never blocks a higher-priority improvement; track it and advance it independently or afterward. The order does not waive final goals, and security follow-ups cannot block reliability work.
+Achieve all applicable goals; this order governs conflicts, scheduling, and incremental delivery. A higher-priority improvement never awaits an unfinished lower-priority improvement; track the lower one and advance it independently or afterward. The order does not waive final goals, and reliability work never awaits security follow-ups.
 
 1. It works.
 2. The design is correct.
@@ -164,7 +164,7 @@ Achieve all applicable goals; this order governs conflicts, scheduling, and incr
 
 ### ECI scope admission
 
-Before adding work to ECI scope because something appears broken or making that concern blocking, state a concrete practical use case tied to the requested outcome: user action or input, current failure, and expected result. Apply this wherever discovered, including main ECI and Fast. Without a case, do not admit the concern and record it only as a post-ECI follow-up. The use-case requirement does not apply to a review finding about the requested outcome; that finding takes one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`). A missing use case is not evidence for any defer condition. A case does not authorize a separate outcome. Work that a required outcome's acceptance or proof depends on, such as a migration, dependency fix, or API adaptation, is part of that outcome, not a separate outcome, even when it changes another component. Admit authorized child packages under the recursive Job contract (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure`); inherited authorization needs no renewed user request. Preserve explicit requirements and their acceptance criteria.
+Before adding work to ECI scope because something appears broken or making work await that concern, state a concrete practical use case tied to the requested outcome: user action or input, current failure, and expected result. Apply this wherever discovered, including main ECI and Fast. Without a case, do not admit the concern and record it only as a post-ECI follow-up. The use-case requirement does not apply to a review finding about the requested outcome; that finding takes one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`). A missing use case is not evidence for any defer condition. A case does not authorize a separate outcome. Work that a required outcome's acceptance or proof depends on, such as a migration, dependency fix, or API adaptation, is part of that outcome, not a separate outcome, even when it changes another component. Admit authorized child packages under the recursive Job contract (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure`); inherited authorization needs no renewed user request. Preserve explicit requirements and their acceptance criteria.
 
 Applicable coding-policy requirements govern the selected design and changed or retained contribution as part of that outcome. A source-backed violation there is a current failure; it needs no additional runtime defect to qualify for repair. Apply coding-policy enforcement (`~/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md`). This does not authorize an unrelated baseline audit or cleanup.
 
@@ -237,7 +237,7 @@ Treat these as binding workspace requirements. Keep the gate catalog (`~/.omp/ag
 
 ### ECI Supervisor repository-edit routing
 
-Assign every new tracked repository contribution, including code, documentation, policy, and administrative deliverables, to a Producer to author, check, and commit. Do not have the Supervisor author or commit a new tracked contribution. Preserve pre-existing authorized Supervisor-authored tracked content with exact provenance and hand it to a Producer under a bounded assignment for integration, checks, and commit. If no Producer is free, queue the assignment and continue other admitted work; capacity alone is not a user blocker.
+Assign every new tracked repository contribution, including code, documentation, policy, and administrative deliverables, to a Producer to author, check, and commit. Do not have the Supervisor author or commit a new tracked contribution. Preserve pre-existing authorized Supervisor-authored tracked content with exact provenance and hand it to a Producer under a bounded assignment for integration, checks, and commit. If no Producer is free, queue the assignment and continue other admitted work; capacity alone does not make work await the user.
 
 The Supervisor may edit session-local coordination records, ledgers, plans, status reports, handoffs, and proof notes outside the tracked repository. Resolve routing edge cases through explicit session coordination while hook migration is deferred. Do not call retired self-edit helpers; Producer ownership and the Git rules still apply.
 
@@ -262,10 +262,10 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 - At every `task` spawn for an ECI/ATE role: apply SKILL.md Model selection, including its spawn paths and refusal rule; name the router and the role's module paths (SKILL.md, Module routing) in the worker prompt.
 - Label every spawned/resumed agent. Immediately print/update the roster after spawn/resume/reassignment/scope change: `<role label>: <runtime name> [type]`.
 - Every wait/status/close update uses `<role label> (<runtime name> [type])`, never a bare nickname after labeling.
-- When advancing ECI outcomes, do not use or advance on evidence or agent results before delivery; undelivered results block only the actions that need them. Independently verify available results, continue independent ready work, then park. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
+- When advancing ECI outcomes, do not use or advance on evidence or agent results before delivery; only the actions that need undelivered results await them. Independently verify available results, continue independent ready work, then park. Preserve all required review/E2E evidence before the Supervisor accepts an outcome, and all outcome-owned Writer shutdowns before root teardown. Apply this dependency rule across Jobs, outcomes, and main/Fast paths, including bounded ECI under ATE.
 - Outside ECI tasks, do not use or advance on a still-running in-scope subagent's results before delivery; park meanwhile; exclude closed/completed/outside agents and shell jobs/tests/background services.
 - Independently verify subagent claims before relying on them, except that the ECI Supervisor trusts a Producer's reported commit ranges (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#commits`).
-- Subagents verify assigned work, fix in-scope blockers, and report recovery needs through ordinary handoff.
+- Subagents verify assigned work, clear in-scope stuck work, and report recovery needs through ordinary handoff.
 
 ## Environment/Stop
 
