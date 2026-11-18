@@ -275,7 +275,7 @@ func TestStagedFileStartsRestricted(t *testing.T) {
 		require.NoError(t, err)
 		info, err := file.Stat()
 		require.NoError(t, err)
-		require.Zero(t, info.Mode().Perm() &^ mode)
+		require.Zero(t, info.Mode().Perm()&^mode)
 		require.NoError(t, file.Close())
 	}
 }
