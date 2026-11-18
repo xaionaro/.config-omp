@@ -230,7 +230,7 @@ identify it by Job/parent chain and outcome, e.g.
 | `Root-task status` | Use |
 | --- | --- |
 | `FOLLOWUP` | Genuine Fast completion is confirmed and required post-Fast work remains unaccepted, unless the next required post-Fast action cannot advance because it awaits a named in-scope dependency. |
-| `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, and resume condition; return to `FOLLOWUP` when it clears. |
+| `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, resume condition, and the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker; return to `FOLLOWUP` when it clears. |
 
 These statuses cover only the mandatory post-Fast sequence, not separate-outcome
 observations. A user input or decision remains `BLOCKED` in the affected lane,
@@ -257,7 +257,7 @@ registries.
 | RCA/fix closure | For bug/debug lanes, missing, failing, or not-runnable domain-required acceptance proof keeps RCA/fix open. Source approval may close Implementation only; wording must say source-only/progress, not fixed/closed. |
 | `CLOSED` | Use only in the specific column whose required evidence is proven or explicitly removed from scope. |
 | `PAUSED` | Use only when this lane's next required action is progress from another in-scope lane. No user input or decision is pending for this lane's next action. Name the dependency lane, impact, owner, and resume condition in `Blocker` or `Next proof/action`. If the dependency lane is `BLOCKED`, keep this lane `PAUSED` and mark the dependency lane `BLOCKED`. |
-| `BLOCKED` | Use only when this lane cannot make any more progress until the user provides a named input or decision. Name the exact user input/decision, impact, owner (`user`), exact unblock action, and target artifact/path. Do not use `BLOCKED` for another lane's progress. |
+| `BLOCKED` | Use only when this lane cannot make any more progress until the user provides a named input or decision. Name the exact user input/decision, impact, owner (`user`), exact unblock action, target artifact/path, and the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker. Do not use `BLOCKED` for another lane's progress. |
 | Coverage | Do not omit lanes because they are idle, waiting, or paused. Review, deploy, and proof remain within their lane unless they independently advance with separate ownership or synchronization. In a material changed-state update, each unrepresented active root-task outcome omitted by lane reports has one Root completion forecast. |
 | Lane requirement context | Cite known user requirements under [Recording and citing user requirements](../context-ledger/SKILL.md#recording-and-citing-user-requirements). Without a project ledger, describe them readably. For missing or stale context, apply [Use lineage while working](../references/requirement-lineage.md#use-lineage-while-working). |
 

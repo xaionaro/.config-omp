@@ -39,9 +39,7 @@ After all tasks complete and verified:
 ## When to Stop and Ask for Help
 
 **STOP executing immediately when:**
-- Hit a blocker proven under the Blockers rule in `~/.omp/agent/RULES.md`
-- Plan has critical gaps preventing starting
-- You don't understand an instruction
+- Hit a blocker proven under the Blockers rule in `~/.omp/agent/RULES.md`, such as a critical plan gap or an instruction only your partner can clarify
 
 **Ask for clarification rather than guessing.**
 
@@ -50,8 +48,6 @@ After all tasks complete and verified:
 **Return to Review (Step 1) when:**
 - Partner updates the plan based on your feedback
 - Fundamental approach needs rethinking
-
-**Don't force through a proven blocker** - stop and ask.
 
 ## Remember
 - Review plan critically first
