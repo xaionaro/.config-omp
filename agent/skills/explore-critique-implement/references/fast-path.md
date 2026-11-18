@@ -5,7 +5,7 @@ This is the normative contract for the Fast Producer and its integration with ma
 ## Start and lifetime
 
 - Start one Fast Producer alongside Step 1 for every new ECI task, including bounded ECI under ATE. Neither path waits for the other's solution.
-- Additive extensions update the existing owner's scope. A distinct new ECI task gets its own owner; iterations, reviews, repairs, and re-exploration reuse that identity.
+- Additive extensions update the existing owner's scope: the current Job owner writes the full updated scope to the Fast Producer's `agent://<id>` at once. Any earlier "no independent work ready" finding lapses at that change; the Fast Producer re-evaluates its ready work against the new scope. A distinct new ECI task gets its own owner; iterations, reviews, repairs, and re-exploration reuse that identity.
 - Preserve the root workflow and lifecycle. Direct work and ATE outside nested ECI do not acquire this protocol by loading it.
 - Assign original requirements, authorization bounds, dirty-work exclusions, current ECI decisions, verification, and shared-tree rules. The Fast Producer owns its whole assigned outcome, including a child-Job outcome, not a lane; it is distinct from the main-path Implementer and all independent critics. Completion and post-Fast rules apply independently to every assigned outcome.
 - Task-local dispatch and reporting follow the [task-orchestrator contract](task-orchestrator.md); the Fast Producer remains one Producer within its assigned outcome.
