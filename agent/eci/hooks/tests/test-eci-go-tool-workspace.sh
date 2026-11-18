@@ -28,6 +28,12 @@ cat > "$tmp/toolchain/bin/go" <<'EOF'
 set -e
 export GOROOT="$REAL_GOROOT"
 printf '%s compiler %s\n' "${GOWORK-unset}" "$*" >> "$GO_LOG"
+if [ "${PAD_BUILD_PLAN:-}" = 1 ] && [ "$1" = build ] && [ "$2" = -n ]; then
+  "$REAL_GO" "$@" || exit $?
+  printf '%1048576s\n' ''
+  printf 'padded\n' >> "$PAD_LOG"
+  exit 0
+fi
 if [ -n "${RACE_SOURCE:-}" ] && [ "$1" = build ] && [ "$2" != -n ]; then
   "$REAL_GO" "$@"
   if [ ! -e "$RACE_MARKER" ]; then
@@ -128,6 +134,17 @@ second=$eci_go_tool_executable
 [ "$first" != "$second" ]
 [ "$("$second")" = two ]
 [ "$(sha "$first")" = "$first_sha" ]
+# A long dry-run plan must still announce a required rebuild under pipefail.
+printf 'package member\nconst Value = "long plan"\n' > "$tmp/fixture/member/value.go"
+export PAD_BUILD_PLAN=1 PAD_LOG="$tmp/pad.log"
+build_fixture long-plan
+unset PAD_BUILD_PLAN
+[ "$(grep -c '^padded$' "$tmp/pad.log")" = 1 ]
+[ "$(notices long-plan)" = 1 ]
+[ "$("$eci_go_tool_executable")" = 'long plan' ]
+printf 'package member\nconst Value = "two"\n' > "$tmp/fixture/member/value.go"
+build_fixture member-restored
+second=$eci_go_tool_executable
 second_sha=$(sha "$second")
 # A workspace replacement, rather than a local go.mod replacement, changes the build.
 mkdir -p "$tmp/fixture/replacement"

@@ -178,7 +178,7 @@ eci_go_tool_build() {
   if [ -e "$stage" ]; then
     rc=0
     plan=$(cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -n -buildvcs=false -o "$stage" . 2>&1) || rc=$?
-    if [ "$rc" -eq 0 ] && ! printf '%s\n' "$plan" | grep -Eq 'pkg/tool/[^/ ]+/(compile|asm|cgo|link)([" ]|$)'; then
+    if [ "$rc" -eq 0 ] && ! grep -Eq 'pkg/tool/[^/ ]+/(compile|asm|cgo|link)([" ]|$)' <<<"$plan"; then
       announce=0
     fi
   fi
