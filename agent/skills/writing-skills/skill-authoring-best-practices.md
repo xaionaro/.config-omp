@@ -89,7 +89,7 @@ Treat skill authoring as TDD for process documentation, in test-driven-developme
 | Phase | Action |
 | --- | --- |
 | RED | Write pressure scenarios before the skill. After GREEN's guidance is written, run them without it and record exact failures and rationalizations. |
-| GREEN | Add the smallest guidance that blocks the violations that prompted it, then run the scenarios with it. |
+| GREEN | Add the smallest guidance that prevents the violations that prompted it, then run the scenarios with it. |
 | REFACTOR | Re-test, close new loopholes, remove redundant text. |
 
 Spawn a subagent for subagent tests. Its prompt must quote the Stop-hook handling item of dispatching-parallel-agents's [2. Create Focused Agent Tasks](../dispatching-parallel-agents/SKILL.md#2-create-focused-agent-tasks).

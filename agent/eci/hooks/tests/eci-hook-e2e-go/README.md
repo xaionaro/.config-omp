@@ -1,6 +1,6 @@
 This opt-in test starts the installed ECI app-server and feeds it deterministic Responses SSE from a local HTTP server. No paid model endpoint or auth file is used. It copies the authoritative hooks, launchers, and registration into a disposable isolated HOME, retaining the existing trust entries for those identical commands. The normal launcher/publisher builds fixture native artifacts from the copied sources.
 
-The model requests an ordinary shell command and a protected ECI control mutation. Assertions require the actual registered Bash PreToolUse hook to complete, the ordinary command to produce its expected output, and the control mutation to be blocked with ECI_CONTROL_OWNER_REQUIRED. Failed hook events fail the test.
+The model requests an ordinary shell command and a protected ECI control mutation. Assertions require the actual registered Bash PreToolUse hook to complete, the ordinary command to produce its expected output, and the control mutation to be denied with ECI_CONTROL_OWNER_REQUIRED. Failed hook events fail the test.
 
 Run from the source checkout, using owned-command to retire the whole process family:
 

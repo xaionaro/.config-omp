@@ -4,7 +4,7 @@ description: A real browser running inside the terminal. It splits the human's t
 ---
 
 When using the `terminal-browser` cli, run it with escalated permissions. The sandbox
-blocks commands terminal-browser needs internally to determine the terminal pane
+denies commands terminal-browser needs internally to determine the terminal pane
 this omp TUI is being ran from, so that it can split relative to the currently opened terminal pane
 
 `terminal-browser open <url>` puts a browser in a terminal pane. On its own it

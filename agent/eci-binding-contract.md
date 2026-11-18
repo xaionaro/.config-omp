@@ -274,7 +274,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Qt; Android SDK/NDK | `~/Qt`; `~/Android` |
 | Environment; LAN DNAT | `192.168.141.16`; LAN devices may connect through `192.168.0.131` ports `7000-7019`, DNATed here |
 | Ollama; Bluetooth | `192.168.0.171:11434`; may use `hci1`/`hci2`, using `DBUS_SYSTEM_BUS_ADDRESS` when set |
-| Changed-work scan; large scratch | Any changed-work scan, including Gitleaks, is optional and nonblocking advisory only; never a Stop prerequisite. When default temp is tmpfs, use `$TMPDIR`/`~/tmp/` for large files/objects |
+| Changed-work scan; large scratch | Any changed-work scan, including Gitleaks, is optional advisory only; no work awaits it, and it is never a Stop prerequisite. When default temp is tmpfs, use `$TMPDIR`/`~/tmp/` for large files/objects |
 
 - Use the completion checklist (`~/.omp/agent/eci/hooks/stop-checklist.md`) as manual guidance; completion is not an executable Stop gate.
 - Treat Stop as post-response continuation, not output control: `decision: "block"` creates a continuation prompt but cannot retract a rendered response, and `suppressOutput` is unsupported.

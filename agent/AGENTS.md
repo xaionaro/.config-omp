@@ -15,7 +15,7 @@ This file maps omp tool names to the tools ECI hooks expect, and states where na
 ## Hooks
 Native hook adapters are tracked in git under `~/.omp/agent/hooks-disabled/` (`pre/`, `post/`, and `lib/eci-hook-runner.ts`). They run the native scripts in `~/.omp/agent/eci/hooks/`. omp does not discover that directory. Only the Bash gate is enabled, through `~/.omp/agent/extensions/eci-bash-gate.ts`; the other ECI hooks are disabled.
 
-Intended behavior once enabled: PreToolUse fails closed in omp. A hook that errors, times out, or returns unparseable output blocks the tool call.
+Intended behavior once enabled: PreToolUse fails closed in omp. A hook that errors, times out, or returns unparseable output denies the tool call.
 
 ## State locations
 Proof state lives under `$HOME/tmp/agent/proof`; context ledgers under `$HOME/.agent/context`. Do not write them by hand.

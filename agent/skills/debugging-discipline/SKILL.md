@@ -28,7 +28,7 @@ Core rule: keep the whole edit-to-result loop fast; use the shortest repro that 
 - **RCA/critic loop, when needed:** Apply to uncertainty about the local behavior, cause, or repair, not merely an unknown relation to the original incident. Gather evidence first: inspect the failing path, relevant code, logs, tests, recent changes, and adjacent systems. State an informed RCA hypothesis from that evidence, not a guess. The critic must identify alternative explanations, missing evidence, and predictions that could falsify the hypothesis. Repeat until the critic has no unresolved objections.
 - **RCA instrumentation:** RCA may add any scoped diagnostic code needed to gather strong evidence for or against a root-cause hypothesis: logs, traces, counters, assertions, probes, tests, scripts, data captures, or temporary instrumentation. Keep probes targeted and reversible; final review decides what to keep, remove, or convert into regression coverage.
 - **Bisect during RCA:** If the required behavior worked at a known commit, release, config, dependency version, or data state, bisect from known-good to current-bad before broad speculation. Run the fast repro at every step. If only a rough timeframe exists, first establish known-good and known-bad anchors.
-- **Fix/review loop:** Explain the established local defect and why the diff repairs it; review before/after evidence and regression risk. For uncertain cases, include the critic-approved cause chain and RCA evidence. Unknown "why" or symptom-only change requires investigation unless containment was explicitly requested. Repeat until required review finds no blocking issue.
+- **Fix/review loop:** Explain the established local defect and why the diff repairs it; review before/after evidence and regression risk. For uncertain cases, include the critic-approved cause chain and RCA evidence. Unknown "why" or symptom-only change requires investigation unless containment was explicitly requested. Repeat until required review finds no must-fix issue.
 
 When ECI or ATE owns the debugging work, preserve that protocol's required roles and reviews; the direct-fix path does not waive them. Outside ECI/ATE, when subagents are explicitly authorized and RCA is needed, use one persistent `repro/RCA/fix` subagent for all three phases so reproduction and RCA context carry into the fix. Use separate subagents for `critic` and `review`. Prefer fresh `critic` and `review` subagents each iteration; close or replace them after each pass so prior conclusions do not anchor the next critique. Pass only a compact evidence packet: problem statement, repro steps, relevant logs, current RCA or diff, constraints, and open questions.
 
@@ -43,7 +43,7 @@ Report fix proposal and confirmation to the coordinator; when RCA is needed, als
 
 ## Reproduce first
 
-Establish the defect under the repro's stated conditions before causal investigation and repair. A reduced repro need not match production ordering or inputs before its own defect can be fixed. Slow repros block learning; shrink or automate them before expanding scope, then retry the original path after the isolated fix.
+Establish the defect under the repro's stated conditions before causal investigation and repair. A reduced repro need not match production ordering or inputs before its own defect can be fixed. Slow repros stall learning; shrink or automate them before expanding scope, then retry the original path after the isolated fix.
 
 ## Hypothesis Discipline
 

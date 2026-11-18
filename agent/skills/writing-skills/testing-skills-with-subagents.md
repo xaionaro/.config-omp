@@ -79,7 +79,7 @@ Run this WITHOUT a TDD skill. Agent chooses B or C and rationalizes:
 - "Deleting is wasteful"
 - "Being pragmatic not dogmatic"
 
-**REFACTOR adds a counter for each rationalization the skill does not yet block.**
+**REFACTOR adds a counter for each rationalization the skill does not yet prevent.**
 
 ## GREEN Phase: Write Minimal Skill (Make It Pass)
 

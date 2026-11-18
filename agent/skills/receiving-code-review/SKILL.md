@@ -105,7 +105,7 @@ IF reviewer suggests "implementing properly":
 FOR multi-item feedback:
   1. Clarify anything unclear FIRST
   2. Then implement in this order:
-     - Blocking issues (breaks, security)
+     - Must-fix issues (breaks, security)
      - Simple fixes (typos, imports)
      - Complex fixes (refactoring, logic)
   3. Test all fixes together
