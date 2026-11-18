@@ -66,7 +66,7 @@ Each agent gets:
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
 - **Role label:** A stable label in the first prompt line
-- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
 - **Expected output:** Summary of what you found and fixed
 - **Sources:** Mark each constraint with `[Ref N]` and end with a References list, under the Sourced constraints rule in `~/.omp/agent/RULES.md`. For your own decision, such as a scope limit, the entry also quotes the item above that grants it.
 
@@ -90,7 +90,7 @@ Return: follow [Ref 4].
 References
 1. User request (this session): "[the user's words asking for these fixes]"
 2. Delegator decision, recorded here: "- Read only the abort-related test and implementation paths needed for this failure." / "- Keep changes focused on abort behavior and its tests." / "- Do not modify batch completion or tool approval race tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
-3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker."
 4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
@@ -110,7 +110,7 @@ Return: follow [Ref 4].
 References
 1. User request (this session): "[the user's words asking for these fixes]"
 2. Delegator decision, recorded here: "- Read only the batch completion test and implementation paths needed for this failure." / "- Keep changes focused on batch completion behavior." / "- Do not modify abort or tool approval race tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
-3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker."
 4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
@@ -130,7 +130,7 @@ Return: follow [Ref 4].
 References
 1. User request (this session): "[the user's words asking for these fixes]"
 2. Delegator decision, recorded here: "- Read only the tool approval race test and implementation paths needed for this failure." / "- Keep changes focused on approval timing behavior." / "- Do not modify abort or batch completion tests." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Specific scope:** One test file or subsystem" / "- **Constraints:** Don't change other code"
-3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+3. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker."
 4. Delegator decision, recorded here: "Return: root cause, changed files, verification run, and remaining risk." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 """,
 )
@@ -159,7 +159,7 @@ Good agent prompts are:
 2. **Self-contained** - All context needed to understand the problem
 3. **Specific about output** - What should the agent return?
 4. **Labeled** - First line is `Role label: <stable-role>`
-5. **Bounded** - Includes Stop-hook handling: follow prompts and proof/checklist steps in-session, fix in-scope blockers, and report only out-of-scope blockers.
+5. **Bounded** - Includes the Stop-hook handling item above.
 
 ```markdown
 Role label: agent-tool-abort
@@ -182,7 +182,7 @@ References
 1. User request (this session): "[the user's words asking for these fixes]"
 2. Delegator decision, recorded here: "1. Read the test file and understand what each test verifies" / "2. Identify root cause - timing issues or actual bugs?" / "3. Fix by:" / "- Replacing arbitrary timeouts with event-based waiting" / "- Fixing bugs in abort implementation if found" / "- Adjusting test expectations if testing changed behavior" Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Clear goal:** Make these tests pass"
 3. Delegator decision, recorded here: "Do NOT just increase timeouts - find the real issue." Granted by ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Constraints:** Don't change other code"
-4. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
+4. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Stop-hook handling:** Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker."
 5. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "- **Expected output:** Summary of what you found and fixed"
 ```
 

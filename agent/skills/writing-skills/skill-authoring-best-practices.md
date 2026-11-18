@@ -95,7 +95,7 @@ Treat skill authoring as TDD for process documentation, in test-driven-developme
 Spawn a subagent for subagent tests. The prompt must include:
 
 ```text
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.
+Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
 ```
 
 Do not shell-wrap agents. Use the standard agent management path available in the session.

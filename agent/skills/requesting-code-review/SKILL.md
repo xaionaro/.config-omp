@@ -6,7 +6,7 @@ description: Use when completing tasks, implementing major features, or before m
 # Requesting Code Review
 
 Launch a dedicated code-reviewer subagent by spawning it; include the filled `requesting-code-review/code-reviewer.md` prompt in the subagent prompt body. The reviewer gets precise context for evaluation, never your session history.
-Every reviewer prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Reviewers investigate and report; responsible writers repair under existing disposition authority. Escalate recovery needing out-of-scope changes, unrelated user work, credentials, or approval to the orchestrator.
+Every reviewer prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Reviewers investigate and report; responsible writers repair under existing disposition authority. Escalate recovery needing out-of-scope changes, unrelated user work, credentials, or approval to the orchestrator. Include in that escalation the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
 
 **Core principle:** Review early, review often.
 

@@ -537,7 +537,7 @@ Follow the TDD cycle:
 ### RED: Write Failing Test (Baseline)
 
 Write the pressure scenarios before the skill. After writing the skill, run each with a subagent WITHOUT it and document exact behavior:
-- Launch skill-test agents by spawning subagents; include this prompt line: `follow any Stop-hook prompt in this session, including required proof/checklist files; fix blockers within your assigned scope; report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval.`
+- Launch skill-test agents by spawning subagents; include this prompt line: `follow any Stop-hook prompt in this session, including required proof/checklist files; fix blockers within your assigned scope; report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval; include in that report the proof the Blockers rule in ~/.omp/agent/RULES.md requires for any blocker.`
 - What choices did they make?
 - What rationalizations did they use (verbatim)?
 - Which pressures triggered violations?
