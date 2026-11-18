@@ -84,7 +84,7 @@ the extension file after the cause is repaired and verified.
 
 ## Typed Worker Git operations
 
-For an exact Git command explicitly authorized by the user, the one-use `run-once` exception of the typed Worker Git route is unavailable because `eci-worker-git` is built but not launcher-wired; report the unavailable route instead of invoking another executable. Its contract, if provisioned, is:
+The one-use `run-once` exception of the typed Worker Git route is unavailable because `eci-worker-git` is built but not launcher-wired; report the unavailable route instead of invoking another executable. Its contract, if provisioned, is:
 Provide a nonblank reason. Use this only after the user authorizes the entire native
 argument and environment context; `--user-authorized` acknowledges that authorization
 and does not establish it. The CLI runs Git once, without a stored grant or automatic
