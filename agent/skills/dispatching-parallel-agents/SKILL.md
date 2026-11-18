@@ -160,7 +160,6 @@ Good agent prompts are:
 3. **Specific about output** - What should the agent return?
 4. **Labeled** - First line is `Role label: <stable-role>`
 5. **Bounded** - Includes Stop-hook handling: follow prompts and proof/checklist steps in-session, fix in-scope blockers, and report only out-of-scope blockers.
-6. **Sourced** - Marks each constraint with `[Ref N]` and ends with a References list.
 
 ```markdown
 Role label: agent-tool-abort

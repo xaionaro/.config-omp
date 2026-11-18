@@ -41,8 +41,8 @@ Report as [Ref 5] sets.
 </report>
 
 References
-1. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "Every subagent prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
-2. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review."
+1. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Every subagent prompt must include' line, quoted when you fill this]"
+2. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its two-stage review sentence, quoted when you fill this]"
 3. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 3 (`<verification-rule>`): "Do not trust the implementer report." / "Read the changed code and compare it to requirements line by line."
 4. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 4 (`<check>`): "- Missing requirements" / "- Claims not backed by code" / "- Extra or unrequested work" / "- Over-engineering" / "- Misunderstood requirements" / "- Wrong problem or wrong implementation approach"
 5. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 5 (`<report>`): "- Spec compliant, if everything matches after code inspection" / "- Issues found, with exact missing or extra behavior and file:line references"

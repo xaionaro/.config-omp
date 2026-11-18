@@ -17,17 +17,17 @@ task(
 Role label: code-quality-reviewer
 
 <stop-hook-boundary>
-Follow [Ref 8].
+Follow [Ref N+1].
 </stop-hook-boundary>
 
 <additional-checks>
-Also check each item in [Ref 9].
+Also check each item in [Ref N+2].
 </additional-checks>
 
-[Filled requesting-code-review/code-reviewer.md prompt, with entries 8 and 9 below appended to its References list before your own entries]
+[Filled requesting-code-review/code-reviewer.md prompt. N is the number of its last References entry. Append entries N+1 and N+2 below to its References list, then your own entries. Write N+1 and N+2 as numbers in those entries and in the two markers above]
 
-8. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "Every subagent prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval."
-9. ~/.omp/agent/skills/subagent-driven-development/code-quality-reviewer-prompt.md, entry 9 (`<additional-checks>`): "- Does each file have one clear responsibility with a well-defined interface?" / "- Are units decomposed so they can be understood and tested independently?" / "- Is the implementation following the file structure from the plan?" / "- Did this implementation create new files that are already large, or significantly grow existing files? (Don't flag pre-existing file sizes — focus on what this change contributed.)"
+N+1. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Every subagent prompt must include' line, quoted when you fill this]"
+N+2. ~/.omp/agent/skills/subagent-driven-development/code-quality-reviewer-prompt.md, the `<additional-checks>` entry: "- Does each file have one clear responsibility with a well-defined interface?" / "- Are units decomposed so they can be understood and tested independently?" / "- Is the implementation following the file structure from the plan?" / "- Did this implementation create new files that are already large, or significantly grow existing files? (Don't flag pre-existing file sizes — focus on what this change contributed.)"
 """
 )
 ```
@@ -38,7 +38,7 @@ Fill the prompt with:
 - `BASE_SHA`: [commit before task]
 - `HEAD_SHA`: [current commit]
 - `DESCRIPTION`: [task summary]
-- `REQUEST_SOURCE`: `~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review."`; number your own entries from 10
+- `REQUEST_SOURCE`: `~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its two-stage review sentence, quoted when you fill this]"`
 
 After spawn, print the roster entry: `code-quality-reviewer: <runtime name> [explorer]`.
 

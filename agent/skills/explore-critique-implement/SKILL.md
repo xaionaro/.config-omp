@@ -77,7 +77,7 @@ Before every spawn or resume, apply this section to every brief, including read-
 Match the task against the [trigger table](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), the single authority for skill routing. A trigger row yields one unit per positional pair when its trigger cell and skill cell have the same number of slash-separated parts; any other row is one unit. For a Helper spawn or resume, the dispatcher is the spawning Worker. For a Worker or Producer that an Orchestrator spawns or resumes, the dispatcher is that Orchestrator (current Job owner); this clause does not apply to Helpers. For an Orchestrator spawn or resume, the dispatcher is the publisher; for a child Job, the publisher is the parent owner, and the Supervisor sends its follow-ups for that Job through it, not directly to the child owner. The dispatcher fills one Routing line per unit:
 
 - `match: <skill> [Ref N]` names the triggering files or task kind, and its entry quotes the trigger-table row; `no match: <reason>` cites what the unit was judged against.
-- A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill>`; its `no match` line gives one reason.
+- A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill> [Ref N]`; its `no match` line gives one reason.
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
 - The `Skills:` line lists exactly the `match:` skills with their markers, or `none, <reason>` when there are none. The dispatcher derives it from the Routing lines.
 
