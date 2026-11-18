@@ -20,14 +20,15 @@ No blocker without an attempt log. No user escalation or stop-hook bypass while 
 
 ## Required Record
 
-Every blocker, stuck or awaiting (dependency, capacity, device, another Job, user answer, review), carries two T1 proofs (`~/.omp/agent/eci-binding-contract.md` ## Evidence):
+A blocker claims the outcome cannot advance. Prove that claim with T1 evidence (`~/.omp/agent/eci-binding-contract.md` ## Evidence) for every blocker, stuck or awaiting. An observed error, refusal, missing resource, failed command, or awaited event proves only itself; connect it to the outcome:
 
 | Proof | Shows |
 | --- | --- |
-| Cause | The work itself cannot progress. A firing check proves only the check; a threshold, setting, policy, or gate the team chose counts only with T1 proof the work needs it. |
-| No workaround | Each reasonable workaround fails. Skip far-fetched ones. |
+| Prevents | The condition stops the required work, not just one chosen path or step. |
+| Not ours | Our own choices, configuration, process, plan, assumptions, or assignable work cannot change it. Change or do those instead. |
+| No workaround | Each reasonable route fails: another tool, route, or owner; a narrower faithful step; independent work removing the dependency. Skip far-fetched ones. |
 
-A claim lacking either proof is not a blocker; keep working. Example: a watcher refusing to start below its 2 GiB threshold is no blocker until T1 shows capture needs 2 GiB.
+A claim lacking any proof is not a blocker; keep working. Example: a watcher refusing to start below its 2 GiB threshold is no blocker until T1 shows capture needs 2 GiB.
 
 | Record | Required content |
 | --- | --- |
@@ -74,7 +75,7 @@ When escalation is unavoidable, report:
 | Symptom | Fix |
 | --- | --- |
 | "I'm blocked" without attempts | Bounce back; require the Required Record |
-| Blocker or wait backed by a firing gate, summary, or recall | Bounce back; require T1 proof of cause and of no reasonable workaround |
+| Blocker or wait backed only by an observed failure, summary, or recall | Bounce back; require the Required Record T1 proofs |
 | Brainstormer filters or chooses | Re-prompt: ideas only |
 | Explorer trusts another agent summary | Re-read source/docs independently |
 | User asked before BRP finishes | Continue internal unblocking |
