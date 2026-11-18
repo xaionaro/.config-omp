@@ -137,3 +137,5 @@ auth:
 codexResets:
   autoRedeem5h: unset
   autoRedeemWeekly: "no"
+commit:
+  enabled: false
