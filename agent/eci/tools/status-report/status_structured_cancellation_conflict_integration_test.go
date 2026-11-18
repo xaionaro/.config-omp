@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestStructuredCancellationWaitsForOwnerEvidence checks atomic recovery.
+// TestStructuredCancellationAwaitsOwnerEvidence checks atomic recovery.
 //
 // Example: The whole cancellation awaits the owner restoring a changed reason.
-func TestStructuredCancellationWaitsForOwnerEvidence(t *testing.T) {
+func TestStructuredCancellationAwaitsOwnerEvidence(t *testing.T) {
 	t.Parallel()
 	// prior records the reason that sync owns before the cancellation.
 	//

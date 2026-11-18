@@ -36,7 +36,8 @@ if (mode === 'describe') {
    for (const result of req.results) if (!result.isError) state.reads.push(result.input.path);
    process.stdout.write(JSON.stringify({state}));
   } else if (mode === 'check') {
-   process.stdout.write(JSON.stringify({block:!state.reads.includes('skill://coding-common') || !state.reads.includes('skill://coding-go'),reason:'missing skill'}));
+   const deny=!state.reads.includes('skill://coding-common') || !state.reads.includes('skill://coding-go');
+   process.stdout.write(JSON.stringify(fs.existsSync(${JSON.stringify(join(root, "deny-key"))}) ? {deny,reason:'missing skill'} : {block:deny,reason:'missing skill'}));
   } else process.exit(2);
  });
 }
@@ -404,5 +405,20 @@ test("treats a description without agent prefixes as stale and fails open", asyn
 	} finally {
 		console.error = original;
 		rmSync(marker);
+	}
+});
+
+test("reads the helper's deny reply key", async () => {
+	const handlers: Record<string, (event: unknown, ctx: unknown) => unknown> = {};
+	gate({on(name: string, handler: (event: unknown, ctx: unknown) => unknown) { handlers[name] = handler; }} as never);
+	const ctx = {cwd: root, agent: {id: "Main"}, sessionManager: {getSessionId: () => "deny-key", getBranch: () => []}};
+	await handlers.session_start({}, ctx);
+	writeFileSync(join(root, "deny-key"), "");
+	try {
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toEqual({block: true, reason: "missing skill"});
+		await Promise.all(["skill://coding-common", "skill://coding-go"].map(path => handlers.tool_result({toolName: "read", input: {path}, isError: false}, ctx)));
+		expect(await handlers.tool_call({toolName: "write", input: {path: "a.go"}}, ctx)).toBeUndefined();
+	} finally {
+		rmSync(join(root, "deny-key"));
 	}
 });

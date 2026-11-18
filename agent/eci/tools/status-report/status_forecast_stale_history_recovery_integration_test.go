@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestForecastUnchangedSourceWaitsForStaleHistoryResolution checks recovery.
+// TestForecastUnchangedSourceAwaitsStaleHistoryResolution checks recovery.
 //
 // Example: An owner removes obsolete recalibration fields before a retained event replays.
-func TestForecastUnchangedSourceWaitsForStaleHistoryResolution(t *testing.T) {
+func TestForecastUnchangedSourceAwaitsStaleHistoryResolution(t *testing.T) {
 	t.Parallel()
 	// event is independent progress retained while forecast history is unresolved.
 	//

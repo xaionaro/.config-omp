@@ -92,13 +92,13 @@ assert_no_control_routes() {
     'stop-recovery.md' \
     'policy-pressure-tests.md' \
     'review-policy.md'; do
-    # TODO: the Critic A/B/C, E2E row fails here on review-policy.md (also at 0b27698) and fail exits, so the checks for later rows never run; align this list with the router's Critic row.
     [[ "$forbidden" == "$allowed" || "$row" != *"$forbidden"* ]] || fail "$marker routes to a control module outside its role contract: $forbidden"
   done
 }
 
 assert_role_rows_are_local() {
   local marker snitch_row eci_coordinator_row ate_coordinator_row critic_row
+  # TODO: the router routes review-policy.md to the Critic A/B/C, E2E row, so the loop below fails on that row (also at 0b27698) and fail exits before later rows run; check it like critic-step2: assert_no_control_routes "$ECI" '| Critic A/B/C, E2E |' 'review-policy.md'.
   for marker in \
     '| `explorer` |' \
     '| Producer (`implementer`) |' \

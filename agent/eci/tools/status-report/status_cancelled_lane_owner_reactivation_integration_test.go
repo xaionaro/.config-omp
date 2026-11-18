@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCancelledLaneReactivationWaitsForOwnerLifecycleRestoration checks ownership.
+// TestCancelledLaneReactivationAwaitsOwnerLifecycleRestoration checks ownership.
 //
 // Example: The automatic reopening awaits resolution of an owner-removed cancellation marker.
-func TestCancelledLaneReactivationWaitsForOwnerLifecycleRestoration(t *testing.T) {
+func TestCancelledLaneReactivationAwaitsOwnerLifecycleRestoration(t *testing.T) {
 	t.Parallel()
 	// cancel projects cancellation while canonical work and forecast are terminal.
 	//

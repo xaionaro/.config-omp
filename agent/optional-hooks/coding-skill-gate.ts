@@ -171,8 +171,11 @@ export default function codingSkillGate(pi: ExtensionAPI): void {
 				if (current !== generation) throw new Error("session changed; retry the call");
 				const response = await invoke("check", { state: slot.state, call: { toolName: event.toolName, input: event.input, editTargets, cwd: ctx.cwd, agentName } });
 				if (current !== generation) throw new Error("session changed; retry the call");
-				if (response === null || typeof response !== "object" || !("block" in response) || typeof response.block !== "boolean") throw new Error("invalid engine verdict");
-				if (!response.block) return undefined;
+				if (response === null || typeof response !== "object") throw new Error("invalid engine verdict");
+				// TODO: read only "deny" once the helper writes it (ledger record work:stuck-awaits-terms:phase2); until then the helper keeps its pre-rename key, the only one that sessions loaded before this line can read.
+				const deny = "deny" in response ? response.deny : (response as { block?: unknown }).block;
+				if (typeof deny !== "boolean") throw new Error("invalid engine verdict");
+				if (!deny) return undefined;
 				if (!("reason" in response) || typeof response.reason !== "string") throw new Error("invalid engine denial");
 				return { block: true, reason: response.reason };
 			});

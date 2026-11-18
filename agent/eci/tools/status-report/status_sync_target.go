@@ -37,7 +37,7 @@ const (
 	//
 	// Example: Record a design choice.
 	syncTargetDecisions
-	// syncTargetStuckWorkRisks selects keyed risks.
+	// syncTargetStuckWorkRisks selects keyed stuck-work/risk entries.
 	//
 	// Example: Record stuck work.
 	syncTargetStuckWorkRisks

@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLaneClosureWaitsForOwnerFollowupRestoration checks atomic source-backed clearing.
+// TestLaneClosureAwaitsOwnerFollowupRestoration checks atomic source-backed clearing.
 //
 // Example: Closure awaits the owner restoring an edited followup marker's prior value.
-func TestLaneClosureWaitsForOwnerFollowupRestoration(t *testing.T) {
+func TestLaneClosureAwaitsOwnerFollowupRestoration(t *testing.T) {
 	t.Parallel()
 	// followup records the managed marker on an active lane.
 	//

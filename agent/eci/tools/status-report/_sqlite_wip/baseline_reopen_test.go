@@ -32,10 +32,10 @@ func baselineActiveSources(t *testing.T) (ledgerSource,forecastSource) {
  return ledger,forecasts
 }
 
-// TestBaselineSparseReopeningWaitsForImplicitEvidence falsifies consumption of an unknown restoration.
+// TestBaselineSparseReopeningAwaitsImplicitEvidence falsifies consumption of an unknown restoration.
 //
 // Example: Neither absent work nor absent forecast evidence permits a half-applied reopening.
-func TestBaselineSparseReopeningWaitsForImplicitEvidence(t *testing.T) {
+func TestBaselineSparseReopeningAwaitsImplicitEvidence(t *testing.T) {
  t.Parallel()
  for _,reactivate:=range []bool{false,true} {for _,missing:=range []string{"ledger","work-record","forecast","forecast-record","forecast-ref","stuck-forecast-ref","roles","unknown-role","state"} {
   t.Run(fmt.Sprintf("reactivate=%t/missing=%s",reactivate,missing),
