@@ -42,6 +42,10 @@ expect_call warm-active 0 'ledger-append --json <event-object>' bash "$root/bin/
 expect_call warm-status 2 'usage: status-report validate|render' bash "$root/bin/status-report" --help
 expect_call warm-assignment 1 'flag: help requested' bash "$root/bin/eci-requirement-assignment" --help
 
+# The old pinned planner must not be invoked until a coordinated cutover.
+expect_call blocked-planner 1 'maintain-planner unavailable until coordinated cutover' \
+  bash "$root/bin/eci-active" maintain-planner
+
 # ledger-append records the probe in the session log it names, then its status refresh runs the
 # selected status-report, which reports the missing session report. The pinned eci-active appends to
 # a JSON Lines log and prints its path.

@@ -636,7 +636,7 @@ func pgroupMain(args []string) int {
 	cancelPID := flags.Int("cancel-pid", 0, "cancel this exact host process (refused on darwin-pgroup)")
 	cancelBirth := flags.Uint64("cancel-birth", 0, "required birth identity (refused on darwin-pgroup)")
 	var memoryMax MemoryBytes
-	flags.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; omit to run uncapped")
+	flags.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes (refused on darwin-pgroup); omit to run uncapped")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0

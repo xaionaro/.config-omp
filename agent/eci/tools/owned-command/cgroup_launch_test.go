@@ -595,10 +595,11 @@ func TestCgroupMemoryLimitExplicitZero(t *testing.T) {
 	marker := filepath.Join(dir, "launched")
 	receipt := filepath.Join(dir, "receipt.json")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", "0", "-receipt", receipt, "--", "/usr/bin/touch", marker)
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
 	require.ErrorAs(t, err, &exit)
 	require.Equal(t, 2, exit.ExitCode())
+	require.Contains(t, string(output), "memory limit must be positive")
 	_, err = os.Stat(marker)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(receipt)
@@ -683,9 +684,9 @@ func TestCgroupMemoryLimitControlChangeFails(t *testing.T) {
 	require.Contains(t, strings.Join(receipt.Errors, "\n"), memoryMaxFile)
 }
 
-// TestCgroupMemoryLimitBelowPageFailsClosed checks setup rollback.
+// TestCgroupMemoryLimitBelowPageFailsClosed rejects an unusable cap before launch.
 //
-// Example: a sub-page limit cannot launch a command or leave its scope behind.
+// Example: a sub-page limit creates neither a command marker nor a receipt.
 func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
@@ -694,15 +695,11 @@ func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
 	err := cmd.Run()
 	var exit *exec.ExitError
 	require.ErrorAs(t, err, &exit)
-	require.Equal(t, guardFailure, exit.ExitCode())
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var receipt Receipt
-	require.NoError(t, json.Unmarshal(data, &receipt))
-	require.Zero(t, receipt.CommandPID)
+	require.Equal(t, 2, exit.ExitCode())
+	_, err = os.Stat(path)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(marker)
 	require.ErrorIs(t, err, os.ErrNotExist)
-	assertScopeCollected(t, cmd.Process.Pid)
 }
 
 // TestCgroupMemoryLimitAggregate covers detached descendants in the same aggregate.

@@ -191,7 +191,7 @@ func acquireCommandCgroup(
 		return nil, fmt.Errorf("delegated scope %s setup canceled: %w", unit, err)
 	}
 	if memoryMax != 0 {
-		if err := prepareMemoryScope(parent, memoryMax); err != nil {
+		if err := prepareMemoryScope(parent); err != nil {
 			return nil, err
 		}
 	}
@@ -241,13 +241,7 @@ func guardCgroup(parent string) string {
 // prepareMemoryScope moves the guard to a sibling before enabling the memory controller.
 //
 // Example: a populated scope cannot enable a domain controller until its guard moves.
-func prepareMemoryScope(
-	parent string,
-	limit MemoryBytes,
-) error {
-	if limit.pageFloor() == 0 {
-		return fmt.Errorf("memory limit %d is below one page", limit)
-	}
+func prepareMemoryScope(parent string) error {
 	scope := filepath.Join(cgroupRoot, parent)
 	controllers, err := os.ReadFile(filepath.Join(scope, cgroupControllersFile))
 	if err != nil {
@@ -306,9 +300,9 @@ type memoryControl struct {
 	Value string
 }
 
-// commandMemoryControls returns the mandatory workload limits in receipt order.
+// commandMemoryControls returns the mandatory workload limits.
 //
-// Example: the final control is the page-rounded aggregate memory limit.
+// Example: the aggregate limit is rounded down to a whole page.
 func commandMemoryControls(limit MemoryBytes) [3]memoryControl {
 	return [3]memoryControl{
 		{memorySwapMaxFile, "0"},
@@ -329,18 +323,32 @@ func configureCommandMemory(
 		if err := os.WriteFile(name, []byte(control.Value), 0600); err != nil {
 			return fmt.Errorf("write %s: %w", control.Name, err)
 		}
-		data, err := os.ReadFile(name)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", control.Name, err)
-		}
-		if strings.TrimSpace(string(data)) != control.Value {
-			return fmt.Errorf("%s readback %q, expected %q", control.Name, data, control.Value)
+		if err := verifyMemoryControl(path, control); err != nil {
+			return err
 		}
 	}
 	for _, name := range []string{memoryPeakFile, memoryEventsFile} {
 		if _, err := os.ReadFile(filepath.Join(path, name)); err != nil {
 			return fmt.Errorf("%s unavailable before launch (requires Linux 5.19+ for memory.peak): %w", name, err)
 		}
+	}
+	return nil
+}
+
+// verifyMemoryControl checks that a workload control retains its required value.
+//
+// Example: a changed memory limit fails closed before launch or receipt.
+func verifyMemoryControl(
+	path string,
+	control memoryControl,
+) error {
+	data, err := os.ReadFile(filepath.Join(path, control.Name))
+	if err != nil {
+		return fmt.Errorf("read memory control %s: %w", control.Name, err)
+	}
+	actual := strings.TrimSpace(string(data))
+	if actual != control.Value {
+		return fmt.Errorf("memory control %s changed to %q, expected %q", control.Name, actual, control.Value)
 	}
 	return nil
 }
@@ -352,20 +360,9 @@ func readMemoryReceipt(
 	group *commandCgroup,
 	limit MemoryBytes,
 ) (*MemoryReceipt, error) {
-	controls := commandMemoryControls(limit)
-	var values [3]uint64
-	for index, control := range controls {
-		data, err := os.ReadFile(filepath.Join(group.Path, control.Name))
-		if err != nil {
-			return nil, fmt.Errorf("read memory control %s: %w", control.Name, err)
-		}
-		actual := strings.TrimSpace(string(data))
-		if actual != control.Value {
-			return nil, fmt.Errorf("memory control %s changed to %q, expected %q", control.Name, actual, control.Value)
-		}
-		values[index], err = strconv.ParseUint(actual, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("parse memory control %s: %w", control.Name, err)
+	for _, control := range commandMemoryControls(limit) {
+		if err := verifyMemoryControl(group.Path, control); err != nil {
+			return nil, err
 		}
 	}
 	peakData, err := os.ReadFile(filepath.Join(group.Path, memoryPeakFile))
@@ -397,9 +394,9 @@ func readMemoryReceipt(
 	}
 	return &MemoryReceipt{
 		RequestedMax: limit,
-		EffectiveMax: MemoryBytes(values[2]),
-		SwapMax:      MemoryBytes(values[0]),
-		OOMGroup:     values[1] == 1,
+		EffectiveMax: limit.pageFloor(),
+		SwapMax:      0,
+		OOMGroup:     true,
 		GuardCgroup:  guardCgroup(filepath.Dir(group.Relative)),
 		Peak:         MemoryBytes(peak),
 		Events:       events,

@@ -37,6 +37,9 @@ func (b *MemoryBytes) Set(value string) error {
 	if parsed == 0 {
 		return fmt.Errorf("memory limit must be positive; omit the flag for an uncapped launch")
 	}
+	if MemoryBytes(parsed).pageFloor() == 0 {
+		return fmt.Errorf("memory limit must be at least one page (%d bytes)", os.Getpagesize())
+	}
 	*b = MemoryBytes(parsed)
 	return nil
 }

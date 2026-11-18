@@ -85,7 +85,7 @@ eci_runtime_build_missing() (
       if ! (
         cd -- "$module" &&
           env -u GOOS -u GOARCH -u GOARM -u GOAMD64 \
-            GOWORK=off GOFLAGS= CGO_ENABLED=0 "$compiler" build \
+            GOWORK=auto GOFLAGS= CGO_ENABLED=0 "$compiler" build \
             -mod=readonly -trimpath -buildvcs=false -o "$temporary/$name" . >&2
       ); then
         printf 'ECI runtime build: could not build %s from %s\n' "$name" "$module" >&2

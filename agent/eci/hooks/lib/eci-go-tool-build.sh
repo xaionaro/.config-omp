@@ -19,7 +19,6 @@ else
   eci_sha256_command=(shasum -a 256)
 fi
 
-
 # eci_go_tool_failed NAME SOURCE_DIR RC WHAT COMMAND... prints the exact rerun command, then returns 1.
 eci_go_tool_failed() {
   local name=$1 source_dir=$2 rc=$3 what=$4 quoted
@@ -41,6 +40,16 @@ eci_go_tool_go_directive() {
   return 0
 }
 
+# eci_go_tool_compile NAME SOURCE_DIR STAGE ENV... COMPILER builds one staged executable.
+eci_go_tool_compile() {
+  local name=$1 source_dir=$2 stage=$3 rc=0
+  shift 3
+  (cd -- "$source_dir" && "$@" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    eci_go_tool_failed "$name" "$source_dir" "$rc" build "$@" build -buildvcs=false -o /dev/null .
+    return 1
+  fi
+}
 
 eci_go_tool_build() {
   if [ "$#" -ne 5 ]; then
@@ -185,21 +194,13 @@ eci_go_tool_build() {
     prior_stage_digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
     prior_stage_digest=${prior_stage_digest%% *}
   fi
-  rc=0
-  (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    eci_go_tool_failed "$name" "$source_dir" "$rc" build "${native_env[@]}" "$compiler" build -buildvcs=false -o /dev/null .
-    return 1
-  fi
+  eci_go_tool_compile "$name" "$source_dir" "$stage" "${native_env[@]}" "$compiler" || return 1
   digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
   digest=${digest%% *}
+  # A second build after changed output detects source changes racing the first
+  # build, before the content-addressed executable is published.
   if [ "$digest" != "$prior_stage_digest" ]; then
-    rc=0
-    (cd -- "$source_dir" && "${native_env[@]}" "$compiler" build -buildvcs=false -o "$stage" .) >&2 || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      eci_go_tool_failed "$name" "$source_dir" "$rc" build "${native_env[@]}" "$compiler" build -buildvcs=false -o /dev/null .
-      return 1
-    fi
+    eci_go_tool_compile "$name" "$source_dir" "$stage" "${native_env[@]}" "$compiler" || return 1
     check_digest=$("${eci_sha256_command[@]}" -- "$stage") || return 1
     check_digest=${check_digest%% *}
     if [ "$digest" != "$check_digest" ]; then

@@ -71,7 +71,8 @@ no receipt). The delegated scope has `guard` and
 `command` siblings, so the guard is outside the capped workload. Setup enables
 the memory controller and verifies `memory.max`, `memory.swap.max=0`, and
 `memory.oom.group=1` before launch; missing controls fail closed with status 125.
-The effective limit is rounded down to a page, and values below one page fail.
+The effective limit is rounded down to a page; explicit values below one page
+are usage errors (exit 2 before launch, no receipt).
 It cannot be combined with `-cancel-pid`.
 A limit above the kernel maximum reads back as `max` and fails closed. Capped
 mode requires Linux 5.19 or later; setup checks `memory.peak` and `memory.events`

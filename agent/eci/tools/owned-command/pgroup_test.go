@@ -1034,22 +1034,13 @@ func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
 	t.Logf("holder reaped by the seam: %v; extended at %.3f s, finished at %.3f s", group.holderErr, extendedAt, receipt.ElapsedSeconds)
 }
 
-// TestPgroupMemoryBytesRejectsExplicitZero checks the flag value parser's zero boundary.
-//
-// Example: explicit zero is rejected while a positive limit remains valid.
-func TestPgroupMemoryBytesRejectsExplicitZero(t *testing.T) {
-	t.Parallel()
-	var limit MemoryBytes
-	require.Error(t, limit.Set("0"))
-	require.NoError(t, limit.Set("64"))
-	require.Equal(t, MemoryBytes(64), limit)
-}
-
 // TestPgroupMemoryLimitExplicitZero rejects zero before creating a command or receipt.
 //
 // Example: a zero limit exits with a usage error without touching the marker.
 func TestPgroupMemoryLimitExplicitZero(t *testing.T) {
 	t.Parallel()
+	var limit MemoryBytes
+	require.ErrorContains(t, limit.Set("0"), "memory limit must be positive")
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "launched")
 	receipt := filepath.Join(dir, "receipt.json")

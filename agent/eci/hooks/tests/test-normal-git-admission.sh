@@ -1469,7 +1469,7 @@ run_effect_aware_git_target() {
   before_branch="$(git -C "$REPO" symbolic-ref HEAD)"
   (
     cd -- "$SOURCE_ROOT/hooks/lib/eci-worker-git-go"
-    env GOWORK=off CGO_ENABLED=0 "$ECI_TEST_GO" build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
+    env GOWORK=auto CGO_ENABLED=0 "$ECI_TEST_GO" build -mod=readonly -trimpath -buildvcs=false -o "$RUNTIME_ROOT/bin/eci-worker-git" .
   )
   assert_allowed 'git add -- file.txt' worker || return 1
   assert_allowed 'git diff -- file.txt' worker || return 1

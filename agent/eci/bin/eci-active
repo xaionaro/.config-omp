@@ -12,6 +12,12 @@ if [ ! -f "$eci_home/hooks/lib/eci-file-lock.sh" ] || [ ! -f "$eci_home/hooks/li
   printf 'eci-active: ECI runtime not found at %s; check out ~/.omp and retry\n' "$eci_home" >&2
   exit 1
 fi
+# The selected deployment predates workspace-safe planner builds. Refuse the
+# command until a coordinated pin cutover removes this guard.
+if [ "${1-}" = maintain-planner ]; then
+  printf 'eci-active: maintain-planner unavailable until coordinated cutover\n' >&2
+  exit 1
+fi
 wrapper=${BASH_SOURCE[0]}
 while [ -L "$wrapper" ]; do
   link=$(readlink -- "$wrapper")
@@ -43,11 +49,11 @@ executable=$eci_go_tool_executable
 touch -c -- "$executable"
 find "$bin_dir" -maxdepth 1 -type f -name '.eci-active.*' ! -name "${executable##*/}" -mmin +1440 -exec rm -f -- {} + || true
 eci_file_lock_release_fd 9
-# First use builds the native tools that the hooks verify (hooks/lib/eci-native-provision.sh). Usage output and
-# maintain-planner, which builds the pair itself, skip it. A provisioning failure is an advisory, except that
+# First use builds the native tools that the hooks verify (hooks/lib/eci-native-provision.sh).
+# Usage output skips it. A provisioning failure is an advisory, except that
 # manifest-write always verifies, through the loader, the eci-safe-import it is about to run.
 case ${1-} in
-  ''|--help|-h|maintain-planner) ;;
+  ''|--help|-h) ;;
   *)
     source "$eci_home/hooks/lib/eci-native-provision.sh"
     eci_native_provision || true
