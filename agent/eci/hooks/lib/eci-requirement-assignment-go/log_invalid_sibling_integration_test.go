@@ -54,7 +54,7 @@ completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24
 	updated, err := os.ReadFile(reportPath)
 	require.NoError(t, err)
 	var parsed struct {
-		ScopeComplete  bool     `yaml:"scope_complete"`
+		ScopeComplete bool `yaml:"scope_complete"`
 		// The report key stays the pinned status-report's name until the coordinated cutover.
 		StuckWorkRisks []string `yaml:"blockers_risks"`
 		Tasks          []struct {
