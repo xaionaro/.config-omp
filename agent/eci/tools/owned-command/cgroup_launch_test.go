@@ -577,26 +577,29 @@ func TestCgroupMemoryLimit(t *testing.T) {
 		{"single-aggregate-member", testMemoryLimit, "40M", 0, false},
 		{"over", testMemoryLimit, "200M", 137, true},
 	} {
-		// Each case launches one capped dd and checks its status, OOM and receipt fields.
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", test.limit, "--", "dd", "if=/dev/zero", "of=/dev/null", "bs="+test.block, "count=1")
-			require.Equal(t, test.status, status, output)
-			require.True(t, receipt.HostChildrenSettled)
-			require.NotNil(t, receipt.Memory)
-			require.Equal(t, test.oom, receipt.Memory.Events["oom_kill"] > 0)
-			if test.name == "under" {
-				require.Equal(t, MemoryBytes(67108865), receipt.Memory.RequestedMax)
-				require.Equal(t, MemoryBytes(67108864), receipt.Memory.EffectiveMax)
-				require.Zero(t, receipt.Memory.SwapMax)
-				require.True(t, receipt.Memory.OOMGroup)
-				require.Equal(t, guardCgroup(filepath.Dir(receipt.Cgroup)), receipt.Memory.GuardCgroup)
-				require.Greater(t, receipt.Memory.Peak, MemoryBytes(0))
-				for _, name := range []string{"low", "high", "max", "oom", "oom_kill"} {
-					require.Contains(t, receipt.Memory.Events, name)
+		t.Run(test.name,
+			// Launch one capped dd and check its status, OOM and receipt fields.
+			//
+			// Example: a block over the cap reports an OOM kill.
+			func(t *testing.T) {
+				t.Parallel()
+				receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", test.limit, "--", "dd", "if=/dev/zero", "of=/dev/null", "bs="+test.block, "count=1")
+				require.Equal(t, test.status, status, output)
+				require.True(t, receipt.HostChildrenSettled)
+				require.NotNil(t, receipt.Memory)
+				require.Equal(t, test.oom, receipt.Memory.Events["oom_kill"] > 0)
+				if test.name == "under" {
+					require.Equal(t, MemoryBytes(67108865), receipt.Memory.RequestedMax)
+					require.Equal(t, MemoryBytes(67108864), receipt.Memory.EffectiveMax)
+					require.Zero(t, receipt.Memory.SwapMax)
+					require.True(t, receipt.Memory.OOMGroup)
+					require.Equal(t, guardCgroup(filepath.Dir(receipt.Cgroup)), receipt.Memory.GuardCgroup)
+					require.Greater(t, receipt.Memory.Peak, MemoryBytes(0))
+					for _, name := range []string{"low", "high", "max", "oom", "oom_kill"} {
+						require.Contains(t, receipt.Memory.Events, name)
+					}
 				}
-			}
-		})
+			})
 	}
 }
 
@@ -778,19 +781,22 @@ func stopGuardOnCleanup(
 	cmd *exec.Cmd,
 ) {
 	t.Helper()
-	// Signal and reap the guard unless the test already waited; SIGTERM must end it with an exit error.
-	t.Cleanup(func() {
-		if cmd.ProcessState != nil {
-			return
-		}
-		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			t.Errorf("interrupt guard during cleanup: %v", err)
-		}
-		var exit *exec.ExitError
-		if err := cmd.Wait(); !errors.As(err, &exit) {
-			t.Errorf("guard cleanup wait: want the SIGTERM exit error, got %v", err)
-		}
-	})
+	t.Cleanup(
+		// Signal and reap the guard unless the test already waited.
+		//
+		// Example: a failed assertion still retires the guard with SIGTERM.
+		func() {
+			if cmd.ProcessState != nil {
+				return
+			}
+			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Errorf("interrupt guard during cleanup: %v", err)
+			}
+			var exit *exec.ExitError
+			if err := cmd.Wait(); !errors.As(err, &exit) {
+				t.Errorf("guard cleanup wait: want the SIGTERM exit error, got %v", err)
+			}
+		})
 }
 
 // TestCgroupMemoryLimitPairedTopology compares capped and uncapped launches.
@@ -840,8 +846,11 @@ func assertScopeCollected(
 	defer cancel()
 	conn, err := dbus.Connect(userManagerBusAddress(), dbus.WithContext(ctx))
 	require.NoError(t, err)
+	defer
 	// Close the bus connection after the wait and report a failed close.
-	defer func() {
+	//
+	// Example: a bus close error is reported by the test.
+	func() {
 		if err := conn.Close(); err != nil {
 			t.Errorf("close user manager bus: %v", err)
 		}

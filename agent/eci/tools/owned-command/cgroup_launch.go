@@ -665,10 +665,11 @@ func (g *guard) runCgroupCommand(
 		}
 	}()
 	if memoryMax != 0 {
+		defer
 		// Capture counters before the deferred command cgroup removal.
 		//
 		// Example: an OOM-killed workload still produces its final event counts.
-		defer func() {
+		func() {
 			if g.receipt.CommandPID == 0 {
 				return
 			}
