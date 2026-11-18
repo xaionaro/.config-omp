@@ -30,7 +30,7 @@ expect_call() {
   local label=$1 want=$2 marker=$3 rc=0
   shift 3
   "${run_env[@]}" "$@" >"$tmp/$label.out" 2>"$tmp/$label.err" || rc=$?
-  if [ "$rc" != "$want" ] || ! cat "$tmp/$label.out" "$tmp/$label.err" | grep -qF -- "$marker"; then
+  if [ "$rc" != "$want" ] || ! grep -qF -- "$marker" "$tmp/$label.out" "$tmp/$label.err"; then
     printf 'no-go-run: %s exited %s (want %s) or lacks %s\n' "$label" "$rc" "$want" "$marker" >&2
     cat "$tmp/$label.out" "$tmp/$label.err" >&2
     exit 1
@@ -45,6 +45,7 @@ expect_call warm-assignment 1 'flag: help requested' bash "$root/bin/eci-require
 # The old pinned planner must not be invoked until a coordinated cutover.
 expect_call blocked-planner 1 'maintain-planner unavailable until coordinated cutover' \
   bash "$root/bin/eci-active" maintain-planner
+grep -qF 'build-native-binaries.sh' "$tmp/blocked-planner.err"
 
 # ledger-append records the probe in the session log it names, then its status refresh runs the
 # selected status-report, which reports the missing session report. The pinned eci-active appends to

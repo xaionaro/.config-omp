@@ -183,9 +183,10 @@ XNU and launchd limits are documented only in this section:
   125 and signals nothing. It writes a receipt: `Cause` is `guard error`, `CommandPID`
   is 0, `HostChildrenSettled` is false, and `Errors` holds one `cancel:` message. A
   malformed cancellation request is refused without a receipt.
-- A launch with a nonzero `-memory-max` is refused with one stderr line and a
-  guard-error receipt; the command does not run. Omit the flag for an uncapped
-  launch; explicit zero is a usage error (exit 2, no receipt).
+- A launch with `-memory-max` of at least one page is refused with one stderr line
+  and a guard-error receipt; the command does not run. Omit the flag for an uncapped
+  launch. Explicit values below one page, including zero, are usage errors on both
+  backends (exit 2 before launch, no receipt).
 - If owned-command itself is killed with SIGKILL, nothing retires the group.
 - The receipt has no `Cgroup` field, and there is no five-second setup budget on Darwin.
   `Survivors` holds the root only when it is still unreaped at the end of settlement, and

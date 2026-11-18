@@ -15,7 +15,9 @@ fi
 # The selected deployment predates workspace-safe planner builds. Refuse the
 # command until a coordinated pin cutover removes this guard.
 if [ "${1-}" = maintain-planner ]; then
-  printf 'eci-active: maintain-planner unavailable until coordinated cutover\n' >&2
+  printf '%s\n' 'eci-active: maintain-planner unavailable until coordinated cutover' \
+    'For the planner tools, run: bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-command-plan eci-safe-import eci-hook-helper' \
+    'Module-directory and Kimi refreshes remain unavailable until coordinated cutover.' >&2
   exit 1
 fi
 wrapper=${BASH_SOURCE[0]}

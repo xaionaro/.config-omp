@@ -26,50 +26,62 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// testMemoryLimit is a page-aligned 64 MiB command cap.
-//
-// Example: a 200M block exceeds it and is OOM-killed.
-const testMemoryLimit = "67108864"
+const (
+	// testMemoryLimitBytes is the page-aligned 64 MiB command cap.
+	//
+	// Example: a 200M block exceeds it and is OOM-killed.
+	testMemoryLimitBytes = 67108864
 
-// testUnalignedMemoryLimit is one byte above testMemoryLimit.
-//
-// Example: the kernel rounds it down to the 64 MiB page boundary.
-const testUnalignedMemoryLimit = "67108865"
+	// testUnalignedMemoryLimitBytes is one byte above the aligned limit.
+	//
+	// Example: the kernel rounds it down to the 64 MiB page boundary.
+	testUnalignedMemoryLimitBytes = 67108865
 
-// testAboveKernelMemoryLimit is 2^63 bytes, above PAGE_COUNTER_MAX pages.
-//
-// Example: the kernel clamps it to max and the guard refuses the mismatched read-back.
-const testAboveKernelMemoryLimit = "9223372036854775808"
+	// testAboveKernelMemoryLimit exceeds PAGE_COUNTER_MAX pages.
+	//
+	// Example: the kernel clamps it to max and read-back is refused.
+	testAboveKernelMemoryLimit = "9223372036854775808"
 
-// scopeCollectionLimit bounds the wait for systemd to remove an empty guard scope.
-//
-// Example: assertScopeCollected fails if a scope outlives 5 seconds.
-const scopeCollectionLimit = 5 * time.Second
+	// scopeCollectionLimit bounds the wait for systemd scope removal.
+	//
+	// Example: scope collection fails after five seconds.
+	scopeCollectionLimit = 5 * time.Second
 
-// memoryEventLow names low-protection events in memory.events.
-//
-// Example: receipts contain the low event counter.
-const memoryEventLow = "low"
+	// memoryEventLow names low-protection events.
+	//
+	// Example: receipts contain the low counter.
+	memoryEventLow = "low"
 
-// memoryEventHigh names high-threshold events in memory.events.
-//
-// Example: receipts contain the high event counter.
-const memoryEventHigh = "high"
+	// memoryEventHigh names high-threshold events.
+	//
+	// Example: receipts contain the high counter.
+	memoryEventHigh = "high"
 
-// memoryEventMax names maximum-threshold events in memory.events.
-//
-// Example: receipts contain the max event counter.
-const memoryEventMax = "max"
+	// memoryEventMax names maximum-threshold events.
+	//
+	// Example: receipts contain the max counter.
+	memoryEventMax = "max"
 
-// memoryEventOOM names out-of-memory events in memory.events.
-//
-// Example: receipts contain the oom event counter.
-const memoryEventOOM = "oom"
+	// memoryEventOOM names out-of-memory events.
+	//
+	// Example: receipts contain the OOM counter.
+	memoryEventOOM = "oom"
 
-// memoryEventOOMKill names killed-process events in memory.events.
+	// memoryEventOOMKill names killed-process events.
+	//
+	// Example: an over-limit workload increments this counter.
+	memoryEventOOMKill = "oom_kill"
+)
+
+// testMemoryLimit formats the page-aligned cap for the command line.
 //
-// Example: an over-limit workload increments oom_kill.
-const memoryEventOOMKill = "oom_kill"
+// Example: capped tests pass this value as bytes.
+var testMemoryLimit = strconv.Itoa(testMemoryLimitBytes)
+
+// testUnalignedMemoryLimit formats the unaligned cap for the command line.
+//
+// Example: a capped test verifies page rounding.
+var testUnalignedMemoryLimit = strconv.Itoa(testUnalignedMemoryLimitBytes)
 
 // TestCgroupPopulation requires explicit population evidence and rejects malformed emptiness.
 //
@@ -634,8 +646,8 @@ func TestCgroupMemoryLimit(t *testing.T) {
 				require.NotNil(t, receipt.Memory)
 				require.Equal(t, test.oom, receipt.Memory.Events[memoryEventOOMKill] > 0)
 				if test.name == "under" {
-					require.Equal(t, MemoryBytes(67108865), receipt.Memory.RequestedMax)
-					require.Equal(t, MemoryBytes(67108864), receipt.Memory.EffectiveMax)
+					require.Equal(t, MemoryBytes(testUnalignedMemoryLimitBytes), receipt.Memory.RequestedMax)
+					require.Equal(t, MemoryBytes(testMemoryLimitBytes), receipt.Memory.EffectiveMax)
 					require.Zero(t, receipt.Memory.SwapMax)
 					require.True(t, receipt.Memory.OOMGroup)
 					require.Equal(t, guardCgroup(filepath.Dir(receipt.Cgroup)), receipt.Memory.GuardCgroup)
@@ -750,14 +762,16 @@ func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
 func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
-	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; exec sleep 10")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
+	_, err := cmd.StdinPipe()
+	require.NoError(t, err)
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(t, err)
 	require.NoError(t, cmd.Start())
 	stopGuardOnCleanup(t, cmd)
 	line, err := bufio.NewReader(stdout).ReadString('\n')
 	require.NoError(t, err, "command did not report membership")
-	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
+	relative := strings.TrimPrefix(strings.TrimSpace(line), cgroupV2Prefix)
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
 	command := filepath.Join(cgroupRoot, relative)
 	parent := filepath.Dir(command)
@@ -943,7 +957,7 @@ func TestCgroupMemoryLimitAbsentKeepsTopology(t *testing.T) {
 	stopGuardOnCleanup(t, cmd)
 	line, err := bufio.NewReader(stdout).ReadString('\n')
 	require.NoError(t, err)
-	relative := strings.TrimPrefix(strings.TrimSpace(line), "0::")
+	relative := strings.TrimPrefix(strings.TrimSpace(line), cgroupV2Prefix)
 	require.True(t, strings.HasSuffix(relative, "/"+commandLeaf), line)
 	guard := filepath.Join(cgroupRoot, filepath.Dir(relative), memoryGuardLeaf)
 	_, err = os.Stat(guard)

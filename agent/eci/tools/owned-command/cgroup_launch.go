@@ -23,87 +23,108 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// cgroupSetupTimeout bounds manager acquisition independently of command runtime.
-//
-// Example: a missing manager cannot consume an unbounded prelaunch wait.
-const cgroupSetupTimeout = 5 * time.Second
+const (
+	// cgroupSetupTimeout bounds manager acquisition independently of command runtime.
+	//
+	// Example: a missing manager cannot consume an unbounded prelaunch wait.
+	cgroupSetupTimeout = 5 * time.Second
 
-// memoryGuardLeaf names the guard sibling outside the command's memory cap.
-//
-// Example: controller delegation moves the supervisor into this leaf.
-const memoryGuardLeaf = "guard"
+	// memoryGuardLeaf names the guard sibling outside the command's memory cap.
+	//
+	// Example: controller delegation moves the supervisor into this leaf.
+	memoryGuardLeaf = "guard"
 
-// commandLeaf names the workload subtree.
-//
-// Example: the guard retires processes only in this subtree.
-const commandLeaf = "command"
+	// commandLeaf names the workload subtree.
+	//
+	// Example: the guard retires processes only in this subtree.
+	commandLeaf = "command"
 
-// oomdOmitXattr excludes the guard leaf from systemd-oomd kill selection.
-// oomd selects leaf cgroups and honors the attribute only when the leaf's owner
-// matches the monitored cgroup's owner.
-//
-// Example: the guard remains outside oomd's leaf candidates.
-const oomdOmitXattr = "user.oomd_omit"
+	// oomdOmitXattr excludes the guard leaf from systemd-oomd kill selection.
+	// oomd honors it when the leaf and monitored cgroup owners match.
+	//
+	// Example: the guard remains outside oomd's leaf candidates.
+	oomdOmitXattr = "user.oomd_omit"
 
-// memoryPeakFile names the kernel's peak accounting control.
-//
-// Example: a receipt records the command's peak bytes.
-const memoryPeakFile = "memory.peak"
+	// memoryPeakFile names the kernel's peak accounting control.
+	//
+	// Example: a receipt records the command's peak bytes.
+	memoryPeakFile = "memory.peak"
 
-// memoryEventsFile names the kernel's memory event counters.
-//
-// Example: oom_kill records a workload killed at its limit.
-const memoryEventsFile = "memory.events"
+	// memoryEventsFile names the kernel's memory event counters.
+	//
+	// Example: oom_kill records a workload killed at its limit.
+	memoryEventsFile = "memory.events"
 
-// cgroupControllersFile lists the controllers a cgroup may enable for its children.
-//
-// Example: a delegated scope supports a cap only when it lists memory.
-const cgroupControllersFile = "cgroup.controllers"
+	// cgroupControllersFile lists controllers available to children.
+	//
+	// Example: a delegated scope supports a cap only when it lists memory.
+	cgroupControllersFile = "cgroup.controllers"
 
-// cgroupProcsFile lists and moves a cgroup's member processes.
-//
-// Example: writing the guard's PID moves it into the guard leaf.
-const cgroupProcsFile = "cgroup.procs"
+	// cgroupProcsFile lists and moves a cgroup's member processes.
+	//
+	// Example: writing the guard's PID moves it into the guard leaf.
+	cgroupProcsFile = "cgroup.procs"
 
-// cgroupSubtreeControlFile enables controllers for a cgroup's children.
-//
-// Example: enableMemoryController is written here before the command leaf is capped.
-const cgroupSubtreeControlFile = "cgroup.subtree_control"
+	// cgroupSubtreeControlFile enables controllers for children.
+	//
+	// Example: enableMemoryController is written before capping the command.
+	cgroupSubtreeControlFile = "cgroup.subtree_control"
 
-// memoryController names the kernel memory controller in controller lists.
-//
-// Example: hasMemoryController looks for it in cgroup.controllers.
-const memoryController = "memory"
+	// memoryController names the kernel memory controller in controller lists.
+	//
+	// Example: hasMemoryController looks for it in cgroup.controllers.
+	memoryController = "memory"
 
-// enableMemoryController is the subtree_control request that enables memoryController.
-//
-// Example: the scope parent enables memory so its command leaf can be capped.
-const enableMemoryController = "+" + memoryController
+	// enableMemoryController requests the memory controller.
+	//
+	// Example: the parent enables memory for its command leaf.
+	enableMemoryController = "+" + memoryController
 
-// cgroupRoot is the unified cgroup filesystem mount.
-//
-// Example: a delegated relative path resolves below it.
-const cgroupRoot = "/sys/fs/cgroup"
+	// cgroupRoot is the unified cgroup filesystem mount.
+	//
+	// Example: a delegated relative path resolves below it.
+	cgroupRoot = "/sys/fs/cgroup"
 
-// selfCgroupFile names the supervisor's current cgroup membership.
-//
-// Example: membership is checked before using a delegated scope.
-const selfCgroupFile = "/proc/self/cgroup"
+	// selfCgroupFile names the supervisor's current cgroup membership.
+	//
+	// Example: membership is checked before using a delegated scope.
+	selfCgroupFile = "/proc/self/cgroup"
 
-// memorySwapMaxFile names the workload swap limit.
-//
-// Example: a capped workload disables swap.
-const memorySwapMaxFile = "memory.swap.max"
+	// memorySwapMaxFile names the workload swap limit.
+	//
+	// Example: a capped workload disables swap.
+	memorySwapMaxFile = "memory.swap.max"
 
-// memoryOOMGroupFile names the group-wide OOM selection control.
-//
-// Example: a workload OOM retires its whole command group.
-const memoryOOMGroupFile = "memory.oom.group"
+	// memoryOOMGroupFile names the group-wide OOM selection control.
+	//
+	// Example: a workload OOM retires its whole command group.
+	memoryOOMGroupFile = "memory.oom.group"
 
-// memoryMaxFile names the aggregate workload memory limit.
-//
-// Example: a capped command receives its page-rounded maximum.
-const memoryMaxFile = "memory.max"
+	// memoryMaxFile names the aggregate workload memory limit.
+	//
+	// Example: a capped command receives its page-rounded maximum.
+	memoryMaxFile = "memory.max"
+
+	// cgroupV2Prefix identifies unified cgroup membership.
+	//
+	// Example: a membership line starts with this prefix.
+	cgroupV2Prefix = "0::"
+
+	// oomdOmitValue opts the guard leaf out of oomd selection.
+	//
+	// Example: the value is written to user.oomd_omit.
+	oomdOmitValue = "1"
+
+	// commandSwapMax disables swap for capped workloads.
+	//
+	// Example: the receipt reports zero swap bytes.
+	commandSwapMax = 0
+
+	// commandOOMGroup enables group-wide OOM handling.
+	//
+	// Example: the receipt reports group-wide OOM handling.
+	commandOOMGroup = 1
+)
 
 // selfCgroupMatches reads and compares the supervisor's unified membership.
 //
@@ -113,7 +134,7 @@ func selfCgroupMatches(expected string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(string(membership)) == "0::"+expected, nil
+	return strings.TrimSpace(string(membership)) == cgroupV2Prefix+expected, nil
 }
 
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
@@ -254,7 +275,7 @@ func prepareMemoryScope(parent string) error {
 	if err := os.Mkdir(guard, 0700); err != nil {
 		return fmt.Errorf("create guard cgroup: %w", err)
 	}
-	if err := unix.Setxattr(guard, oomdOmitXattr, []byte("1"), 0); err != nil {
+	if err := unix.Setxattr(guard, oomdOmitXattr, []byte(oomdOmitValue), 0); err != nil {
 		return fmt.Errorf("exclude guard from oomd selection: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(guard, cgroupProcsFile), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
@@ -305,8 +326,8 @@ type memoryControl struct {
 // Example: the aggregate limit is rounded down to a whole page.
 func commandMemoryControls(limit MemoryBytes) [3]memoryControl {
 	return [3]memoryControl{
-		{memorySwapMaxFile, "0"},
-		{memoryOOMGroupFile, "1"},
+		{memorySwapMaxFile, strconv.Itoa(commandSwapMax)},
+		{memoryOOMGroupFile, strconv.Itoa(commandOOMGroup)},
 		{memoryMaxFile, strconv.FormatUint(uint64(limit.pageFloor()), 10)},
 	}
 }
@@ -395,8 +416,8 @@ func readMemoryReceipt(
 	return &MemoryReceipt{
 		RequestedMax: limit,
 		EffectiveMax: limit.pageFloor(),
-		SwapMax:      0,
-		OOMGroup:     true,
+		SwapMax:      commandSwapMax,
+		OOMGroup:     commandOOMGroup == 1,
 		GuardCgroup:  guardCgroup(filepath.Dir(group.Relative)),
 		Peak:         MemoryBytes(peak),
 		Events:       events,
@@ -591,7 +612,7 @@ func (g *guard) signalCgroupMember(
 		return
 	}
 	membership := strings.TrimSpace(string(data))
-	if membership != "0::"+c.Relative && !strings.HasPrefix(membership, "0::"+c.Relative+"/") {
+	if membership != cgroupV2Prefix+c.Relative && !strings.HasPrefix(membership, cgroupV2Prefix+c.Relative+"/") {
 		return
 	}
 	err = kernel.Send(fd, syscall.SIGTERM)

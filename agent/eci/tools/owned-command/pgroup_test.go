@@ -1039,8 +1039,6 @@ func TestPgroupJoinerAfterFinalKillNeverSettles(t *testing.T) {
 // Example: a zero limit exits with a usage error without touching the marker.
 func TestPgroupMemoryLimitExplicitZero(t *testing.T) {
 	t.Parallel()
-	var limit MemoryBytes
-	require.ErrorContains(t, limit.Set("0"), "memory limit must be positive")
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "launched")
 	receipt := filepath.Join(dir, "receipt.json")
