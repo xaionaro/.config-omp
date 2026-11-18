@@ -11,7 +11,7 @@ Use this skill only when the user explicitly requested subagents, delegation, or
 
 Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
 Dispatch every subagent by spawning it; shell-wrapped omp agents are forbidden.
-Every subagent prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
+Every subagent prompt must quote the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
@@ -113,13 +113,12 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
-**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
-
-**BLOCKED:** The implementer cannot complete the task. Assess the blocker:
+**NEEDS_CONTEXT:** The implementer cannot finish without a change from you. Make the change that fits:
 1. If it's a context problem, provide more context and re-dispatch with the same model
 2. If the task requires more reasoning, re-dispatch with a more capable model
 3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, escalate to the human only with the proof the Blockers rule in `~/.omp/agent/RULES.md` requires
+
+**BLOCKED:** Check the report for the proof the Blockers rule in `~/.omp/agent/RULES.md` requires. Without that proof, handle the report as NEEDS_CONTEXT: an unproven claim is work still to do. With it, escalate to the human with that proof, including when the plan itself is wrong.
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 

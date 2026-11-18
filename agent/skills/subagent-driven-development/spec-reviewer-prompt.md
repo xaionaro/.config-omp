@@ -41,7 +41,7 @@ Report as [Ref 5] sets.
 </report>
 
 References
-1. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Every subagent prompt must include' line, quoted when you fill this]"
+1. ~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md ### 2. Create Focused Agent Tasks: "[its Stop-hook handling item, quoted when you fill this]"
 2. ~/.omp/agent/skills/subagent-driven-development/SKILL.md ## Authorization: "[its 'Execute plan by dispatching' sentence, quoted when you fill this]"
 3. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 3 (`<verification-rule>`): "Do not trust the implementer report." / "Read the changed code and compare it to requirements line by line."
 4. ~/.omp/agent/skills/subagent-driven-development/spec-reviewer-prompt.md References, entry 4 (`<check>`): "- Missing requirements" / "- Claims not backed by code" / "- Extra or unrequested work" / "- Over-engineering" / "- Misunderstood requirements" / "- Wrong problem or wrong implementation approach"

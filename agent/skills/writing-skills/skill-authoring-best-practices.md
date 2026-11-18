@@ -92,11 +92,7 @@ Treat skill authoring as TDD for process documentation, in test-driven-developme
 | GREEN | Add the smallest guidance that blocks the violations that prompted it, then run the scenarios with it. |
 | REFACTOR | Re-test, close new loopholes, remove redundant text. |
 
-Spawn a subagent for subagent tests. The prompt must include:
-
-```text
-Follow any Stop-hook prompt in this session, including required proof/checklist files. Fix blockers within your assigned scope. Report only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
-```
+Spawn a subagent for subagent tests. Its prompt must quote the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
 
 Do not shell-wrap agents. Use the standard agent management path available in the session.
 

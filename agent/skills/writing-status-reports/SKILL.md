@@ -263,7 +263,7 @@ registries.
 
 ## Pressure Scenario
 
-Under time pressure, classify by the lane's next required action. For example: "PAUSED on API-contract lane [requirement context: requirement:checkout:R2:contract]; impact: checkout validation cannot make progress; owner: API-contract lane; resume: lane 2 publishes docs/api-contract.md." Use `BLOCKED` only for a real user input: "BLOCKED on user decision: choose required API fields; impact: checkout validation cannot make further progress; owner: user; unblock: record the choice in docs/api-contract.md."
+Under time pressure, classify by the lane's next required action. For example: "PAUSED on API-contract lane [requirement context: requirement:checkout:R2:contract]; impact: checkout validation cannot make progress; owner: API-contract lane; resume: lane 2 publishes docs/api-contract.md." Use `BLOCKED` only for a real user input: "BLOCKED on user decision: choose required API fields; impact: checkout validation cannot make further progress; owner: user; unblock: record the choice in docs/api-contract.md; proof: <quoted requirement line that leaves the fields open, and that no default is allowed>."
 
 ## Common Failures
 

@@ -21,8 +21,8 @@ Port code between codebases through exhaustive extraction, adversarial critique,
 Every numbered phase below has a separate role and artifact. No role serves dual purposes. When ECI or ATE owns the current work, route those roles through that protocol. Outside ECI/ATE, run phases as separate standard subagents only after explicit user delegation; otherwise perform them locally while preserving role boundaries and critique gates. If the user explicitly requires dedicated agents and standard agent tools are unavailable, hard-escalate instead of substituting local artifacts.
 
 Propagate **original user requirements verbatim** to every subagent prompt.
-Every subagent prompt must include: Follow any Stop-hook prompt in that session, including required proof/checklist files. Fix blockers within assigned scope. Report to the orchestrator only when recovery needs out-of-scope changes, unrelated user work, credentials, or approval. Include in that report the proof the Blockers rule in `~/.omp/agent/RULES.md` requires for any blocker.
-In each prompt, state the line above and each quoted line below as a short label with `[Ref N]`, and quote it with its heading in this skill in the prompt's References list.
+Every subagent prompt must quote the Stop-hook handling item of `~/.omp/agent/skills/dispatching-parallel-agents/SKILL.md` ### 2. Create Focused Agent Tasks.
+In each prompt, state that item and each quoted line below as a short label with `[Ref N]`, and quote each with its file and heading in the prompt's References list.
 
 When combined phase outputs exceed 6000 words, main thread summarizes before spawning the next agent. Preserve: all feature names, all verdicts with one-line reasoning, all MISSING/OVERTURN entries in full. Never silently drop features.
 
