@@ -197,7 +197,7 @@ Reviewers receive the Producers' reported ranges in the iteration's review scope
 4. The current Job owner dispatches fresh A/B/C critics in parallel for every iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required; E2E follows [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing).
    When any report, E2E included, has a REJECT finding, it sends every finding, unchanged with its report, to a fresh Step 2 critic. That critic makes the finding decisions under [critique](references/critique.md#admission-and-treatment): each finding's scope, impact, and [treatment](../references/workflow-runtime/review-policy.md#gate-evaluation), and each in-scope inventory item's disposition. The critic names each decision that belongs to the user.
    When no report has one, these rules replace the critic: each CONDITIONAL takes treatment `now` at its reviewer's stated impact, with its reviewer's fix direction as correction text; each NIT takes treatment `no change` with reason "no rejection"; each in-scope inventory item keeps its latest Step 2 critic's disposition; and the Job owner sends the unchanged reports to the Supervisor as the iteration's gate evidence.
-   The Job owner dispatches the batches as decided, without Supervisor confirmation: substantive findings return as one design batch, joined by any contained fixes; contained fixes alone return once to implementation.
+   The Job owner dispatches the batches as decided, without Supervisor confirmation: design-level findings return as one design batch, joined by any implementation-level fixes; implementation-level fixes alone return once to implementation.
    It checks each user decision the critic names against [user-owned decisions](../../eci-binding-contract.md#decisions): it sends one that fails to a fresh Step 2 critic with the [role rule's](#activation-and-invariants) mistake notice, and relays one that passes to the Supervisor, which puts it to the user and returns the user's quoted answer to the Job owner for a fresh Step 2 critic. The Supervisor enforces ECI and retains acceptance. Clean pass needs every original criterion, required proof, and no remaining `now` issue.
 
 ## Relationship to other skills
@@ -215,7 +215,7 @@ Maintenance provenance: [coverage map](references/coverage-map.md).
 
 - A worker loads coordinator/blocker/pause/stop/teardown/review-runtime/pressure policy that neither its Module routing row nor its assignment routes.
 - A producer reviews itself, a blind critic reuses context, or review critics run sequentially.
-- A substantive gate finding is patched directly instead of returning through Explore/Critique.
+- A design-level gate finding is patched directly instead of returning through Explore/Critique.
 - A lifecycle is closed to bypass routing or acceptance.
 
 ## After compaction

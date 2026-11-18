@@ -131,9 +131,7 @@ Any Step 4 review that runs concurrently before this restart is intermediate onl
 3. A fresh Step 2 critic independently assesses the current sources and Explorer's options.
    - The fresh Step 2 critic reviews every in-scope Fast finding and every in-scope Fast-originated changed hunk and decides exactly one canonical disposition for each in-scope inventory item: retain, revise, replace, superseded, resolved-with-evidence, or policy-valid deferred-with-reason, under [main ECI quality responsibility](#main-eci-quality-responsibility).
    - Apply impact-proportional routing before implementation.
-   - Return substantive `now` findings or design/API uncertainty through one complete fresh Steps 1–2 repair batch.
-   - Send a `treatment: now` finding to the implementer once only if it is contained, in-scope, impact-trivial, and isolated.
-   - A Step 2 `revise` or `replace` disposition reaches the Implementer as `treatment: now` only when it is in-scope, contained, impact-trivial, and isolated; otherwise return through one complete fresh Steps 1–2 design-repair batch before implementation.
+   - Route each `now` finding and each in-scope `revise` or `replace` disposition under [gate evaluation](../../references/workflow-runtime/review-policy.md#gate-evaluation): design-level ones and design/API uncertainty return through one complete fresh Steps 1–2 repair batch before implementation; the rest reach the Implementer once as `treatment: now`.
    - Other dispositions require evidence, not implementation.
    - Carry the resulting disposition and evidence into Step 4; never leave it unresolved.
    - Use policy-valid deferred-with-reason only where [review-policy.md#impact-proportional-routing](../../references/workflow-runtime/review-policy.md#impact-proportional-routing) permits.
