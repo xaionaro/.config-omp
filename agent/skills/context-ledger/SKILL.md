@@ -32,7 +32,7 @@ bounded scope` as readable context. A repair stays in its lane when it is
 necessary to meet or prove that outcome. An unadmitted separate-outcome concern is only a
 post-ECI observation or follow-up, never current lane, assignment, code change,
 review, deadline, forecast, or proof program. Reconcile missing or stale
-lineage alongside known work; do not block it.
+lineage alongside known work; known work never awaits it.
 
 Record authorized child Jobs with stable parent edges, their own outcomes and full ECI evidence, and upward owner routes under the [recursive Job contract](../explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure). A parent's finished home outcomes do not close unfinished descendants. Admission within inherited authorization does not invent a user requirement.
 
@@ -44,7 +44,7 @@ Preserve other exact attributed user passages. Record hypotheses and derived wor
 
 Ground each progress item in `high_level_log.jsonl` and `latest-status-report.yaml` in a
 user requirement. Explain how the change advances or
-verifies the requested outcome; for a blocker, state its effect on that outcome.
+verifies the requested outcome; for stuck work, state its effect on that outcome.
 For supporting work, state what it enables and whether the requested outcome
 remains open.
 
@@ -303,7 +303,7 @@ A ledger or material forecast update without its required same-turn log entry an
 | Detailed report exists elsewhere | Link it; do not copy report body, substeps, transcripts, or bullet lists |
 | Correction changes current understanding | Record the surviving fact, affected state, recurrence guard when useful, and source/evidence. For reaffirmed existing facts, use the `Existing ledger fact reaffirmed before action changes state` routing row. |
 | False current scope | Correct the ledger/status and append the correction to the log. Cancel or reassign only unrooted current work; do not destructively revert already-made work without user direction. |
-| Task/blocker resolved | Move to completed milestones with link, or delete |
+| Task/stuck work resolved | Move to completed milestones with link, or delete |
 
 Skip blow-by-blow history unless it prevents recurrence.
 
@@ -437,7 +437,7 @@ evidence gaps visible.
   the scenario base-case endpoint.
 
 Forecast scenarios describe planning uncertainty only. They do not change
-scope, priority, blocker status, or forecast authority.
+scope, priority, stuck status, or forecast authority.
 
 For every material forecast update, edit `forecasts.yaml` in place, append to `high_level_log.jsonl`, append a `forecast-target-history.tsv` row only when a root target changes, and refresh `latest-status-report.yaml`. A forecast-only update does not require rewriting `project-understanding.yaml`. Store forecast values only in `forecasts.yaml`, keeping locators in the ledger. On closure mark the canonical forecast inactive and retain history rows.
 
@@ -542,7 +542,7 @@ Tier/confidence may accompany evidence when useful.
 One mutable fact has one canonical slot. Work owns workflow state/owner/next
 action; outcomes and context never repeat that state. Verification owns observed
 verdict/limits. Keep still-binding requirements, exact sources, acceptance and
-source→outcome→scope after completion; clear obsolete next actions/blockers.
+source→outcome→scope after completion; clear obsolete next actions/stuck work.
 Delete superseded requirements only when they no longer constrain the project;
 preserve original source/change in append-only history, linking it from a guard
 when it still explains a current hazard.
