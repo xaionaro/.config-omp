@@ -719,9 +719,21 @@ func TestCgroupMemoryLimitBelowPageFailsClosed(t *testing.T) {
 // Example: two individually smaller blocked writes exceed the family cap together.
 func TestCgroupMemoryLimitAggregate(t *testing.T) {
 	t.Parallel()
-	script := `dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10 & setsid sh -c 'dd if=/dev/zero bs=40M count=1 2>/dev/null | sleep 10' & wait`
-	receipt, status, output := runGuard(t, "-deadline", "15s", "-memory-max", testMemoryLimit, "--", "/bin/sh", "-c", script)
-	require.Equal(t, 137, status, output)
+	script := `exec 3<&0; dd if=/dev/zero bs=40M count=1 2>/dev/null | { exec 4<&0; read x <&3; } & setsid sh -c 'dd if=/dev/zero bs=40M count=1 2>/dev/null | { exec 4<&0; read x <&3; }' & wait`
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", script)
+	stdin, err := cmd.StdinPipe()
+	require.NoError(t, err)
+	output, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit, string(output))
+	status := exit.ExitCode()
+	require.ErrorIs(t, stdin.Close(), os.ErrClosed)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var receipt Receipt
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.Equal(t, 137, status, string(output))
 	require.True(t, receipt.HostChildrenSettled)
 	require.NotNil(t, receipt.Memory)
 	require.Greater(t, receipt.Memory.Events[memoryEventOOMKill], uint64(0))
@@ -732,14 +744,21 @@ func TestCgroupMemoryLimitAggregate(t *testing.T) {
 // Example: a cap cannot silently change the meaning of external PID cancellation.
 func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
 	t.Parallel()
-	control := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
+	control := exec.Command("/bin/sh", "-c", "read x")
+	controlIn, err := control.StdinPipe()
+	require.NoError(t, err)
+	startControlledCommand(t, control)
 	controlStat, err := readProcess(control.Process.Pid)
 	require.NoError(t, err)
 	receipt, code, output := runGuard(t, "-cancel-pid", strconv.Itoa(controlStat.PID), "-cancel-birth", strconv.FormatUint(controlStat.Birth, 10))
 	require.Zero(t, code, output)
 	require.True(t, receipt.HostChildrenSettled)
 	require.Error(t, control.Wait())
-	child := startControlledCommand(t, exec.Command("/bin/sleep", "30"))
+	require.ErrorIs(t, controlIn.Close(), os.ErrClosed)
+	child := exec.Command("/bin/sh", "-c", "read x")
+	childIn, err := child.StdinPipe()
+	require.NoError(t, err)
+	startControlledCommand(t, child)
 	before, err := readProcess(child.Process.Pid)
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "receipt.json")
@@ -754,6 +773,9 @@ func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before.Birth, after.Birth)
 	require.NotContains(t, []string{"Z", "X"}, after.State)
+	require.NoError(t, child.Process.Kill())
+	require.Error(t, child.Wait())
+	require.ErrorIs(t, childIn.Close(), os.ErrClosed)
 }
 
 // TestCgroupMemoryLimitTopologyAndInterrupt observes the live guard and command siblings.
@@ -763,7 +785,7 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
 	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
-	_, err := cmd.StdinPipe()
+	stdin, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(t, err)
@@ -811,6 +833,7 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	require.Equal(t, monitorStat.Uid, guardStat.Uid, "oomd owner mismatch")
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
 	err = cmd.Wait()
+	require.ErrorIs(t, stdin.Close(), os.ErrClosed)
 	var exit *exec.ExitError
 	require.ErrorAs(t, err, &exit, "interrupt status")
 	require.Equal(t, 125, exit.ExitCode(), "interrupt status")
