@@ -2893,7 +2893,7 @@ $counts
 EOF
 
   if [ "${retired:-0}" -ne 0 ]; then
-    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Report a stuck claim awaiting user input while ECI remains active.\n' "$subject"
+    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Report a proven stuck claim to your owner while ECI remains active.\n' "$subject"
   elif [ "${accepted:-0}" -ne 1 ]; then
     printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:.\n' "$subject"
   fi
