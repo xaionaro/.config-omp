@@ -55,7 +55,7 @@ code change, review, deadline, forecast, or proof program.
   a current implementation lane.
 - Keep a genuinely unauthorized new material outcome as a follow-up
   suggestion. Route a material ambiguity that the current request and ledger
-  cannot resolve under [Decisions](../../eci-binding-contract.md#decisions).
+  cannot resolve under the User questions rule in `~/.omp/agent/RULES.md`.
   Do not escalate merely because an identifier or record is absent.
 - Preserve historical decisions in `high_level_log.jsonl` when they change the
   current scope or rationale. The ledger remains the current snapshot.

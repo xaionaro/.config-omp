@@ -2867,8 +2867,7 @@ eci_markdown_section_has_body() {
   ' "$file"
 }
 
-# TODO: No caller; rg 'terminal_verdict' finds only this definition. Delete it
-# with the marker readers that the file-head TODO retires.
+# TODO: No caller; delete it with the marker readers the file-head TODO retires.
 eci_terminal_verdict_error() {
   local subject="$1"
   local file="$2"
