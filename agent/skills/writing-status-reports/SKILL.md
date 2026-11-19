@@ -233,10 +233,9 @@ identify it by Job/parent chain and outcome, e.g.
 | `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, resume condition, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires for any stuck claim; return to `FOLLOWUP` when it clears. |
 
 These statuses cover only the mandatory post-Fast sequence, not separate-outcome
-observations. A question the main agent put to the user remains `BLOCKED` in
-the affected lane (`PAUSED` in other reporters' reports), with the exact
-question, impact, owner (`user`), resume action, and target; do not use it as
-the reason for `FOLLOWUP_PAUSED`. While the sequence remains
+observations. Mark a lane awaiting the user's answer to a question the main
+agent put as the `PAUSED` and `BLOCKED` rows below direct; that wait is never
+a reason for `FOLLOWUP_PAUSED`. While the sequence remains
 unaccepted, keep the root-task status `FOLLOWUP` unless the next required
 post-Fast action cannot advance because it awaits a named in-scope dependency.
 End either root-task status on coordinator acceptance or explicit user closure.
