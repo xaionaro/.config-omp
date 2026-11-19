@@ -195,7 +195,7 @@ Before step 1, complete the first-spawn rule in [Spawn skill routing](#spawn-ski
 3. The assigned Implementer Producer applies only the winner and `treatment: now` corrections with causal/proof evidence, then hands off with its checked work committed and its ranges reported.
 Reviewers receive the Producers' reported ranges in the iteration's review scope and explicit exclusions; excluded baseline and later ambient changes remain outside review scope.
 4. The current Job owner dispatches fresh A/B/C critics in parallel for every iteration, with each brief naming its lane as [review](references/review.md) defines it (Critic A coding requirements, Critic B correctness and fidelity, Critic C long-term health), and fresh independent E2E when required; E2E follows [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing).
-   When any report, E2E included, has a REJECT finding, it sends every finding, unchanged with its report, to a fresh Step 2 critic. That critic makes the finding decisions under [critique](references/critique.md#admission-and-treatment): each finding's scope, impact, and [treatment](../references/workflow-runtime/review-policy.md#gate-evaluation), and each in-scope inventory item's disposition. The critic names each decision that belongs to the user.
+   When any report, E2E included, has a REJECT finding, it sends every finding, unchanged with its report, to a fresh Step 2 critic. That critic makes the finding decisions under [critique](references/critique.md#admission-and-treatment): each finding's scope, impact, and [treatment](../references/workflow-runtime/review-policy.md#gate-evaluation), and each in-scope inventory item's disposition. The critic decides every finding its role owns and reports each decision it cannot own, unlabeled as anyone's.
    When no report has one (a round without a finding critic), these rules replace the critic:
 
    | Item | Takes |
@@ -208,7 +208,7 @@ Reviewers receive the Producers' reported ranges in the iteration's review scope
    Before sending the unchanged reports to the Supervisor as the iteration's gate evidence, the Job owner asks a CONDITIONAL's reviewer to add a missing scope to its report.
    On a round without a finding critic, the Job owner sends a gap the Supervisor returns in a reviewer's statement or evidence to that reviewer, and reapplies these rules to a gap from a misapplied rule; no critic runs for either.
    The Job owner dispatches the batches as decided, without Supervisor confirmation: [redesign](../references/workflow-runtime/review-policy.md#gate-evaluation) findings return as one design batch, joined by any repair batch; a repair batch alone returns once to implementation.
-   It checks each user decision the critic names against [user-owned decisions](../../eci-binding-contract.md#decisions): it sends one that fails to a fresh Step 2 critic with the [role rule's](#activation-and-invariants) mistake notice, and relays one that passes to the Supervisor, which puts it to the user and returns the user's quoted answer to the Job owner for a fresh Step 2 critic. The Supervisor enforces ECI and retains acceptance. Clean pass needs every original criterion, required proof, and no remaining `now` issue.
+   It sends each decision the critic reports its role cannot own to that decision's owning role; the Supervisor owns any with no other owner. The Supervisor enforces ECI and retains acceptance. Clean pass needs every original criterion, required proof, and no remaining `now` issue.
 
 ## Relationship to other skills
 
