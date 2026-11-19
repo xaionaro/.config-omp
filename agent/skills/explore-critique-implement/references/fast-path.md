@@ -107,8 +107,9 @@ After the current Job owner confirms genuine Fast completion to the Supervisor, 
 because it awaits a named in-scope dependency. Report the dependency, impact,
 owner, resume condition, and the proof the Stuck work rule in
 `~/.omp/agent/RULES.md` requires for any stuck claim; return to `FOLLOWUP` when it
-clears. A question the Supervisor put to the user remains `BLOCKED` in the
-affected lane (`PAUSED` in other reporters' reports), never `FOLLOWUP_PAUSED`.
+clears. A question the Supervisor put to the user leaves the affected lane
+`STUCK` in every report, never `FOLLOWUP_PAUSED`. Only the Supervisor's own
+report names `user` as the wait's owner; every other report names the Supervisor.
 End either root-task status on Supervisor acceptance or explicit user closure.
 Keep these statuses outside lane Implementation/Test/Prod readiness; see
 [status guidance](../../writing-status-reports/SKILL.md#multi-lane-mission-status).

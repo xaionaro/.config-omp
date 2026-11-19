@@ -22,7 +22,7 @@ timestamp: '2026-11-02T15:24:00Z'
 state: Working
 progress: []
 decisions: []
-blockers_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true
@@ -97,7 +97,7 @@ func TestLedgerAppendRetryReplaysEventsInOrder(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-blockers_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true

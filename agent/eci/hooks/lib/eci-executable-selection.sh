@@ -2,25 +2,14 @@
 # Select one explicitly retained same-bin deployment; never rebuild on failure.
 # TODO: document how .selected-executables is produced and changed: the v1 line
 # format, that each key is an opaque 64-hex build key, the manual reselection
-# steps, and the wrapper's 24-hour prune of unselected keys. The current pins carry
-# fingerprint-era keys from the builder before f7503e3; they are not content digests
-# and are not checked against the files. Nothing in the tree records how the current
-# pin was built.
+# steps, and the wrapper's 24-hour prune of unselected keys.
+# The status-report and eci-active keys are content digests from
+# eci_go_tool_build; the eci-requirement-assignment key is a fingerprint-era key
+# from the builder before f7503e3, not a content digest, and no key is checked
+# against its file. Nothing in the tree records how the pins were built; ledger
+# record guard:ledger-append-fix:eci-active-selection (session 01a1bbec) does.
 # bin/eci-active refuses maintain-planner until a coordinated cutover replaces
 # the selected executable that predates workspace-safe planner builds.
-# TODO: the coordinated cutover also activates the stuck/awaits renames that the
-# status-report and eci-active sources already use: STUCK, stuck_work_risks
-# ("Stuck work/Risks"), lane awaits, ledger state stuck, and stuck_change. Before
-# reselection, migrate each live session's latest-status-report.yaml and
-# project-understanding.yaml (and high_level_log.jsonl if the activated build
-# reads it); right after reselecting (.selected-executables is untracked), commit
-# the switch of the names still kept for the pinned executables in
-# tools/status-report/README.md (and drop its names note), skills
-# writing-status-reports, context-ledger, fast-path.md, coordinator.md and
-# policy-pressure-tests.md, hooks/tests/test-status-report-launcher.sh and the
-# eci-requirement-assignment-go integration fixtures; then rebuild the command
-# planner. Site list and migration commands: ledger record
-# work:stuck-awaits-terms:phase2 (session 01a1bbec).
 eci_select_executable() {
   local name=$1 selection line extra version active report assignment leaf
   selection="$eci_home/bin/.selected-executables"

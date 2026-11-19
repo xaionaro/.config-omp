@@ -23,7 +23,7 @@ func TestLedgerAppendProjectsValidSiblingOfMalformedUpdate(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-blockers_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true
@@ -54,9 +54,8 @@ completion_estimate: {min_minutes: 10, max_minutes: 20, as_of: '2026-11-02T15:24
 	updated, err := os.ReadFile(reportPath)
 	require.NoError(t, err)
 	var parsed struct {
-		ScopeComplete bool `yaml:"scope_complete"`
-		// The report key stays the pinned status-report's name until the coordinated cutover.
-		StuckWorkRisks []string `yaml:"blockers_risks"`
+		ScopeComplete  bool     `yaml:"scope_complete"`
+		StuckWorkRisks []string `yaml:"stuck_work_risks"`
 		Tasks          []struct {
 			ID       string `yaml:"id"`
 			Status   string `yaml:"status"`

@@ -150,7 +150,7 @@ task with a new priority, supply its priority estimate in the same event.
 | `verification_result` | Test, proof, or E2E evidence/verdict. |
 | `requirement_change` | Binding requirement, source, or scope update. |
 | `forecast_change` | Target or forecast recalibration. |
-| `blocker_change` | Work stuck, awaiting, resumed, or recovered. |
+| `stuck_change` | Work stuck, awaiting, resumed, or recovered. |
 | `checkpoint` | Commit or provisional checkpoint. |
 | `lifecycle_change` | Launch, cancellation, closure, or teardown. |
 | `correction` | Mistaken prior entry, referenced by `details.corrects`. |
@@ -219,7 +219,7 @@ jq -sc 'def epoch: try fromdate catch null;
 
 | Rule | Detail |
 |------|--------|
-| Coverage | Include UTC `timestamp`, `state`, `progress`, `decisions`, `blockers_risks`, `verification`, and `next_focus`; include hierarchical tasks, lanes, and forecast projections when applicable. Use mappings and lists for structured detail; do not wrap the report in an opaque Markdown body. |
+| Coverage | Include UTC `timestamp`, `state`, `progress`, `decisions`, `stuck_work_risks`, `verification`, and `next_focus`; include hierarchical tasks, lanes, and forecast projections when applicable. Use mappings and lists for structured detail; do not wrap the report in an opaque Markdown body. |
 | Refresh triggers | After every ledger update, after every material change, before user-waiting stops, before shutdown, after each ECI compaction, and whenever the user asks for status; apply [Update Points](#update-points) timing. |
 | Forecast projection | Derive equivalent native fields from `forecasts.yaml`, including outcome, target, assessment, baseline or recalibration and evidence, dependencies, and applicable scenarios and completion. Render exact lines and tables only in user-facing reports. The report is not a second source of truth. |
 | No copying the ledger | Report changed state plus next focus; do not duplicate ledger structure. Cross-reference instead. |
@@ -236,7 +236,7 @@ progress:
 decisions:
   - choice: 'Use the existing service contract.'
     reason: 'It preserves compatibility with the test service.'
-blockers_risks: []
+stuck_work_risks: []
 verification:
   - 'Focused checks passed.'
 next_focus: 'Run the integration check.'
@@ -517,7 +517,7 @@ and relationship arrays are nonempty; named links target the stated record types
 | requirement | `source_text: string`, `source_context: string`, `acceptance: string[]` | None |
 | outcome | `description: string` | `requirements` → requirement, `scope` → scope |
 | scope | `include: string[]`, `exclude: string[]` | None |
-| work | `owner: string`, `state: active\|blocked\|completed\|cancelled`; `next_action: string` while active/blocked; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` while active/blocked for a Job, follow-up or owed action | `outcomes` → outcome, except for a follow-up or an owed action of no Job |
+| work | `owner: string`, `state: active\|stuck\|completed\|cancelled`; `next_action: string` while active/stuck; `forecast_ref: string` when forecast applies; actual `completed_at: UTC string` for completed forecasted lane/root work, optional for small non-lane work; `title: string` while active/stuck for a Job, follow-up or owed action | `outcomes` → outcome, except for a follow-up or an owed action of no Job |
 | unknown | `question: string`, `answer: null`, `effect: string`, `resolve_by: string` | None |
 | decision | `choice: string`, `reason: string`, `consequence: string` | None |
 | guard | `rule: string`, `reason: string` | None |

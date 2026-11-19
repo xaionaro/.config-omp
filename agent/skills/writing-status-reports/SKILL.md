@@ -26,7 +26,7 @@ Core rule: Report changed state, not activity logs. Be concise, specific, and ex
 | State | Current overall state in one line. |
 | Progress | Outcomes and changed state, not actions taken. |
 | Decisions | Chosen path plus reason. |
-| Blockers/Risks | Impact, owner, exact resume action, and target artifact/path when applicable. |
+| Stuck work/Risks | Impact, owner, exact resume action, and target artifact/path when applicable. |
 | Verification | Tests, commands, observed behavior, or "not verified yet". |
 | Next Focus | Next concrete work area, not "continue". |
 
@@ -39,7 +39,7 @@ Progress reports changed state and completed outcomes, not files read, commands 
 - Lead with state, then include only categories that changed or matter now.
 - Name exact affected area, requirement, command, file, or decision when relevant.
 - Use "not verified yet" instead of implying unrun checks passed.
-- For stuck work and risks, state impact, owner, and exact resume action; work that awaits the user names the user's action and target artifact/path when applicable, e.g. `review docs/design.md`. Give each stuck claim the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
+- For stuck work and risks, state impact, owner, and exact resume action; in the main agent's own report, work that awaits the user names the user's action and target artifact/path when applicable, e.g. `review docs/design.md`; every other report names the main agent as that wait's owner, as the `STUCK` row under [Multi-Lane Mission Status](#multi-lane-mission-status) directs. Give each stuck claim the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires.
 - Preserve parent/child work: use a tree, or include `Task ID` and `Parent ID` columns; do not flatten children into peer lanes.
 - If task IDs exist, make them hierarchical, e.g. `1`, `1.3`, `1.3.2`, and sort children under their parent.
 - In material ECI status, show `exact user source → faithful requested outcome → bounded scope` in readable form. Do not broaden the outcome through a generic paraphrase or relabel a reason, discovery, or inferred safeguard as a user requirement.
@@ -205,9 +205,9 @@ Use three separate status columns so source readiness cannot be mistaken for E2E
 
 When work is flat and has no task IDs, omit `Task ID` and `Parent ID`. Keep `Lane` followed by `Lane requirement context` when that context would help the reader.
 
-| Task ID | Parent ID | Lane | Lane requirement context | Priority | Impact | Effort | Stage | Owner | Implementation Status | Test Status | Prod Status | Blocker | Next milestone | Forecast deadline / recalibration | Dependencies / critical path | Next proof/action |
+| Task ID | Parent ID | Lane | Lane requirement context | Priority | Impact | Effort | Stage | Owner | Implementation Status | Test Status | Prod Status | Awaits | Next milestone | Forecast deadline / recalibration | Dependencies / critical path | Next proof/action |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1.3.2` or `none` | `1.3` or `none` | `<human-readable lane result wanted>` | `<user requirements or lineage unavailable—reconcile>` | `<impact points / maximum work minutes = ratio, or unscored with reason>` | `<concrete impact, score points and basis>` | `<remaining work effort range in minutes and basis; elapsed duration separately>` | `normal` for ECI | `<person/agent or unowned>` | `NEW` / `IN PROGRESS` / `PAUSED` / `BLOCKED` / `CLOSED` | `NEW` / `IN PROGRESS` / `PAUSED` / `BLOCKED` / `CLOSED` | `NEW` / `IN PROGRESS` / `PAUSED` / `BLOCKED` / `CLOSED` | `none` or `PAUSED: <dependency lane or question; impact; owner; resume condition>` or `BLOCKED: <exact question the main agent put to the user; impact; owner: user; exact resume action; target artifact/path>` | `Next milestone: <named outcome>` | `Forecast deadline: <named lane/task outcome> will be finished by <UTC ISO8601>.`<br>`Root completion forecast: <named active root-task outcome> will be finished by <UTC ISO8601>.`<br>`Forecast recalibration: <prior UTC ISO8601> → <current UTC ISO8601>; why moved: <why>; supporting evidence: <evidence>.` | `Dependencies / critical path: <none, named dependency + owner/resume, or critical path>` | `<next evidence/action>` |
+| `1.3.2` or `none` | `1.3` or `none` | `<human-readable lane result wanted>` | `<user requirements or lineage unavailable—reconcile>` | `<impact points / maximum work minutes = ratio, or unscored with reason>` | `<concrete impact, score points and basis>` | `<remaining work effort range in minutes and basis; elapsed duration separately>` | `normal` for ECI | `<person/agent or unowned>` | `NEW` / `IN PROGRESS` / `PAUSED` / `STUCK` / `CLOSED` | `NEW` / `IN PROGRESS` / `PAUSED` / `STUCK` / `CLOSED` | `NEW` / `IN PROGRESS` / `PAUSED` / `STUCK` / `CLOSED` | `none` or `PAUSED: <dependency lane; impact; owner; resume condition>` or `STUCK: <what the lane awaits, such as the answer to a quoted question the main agent put; impact; owner per the STUCK row; exact resume action; target artifact/path; proof>` | `Next milestone: <named outcome>` | `Forecast deadline: <named lane/task outcome> will be finished by <UTC ISO8601>.`<br>`Root completion forecast: <named active root-task outcome> will be finished by <UTC ISO8601>.`<br>`Forecast recalibration: <prior UTC ISO8601> → <current UTC ISO8601>; why moved: <why>; supporting evidence: <evidence>.` | `Dependencies / critical path: <none, named dependency + owner/resume, or critical path>` | `<next evidence/action>` |
 
 For ECI, record `Stage: normal`. Show main and fast progress under the same task,
 with each owner, provisional evidence, current ECI decision, and adaptation.
@@ -234,7 +234,7 @@ identify it by Job/parent chain and outcome, e.g.
 
 These statuses cover only the mandatory post-Fast sequence, not separate-outcome
 observations. Mark a lane awaiting the user's answer to a question the main
-agent put as the `PAUSED` and `BLOCKED` rows below direct; that wait is never
+agent put `STUCK` and name the wait's owner as the `STUCK` row below directs; that wait is never
 a reason for `FOLLOWUP_PAUSED`. While the sequence remains
 unaccepted, keep the root-task status `FOLLOWUP` unless the next required
 post-Fast action cannot advance because it awaits a named in-scope dependency.
@@ -247,7 +247,7 @@ registries.
 
 | Rule | Behavior |
 | --- | --- |
-| Status vocabulary | In each status column, use only `NEW`, `IN PROGRESS`, `PAUSED`, `BLOCKED`, `CLOSED`. |
+| Status vocabulary | In each status column, use only `NEW`, `IN PROGRESS`, `PAUSED`, `STUCK`, `CLOSED`. |
 | Stage vocabulary | ECI uses `normal`; main/fast progress is path context within the task. Missing/stale stage metadata is a report-quality issue to reconcile, never a work gate. |
 | Implementation Status | Covers exploration, RCA, design, code changes, code review, build checks, unit/component/integration auto-tests, and source-level readiness. `CLOSED` means source-level work is accepted with relevant automated checks. |
 | Test Status | Covers E2E validation in the non-production test environment, including real devices, test services, UI manipulation, and mission/test-plan helpers. `CLOSED` means test-environment E2E passed or was explicitly waived. |
@@ -256,14 +256,14 @@ registries.
 | Evidence states | Put worker completions, reviews, source fixes, deploys, and partial proofs in `Next proof/action`, not by collapsing status columns. |
 | RCA/fix closure | For bug/debug lanes, missing, failing, or not-runnable domain-required acceptance proof keeps RCA/fix open. Source approval may close Implementation only; wording must say source-only/progress, not fixed/closed. |
 | `CLOSED` | Use only in the specific column whose required evidence is proven or explicitly removed from scope. |
-| `PAUSED` | Use only when this lane's next required action is progress from another in-scope lane or, for a reporter other than the main agent, the user's answer to a question the main agent put. For the main agent, no question to the user is pending for this lane's next action. Name the dependency lane or question, impact, owner (the main agent for a question), and resume condition in `Blocker` or `Next proof/action`. If the dependency lane is `BLOCKED`, keep this lane `PAUSED`; mark the dependency lane as the `BLOCKED` row directs. |
-| `BLOCKED` | Only the main agent (the Supervisor in ECI) uses it, and only when this lane cannot make any more progress until the user answers a question it put under [Decisions](../../eci-binding-contract.md#decisions). Name the exact question, impact, owner (`user`), exact resume action, and target artifact/path. Other reporters mark that wait `PAUSED`. Do not use `BLOCKED` for another lane's progress. |
+| `PAUSED` | Use only when this lane's next required action is progress from another in-scope lane. Name the dependency lane, impact, the wait's owner, which is that lane, and resume condition in `Awaits` or `Next proof/action`. If the dependency lane is stuck, keep this lane `PAUSED` and mark the dependency lane as the `STUCK` row directs. |
+| `STUCK` | Use only when a stuck claim under the Stuck work rule in `~/.omp/agent/RULES.md` holds for this lane's own next required action, such as the user's answer to a question the main agent put under [Decisions](../../eci-binding-contract.md#decisions), capacity, a device, or another party's work. Every reporter uses this status the same way. Name what the lane awaits, impact, the wait's owner, exact resume action, target artifact/path, and the proof that rule requires. For the user's answer, the proof quotes the question the main agent put. Only the main agent's own report names `user` as the wait's owner; every other report names the main agent (the Supervisor in ECI) and labels no wait or decision as the user's, under the User questions rule in `~/.omp/agent/RULES.md`. Do not use `STUCK` for another in-scope lane's progress. |
 | Coverage | Do not omit lanes because they are idle, waiting, or paused. Review, deploy, and proof remain within their lane unless they independently advance with separate ownership or synchronization. In a material changed-state update, each unrepresented active root-task outcome omitted by lane reports has one Root completion forecast. |
 | Lane requirement context | Cite known user requirements under [Recording and citing user requirements](../context-ledger/SKILL.md#recording-and-citing-user-requirements). Without a project ledger, describe them readably. For missing or stale context, apply [Use lineage while working](../references/requirement-lineage.md#use-lineage-while-working). |
 
 ## Pressure Scenario
 
-Under time pressure, classify by the lane's next required action. For example: "PAUSED on API-contract lane [requirement context: requirement:checkout:R2:contract]; impact: checkout validation cannot make progress; owner: API-contract lane; resume: lane 2 publishes docs/api-contract.md." The main agent uses `BLOCKED` only for a question it put to the user: "BLOCKED on question to the user: choose required API fields; impact: checkout validation cannot make further progress; owner: user; resume: record the choice in docs/api-contract.md; proof: <quoted requirement line that leaves the fields open, and that no default is allowed>."
+Under time pressure, classify by the lane's next required action. For example: "PAUSED on API-contract lane [requirement context: requirement:checkout:R2:contract]; impact: checkout validation cannot make progress; owner: API-contract lane; resume: lane 2 publishes docs/api-contract.md." A lane that awaits the user's answer to a question the main agent put is `STUCK` in every report. The main agent's own report: "STUCK on question to the user: choose required API fields; impact: checkout validation cannot make further progress; owner: user; resume: record the choice in docs/api-contract.md; proof: <the quoted question, and the quoted requirement line that leaves the fields open and allows no default>." Any other report on that lane: "STUCK on the main agent's question: choose required API fields; impact: checkout validation cannot make further progress; owner: main agent; resume: the main agent returns the answer, then record the choice in docs/api-contract.md; proof: <the main agent's quoted question>."
 
 ## Common Failures
 
@@ -283,7 +283,7 @@ Under time pressure, classify by the lane's next required action. For example: "
 | State | One-line current state is clear. |
 | Progress | Describes outcomes, not effort. |
 | Decisions | Includes reason for chosen path. |
-| Blockers/Risks | Includes impact, owner, exact resume action, and target artifact/path when applicable; each stuck claim carries the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires. |
+| Stuck work/Risks | Includes impact, owner, exact resume action, and target artifact/path when applicable; each stuck claim carries the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires. |
 | Verification | Evidence is cited or absence is explicit. |
 | Next Focus | Names the next concrete work area. |
 | Concision | No raw activity log or filler. |
@@ -292,9 +292,9 @@ Under time pressure, classify by the lane's next required action. For example: "
 | Multi-lane coverage | Every in-scope lane is listed, including idle/waiting/paused lanes; review/deploy/proof remain current lane work unless independently advancing. |
 | Root coverage | In a material changed-state update, each unrepresented active root-task outcome omitted by lane reports has one Root completion forecast. |
 | Requirement context | Known context is readable and accurate. |
-| Lane statuses | Each Implementation/Test/Prod status is exactly `NEW`, `IN PROGRESS`, `PAUSED`, `BLOCKED`, or `CLOSED`. |
-| PAUSED semantics | A lane waiting for progress from another in-scope lane, with no question to the user pending, is labeled `PAUSED`, not `BLOCKED`; so is a lane awaiting the user's answer in a report by any agent but the main agent. |
-| BLOCKED semantics | Only the main agent labels a lane `BLOCKED`: one unable to make more progress until the user answers a question it put, with `owner=user`, an exact resume action, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires; dependency-only waiting is not `BLOCKED`. |
-| Dependency propagation | If a dependency lane is `BLOCKED` on a question to the user, the dependent lane remains `PAUSED` until its own next required action needs that answer. |
+| Lane statuses | Each Implementation/Test/Prod status is exactly `NEW`, `IN PROGRESS`, `PAUSED`, `STUCK`, or `CLOSED`. |
+| PAUSED semantics | A lane whose next required action is progress from another in-scope lane is labeled `PAUSED`, not `STUCK`, and names that lane as the wait's owner. |
+| STUCK semantics | A lane is labeled `STUCK`, in every reporter's report, only when a stuck claim holds for its own next required action, with what it awaits, the wait's owner, an exact resume action, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires; a wait on the user's answer quotes the question the main agent put, and its owner is `user` only in the main agent's own report and the main agent in every other report; dependency-only waiting is not `STUCK`. |
+| Dependency propagation | If a dependency lane is `STUCK`, the dependent lane remains `PAUSED` until its own next required action needs what that lane awaits. |
 | Status separation | Source-level completion, test E2E, and production E2E are never merged into one status. |
 | Lane forecasts | A material changed-state update names each active lane's milestone and one named-outcome forecast with critical-path treatment. Changed lane/root forecasts restate their current canonical line with prior/current UTCs, why moved, and supporting evidence. Closed lanes record a completion timestamp instead of a deadline or recalibration. Parallel child deadlines remain parallel under one critical-path deadline. |

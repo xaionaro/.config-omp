@@ -30,7 +30,7 @@ func TestAssignmentRefreshFailureRecovery(t *testing.T) {
 state: Working
 progress: []
 decisions: []
-blockers_risks: []
+stuck_work_risks: []
 verification: []
 next_focus: Finish
 scope_complete: true
