@@ -47,10 +47,9 @@ type cliInput struct {
 // checkVerdict is the check reply: whether the host denies the call, and the denial text when it does.
 // The reply's only reader is optional-hooks/coding-skill-gate.ts, which each omp process loads once at start and keeps across session switches, while a rebuilt helper serves every running process at once.
 //
-// Example: {"block":true,"reason":"Coding skill gate: writing a.go requires ..."} denies an unread Go write.
+// Example: {"deny":true,"reason":"Coding skill gate: writing a.go requires ..."} denies an unread Go write.
 type checkVerdict struct {
-	// TODO: rename this JSON key to "deny", with the tests and examples, once no running omp process started before coding-skill-gate.ts learned to read "deny"; such processes read only this key (ledger record work:stuck-awaits-terms:phase2).
-	Deny   bool   `json:"block"`
+	Deny   bool   `json:"deny"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -90,7 +89,7 @@ func Run(
 // checkCall answers one check request with a checkVerdict.
 // While the gate is disabled it allows the call without decoding the request, so a running session keeps working even if a changed helper cannot read its state.
 //
-// Example: an unread Go write gets {"block":true,"reason":"Coding skill gate: ..."}; with the disable file present it gets {"block":false}.
+// Example: an unread Go write gets {"deny":true,"reason":"Coding skill gate: ..."}; with the disable file present it gets {"deny":false}.
 func checkCall(
 	input io.Reader,
 	output io.Writer,

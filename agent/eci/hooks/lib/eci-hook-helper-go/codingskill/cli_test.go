@@ -37,7 +37,7 @@ func TestCLIRoundTrip(t *testing.T) {
 	output.Reset()
 	require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 	var verdict struct {
-		Deny bool `json:"block"`
+		Deny bool `json:"deny"`
 	}
 	require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 	require.False(t, verdict.Deny)
@@ -66,7 +66,7 @@ func TestCLIReduceHydratesFromBranch(t *testing.T) {
 
 	// check runs one check of a write to path with the reduced state and returns its raw reply.
 	//
-	// Example: check("a.go") replies {"block":false} once the branch credited coding-common and coding-go.
+	// Example: check("a.go") replies {"deny":false} once the branch credited coding-common and coding-go.
 	check := func(path string) string {
 		request, err := json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": path}}})
 		require.NoError(t, err)
@@ -74,13 +74,13 @@ func TestCLIReduceHydratesFromBranch(t *testing.T) {
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		return output.String()
 	}
-	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.JSONEq(t, `{"deny":false}`, check("a.go"))
 	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
 }
 
 // TestCLICheckHonorsDisableFile lets running sessions turn every check off and back on without a restart.
 //
-// Example: while ~/.omp/agent/coding-skill-gate.disabled exists, an unread Go write gets {"block":false}.
+// Example: while ~/.omp/agent/coding-skill-gate.disabled exists, an unread Go write gets {"deny":false}.
 func TestCLICheckHonorsDisableFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -95,25 +95,25 @@ func TestCLICheckHonorsDisableFile(t *testing.T) {
 
 		// check runs one check request and returns its raw reply.
 		//
-		// Example: an unread Go write replies with "block":true while the gate is enabled.
+		// Example: an unread Go write replies with "deny":true while the gate is enabled.
 		check := func() string {
 			var output bytes.Buffer
 			require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 			return output.String()
 		}
-		require.Contains(t, check(), `"block":true`, call.ToolName)
+		require.Contains(t, check(), `"deny":true`, call.ToolName)
 
 		require.NoError(t, os.WriteFile(disableFile, nil, 0o644))
-		require.JSONEq(t, `{"block":false}`, check(), call.ToolName)
+		require.JSONEq(t, `{"deny":false}`, check(), call.ToolName)
 
 		require.NoError(t, os.Remove(disableFile))
-		require.Contains(t, check(), `"block":true`, call.ToolName)
+		require.Contains(t, check(), `"deny":true`, call.ToolName)
 	}
 }
 
 // TestCLICheckIgnoresRequestWhileDisabled allows a call whose state a changed helper cannot decode, and reads the whole request so the bridge's write cannot hit a closed pipe.
 //
-// Example: with the disable file present, {"state":{"reads":-1},...} gets {"block":false}.
+// Example: with the disable file present, {"state":{"reads":-1},...} gets {"deny":false}.
 func TestCLICheckIgnoresRequestWhileDisabled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -123,7 +123,7 @@ func TestCLICheckIgnoresRequestWhileDisabled(t *testing.T) {
 	request := strings.NewReader(`{"state":{"reads":-1},"call":{"toolName":"write","input":{"path":"a.go","content":"` + strings.Repeat("x", 1<<20) + `"}}}`)
 	var output bytes.Buffer
 	require.NoError(t, Run([]string{"check"}, request, &output))
-	require.JSONEq(t, `{"block":false}`, output.String())
+	require.JSONEq(t, `{"deny":false}`, output.String())
 	require.Zero(t, request.Len())
 }
 
@@ -151,7 +151,7 @@ func TestCLIReduceCreditsReadsWhileDisabled(t *testing.T) {
 
 	// check runs one check of a write to path with the reduced state and returns its raw reply.
 	//
-	// Example: check("a.go") replies {"block":false} once coding-common and coding-go are credited.
+	// Example: check("a.go") replies {"deny":false} once coding-common and coding-go are credited.
 	check := func(path string) string {
 		request, err := json.Marshal(cliInput{State: reduced.State, Call: cliEvent{ToolName: "write", Input: map[string]any{"path": path}}})
 		require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestCLIReduceCreditsReadsWhileDisabled(t *testing.T) {
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		return output.String()
 	}
-	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.JSONEq(t, `{"deny":false}`, check("a.go"))
 	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
 }
 
@@ -198,7 +198,7 @@ func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), &output))
 		var verdict struct {
-			Deny bool `json:"block"`
+			Deny bool `json:"deny"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.deny, verdict.Deny, tc.reads)
@@ -240,14 +240,14 @@ func TestCLIStateKeepsSkillBits(t *testing.T) {
 
 	// check runs one check of a write to path with an earlier helper's state crediting coding-common and coding-go, and returns its raw reply.
 	//
-	// Example: check("a.go") replies {"block":false}.
+	// Example: check("a.go") replies {"deny":false}.
 	check := func(path string) string {
 		var output bytes.Buffer
 		request := `{"state":{"reads":6,"hydrated":true},"call":{"toolName":"write","input":{"path":"` + path + `"}}}`
 		require.NoError(t, Run([]string{"check"}, strings.NewReader(request), &output))
 		return output.String()
 	}
-	require.JSONEq(t, `{"block":false}`, check("a.go"))
+	require.JSONEq(t, `{"deny":false}`, check("a.go"))
 	require.Contains(t, check("b.py"), `requires skill://coding-python.`)
 }
 
@@ -287,7 +287,7 @@ func TestCLICheckCarriesAgentName(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Deny bool `json:"block"`
+			Deny bool `json:"deny"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.deny, verdict.Deny, tc.agent)
@@ -312,7 +312,7 @@ func TestCLICheckCarriesEditTargets(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Deny bool `json:"block"`
+			Deny bool `json:"deny"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.deny, verdict.Deny, tc.target)
@@ -337,7 +337,7 @@ func TestCLICheckCarriesCwd(t *testing.T) {
 		var output bytes.Buffer
 		require.NoError(t, Run([]string{"check"}, bytes.NewReader(request), &output))
 		var verdict struct {
-			Deny bool `json:"block"`
+			Deny bool `json:"deny"`
 		}
 		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
 		require.Equal(t, tc.deny, verdict.Deny, tc.cwd)
