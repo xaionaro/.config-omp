@@ -22,9 +22,9 @@ const (
 	//
 	// Example: Use workStateActive when its documented category applies.
 	workStateActive
-	// workStateStuck marks work awaiting user input.
+	// workStateStuck marks work held by a proven stuck claim.
 	//
-	// Example: A pending user decision leaves the work stuck.
+	// Example: A Supervisor question awaiting the user's answer leaves the work stuck.
 	workStateStuck
 	// workStateCompleted identifies this canonical category.
 	//

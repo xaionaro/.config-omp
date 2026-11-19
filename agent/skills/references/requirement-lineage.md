@@ -53,10 +53,10 @@ code change, review, deadline, forecast, or proof program.
 - Reconcile missing context in parallel with safe work. For example, assign an
   explorer to recover the connection between an existing user requirement and
   a current implementation lane.
-- Ask the user only when the proposed work introduces a genuinely unauthorized new material
-  outcome or a material ambiguity that cannot be resolved from the current
-  request and ledger. Do not ask merely because an identifier or record is
-  absent.
+- Send to your owner, or as the top-level agent ask the user, only when the
+  proposed work introduces a genuinely unauthorized new material outcome or a
+  material ambiguity that cannot be resolved from the current request and
+  ledger. Do not escalate merely because an identifier or record is absent.
 - Preserve historical decisions in `high_level_log.jsonl` when they change the
   current scope or rationale. The ledger remains the current snapshot.
 - Correct false current scope in the ledger and status report, and log the

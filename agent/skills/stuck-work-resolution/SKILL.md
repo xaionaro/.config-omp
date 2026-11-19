@@ -37,13 +37,13 @@ Obvious resolutions include re-reading relevant source, retrying once when nonde
 3. **Brainstormer:** generate many distinct ideas. Positives only; no filtering, negatives, feasibility judgment, or winner.
 4. **Explorer:** independently investigate the stuck work, current code/docs, and technical landscape.
 5. **Feasibility validator:** the active protocol assigns an agent, separate from the brainstormer and primary explorer, to validate brainstormer ideas against explorer facts. Discard ideas that violate requirements, security, ownership, or available tools.
-6. **Route:** assign the best feasible internal path. Escalate to the user only when no feasible path remains or the stuck work genuinely awaits the user.
+6. **Route:** assign the best feasible internal path. Only when no feasible path remains or the stuck work genuinely awaits the user, escalate to your owner; only the top-level agent (the ECI Supervisor) puts it to the user.
 
 ## Adapter Boundary
 
 ATE and ECI own role names, task states, loop limits, and lifecycle. This skill owns the shared stuck record, resolution workflow, and escalation report.
 
-ATE/ECI subagent stuck claims are not SWR triggers. Route through the active protocol first; enter SWR only after normal issue handling fails, protocol limits hit, or user-owned input is required.
+ATE/ECI subagent stuck claims are not SWR triggers. Route through the active protocol first; enter SWR only after normal issue handling fails, protocol limits hit, or the work awaits an answer only the user can give.
 
 ATE: feasibility validator is a second explorer launched after the brainstormer and primary explorer complete.
 

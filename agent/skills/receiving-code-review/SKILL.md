@@ -79,10 +79,10 @@ IF suggestion seems wrong:
   Push back with technical reasoning
 
 IF can't easily verify:
-  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+  Say so: "I can't verify this without [X]." Then investigate or proceed on the most defensible choice
 
 IF conflicts with your human partner's prior decisions:
-  Stop and discuss with your human partner first
+  Follow the recorded decision and report the conflict through your report route
 ```
 
 **your human partner's rule:** "External feedback - be skeptical, but check carefully"

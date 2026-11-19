@@ -28,9 +28,9 @@ const (
 	//
 	// Example: Use it when the report marks work awaiting another lane.
 	statusPaused
-	// statusStuck marks work awaiting user input.
+	// statusStuck marks work held by a proven stuck claim.
 	//
-	// Example: Use it when the report marks work awaiting user input.
+	// Example: Use it when the report marks work awaiting a Supervisor question to the user.
 	statusStuck
 	// statusClosed marks accepted work.
 	//
