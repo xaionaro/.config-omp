@@ -37,7 +37,7 @@ Obvious resolutions include re-reading relevant source, retrying once when nonde
 3. **Brainstormer:** generate many distinct ideas. Positives only; no filtering, negatives, feasibility judgment, or winner.
 4. **Explorer:** independently investigate the stuck work, current code/docs, and technical landscape.
 5. **Feasibility validator:** the active protocol assigns an agent, separate from the brainstormer and primary explorer, to validate brainstormer ideas against explorer facts. Discard ideas that violate requirements, security, ownership, or available tools.
-6. **Route:** assign the best feasible internal path. Only when no feasible path remains or the stuck work genuinely awaits the user, escalate to your owner; only the top-level agent (the ECI Supervisor) puts it to the user.
+6. **Route:** assign the best feasible internal path. When none remains, escalate: a subagent sends its Stuck work record up its report route; only the top-level agent (the ECI Supervisor) writes an Awaits user record and puts to the user what [Decisions](../../eci-binding-contract.md#decisions) leaves the user's.
 
 ## Adapter Boundary
 
@@ -60,7 +60,7 @@ When escalation is unavoidable, report:
 - SWR agents used and their conclusions.
 - Last issue keeping the work stuck.
 - Best rejected internal path and why it failed.
-- Exact user-owned input/resource/decision needed.
+- Exact input, resource, or decision needed.
 
 ## Red Flags
 
