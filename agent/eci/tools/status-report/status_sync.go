@@ -765,6 +765,7 @@ func projectLogStatusStep(
 	}
 	effects = append(effects, syncEffect{Operation: syncEffectMetadata, Value: state})
 	if invalidUpdate {
+		// TODO: an invalid status_update is appended to the log and then only flagged by this deduplicated report line, so the caller sees rc 0 and no new signal; report each invalid update to the caller.
 		result, err = prepareInvalidation(result, refreshIssuePrefix+"invalid status_update requires manual review")
 		if err != nil {
 			return nil, nil, err
