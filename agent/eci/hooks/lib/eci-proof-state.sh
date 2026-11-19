@@ -2867,6 +2867,7 @@ eci_markdown_section_has_body() {
   ' "$file"
 }
 
+# TODO: eci_terminal_verdict_error has no caller (rg 'terminal_verdict' over agent/ finds only this definition); wire it into the disengage-report check or delete it.
 eci_terminal_verdict_error() {
   local subject="$1"
   local file="$2"
@@ -2893,7 +2894,7 @@ $counts
 EOF
 
   if [ "${retired:-0}" -ne 0 ]; then
-    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Report a proven stuck claim to your owner while ECI remains active.\n' "$subject"
+    printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:, and must not include retired marker hard-escalation:. Keep ECI active and route any proven stuck claim under ## Decisions in ~/.omp/agent/eci-binding-contract.md.\n' "$subject"
   elif [ "${accepted:-0}" -ne 1 ]; then
     printf '%s must include exactly one terminal verdict marker: clean-pass: or user-closed:.\n' "$subject"
   fi
