@@ -2867,7 +2867,8 @@ eci_markdown_section_has_body() {
   ' "$file"
 }
 
-# TODO: eci_terminal_verdict_error has no caller (rg 'terminal_verdict' over agent/ finds only this definition); wire it into the disengage-report check or delete it.
+# TODO: No caller; rg 'terminal_verdict' finds only this definition. Delete it
+# with the marker readers that the file-head TODO retires.
 eci_terminal_verdict_error() {
   local subject="$1"
   local file="$2"

@@ -28,7 +28,7 @@ const (
 	//
 	// Example: Use it when the report marks work awaiting another lane.
 	statusPaused
-	// statusStuck marks work awaiting the user's answer to a question the top-level agent put.
+	// statusStuck marks work awaiting the user's answer to a question the main agent put.
 	//
 	// Example: Use it when the report marks work awaiting that answer.
 	statusStuck

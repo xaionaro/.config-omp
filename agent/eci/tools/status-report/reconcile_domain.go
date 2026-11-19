@@ -24,7 +24,7 @@ const (
 	workStateActive
 	// workStateStuck marks work held by a proven stuck claim.
 	//
-	// Example: A Supervisor question awaiting the user's answer leaves the work stuck.
+	// Example: A main-agent question awaiting the user's answer leaves the work stuck.
 	workStateStuck
 	// workStateCompleted identifies this canonical category.
 	//

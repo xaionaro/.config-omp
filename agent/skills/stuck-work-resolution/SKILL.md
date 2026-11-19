@@ -37,7 +37,7 @@ Obvious resolutions include re-reading relevant source, retrying once when nonde
 3. **Brainstormer:** generate many distinct ideas. Positives only; no filtering, negatives, feasibility judgment, or winner.
 4. **Explorer:** independently investigate the stuck work, current code/docs, and technical landscape.
 5. **Feasibility validator:** the active protocol assigns an agent, separate from the brainstormer and primary explorer, to validate brainstormer ideas against explorer facts. Discard ideas that violate requirements, security, ownership, or available tools.
-6. **Route:** assign the best feasible internal path. When none remains, escalate: a subagent sends its Stuck work record up its report route; only the top-level agent (the ECI Supervisor) writes an Awaits user record and puts to the user what [Decisions](../../eci-binding-contract.md#decisions) leaves the user's.
+6. **Route:** assign the best feasible internal path. When none remains, escalate under the User questions rule in `~/.omp/agent/RULES.md`: a subagent sends its Stuck work record up its report route, and only the main agent writes an Awaits user record.
 
 ## Adapter Boundary
 
@@ -49,7 +49,7 @@ ATE: feasibility validator is a second explorer launched after the brainstormer 
 
 Unresponsive-agent recovery, repeated agent misbehavior, coordinator silence, and shutdown/lifecycle failures follow ATE lifecycle recovery unless they expose separate concrete stuck work. Do not run SWR merely because those lifecycle paths can end in user escalation.
 
-Stop hook: `skip-stop` is not stuck-work resolution. Use it only after this protocol is exhausted, or for intentional dirty handoff. The final stuck-work report names the failed SWR step, user-owned input if any, and exact next command/question.
+Stop hook: `skip-stop` is not stuck-work resolution. Use it only after this protocol is exhausted, or for intentional dirty handoff. The final stuck-work report names the failed SWR step, any input, resource, or decision still needed, and exact next command/question.
 
 ## Escalation Report
 

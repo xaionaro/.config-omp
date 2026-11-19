@@ -16,4 +16,4 @@ An unchanged Stop callback is control metadata, not a new user request. Do not t
 
 ## Work awaiting external input
 
-If work independently awaits an input, resource, or decision only the user can give, continue feasible internal work first and send the concrete need to your owner; only the top-level agent puts it to the user. Any workflow-specific state file is optional coordination context; Stop neither requires it nor treats its exact shape or hash as admission evidence.
+If work independently awaits an input, resource, or decision only the user can give, continue feasible internal work first, then route the concrete need under the User questions rule in `~/.omp/agent/RULES.md`. Any workflow-specific state file is optional coordination context; Stop neither requires it nor treats its exact shape or hash as admission evidence.
