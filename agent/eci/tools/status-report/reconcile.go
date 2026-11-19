@@ -379,6 +379,7 @@ func reconcileAt(
 		return append(issues, "ledger unavailable, malformed, or unsupported; coverage and forecasts unverified")
 	}
 	works := map[string]sourceRecord{}
+	// TODO: this loop, like the forecastCounts loop below, follows Go map iteration, so validate/render issue lines change order from run to run; iterate sorted record ids, as the work loop does.
 	for id, rec := range ledger.Records {
 		issues = append(issues, ledgerRecordIssues(id, rec, ledger.Sections)...)
 		if rec.Type != "work" {
