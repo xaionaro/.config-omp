@@ -110,18 +110,18 @@ func TestGenerateMatrix(t *testing.T) {
 func TestReconcileRejectsSymlinks(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "other.md")
-	require.NoError(t, os.WriteFile(target, []byte(generatedMarker), 0600))
+	require.NoError(t, os.WriteFile(target, []byte("user file"), 0600))
 	require.NoError(t, os.Symlink(target, filepath.Join(dir, "eci-preset-a.md")))
 	require.Error(t, reconcile(dir, map[string][]byte{"eci-preset-a.md": []byte("replacement")}, false))
 	data, err := os.ReadFile(target)
 	require.NoError(t, err)
-	require.Equal(t, generatedMarker, string(data))
+	require.Equal(t, "user file", string(data))
 }
 
-// TestReconcilePreservesEditedAndLegacyFiles checks preflight protects user edits.
+// TestReconcilePreservesEditedAndUnstampedFiles checks preflight protects user edits.
 //
 // Example: a modified generated file prevents all updates.
-func TestReconcilePreservesEditedAndLegacyFiles(t *testing.T) {
+func TestReconcilePreservesEditedAndUnstampedFiles(t *testing.T) {
 	dir := t.TempDir()
 	name := "eci-preset-a.md"
 	other := "eci-preset-b.md"
@@ -135,24 +135,12 @@ func TestReconcilePreservesEditedAndLegacyFiles(t *testing.T) {
 	_, err = os.Stat(filepath.Join(dir, other))
 	require.ErrorIs(t, err, os.ErrNotExist)
 
-	changedLegacy := []byte("changed\n" + generatedMarker + "\n")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), changedLegacy, 0600))
+	unstamped := []byte("new\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), unstamped, 0600))
 	require.Error(t, reconcile(dir, want, false))
 	data, err = os.ReadFile(filepath.Join(dir, name))
 	require.NoError(t, err)
-	require.Equal(t, changedLegacy, data)
-
-	legacy := []byte("new\n" + generatedMarker + "\n")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), legacy, 0600))
-	require.NoError(t, reconcile(dir, want, false))
-	data, err = os.ReadFile(filepath.Join(dir, name))
-	require.NoError(t, err)
-	require.Equal(t, want[name], data)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "eci-preset-obsolete.md"), legacy, 0600))
-	require.Error(t, reconcile(dir, want, false))
-	data, err = os.ReadFile(filepath.Join(dir, "eci-preset-obsolete.md"))
-	require.NoError(t, err)
-	require.Equal(t, legacy, data)
+	require.Equal(t, unstamped, data)
 }
 
 // TestReconcilePreflightRejectsNonRegularTargets checks that conflicts cause no writes.
