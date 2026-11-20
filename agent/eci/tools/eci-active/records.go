@@ -426,7 +426,7 @@ func permissiveOn(args []string) error {
 	}
 	scope, gate, op, req, ttlText := args[1], args[2], args[3], args[4], args[5]
 	if scope != "global" {
-		return exitError{code: 2, msg: "[ECI_COORDINATION_DEFERRED] Session permissive validation depends on the legacy hook marker; no state was changed."}
+		return usageError()
 	}
 	if err := permissiveRequest(scope, gate, op, req); err != nil {
 		return err

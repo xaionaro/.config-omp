@@ -25,8 +25,7 @@ func (e exitError) Error() string { return e.msg }
 func usageError() error {
 	// TODO: name the missing or rejected argument (for example no event object after
 	// ledger-append --json, or a status-refresh event outside refreshEvents) instead of
-	// printing only the full usage; a truncated usage dump ending in the
-	// deferred-mutators line reads like a tool refusal.
+	// printing only the full usage.
 	usage(os.Stderr)
 	return exitError{code: 2}
 }
@@ -55,17 +54,9 @@ func run(args []string) error {
 		cmd = args[0]
 	}
 	switch cmd {
-	case "coordinator-edit-on", "aggregate-migrate", "aggregate-stage", "aggregate-manifest-write", "aggregate-commit":
-		return exitError{code: 2, msg: "[ECI_COORDINATION_DEFERRED] This mutator depends on legacy hook marker validation; no state was changed."}
-	case "permissive-on":
-		if len(args) > 1 && args[1] == "session" {
-			return exitError{code: 2, msg: "[ECI_COORDINATION_DEFERRED] Session permissive validation depends on the legacy hook marker; no state was changed."}
-		}
 	case "status":
 		fmt.Println("ECI lifecycle is managed by the Supervisor; native goals own continuation.")
 		return nil
-	case "on", "off", "wait", "wait-repair", "resume", "nested-enter", "nested-accept", "nested-exit", "aggregate-off":
-		return exitError{code: 2, msg: "[ECI_LIFECYCLE_RETIRED] Native goals own continuation; the Supervisor owns ECI lifecycle."}
 	case "--help", "-h":
 		usage(os.Stdout)
 		return nil
@@ -153,9 +144,8 @@ func usage(w io.Writer) {
   %[1]s status
 
 Set ECI_SESSION_ID, or ECI_THREAD_ID when ECI_SESSION_ID is
-unset, to target a session. Lifecycle commands are retired; the native goal owns continuation and the
+unset, to target a session. The native goal owns continuation and the
 Supervisor owns ECI lifecycle. Coordination uses explicit session identity
 and the current working directory.
-Marker-dependent coordination mutators are deferred until their hooks migrate.
 `, exe)
 }

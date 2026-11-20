@@ -11,12 +11,6 @@ mkdir -p "$ECI_PROOF_ROOT/$ECI_SESSION_ID" "$HOME/.agent/context/sessions/$ECI_S
 # at the source tree under test.
 mkdir -p "$HOME/.omp/agent"
 ln -s -- "$base_dir" "$HOME/.omp/agent/eci"
-for command in on off wait wait-repair resume nested-enter nested-accept nested-exit aggregate-off; do
-  if output="$("$base_dir/bin/eci-active" "$command" ignored 2>&1)"; then
-    echo "obsolete lifecycle command unexpectedly succeeded: $command" >&2; exit 1
-  fi
-  [[ "$output" == *ECI_LIFECYCLE_RETIRED* ]] || { echo "$output" >&2; exit 1; }
-done
 "$base_dir/bin/eci-active" ledger-append --json '{"event":"decision","summary":"marker-free coordination"}'
 jq -e 'select(.summary == "marker-free coordination" and .session_id == "retirement_test")' "$HOME/.agent/context/sessions/$ECI_SESSION_ID/high_level_log.jsonl" >/dev/null
 if env -u ECI_SESSION_ID -u ECI_THREAD_ID "$base_dir/bin/eci-active" ledger-append --json '{"event":"decision","summary":"wrong owner"}' >/dev/null 2>&1; then
@@ -34,23 +28,12 @@ printf 'existing record\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-additional-rep
 if output="$("$base_dir/bin/eci-active" repository-allow-off "$fixture/repository" 2>&1)"; then exit 1; fi
 [[ "$output" == *'No matching repository allowance'* ]]
 [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-additional-repository")" = 'existing record' ]
-for command in coordinator-edit-on aggregate-migrate aggregate-stage aggregate-manifest-write aggregate-commit; do
-  if output="$("$base_dir/bin/eci-active" "$command" ignored 2>&1)"; then exit 1; fi
-  [[ "$output" == *ECI_COORDINATION_DEFERRED* ]] || { echo "$output" >&2; exit 1; }
-done
-if output="$("$base_dir/bin/eci-active" permissive-on session test operation request 60 2>&1)"; then exit 1; fi
-[[ "$output" == *ECI_COORDINATION_DEFERRED* ]]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-coordinator-edit" ]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-permissive-mode" ]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-aggregate-plan.json" ]
 printf 'stale marker\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active"
 "$base_dir/bin/eci-active" status | grep -q 'lifecycle is managed by the Supervisor'
 [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active")" = 'stale marker' ]
-# Lifecycle commands neither consume nor rewrite old marker paths.
-for command in on off nested-enter nested-accept nested-exit; do
-  if "$base_dir/bin/eci-active" "$command" ignored >/dev/null 2>&1; then exit 1; fi
-  [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active")" = 'stale marker' ]
-done
 echo 'PASS marker-free ledger and retired lifecycle CLI'
 # Marker-free aggregate review accepts only its outer cwd or the selected child.
 mkdir -p "$fixture/aggregate"
