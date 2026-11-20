@@ -1,5 +1,5 @@
 # Port coverage: pre-migration source 575bb81 instruction files and bin wrappers.
-# Checked by agent/eci/tools/port-coverage-check; units are in pinned-units-575bb81.tsv. src-NN aliases: the name map is the manifest at commit 8c5e238, file order.
+# Checked by migrations/port-coverage-check (external port-verification tooling, outside agent/); units are in pinned-units-575bb81.tsv. src-NN aliases: the name map is the manifest at commit 8c5e238, file order.
 # Columns: source_path, behavior, state, omp_path, reason_code, evidence. "-" marks an empty column.
 # States: mapped (omp_path must exist); excluded (superseded: omp_path names the superseding file, which must exist, and reason_code is set);
 # reason-coded (reason_code from reason.go, no omp_path); open (owner in evidence); unrecorded (no disposition yet).

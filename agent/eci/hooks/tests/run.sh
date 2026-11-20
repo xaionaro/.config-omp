@@ -3213,9 +3213,6 @@ run_case "audit sync checker detects drift" \
   test_audit_sync_checker_detects_drift
 run_case "audit sync checker fails when synced files are missing" \
   test_audit_sync_checker_fails_when_synced_file_missing
-run_case "port coverage manifest covers pinned units" \
-  "$ECI_TEST_GO" -C "$ROOT/tools/port-coverage-check" run . \
-  -manifest "$ROOT/hooks/tests/port-coverage.tsv" -root "$ROOT/../.."
 
 note "SUMMARY pass=$PASS_COUNT fail=$FAIL_COUNT xfail=$XFAIL_COUNT xpass=$XPASS_COUNT todo=$TODO_COUNT"
 

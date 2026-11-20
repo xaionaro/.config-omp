@@ -15,7 +15,7 @@ import (
 
 // main exits with the status that run reports for the process arguments.
 //
-// Example: port-coverage-check -manifest hooks/tests/port-coverage.tsv -root ~/.omp exits 0 only when no unit is open or
+// Example: from ~/.omp/migrations/port-coverage-check, port-coverage-check -manifest port-coverage.tsv -root ~/.omp exits 0 only when no unit is open or
 // unrecorded and every row's omp path exists.
 func main() {
 	os.Exit(run())
