@@ -14,7 +14,7 @@ const (
 	overrideRecordName  = "record"
 )
 
-// requireMainCoordinatorOwner mirrors the pre-migration source's require_main_coordinator_owner.
+// requireMainCoordinatorOwner rejects callers other than the main coordinator.
 // omp reads ECI_ROLE and ECI_HOOK_IS_SUBAGENT (1 or true, as in hook_context.go).
 func requireMainCoordinatorOwner() error {
 	switch os.Getenv("ECI_ROLE") {
@@ -93,7 +93,7 @@ func ownedByEUID(fi os.FileInfo) bool {
 	return ok && int(st.Uid) == os.Geteuid()
 }
 
-// stateFileOwnerValid mirrors the pre-migration source's state_file_owner_is_valid with unique links.
+// stateFileOwnerValid reports whether path is a regular file owned by the effective user with exactly one link.
 func stateFileOwnerValid(path string) bool {
 	fi, err := os.Lstat(path)
 	if err != nil || !fi.Mode().IsRegular() || !ownedByEUID(fi) {

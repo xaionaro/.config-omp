@@ -1366,6 +1366,11 @@ func rejectedSegment(current segment, code DiagnosticCode) string {
 	return strings.Join(arguments, " ")
 }
 
+// canonicalLifecycleTildePrefix reports whether command[offset:] starts with
+// the eci-active path of a supported provider: omp, or the Kimi install that
+// ProviderKimi serves and that ships ~/.kimi-code/bin/eci-active.
+//
+// Example: "~/.kimi-code/bin/eci-active status" matches; "~/.kimi-code/bin/eci-activex" does not.
 func canonicalLifecycleTildePrefix(command string, offset int) bool {
 	for _, alias := range []string{"~/.omp/agent/eci/bin/eci-active", "~/.kimi-code/bin/eci-active"} {
 		if !strings.HasPrefix(command[offset:], alias) {
@@ -3319,8 +3324,8 @@ func applyPathBuiltinTransition(
 }
 
 // timeoutReplayStateForRequest returns the callback's initial state when its
-// CWD is verified. Older callers that do not send an export attribute retain
-// the historical environment-derived behavior for a set PATH.
+// CWD is verified. A request without an export attribute, such as the hook
+// callback, read PATH from its own environment, so a set PATH is exported.
 //
 // Example: a callback with command_path_set=false starts with an unset PATH.
 func timeoutReplayStateForRequest(request Request) timeoutReplayState {

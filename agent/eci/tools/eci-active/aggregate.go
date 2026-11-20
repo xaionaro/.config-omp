@@ -344,7 +344,7 @@ type reviewGate struct {
 	cwd   string
 }
 
-// refresh prints the advisory refresh reminder that the pre-migration source's gate emits for missing or stale review metadata.
+// refresh prints the advisory refresh reminder for missing or stale review metadata; ordinary work never waits on review records.
 func (g reviewGate) refresh(reason, target string) {
 	fmt.Fprintf(os.Stdout, "ECI review refresh needed: phase=%s target=%s reason=%s; ordinary work continues; workflow must route one fresh named least-restriction critic for the current diff.\n",
 		g.phase, target, reason)
@@ -399,7 +399,7 @@ func gitPlainOutput(args ...string) string {
 }
 
 // aggregateReviewGate ports the aggregate branch of hooks/eci-review-gate.sh. It returns errGateDenied after
-// printing a denial, or nil for pass and refresh outcomes (refresh is advisory, as in the pre-migration source).
+// printing a denial, or nil for pass and refresh outcomes (refresh is advisory: review records never gate ordinary work).
 func aggregateReviewGate(phase, sid, repoID, outer string) error {
 	if outer != canonicalCwd(outer) {
 		return errGateDenied

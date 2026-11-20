@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared build step for on-demand ECI Go tools. Sourced, never executed.
-# Adapted from pre-migration source 575bb81 bin/owned-command:39-149. Every deviation is a row in
+# Every deviation from the owned-command build contract is a row in
 # hooks/tests/TEST-DISPOSITION.md under "On-demand build wrappers (Job AUTOBUILD)".
 #
 #   eci_go_tool_build NAME SOURCE_DIR EXECUTABLE_PREFIX EXECUTABLE_SUFFIX FIRST_BUILD_ESTIMATE

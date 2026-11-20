@@ -1552,6 +1552,8 @@ case "${NORMAL_GIT_ADMISSION_TARGET:-full}" in
     exit 0
     ;;
   full|worker-git-cli-matrix|worker-git-cli-edges|worker-git-native|worker-git-index-aliases|worker-git-cli-slice)
+    # TODO: the full target fails on the next line (pre-existing; seen by work:no-historical-code as
+    # "fixture failed: target=full"). Find the failing effect-aware Git check and fix it or the hook.
     run_effect_aware_git_target
     printf '%s\n' 'normal Git admission current worker contract: PASS'
     exit 0

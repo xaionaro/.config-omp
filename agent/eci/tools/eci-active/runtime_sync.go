@@ -288,7 +288,7 @@ func publishRuntimeTarget(source, target, stage string, rows []runtimeRow, manif
 			return runtimeSyncFail("ECI_RUNTIME_SYNC_VERIFY", "provider=%s source=%s target=%s digest_or_mode_mismatch", runtimeSyncProvider, source, dst)
 		}
 	}
-	// The receipt is descriptive; a failure to write it is advisory, as in the pre-migration source.
+	// The receipt is descriptive and never a prerequisite, so a failure to write it is advisory.
 	receipt := filepath.Join(target, runtimeSyncReceiptName)
 	if info, err := os.Lstat(receipt); err == nil && info.IsDir() {
 		fmt.Fprintf(os.Stderr, "ECI runtime maintenance advisory: target receipt is not a replaceable file: %s\n", receipt)
@@ -306,7 +306,7 @@ func publishRuntimeTarget(source, target, stage string, rows []runtimeRow, manif
 	return nil
 }
 
-// publishRuntimeSourceReceipt refreshes the canonical source receipt. Failures are advisory, as in the pre-migration source.
+// publishRuntimeSourceReceipt refreshes the canonical source receipt. Receipts are descriptive, so failures are advisory.
 func publishRuntimeSourceReceipt(source string, manifest []byte) {
 	receipt := filepath.Join(source, runtimeSyncReceiptName)
 	if info, err := os.Lstat(receipt); err == nil && info.IsDir() {

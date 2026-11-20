@@ -160,7 +160,7 @@ func TestRunFinalizeEnforcingForwardsBytesWithoutTelemetry(t *testing.T) {
 	raw := "not-json\x00still-forwarded"
 	var stdout, stderr bytes.Buffer
 	if status := run(
-		[]string{"finalize", "kimi", "coordinator", "inactive", "legacy"},
+		[]string{"finalize", "kimi", "coordinator", "inactive", "parser"},
 		strings.NewReader(raw),
 		&stdout,
 		&stderr,
@@ -243,7 +243,7 @@ func TestRunFinalizePermissiveMalformedAndOversizeWarns(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if status := run(
-				[]string{"finalize", "omp", "coordinator", "active", "legacy"},
+				[]string{"finalize", "omp", "coordinator", "active", "parser"},
 				strings.NewReader(test.raw),
 				&stdout,
 				&stderr,
@@ -269,7 +269,7 @@ func TestRunFinalizeUnknownCodeAndOperationUseClosedFallbacks(t *testing.T) {
 	denial := `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"[ECI_FUTURE_DENIAL] ECI gate denied (phase=PreToolUse, operation=future-boundary)"}}`
 	var stdout, stderr bytes.Buffer
 	if status := run(
-		[]string{"finalize", "kimi", "worker", "inactive", "legacy"},
+		[]string{"finalize", "kimi", "worker", "inactive", "parser"},
 		strings.NewReader(denial),
 		&stdout,
 		&stderr,

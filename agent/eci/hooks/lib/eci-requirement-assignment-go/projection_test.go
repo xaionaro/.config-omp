@@ -11,6 +11,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TODO: this package's tests do not compile: project (line 22) is undefined (pre-existing; seen by
+// work:no-historical-code). Point this test at the current projection entry point or delete it.
+//
 // TestTransactionProjectionUsesSavedChainAndChangeState checks both capture alternatives.
 //
 // Example: a changed transaction emits a requirement change with all linked records.

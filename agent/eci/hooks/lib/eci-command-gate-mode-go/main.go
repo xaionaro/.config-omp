@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 )
 
-// configStoreFromEnvironment resolves the same provider-neutral configuration
-// root used by the Python compatibility CLI.  ConfigStore performs the
+// configStoreFromEnvironment resolves the provider-neutral configuration
+// root shared by every gate-mode caller.  ConfigStore performs the
 // absolute-path, ownership, and descriptor validation; this resolver only
 // selects the caller-requested root.
 func configStoreFromEnvironment() ConfigStore {
@@ -29,7 +29,7 @@ func printUsage(writer io.Writer) int {
 	return 2
 }
 
-// run executes the compatibility CLI with injectable streams for exact tests.
+// run executes the gate-mode CLI with injectable streams for exact tests.
 // No subprocess or interpreter is used: all config, reduction, and telemetry
 // work stays inside this compiled binary.
 func run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {

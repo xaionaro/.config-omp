@@ -337,8 +337,6 @@ type Source string
 const (
 	// SourceParser identifies the command-plan parser route.
 	SourceParser Source = "parser"
-	// SourceLegacy identifies the legacy validator route.
-	SourceLegacy Source = "legacy"
 )
 
 // CommandKind identifies one supported command-line operation.
@@ -369,7 +367,7 @@ type Command struct {
 
 // UsageError identifies a command-line shape or enum value outside the contract.
 //
-// Example: callers map UsageError to the compatibility exit status 2.
+// Example: callers map UsageError to the usage exit status 2.
 type UsageError struct {
 	Reason string
 }
@@ -464,10 +462,10 @@ func parseMarker(value string) (Marker, bool) {
 
 // parseSource converts one published denial-source spelling into its closed type.
 //
-// Example: parseSource("legacy") returns SourceLegacy and true.
+// Example: parseSource("parser") returns SourceParser and true.
 func parseSource(value string) (Source, bool) {
 	switch Source(value) {
-	case SourceParser, SourceLegacy:
+	case SourceParser:
 		return Source(value), true
 	default:
 		return "", false

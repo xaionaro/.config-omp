@@ -1,6 +1,6 @@
 package main
 
-// Port of the former python3 program in hooks/lib/eci-cleanup-route.sh.
+// cleanup-route approves literal cleanup commands for generated provider-home artifacts.
 //
 // Mode: cleanup-route <command> <allow-private-session-child: true|false>
 //
@@ -11,8 +11,8 @@ package main
 // Shell words are split with the subset of Python shlex.split(posix=True) that
 // applies here: the caller has already rejected quotes, `$`, backticks and
 // newlines, so only whitespace splitting and backslash escapes remain.
-// Path semantics mirror posixpath (normpath, realpath, relpath) so that the
-// canonical-spelling checks match the original program.
+// Path semantics follow posixpath (normpath, realpath, relpath) so that the
+// canonical-spelling checks compare exact lexical and resolved spellings.
 
 import (
 	"io"
@@ -29,6 +29,9 @@ var (
 	cleanupRunnerFile      = regexp.MustCompile(`^\.eci-runner-test\.[A-Za-z0-9._-]+$`)
 	cleanupGeneratedName   = regexp.MustCompile(`^eci-generated-cleanup-[A-Za-z0-9._-]+$`)
 
+	// The Kimi host (ProviderKimi) generates these root entries in its home:
+	// its kimi binary writes config-new.toml, migrations-effort.json, cron,
+	// search-index and workspace-trust, and its Python tools create __pycache__.
 	cleanupRootFiles = map[string]bool{"config-new.toml": true, "migrations-effort.json": true}
 	cleanupRootDirs  = map[string]bool{
 		"cron": true, "search-index": true, "workspace-trust": true,

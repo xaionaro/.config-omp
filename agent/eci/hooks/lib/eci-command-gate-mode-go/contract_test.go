@@ -78,7 +78,7 @@ func TestParseArgumentsAcceptsEveryPublishedCommandShape(t *testing.T) {
 			role := role
 			for _, marker := range []Marker{MarkerActive, MarkerInactive} {
 				marker := marker
-				for _, source := range []Source{SourceParser, SourceLegacy} {
+				for _, source := range []Source{SourceParser} {
 					source := source
 					t.Run(
 						string(provider)+"/"+string(role)+"/"+string(marker)+"/"+string(source),
@@ -131,6 +131,7 @@ func TestParseArgumentsRejectsUnsupportedCommandShapes(t *testing.T) {
 		{"finalize", "omp", "other", "active", "parser"},
 		{"finalize", "omp", "coordinator", "other", "parser"},
 		{"finalize", "omp", "coordinator", "active", "other"},
+		{"finalize", "omp", "coordinator", "active", "legacy"},
 		{"finalize", "omp", "coordinator", "active", "parser", "extra"},
 	}
 	for _, args := range tests {

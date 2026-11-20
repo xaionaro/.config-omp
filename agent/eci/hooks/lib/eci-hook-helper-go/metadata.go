@@ -407,8 +407,8 @@ func skipDigits(text []byte, i int) int {
 	return i
 }
 
-// readChunkBytes caps each read of a first-record prefix, as the pre-migration
-// Python reader did.
+// readChunkBytes caps each read of a first-record prefix, so a missing
+// newline in a large file costs bounded reads rather than one whole-file read.
 const readChunkBytes = 4096
 
 // readFirstRecordPrefix returns the bytes before the first newline. It reads

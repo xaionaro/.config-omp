@@ -1,8 +1,8 @@
 package main
 
-// Deny reasons. Each string is byte-identical to the text the former bash loader printed for the same
-// condition (the macOS bash path in lib/eci-native-binary.sh still prints every one it shares), and each
-// appears exactly once in this module.
+// Deny reasons. Each string matches the text the macOS bash path in lib/eci-native-binary.sh prints for
+// the same condition, so a denial reads the same on every host, and each appears exactly once in this
+// module.
 //
 // Check order. The first failing check wins; the self-check runs L4 and L6-L20 on the running image
 // under the name eci-verexec before the target's L4.
