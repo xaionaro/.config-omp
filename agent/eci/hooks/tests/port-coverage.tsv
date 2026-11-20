@@ -187,7 +187,7 @@ hooks/tests/fixtures/validate-edit-write-vendorish-edit.json	-	mapped	agent/eci/
 hooks/tests/run.sh	-	mapped	agent/eci/hooks/tests/run.sh	-	-
 hooks/tests/test-command-hook-go.sh	-	mapped	agent/eci/hooks/tests/test-command-hook-go.sh	-	-
 hooks/tests/test-coordinator-protected-git-target.sh	-	mapped	agent/eci/hooks/tests/test-coordinator-protected-git-target.sh	-	-
-hooks/tests/test-eci-active-normal-git.sh	-	mapped	agent/eci/hooks/tests/test-eci-active-normal-git.sh	-	-
+hooks/tests/test-eci-active-normal-git.sh	-	reason-coded	-	obsolete	retired: tested only the approve-commit compatibility no-op, removed from tools/eci-active/main.go
 hooks/tests/test-eci-active-readonly-visibility.sh	-	mapped	agent/eci/hooks/tests/test-eci-active-readonly-visibility.sh	-	-
 hooks/tests/test-eci-active-sync-runtime-local-first.sh	-	mapped	agent/eci/hooks/tests/test-eci-active-sync-runtime-local-first.sh	-	-
 hooks/tests/test-eci-aggregate-commit-tree-cas.sh	-	mapped	agent/eci/hooks/tests/test-eci-aggregate-commit-tree-cas.sh	-	-
