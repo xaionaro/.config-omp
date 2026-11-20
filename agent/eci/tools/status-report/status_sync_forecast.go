@@ -26,8 +26,8 @@ func refreshOwnedForecasts(
 	if metadata == nil {
 		return projected, nil
 	}
-	var state syncState
-	if err := metadata.Decode(&state); err != nil {
+	state, err := decodeSyncState(metadata)
+	if err != nil {
 		return nil, err
 	}
 	oldLanes, newLanes := mapValue(original.Content[0], "lanes"), mapValue(updated.Content[0], "lanes")

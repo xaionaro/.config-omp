@@ -101,7 +101,7 @@ The published Job owner coordinates task-local post-Fast dispatch and evidence u
 
 Main ECI may advance and review iterations concurrently with Fast.
 
-After the current Job owner confirms genuine Fast completion to the Supervisor, report root-task status
+After the current Job owner confirms genuine Fast completion to the Supervisor, report post-Fast status
 `FOLLOWUP` while the required sequence below remains unaccepted. Use
 `FOLLOWUP_PAUSED` only when the next required post-Fast action cannot advance
 because it awaits a named in-scope dependency. Report the dependency, impact,
@@ -110,7 +110,7 @@ owner, resume condition, and the proof the Stuck work rule in
 clears. A question the Supervisor put to the user leaves the affected lane
 `STUCK` in every report, never `FOLLOWUP_PAUSED`. Only the Supervisor's own
 report names `user` as the wait's owner; every other report names the Supervisor.
-End either root-task status on Supervisor acceptance or explicit user closure.
+End either post-Fast status on Supervisor acceptance or explicit user closure.
 Keep these statuses outside lane Implementation/Test/Prod readiness; see
 [status guidance](../../writing-status-reports/SKILL.md#multi-lane-mission-status).
 

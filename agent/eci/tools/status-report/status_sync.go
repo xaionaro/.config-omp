@@ -100,6 +100,26 @@ type syncState struct {
 	TimelineAppliedLine  int                                `json:"timeline_applied_line,omitempty" yaml:"timeline_applied_line,omitempty"`
 }
 
+// decodeSyncState decodes saved status_sync metadata and rejects any key the current state does not define.
+//
+// Example: A saved state still carrying the removed "pending" key is an error, not silently dropped.
+func decodeSyncState(node *yaml.Node) (syncState, error) {
+	var state syncState
+	if node == nil {
+		return state, nil
+	}
+	raw, err := yaml.Marshal(node)
+	if err != nil {
+		return state, fmt.Errorf("encode status_sync: %w", err)
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(raw))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&state); err != nil {
+		return syncState{}, fmt.Errorf("decode status_sync: %w", err)
+	}
+	return state, nil
+}
+
 // syncPendingTimeline retains an unapplied complete timeline snapshot.
 //
 // Example: Retry a snapshot after the report timestamp advances.
@@ -276,12 +296,10 @@ func projectLogStatusStep(
 	if err := yaml.Unmarshal(original, &root); err != nil {
 		return nil, nil, err
 	}
-	var state syncState
 	existingState := mapValue(root.Content[0], "status_sync")
-	if n := existingState; n != nil {
-		if err := n.Decode(&state); err != nil {
-			return nil, nil, err
-		}
+	state, err := decodeSyncState(existingState)
+	if err != nil {
+		return nil, nil, err
 	}
 	if state.Applied == nil {
 		state.Applied = map[string]string{}
@@ -291,9 +309,6 @@ func projectLogStatusStep(
 	}
 	if state.AppliedOrdinals == nil {
 		state.AppliedOrdinals = map[string]int{}
-	}
-	if err := normalizeSyncOwnership(&state); err != nil {
-		return nil, nil, err
 	}
 	if state.PendingAdditions == nil {
 		state.PendingAdditions = map[string]syncPendingAddition{}
@@ -874,7 +889,7 @@ func scalarSyncFields(target syncTarget) map[string]bool {
 	case syncTargetTask:
 		return map[string]bool{"status": true, "evidence": true, "owner": true, "context": true, "lifecycle": true}
 	case syncTargetLane:
-		return map[string]bool{"owner": true, "implementation_status": true, "test_status": true, "prod_status": true, "awaits": true, "next_action": true, "next_milestone": true, "context": true, "completed_at": true, "lifecycle": true, "root_task_status": true}
+		return map[string]bool{"owner": true, "implementation_status": true, "test_status": true, "prod_status": true, "awaits": true, "next_action": true, "next_milestone": true, "context": true, "completed_at": true, "lifecycle": true, "post_fast_status": true}
 	case syncTargetReport:
 		return map[string]bool{"state": true, "next_focus": true}
 	default:
@@ -920,7 +935,7 @@ func validSyncUpdate(update syncUpdate) bool {
 		if !allowed[field] || strings.TrimSpace(value) == "" {
 			return false
 		}
-		if field == "root_task_status" {
+		if field == "post_fast_status" {
 			if value != "FOLLOWUP" && value != "FOLLOWUP_PAUSED" {
 				return false
 			}

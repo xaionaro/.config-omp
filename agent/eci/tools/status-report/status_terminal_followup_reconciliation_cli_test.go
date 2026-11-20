@@ -43,7 +43,7 @@ func TestTerminalFollowupReconciliationInCLI(t *testing.T) {
 			func(t *testing.T) {
 				input := tc.report
 				if tc.marker != "" {
-					input = strings.Replace(input, "    required_environment: implementation\n", "    required_environment: implementation\n    root_task_status: "+tc.marker+"\n", 1)
+					input = strings.Replace(input, "    required_environment: implementation\n", "    required_environment: implementation\n    post_fast_status: "+tc.marker+"\n", 1)
 					require.NotEqual(t, tc.report, input)
 				}
 				dir := writeLinkedSources(t, tc.ledger, tc.forecast)

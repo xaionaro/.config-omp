@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -78,47 +77,6 @@ func BenchmarkSyncLegacyBatch(b *testing.B) {
 				}
 			})
 	}
-}
-
-// TestSyncMigratesLegacyTaskSelectorOwnership checks existing session protection.
-//
-// Example: Previously recorded aliases cannot bypass later owner edits.
-func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
-	selector := syncUpdate{Target: syncTargetTask, ID: "1", WorkRef: "project-understanding.yaml#/records/work:first"}
-	// A prior version incorrectly included the irrelevant work reference in this key.
-	encoded, _ := json.Marshal([]string{"task", "1", selector.WorkRef, ""})
-	alias := string(encoded) + "/owner"
-	state := syncState{Cursor: 1, Applied: map[string]string{alias: "projected"}, Latest: map[string]int{alias: 1}}
-	raw, err := json.Marshal(state)
-	require.NoError(t, err)
-	report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", `status: IN PROGRESS, owner: manual, work_refs:`, 1)
-	reportBytes, err := putSyncState([]byte(report), string(raw))
-	require.NoError(t, err)
-	second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"next"}}]}}}` + "\n"
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n"+second)))
-	result, _, err := projectLogStatus(dir, reportBytes, ledgerSource{}, forecastSource{})
-	require.NoError(t, err)
-	parsed, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, "manual", parsed.Tasks[0].Owner)
-	require.NotEmpty(t, parsed.StatusSync.Groups)
-}
-
-// TestSyncLegacyAliasConflictDoesNotDiscardOwnership checks ambiguous history.
-//
-// Example: Conflicting task aliases require reconciliation instead of guessing.
-func TestSyncLegacyAliasConflictDoesNotDiscardOwnership(t *testing.T) {
-	t.Parallel()
-	canonical := syncTargetKey(syncUpdate{Target: syncTargetTask, ID: "1"}, "owner")
-	encoded, err := json.Marshal([]string{"task", "1", "legacy work reference", ""})
-	require.NoError(t, err)
-	alias := string(encoded) + "/owner"
-	state := syncState{Applied: map[string]string{canonical: "first", alias: "second"}}
-	require.ErrorContains(t, normalizeSyncOwnership(&state), "conflicting legacy status ownership")
-	require.Len(t, state.Applied, 2)
 }
 
 // TestSyncAddedTaskPreservesLaterOwnerEdits checks field ownership after insertion.

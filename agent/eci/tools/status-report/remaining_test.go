@@ -200,13 +200,13 @@ func TestTerminalLaneCannotRetainFollowup(t *testing.T) {
 	require.NoError(t, err)
 	r.Lanes[0].Forecast = nil
 	r.Lanes[0].Lifecycle = laneLifecycleCancelled
-	r.Lanes[0].RootTaskStatus = rootTaskFollowup
+	r.Lanes[0].PostFastStatus = postFastFollowup
 	ledger := strings.Replace(linkedLedger, "state: active", "state: cancelled", 1)
 	forecasts := strings.Replace(linkedForecasts, "status: active", "status: inactive", 1)
 	require.Contains(t, strings.Join(testReconcile(r, writeLinkedSources(t, ledger, forecasts)), "\n"), "terminal work retains followup")
-	r.Lanes[0].RootTaskStatus = rootTaskFollowupPaused
+	r.Lanes[0].PostFastStatus = postFastFollowupPaused
 	require.Contains(t, strings.Join(testReconcile(r, writeLinkedSources(t, ledger, forecasts)), "\n"), "terminal work retains followup")
-	r.Lanes[0].RootTaskStatus = rootTaskNone
+	r.Lanes[0].PostFastStatus = postFastNone
 	require.Empty(t, testReconcile(r, writeLinkedSources(t, ledger, forecasts)))
 }
 
@@ -232,12 +232,12 @@ func TestCompletedLaneCannotRetainFollowup(t *testing.T) {
 	r.Lanes[0].Forecast = nil
 	r.Lanes[0].ImplementationStatus = statusClosed
 	r.Lanes[0].CompletedAt = "2026-11-02T15:00:00Z"
-	r.Lanes[0].RootTaskStatus = rootTaskFollowup
+	r.Lanes[0].PostFastStatus = postFastFollowup
 	ledger := strings.Replace(linkedLedger, "state: active, next_action: Finish", "state: completed, completed_at: '2026-11-02T15:00:00Z'", 1)
 	forecasts := strings.Replace(linkedForecasts, "status: active", "status: inactive", 1)
 	dir := writeLinkedSources(t, ledger, forecasts)
 	require.Contains(t, strings.Join(testReconcile(r, dir), "\n"), "terminal work retains followup")
-	r.Lanes[0].RootTaskStatus = rootTaskNone
+	r.Lanes[0].PostFastStatus = postFastNone
 	require.Empty(t, testReconcile(r, dir))
 }
 
@@ -248,7 +248,7 @@ func TestActiveLaneMayRetainFollowup(t *testing.T) {
 	t.Parallel()
 	r, err := parse([]byte(linkedReport))
 	require.NoError(t, err)
-	r.Lanes[0].RootTaskStatus = rootTaskFollowup
+	r.Lanes[0].PostFastStatus = postFastFollowup
 	require.Empty(t, testReconcile(r, writeLinkedSources(t, linkedLedger, linkedForecasts)))
 }
 

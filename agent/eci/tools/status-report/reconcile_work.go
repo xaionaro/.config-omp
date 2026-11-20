@@ -120,7 +120,7 @@ func (c *workReconciler) checkLane(
 		return
 	}
 	open := openWork(work.Data.State)
-	if (work.Data.State == workStateCompleted || work.Data.State == workStateCancelled) && l.RootTaskStatus != rootTaskNone {
+	if (work.Data.State == workStateCompleted || work.Data.State == workStateCancelled) && l.PostFastStatus != postFastNone {
 		c.issues.add("terminal work retains followup: %s", id)
 	}
 	if open && l.requiredStatus() == statusClosed {

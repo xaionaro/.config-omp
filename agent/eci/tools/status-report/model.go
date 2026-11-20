@@ -78,22 +78,22 @@ const (
 	effortWork
 )
 
-// Root-task statuses describe the remaining post-Fast sequence.
+// Post-Fast statuses describe the remaining post-Fast sequence.
 //
 // Example: The zero value represents an unknown or absent state.
 const (
-	// rootTaskNone omits post-Fast follow-up status.
+	// postFastNone omits post-Fast follow-up status.
 	//
 	// Example: Use it when the report omits post-Fast follow-up status.
-	rootTaskNone rootTaskStatus = iota
-	// rootTaskFollowup marks pending post-Fast work.
+	postFastNone postFastStatus = iota
+	// postFastFollowup marks pending post-Fast work.
 	//
 	// Example: Use it when the report marks pending post-Fast work.
-	rootTaskFollowup
-	// rootTaskFollowupPaused marks post-Fast work awaiting a dependency.
+	postFastFollowup
+	// postFastFollowupPaused marks post-Fast work awaiting a dependency.
 	//
 	// Example: Use it when the report marks post-Fast work awaiting a dependency.
-	rootTaskFollowupPaused
+	postFastFollowupPaused
 )
 
 // Required environments define the acceptance boundary for a lane.
@@ -277,19 +277,19 @@ func (k *effortKind) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// rootTaskStatus represents the post-Fast follow-up state.
+// postFastStatus represents the post-Fast follow-up state.
 //
 // Example: Record FOLLOWUP while post-Fast work remains.
-type rootTaskStatus int
+type postFastStatus int
 
 // String returns the status label or an empty string when absent.
 //
 // Example: A known value renders its documented YAML label.
-func (s rootTaskStatus) String() string {
+func (s postFastStatus) String() string {
 	switch s {
-	case rootTaskFollowup:
+	case postFastFollowup:
 		return "FOLLOWUP"
-	case rootTaskFollowupPaused:
+	case postFastFollowupPaused:
 		return "FOLLOWUP_PAUSED"
 	default:
 		return ""
@@ -299,19 +299,19 @@ func (s rootTaskStatus) String() string {
 // UnmarshalYAML decodes the supported post-Fast statuses.
 //
 // Example: Decode a documented label and reject other values.
-func (s *rootTaskStatus) UnmarshalYAML(n *yaml.Node) error {
+func (s *postFastStatus) UnmarshalYAML(n *yaml.Node) error {
 	if err := checkEnumScalar(n); err != nil {
 		return err
 	}
 	switch n.Value {
 	case "", "null":
-		*s = rootTaskNone
+		*s = postFastNone
 	case "FOLLOWUP":
-		*s = rootTaskFollowup
+		*s = postFastFollowup
 	case "FOLLOWUP_PAUSED":
-		*s = rootTaskFollowupPaused
+		*s = postFastFollowupPaused
 	default:
-		return fmt.Errorf("invalid root_task_status %q", n.Value)
+		return fmt.Errorf("invalid post_fast_status %q", n.Value)
 	}
 	return nil
 }

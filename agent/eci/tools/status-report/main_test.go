@@ -278,7 +278,7 @@ func TestLaneScenarioAndRootForecastOutput(t *testing.T) {
     implementation_status: IN PROGRESS
     test_status: NEW
     prod_status: NEW
-    root_task_status: FOLLOWUP
+    post_fast_status: FOLLOWUP
     forecast:
       outcome: Finish work
       target: '2026-11-02T17:22:00Z'
@@ -293,7 +293,7 @@ root_forecasts:
 		require.FailNow(t, fmt.Sprint(err))
 	}
 	out := render(r)
-	for _, want := range []string{"| Task ID |", "| Lane/root and case |", "Root-task status [1 / Finish work]: FOLLOWUP", "Root completion forecast: Complete root will be finished by 2026-11-02T18:00:00Z."} {
+	for _, want := range []string{"| Task ID |", "| Lane/root and case |", "Post-Fast status [1 / Finish work]: FOLLOWUP", "Root completion forecast: Complete root will be finished by 2026-11-02T18:00:00Z."} {
 		if !strings.Contains(out, want) {
 			assert.Fail(t, fmt.Sprintf("missing %q", want))
 		}
@@ -744,7 +744,7 @@ func TestLaneStatusVariantsPreserveReadiness(t *testing.T) {
     implementation_status: CLOSED
     test_status: PAUSED
     prod_status: STUCK
-    root_task_status: FOLLOWUP_PAUSED
+    post_fast_status: FOLLOWUP_PAUSED
     forecast: {outcome: Work, target: unknown, assessment: provisional}
 `
 	r, err := parse([]byte(strings.Replace(valid, "lanes: []", lane, 1)))
@@ -753,13 +753,13 @@ func TestLaneStatusVariantsPreserveReadiness(t *testing.T) {
 	for _, v := range []string{"| prod |", "| PAUSED |", "| STUCK |", "FOLLOWUP_PAUSED", "Forecast deadline: Work — unknown"} {
 		require.Contains(t, out, v)
 	}
-	for _, field := range []string{"required_environment: []", "implementation_status: {}", "root_task_status: !bad FOLLOWUP"} {
+	for _, field := range []string{"required_environment: []", "implementation_status: {}", "post_fast_status: !bad FOLLOWUP"} {
 		old := "required_environment: prod"
 		if strings.HasPrefix(field, "implementation") {
 			old = "implementation_status: CLOSED"
 		}
-		if strings.HasPrefix(field, "root_task") {
-			old = "root_task_status: FOLLOWUP_PAUSED"
+		if strings.HasPrefix(field, "post_fast") {
+			old = "post_fast_status: FOLLOWUP_PAUSED"
 		}
 		_, err = parse([]byte(strings.Replace(strings.Replace(valid, "lanes: []", lane, 1), old, field, 1)))
 		require.Error(t, err, field)
@@ -795,8 +795,8 @@ func TestUTCOffsetAtDaylightSavingBoundary(t *testing.T) {
 // Example: A lane cannot use an unrecognized production acceptance boundary.
 func TestInvalidLaneEnumLabels(t *testing.T) {
 	t.Parallel()
-	lane := "lanes:\n  - {task_id: '1', outcome: Work, required_environment: prod, implementation_status: NEW, test_status: NEW, prod_status: NEW, root_task_status: FOLLOWUP}"
-	for _, change := range []struct{ old, new string }{{"required_environment: prod", "required_environment: staging"}, {"root_task_status: FOLLOWUP", "root_task_status: INVALID"}, {"implementation_status: NEW", "implementation_status: INVALID"}} {
+	lane := "lanes:\n  - {task_id: '1', outcome: Work, required_environment: prod, implementation_status: NEW, test_status: NEW, prod_status: NEW, post_fast_status: FOLLOWUP}"
+	for _, change := range []struct{ old, new string }{{"required_environment: prod", "required_environment: staging"}, {"post_fast_status: FOLLOWUP", "post_fast_status: INVALID"}, {"implementation_status: NEW", "implementation_status: INVALID"}} {
 		input := strings.Replace(strings.Replace(valid, "lanes: []", lane, 1), change.old, change.new, 1)
 		_, err := parse([]byte(input))
 		require.Error(t, err)
@@ -846,7 +846,7 @@ func TestResolvedEnumValuesTreatDirectAndMergedYAMLConsistently(t *testing.T) {
     implementation_status: NEW
     test_status: IN PROGRESS
     prod_status: NEW
-    root_task_status: null
+    post_fast_status: null
 `
 	_, err = parse([]byte(strings.Replace(valid, "lanes: []", lane, 1)))
 	require.NoError(t, err)
@@ -912,10 +912,10 @@ func TestOptionalMergedStatusesAndRequiredNull(t *testing.T) {
 		fields string
 		valid  bool
 	}{
-		{"required_environment: test, root_task_status: null", true},
-		{"required_environment: null, root_task_status: null", false},
-		{"required_environment: test, root_task_status: {}", false},
-		{"required_environment: test, root_task_status: !bad FOLLOWUP", false},
+		{"required_environment: test, post_fast_status: null", true},
+		{"required_environment: null, post_fast_status: null", false},
+		{"required_environment: test, post_fast_status: {}", false},
+		{"required_environment: test, post_fast_status: !bad FOLLOWUP", false},
 	} {
 		input := strings.Replace(valid, "tasks:\n", "details: {defaults: &defaults {"+tc.fields+"}}\ntasks:\n", 1)
 		input = strings.Replace(input, "lanes: []", lane, 1)

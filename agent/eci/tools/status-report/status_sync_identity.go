@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -20,62 +19,6 @@ func syncUpdateSelectorValid(update syncUpdate) bool {
 		return strings.TrimSpace(update.WorkRef) != ""
 	}
 	return update.WorkRef == ""
-}
-
-// canonicalSyncOwnershipKey maps historical selector aliases to the actual target identity.
-//
-// Example: An old task key containing a work reference maps to the task alone.
-func canonicalSyncOwnershipKey(key string) string {
-	index := strings.LastIndex(key, "/")
-	if index < 0 {
-		return key
-	}
-	var selector []string
-	if json.Unmarshal([]byte(key[:index]), &selector) != nil || len(selector) != 4 {
-		return key
-	}
-	target := parseSyncTarget(selector[0])
-	if target == syncTargetUnknown || target == syncTargetLane {
-		return key
-	}
-	selector[2], selector[3] = "", ""
-	encoded, err := json.Marshal(selector)
-	if err != nil {
-		return key
-	}
-	return string(encoded) + key[index:]
-}
-
-// normalizeSyncOwnership merges old selector aliases without losing conflicting history.
-//
-// Example: Existing task ownership remains effective after selector validation is tightened.
-func normalizeSyncOwnership(state *syncState) error {
-	applied := map[string]string{}
-	for key, value := range state.Applied {
-		canonical := canonicalSyncOwnershipKey(key)
-		if prior, ok := applied[canonical]; ok && prior != value {
-			return fmt.Errorf("conflicting legacy status ownership for %s", canonical)
-		}
-		applied[canonical] = value
-	}
-	latest := map[string]int{}
-	ordinals := map[string]int{}
-	for key, line := range state.Latest {
-		canonical := canonicalSyncOwnershipKey(key)
-		ordinal, hasOrdinal := state.AppliedOrdinals[key]
-		oldLine, exists := latest[canonical]
-		oldOrdinal, hadOrdinal := ordinals[canonical]
-		if !exists || line > oldLine || (line == oldLine && (ordinal > oldOrdinal || (ordinal == oldOrdinal && hasOrdinal && !hadOrdinal))) {
-			latest[canonical] = line
-			if hasOrdinal {
-				ordinals[canonical] = ordinal
-			} else {
-				delete(ordinals, canonical)
-			}
-		}
-	}
-	state.Applied, state.Latest, state.AppliedOrdinals = applied, latest, ordinals
-	return nil
 }
 
 // recordAdditionOwnership binds supplied fields to their new report record.

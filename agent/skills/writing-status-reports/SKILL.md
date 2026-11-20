@@ -217,17 +217,17 @@ Missing, stale, or unknown stage metadata is reported and reconciled
 without pausing harmless work. Stage records never authorize work or change
 the implementation/test/production status meanings below.
 
-After coordinator-confirmed Fast completion, report one `Root-task status` per
-assigned outcome, including child-Job outcomes, on a separate line outside the lane-readiness table. The legacy field name does not imply root-only ownership. Use
-`Root-task status: FOLLOWUP` or `Root-task status: FOLLOWUP_PAUSED`. Omit this
+After coordinator-confirmed Fast completion, report one `Post-Fast status` per
+assigned outcome, including child-Job outcomes, on a separate line outside the lane-readiness table. Use
+`Post-Fast status: FOLLOWUP` or `Post-Fast status: FOLLOWUP_PAUSED`. Omit this
 field before genuine Fast completion and after coordinator acceptance or
-explicit user closure. Keep these root-task statuses separate from the existing
+explicit user closure. Keep these post-Fast statuses separate from the existing
 Implementation, Test, and Prod status columns and their vocabulary.
 For reports covering multiple outcomes, put each status on its own line and
 identify it by Job/parent chain and outcome, e.g.
-`Root-task status [1.2 / checkout flow]: FOLLOWUP_PAUSED`.
+`Post-Fast status [1.2 / checkout flow]: FOLLOWUP_PAUSED`.
 
-| `Root-task status` | Use |
+| `Post-Fast status` | Use |
 | --- | --- |
 | `FOLLOWUP` | Genuine Fast completion is confirmed and required post-Fast work remains unaccepted, unless the next required post-Fast action cannot advance because it awaits a named in-scope dependency. |
 | `FOLLOWUP_PAUSED` | The next required post-Fast action cannot advance because it awaits a named in-scope dependency. Report the dependency, impact, owner, resume condition, and the proof the Stuck work rule in `~/.omp/agent/RULES.md` requires for any stuck claim; return to `FOLLOWUP` when it clears. |
@@ -236,9 +236,9 @@ These statuses cover only the mandatory post-Fast sequence, not separate-outcome
 observations. Mark a lane awaiting the user's answer to a question the main
 agent put `STUCK` and name the wait's owner as the `STUCK` row below directs; that wait is never
 a reason for `FOLLOWUP_PAUSED`. While the sequence remains
-unaccepted, keep the root-task status `FOLLOWUP` unless the next required
+unaccepted, keep the post-Fast status `FOLLOWUP` unless the next required
 post-Fast action cannot advance because it awaits a named in-scope dependency.
-End either root-task status on coordinator acceptance or explicit user closure.
+End either post-Fast status on coordinator acceptance or explicit user closure.
 
 Use a short `Requirements` list near the table only when it makes the report
 clearer. It is a readable projection of the ledger, not an admission artifact.

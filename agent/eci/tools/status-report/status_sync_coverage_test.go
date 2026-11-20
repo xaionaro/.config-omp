@@ -225,3 +225,18 @@ func TestSyncDefersTerminalLaneWithActiveForecast(t *testing.T) {
 	require.Empty(t, parsed.Lanes[0].CompletedAt)
 	require.Len(t, parsed.StatusSync.Groups, 1)
 }
+
+// TestSyncStateDecodeRejectsUnknownKeys checks that saved state is decoded strictly.
+//
+// Example: A state still carrying the removed pending key fails instead of being dropped.
+func TestSyncStateDecodeRejectsUnknownKeys(t *testing.T) {
+	t.Parallel()
+	var doc yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(`{"cursor":1,"applied":{},"latest":{},"pending":{}}`), &doc))
+	_, err := decodeSyncState(doc.Content[0])
+	require.ErrorContains(t, err, "pending")
+	require.NoError(t, yaml.Unmarshal([]byte(`{"cursor":1,"applied":{},"latest":{}}`), &doc))
+	state, err := decodeSyncState(doc.Content[0])
+	require.NoError(t, err)
+	require.Equal(t, 1, state.Cursor)
+}

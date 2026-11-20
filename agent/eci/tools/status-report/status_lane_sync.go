@@ -32,7 +32,7 @@ func validLaneSyncUpdate(update syncUpdate) bool {
 		seen[field] = true
 	}
 	for _, field := range update.Clear {
-		if seen[field] || (field != "lifecycle" && field != "awaits" && field != "next_action" && field != "completed_at" && field != "root_task_status") {
+		if seen[field] || (field != "lifecycle" && field != "awaits" && field != "next_action" && field != "completed_at" && field != "post_fast_status") {
 			return false
 		}
 		seen[field] = true

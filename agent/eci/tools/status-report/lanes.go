@@ -64,7 +64,7 @@ type lane struct {
 	Awaits               string              `yaml:"awaits"`
 	NextAction           string              `yaml:"next_action"`
 	Context              string              `yaml:"context"`
-	RootTaskStatus       rootTaskStatus      `yaml:"root_task_status"`
+	PostFastStatus       postFastStatus      `yaml:"post_fast_status"`
 	Forecast             *forecast           `yaml:"forecast"`
 }
 
@@ -110,8 +110,8 @@ func renderLaneTable(
 		fmt.Fprintln(b)
 	}
 	for _, l := range lanes {
-		if l.RootTaskStatus != rootTaskNone {
-			fmt.Fprintf(b, "\nRoot-task status [%s / %s]: %s\n", timelineCell(string(l.TaskID)), timelineCell(l.Outcome), l.RootTaskStatus.String())
+		if l.PostFastStatus != postFastNone {
+			fmt.Fprintf(b, "\nPost-Fast status [%s / %s]: %s\n", timelineCell(string(l.TaskID)), timelineCell(l.Outcome), l.PostFastStatus.String())
 		}
 	}
 }
