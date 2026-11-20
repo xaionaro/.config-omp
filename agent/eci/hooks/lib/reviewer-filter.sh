@@ -2,13 +2,9 @@
 # shellcheck shell=bash
 
 reviewer_filter_migration_summary="$HOME/.omp/agent/eci/memories/migration-import/ACTIVE-SUMMARY.md"
-reviewer_filter_legacy_summary="$HOME/.omp/agent/eci/memories/claude"'-import/ACTIVE-SUMMARY.md'
 
 if [ -z "${REVIEWER_FILTER_CORPUS_FILES+x}" ]; then
   REVIEWER_FILTER_CORPUS_FILES="$HOME/.omp/agent/AGENTS.md $HOME/.omp/agent/eci/hooks/stop-checklist.md $reviewer_filter_migration_summary"
-  if [ -f "$reviewer_filter_legacy_summary" ]; then
-    REVIEWER_FILTER_CORPUS_FILES="$REVIEWER_FILTER_CORPUS_FILES $reviewer_filter_legacy_summary"
-  fi
 fi
 : "${REVIEWER_FILTER_THRESHOLD:=0.15}"
 

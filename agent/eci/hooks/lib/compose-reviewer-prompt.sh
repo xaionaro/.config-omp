@@ -18,7 +18,6 @@ compose_reviewer_prompt() {
   local instructions="$HOME/.omp/agent/AGENTS.md"
   local stop_checklist="$HOME/.omp/agent/eci/hooks/stop-checklist.md"
   local import_summary="$HOME/.omp/agent/eci/memories/migration-import/ACTIVE-SUMMARY.md"
-  local legacy_import_summary="$HOME/.omp/agent/eci/memories/claude"'-import/ACTIVE-SUMMARY.md'
 
   if [ ! -f "$wrapper" ]; then
     local safe_wrapper
@@ -54,10 +53,6 @@ compose_reviewer_prompt() {
     printf '============================================================\n\n'
     cat "$stop_checklist"
     printf '\n'
-  fi
-
-  if [ ! -f "$import_summary" ] && [ -f "$legacy_import_summary" ]; then
-    import_summary="$legacy_import_summary"
   fi
 
   if [ -f "$import_summary" ]; then
