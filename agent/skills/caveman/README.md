@@ -17,8 +17,6 @@ Caveman is one of three sibling skills:
 | `ultracave` | `/ultracave` | Grammar stripped. Fragments, one word when one word is enough, each fact once. |
 | `megacave` | `/megacave` | Classical Chinese (文言文). Far fewer characters, technical terms verbatim. |
 
-`/caveman ultra` and `/caveman wenyan` still work as aliases.
-
 Auto-clarity: every skill drops to normal prose for security warnings,
 irreversible-action confirmations, step sequences a fragment could scramble,
 and a user who repeats a question. Resumes after the clear part.

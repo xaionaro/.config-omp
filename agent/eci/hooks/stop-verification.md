@@ -14,9 +14,3 @@ ATE state, peer markers, callback metadata, transcripts, historical review notes
 2. Run a focused check when it can falsify a material claim.
 3. Preserve unrelated work and avoid exposing credentials.
 4. Report actual stuck work and residual risks without inventing ceremony.
-
-## Legacy Audit Vocabulary
-
-<!-- Keep in sync with stop-checklist.md only as nonbinding legacy vocabulary. -->
-
-`Rule-Compliance Self-Audit`, `The audit subject is the written rule`, `the last turn only`, `clean-scan: AGENTS.md`, `Violation:`, `correction marker`, and `rescanned:` are retained only for compatibility with legacy text searches. They are not required forms, evidence, hashes, or completion prerequisites.

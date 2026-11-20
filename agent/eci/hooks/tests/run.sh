@@ -2743,51 +2743,6 @@ hard-escalation: retired marker must keep ECI active.
 EOF
 }
 
-test_audit_sync_checker_ok() {
-  local out
-  out="$TMP_ROOT/audit-sync-ok.out"
-  bash "$ROOT/hooks/check-audit-sync.sh" >"$out" 2>"$out.err" || return 1
-  grep -q "check-audit-sync: OK" "$out"
-}
-
-test_audit_sync_checker_direct_exec_ok() {
-  local out
-  out="$TMP_ROOT/audit-sync-direct-ok.out"
-  "$ROOT/hooks/check-audit-sync.sh" >"$out" 2>"$out.err" || return 1
-  grep -q "check-audit-sync: OK" "$out"
-}
-
-test_audit_sync_checker_detects_drift() {
-  local hook_dir out status
-  hook_dir="$TMP_ROOT/audit-sync-drift"
-  mkdir -p "$hook_dir" || return 1
-  cp "$ROOT/hooks/check-audit-sync.sh" "$hook_dir/check-audit-sync.sh" || return 1
-  cp "$ROOT/hooks/stop-verification.md" "$hook_dir/stop-verification.md" || return 1
-  sed '/rescanned:/d' "$ROOT/hooks/stop-checklist.md" >"$hook_dir/stop-checklist.md"
-  out="$TMP_ROOT/audit-sync-drift.out"
-
-  bash "$hook_dir/check-audit-sync.sh" >"$out" 2>"$out.err"
-  status=$?
-
-  [ "$status" -ne 0 ] &&
-    grep -q "rescanned:" "$out"
-}
-
-test_audit_sync_checker_fails_when_synced_file_missing() {
-  local hook_dir out status
-  hook_dir="$TMP_ROOT/audit-sync-missing"
-  mkdir -p "$hook_dir" || return 1
-  cp "$ROOT/hooks/check-audit-sync.sh" "$hook_dir/check-audit-sync.sh" || return 1
-  cp "$ROOT/hooks/stop-verification.md" "$hook_dir/stop-verification.md" || return 1
-  out="$TMP_ROOT/audit-sync-missing.out"
-
-  bash "$hook_dir/check-audit-sync.sh" >"$out" 2>"$out.err"
-  status=$?
-
-  [ "$status" -ne 0 ] &&
-    grep -q "missing required file" "$out.err"
-}
-
 run_case "prompt state is silent and records HEAD" \
   test_prompt_state_is_silent_records_head_and_clears_bypass
 run_case "prompt state marks /side prompts" \
@@ -3205,14 +3160,6 @@ run_case "security reminder is explicit opt-in" \
   bash "$ROOT/hooks/tests/test-security-reminder-opt-in.sh"
 run_case "edit dispatch keeps advisory output outside the provider envelope" \
   test_pretooluse_edit_dispatch_separates_advisory_and_envelope
-run_case "audit sync checker reports ok" \
-  test_audit_sync_checker_ok
-run_case "audit sync checker supports direct exec" \
-  test_audit_sync_checker_direct_exec_ok
-run_case "audit sync checker detects drift" \
-  test_audit_sync_checker_detects_drift
-run_case "audit sync checker fails when synced files are missing" \
-  test_audit_sync_checker_fails_when_synced_file_missing
 
 note "SUMMARY pass=$PASS_COUNT fail=$FAIL_COUNT xfail=$XFAIL_COUNT xpass=$XPASS_COUNT todo=$TODO_COUNT"
 

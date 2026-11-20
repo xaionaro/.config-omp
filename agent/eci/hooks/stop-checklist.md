@@ -17,9 +17,3 @@ Sibling markers, ATE phases, callback/transcript metadata, checklists, ledgers, 
 - State a real residual risk or stuck work plainly when one exists.
 
 These checks help a person make a sound handoff; they are not an artifact, hash, or grammar requirement and do not by themselves justify a Stop denial.
-
-## Legacy Audit Vocabulary
-
-<!-- Keep in sync with stop-verification.md only as nonbinding legacy vocabulary. -->
-
-`Rule-Compliance Self-Audit`, `The audit subject is the written rule`, `the last turn only`, `clean-scan: AGENTS.md`, `Violation:`, `correction marker`, and `rescanned:` are legacy search terms retained for compatibility. They are not required forms, evidence, hashes, or completion prerequisites.

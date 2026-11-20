@@ -4,7 +4,7 @@ Caveman with the grammar stripped. Fragments. One word when one word is enough. 
 
 Same floor as caveman: code, commands, paths, errors, numbers, and negations are never touched. The difference is everything around them.
 
-**Invoke:** `/ultracave` in Claude Code. `/caveman ultra` still works as an alias.
+**Invoke:** `/ultracave` in Claude Code.
 
 **Use it when** you read fast and want payload only.
 
