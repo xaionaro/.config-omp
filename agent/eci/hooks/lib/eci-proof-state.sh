@@ -1347,7 +1347,7 @@ eci_coordinator_edit_record_state() {
     return 0
   }
   marker="$(eci_proof_root)/$session_id/eci_active"
-  marker_cwd="$(eci_aggregate_marker_cwd "$marker" "$session_id")" || {
+  marker_cwd="$(eci_direct_marker_cwd "$marker" "$session_id")" || {
     printf '%s\n' inactive
     return 0
   }
@@ -2020,16 +2020,10 @@ eci_direct_marker_cwd() {
   printf '%s\n' "$marker_cwd"
 }
 
-# Aggregate lifecycle uses the same direct current-session marker mapping as
-# singleton lifecycle. Keep the historical public helper name for callers.
-eci_aggregate_marker_cwd() {
-  eci_direct_marker_cwd "$@"
-}
-
 eci_aggregate_marker_matches_cwd() {
   local marker="$1" session_id="$2" expected_cwd="$3" marker_cwd
 
-  marker_cwd="$(eci_aggregate_marker_cwd "$marker" "$session_id")" || return 1
+  marker_cwd="$(eci_direct_marker_cwd "$marker" "$session_id")" || return 1
   [ "$marker_cwd" = "$expected_cwd" ]
 }
 
@@ -2171,7 +2165,7 @@ eci_aggregate_plan_select_cwd() {
   local outer_cwd canonical_cwd repo_count index repo_root match_index=""
 
   [ "$marker" = "$(eci_proof_root)/$session_id/eci_active" ] || return 1
-  outer_cwd="$(eci_aggregate_marker_cwd "$marker" "$session_id")" || return 1
+  outer_cwd="$(eci_direct_marker_cwd "$marker" "$session_id")" || return 1
   eci_aggregate_plan_is_valid "$plan" "$session_id" "$outer_cwd" "$marker" || return 1
   canonical_cwd="$(eci_canonical_cwd "$requested_cwd")"
   [ -n "$canonical_cwd" ] && [ -d "$canonical_cwd" ] || return 1
@@ -2374,84 +2368,6 @@ eci_markers_for_cwd() {
       found=true
     fi
   done < <(eci_marker_candidates_bounded "$expected_session")
-  [ "$found" = true ]
-}
-
-eci_legacy_eci_markers_for_cwd() {
-  local cwd="${1:-}" expected_session="${2:-}"
-  local root marker dir name marker_cwd marker_owner line_count legacy_scope_line
-  local canonical_cwd canonical_marker_cwd found=false
-  local -a legacy_dirs=(
-    activity audit eci history pre-reviewer reviewer reviewer-dumps
-    side-stop skip-stop skills
-  )
-
-  [ -n "$cwd" ] || return 1
-  root="$(eci_proof_root)"
-  if ! eci_proof_root_is_safe; then
-    printf '%s\n' "$eci_marker_scan_unsafe_token"
-    return 0
-  fi
-  [ -d "$root" ] || return 1
-  canonical_cwd="$(eci_canonical_cwd "$cwd")"
-
-  # Legacy markers are only authoritative in reserved proof directories.
-  # Probe those fixed paths directly instead of expanding every proof-root
-  # child on the active Stop path.  This keeps a large set of ordinary
-  # session-like directories from turning a no-marker callback into a scan.
-  for name in "${legacy_dirs[@]}"; do
-    marker="$root/$name/eci_active"
-    [ -f "$marker" ] && [ ! -L "$marker" ] || continue
-    eci_marker_file_is_bounded "$marker" || continue
-    [ "$(tail -c 1 -- "$marker" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')" = 0a ] || continue
-    dir="${marker%/*}"
-    [ -d "$dir" ] && [ ! -L "$dir" ] || continue
-    name="${dir##*/}"
-    eci_reserved_proof_dir "$name" || continue
-    if [ -n "$expected_session" ]; then
-      # Legacy markers live in reserved directories rather than under a
-      # session-named path. Bind a typed query to the marker's embedded owner
-      # so an unrelated same-cwd session cannot become its active owner.
-      marker_owner="$(eci_state_value "$marker" session_id false || true)"
-      [ "$marker_owner" = "$expected_session" ] || continue
-    fi
-    # Newline is the record separator; every other C0/DEL byte makes the
-    # legacy marker malformed and therefore ineligible for control flow.
-    LC_ALL=C grep -q '[[:cntrl:]]' "$marker" 2>/dev/null && continue
-    line_count="$(awk 'END { print NR + 0 }' "$marker" 2>/dev/null || printf '0')"
-    case "$line_count" in
-      3|4) ;;
-      *) continue ;;
-    esac
-    legacy_scope_line="$(sed -n '1p' "$marker" 2>/dev/null || true)"
-    case "$legacy_scope_line" in
-      "scope: "*) [ -n "${legacy_scope_line#scope: }" ] || continue ;;
-      *) continue ;;
-    esac
-    case "$(sed -n '2p' "$marker" 2>/dev/null || true)" in
-      "cwd: "*) ;;
-      *) continue ;;
-    esac
-    case "$(sed -n '3p' "$marker" 2>/dev/null || true)" in
-      "session_id: "*) ;;
-      *) continue ;;
-    esac
-    if [ "$line_count" -eq 4 ]; then
-      case "$(sed -n '4p' "$marker" 2>/dev/null || true)" in
-        "created_utc: "*) ;;
-        *) continue ;;
-      esac
-    fi
-    marker_cwd="$(eci_state_value "$marker" cwd false || true)"
-    [ -n "$marker_cwd" ] || continue
-    marker_owner="$(eci_state_value "$marker" session_id false || true)"
-    [ "$marker_owner" = "$name" ] || continue
-    canonical_marker_cwd="$(eci_canonical_cwd "$marker_cwd")"
-    [ "$canonical_marker_cwd" = "$canonical_cwd" ] || continue
-    printf '%s\n' "$marker"
-    found=true
-  done
-
   [ "$found" = true ]
 }
 
