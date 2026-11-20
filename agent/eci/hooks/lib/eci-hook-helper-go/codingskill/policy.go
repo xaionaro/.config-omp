@@ -1,8 +1,6 @@
 package codingskill
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,32 +154,6 @@ func (reads ReadSkills) hasAll(required []Skill) bool {
 		}
 	}
 	return true
-}
-
-// UnmarshalJSON accepts the bitset number and the earlier name-to-bool object.
-//
-// Example: bridges started before the bitset change still send {"coding-common":true}; it decodes to the skillCommon bit.
-func (reads *ReadSkills) UnmarshalJSON(data []byte) error {
-	// TODO: drop the object form once no omp process started before the bitset helper (da346be) runs; its bridge resends that state until its next skill read.
-	if !bytes.HasPrefix(data, []byte("{")) {
-		var bits uint64
-		if err := json.Unmarshal(data, &bits); err != nil {
-			return fmt.Errorf("reads is not a bitset: %w", err)
-		}
-		*reads = ReadSkills(bits)
-		return nil
-	}
-	var legacy map[string]bool
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return fmt.Errorf("reads is not a skill-name object: %w", err)
-	}
-	*reads = 0
-	for skill := skillCommon; skill < skillEnd; skill++ {
-		if legacy[skill.name()] {
-			reads.mark(skill)
-		}
-	}
-	return nil
 }
 
 // missing returns the skill:// URIs of required skills not yet read, in first-listed order, each once.

@@ -182,41 +182,14 @@ func TestCLICheckFailsWhenDisableFileIsUnknown(t *testing.T) {
 	}
 }
 
-// TestCLIAcceptsLegacyReadsObject keeps running bridges that still hold object-form state working.
+// TestCLIRejectsMalformedReads rejects reads that are not a bitset and keeps the decoder's cause.
 //
-// Example: {"reads":{"coding-common":true,"coding-go":true}} allows a Go write; without coding-go it is denied.
-func TestCLIAcceptsLegacyReadsObject(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	for _, tc := range []struct {
-		reads string
-		deny  bool
-	}{
-		{`{"coding-common":true,"coding-go":true}`, false},
-		{`{"coding-common":true}`, true},
-	} {
-		request := `{"state":{"reads":` + tc.reads + `,"hydrated":true},"call":{"toolName":"write","input":{"path":"a.go"}}}`
-		var output bytes.Buffer
-		require.NoError(t, Run([]string{"check"}, bytes.NewReader([]byte(request)), &output))
-		var verdict struct {
-			Deny bool `json:"deny"`
-		}
-		require.NoError(t, json.Unmarshal(output.Bytes(), &verdict))
-		require.Equal(t, tc.deny, verdict.Deny, tc.reads)
-	}
-}
-
-// TestCLIRejectsMalformedReads names the state form that failed to decode and keeps the decoder's cause.
-//
-// Example: {"reads":-1} fails as a bitset; {"reads":{"coding-common":1}} fails as a skill-name object.
+// Example: {"reads":-1} and the retired {"reads":{"coding-common":true}} both fail to decode.
 func TestCLIRejectsMalformedReads(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for reads, form := range map[string]string{
-		`-1`:                  "reads is not a bitset: ",
-		`{"coding-common":1}`: "reads is not a skill-name object: ",
-	} {
+	for _, reads := range []string{`-1`, `{"coding-common":true}`} {
 		request := `{"state":{"reads":` + reads + `},"call":{"toolName":"write","input":{"path":"a.go"}}}`
 		err := Run([]string{"check"}, bytes.NewReader([]byte(request)), io.Discard)
-		require.ErrorContains(t, err, form, reads)
 		var cause *json.UnmarshalTypeError
 		require.ErrorAs(t, err, &cause, reads)
 	}
