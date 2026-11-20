@@ -221,25 +221,6 @@ bash -c 'source "$1"; exec 9>>"$2"; eci_file_lock_acquire_fd 9 wait' \
   bash "$ROOT/hooks/lib/eci-file-lock.sh" "$TMP_ROOT/exited.lock"
 native_lock_available "$TMP_ROOT/exited.lock"
 
-# The proof-state consumer must fail closed while another descriptor owns its
-# lock, then consume its private fixture after that descriptor is released.
-PROOF_RECORD="$TMP_ROOT/proof-state-record"
-PROOF_LOCK="$TMP_ROOT/proof-state.lock"
-eci_accidental_override_record_path() { printf '%s\n' "$PROOF_RECORD"; }
-eci_lock_path() { printf '%s\n' "$PROOF_LOCK"; }
-eci_accidental_override_record_is_valid() { return 0; }
-printf '%s\n' 'fixture record' >"$PROOF_RECORD"
-exec {proof_lock_fd}>>"$PROOF_LOCK"
-eci_file_lock_acquire_fd "$proof_lock_fd" try
-if eci_accidental_override_consume session validate-bash lock-test-session "$ROOT" payload; then
-  printf '%s\n' 'proof-state consumed while its common lock was busy' >&2
-  exit 1
-fi
-[ -f "$PROOF_RECORD" ] && [ ! -e "$PROOF_RECORD.claim" ]
-eci_file_lock_release_fd "$proof_lock_fd"
-eci_accidental_override_consume session validate-bash lock-test-session "$ROOT" payload
-[ ! -e "$PROOF_RECORD" ] && [ ! -e "$PROOF_RECORD.claim" ]
-
 # A source-only Git-tool module must compile once under concurrent cold starts.
 RUNTIME_ROOT="$TMP_ROOT/runtime/.omp/agent/eci"
 BUILD_BIN="$TMP_ROOT/build-bin"

@@ -89,8 +89,6 @@ func run(args []string) error {
 		return requirementAssignment(args)
 	case "manifest-write":
 		return manifestWrite(args)
-	case "accidental-override-cleanup":
-		return accidentalOverrideCleanup(args)
 	case "maintain-planner":
 		return maintainPlanner(args)
 	case "sync-runtime":
@@ -134,7 +132,6 @@ func usage(w io.Writer) {
   %[1]s permissive-status <session|global> <gate> <operation> <request>
   %[1]s requirement-assignment --request <request-json>
   %[1]s manifest-write <source-json>
-  %[1]s accidental-override-cleanup --authorized-by-user <claim-dir>
   %[1]s maintain-planner
   %[1]s aggregate-review <prewrite|final> <repo-id>
   %[1]s sync-runtime

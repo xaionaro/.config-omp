@@ -17,8 +17,6 @@ PROOF_ROOT="$TMP_ROOT/proof"
 CURRENT_MARKER="$PROOF_ROOT/$SESSION_ID/eci_active"
 FOREIGN_MARKER="$PROOF_ROOT/other-session/eci_active"
 PERMISSIVE_RECORD="$PROOF_ROOT/$SESSION_ID/eci-permissive-mode"
-OVERRIDE_RECORD="$PROOF_ROOT/$SESSION_ID/.eci-accidental-mistake-override"
-OVERRIDE_CLAIM="$OVERRIDE_RECORD.claim"
 INPUT="$TMP_ROOT/input.json"
 OUTPUT="$TMP_ROOT/output.json"
 ERROR_OUTPUT="$TMP_ROOT/error.txt"
@@ -40,12 +38,9 @@ printf '%s\n' \
   >"$FOREIGN_MARKER"
 printf '%s\n' enforcing >"$TMP_ROOT/config/eci/command-gate-mode"
 
-# Model the historical failure: malformed permissive state plus a stranded,
-# nonempty override claim.  No valid authorization artifact is created.
+# Model the historical failure: malformed permissive state.  No valid
+# authorization artifact is created.
 printf '%s\n' 'malformed legacy permissive state' >"$PERMISSIVE_RECORD"
-printf '%s\n' 'malformed legacy override state' >"$OVERRIDE_RECORD"
-mkdir -- "$OVERRIDE_CLAIM"
-printf '%s\n' consumed >"$OVERRIDE_CLAIM/record"
 
 # Exercise the private hook body, removing a line-2 bypass if present.
 cp -- "$ROOT/hooks/validate-bash.sh" "$TMP_ROOT/validate-bash.before"
@@ -122,8 +117,7 @@ assert_allowed "bash -c 'printf %s ordinary-coordination'"
 
 # Missing records are equally ordinary; lifecycle visibility is not a request
 # to repair or enable a mode.
-rm -f -- "$PERMISSIVE_RECORD" "$OVERRIDE_CLAIM/record" "$OVERRIDE_RECORD"
-rmdir -- "$OVERRIDE_CLAIM"
+rm -f -- "$PERMISSIVE_RECORD"
 assert_allowed 'printf %s no-artifact-needed'
 assert_allowed '"$HOME/.omp/agent/eci/bin/eci-active" --help'
 assert_allowed '"$HOME/.omp/agent/eci/bin/eci-active" status'

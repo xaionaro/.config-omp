@@ -136,8 +136,7 @@ eci_proof_root() {
 
 # Process-local memo of the roots eci_path_is_eci_control_file and
 # eci_context_session_rest compare against: the resolved proof root, the
-# resolved default proof root, the canonical context root and the global
-# accidental-override record path (empty when that record path is invalid).
+# resolved default proof root and the canonical context root.
 # One realpath call resolves them all.  The memo is keyed on every input, so a
 # changed HOME, PWD or proof root recomputes it; subshells inherit it, which is
 # why hooks load it once in the hook process (eci_hook_roots_load).
@@ -150,7 +149,6 @@ eci_hook_roots_key=""
 eci_hook_roots_resolved_proof=""
 eci_hook_roots_resolved_default=""
 eci_hook_roots_context_canonical=""
-eci_hook_roots_global_override=""
 eci_hook_roots_target_ready=0
 eci_hook_roots_target_resolved=""
 
@@ -181,9 +179,9 @@ eci_hook_path_absolute() {
 }
 
 eci_hook_roots_load() {
-  local eci_hook_roots_current proof default_root context eci_root override
+  local eci_hook_roots_current proof default_root context
   local -a args=() lines=()
-  local arg out rc=0 batched=false canonical target_cwd target=""
+  local arg out rc=0 batched=false target_cwd target=""
 
   eci_hook_roots_target_ready=0
   eci_hook_roots_target_resolved=""
@@ -208,16 +206,8 @@ eci_hook_roots_load() {
   default_root="$HOME/tmp/agent/proof"
   context="$HOME/.agent/context"
   eci_strip_trailing_newlines context
-  eci_root="$(eci_home_lexical_root 2>/dev/null || true)"
-  if [ -n "$eci_root" ] && [ -d "$eci_root" ] && [ ! -L "$eci_root" ]; then
-    override="$eci_root/.eci-accidental-mistake-override"
-  else
-    eci_root=""
-    override=""
-  fi
   if [ -n "$proof" ]; then
     args=("$(eci_hook_path_absolute "$PWD" "$proof")" "$(eci_hook_path_absolute "$PWD" "$default_root")" "$context")
-    [ -z "$eci_root" ] || args+=("$eci_root" "$override")
     batched=true
     for arg in "${args[@]}"; do
       case "$arg" in ""|*$'\n'*) batched=false ;; esac
@@ -233,19 +223,10 @@ eci_hook_roots_load() {
     eci_hook_roots_resolved_proof="${lines[0]}"
     eci_hook_roots_resolved_default="${lines[1]}"
     eci_hook_roots_context_canonical="${lines[2]}"
-    eci_hook_roots_global_override=""
-    if [ -n "$eci_root" ]; then
-      canonical="${lines[3]}"
-      if [ -n "$canonical" ] && [ "${lines[4]}" = "$canonical/.eci-accidental-mistake-override" ] &&
-         [ ! -L "$canonical/.eci-accidental-mistake-override" ]; then
-        eci_hook_roots_global_override="$canonical/.eci-accidental-mistake-override"
-      fi
-    fi
   else
     eci_hook_roots_resolved_proof="$(eci_resolve_hook_path "$PWD" "$proof" 2>/dev/null || printf '%s\n' "$proof")"
     eci_hook_roots_resolved_default="$(eci_resolve_hook_path "$PWD" "$default_root" 2>/dev/null || printf '%s\n' "$default_root")"
     eci_hook_roots_context_canonical="$(eci_realpath_canonical "$context" 2>/dev/null || true)"
-    eci_hook_roots_global_override="$(eci_accidental_override_record_path global 2>/dev/null || true)"
   fi
   eci_hook_roots_key="$eci_hook_roots_current"
 }
@@ -727,7 +708,7 @@ eci_path_is_git_approval_file() {
 
 eci_path_is_eci_control_file() {
   local path="${1:-}"
-  local actual_root default_root root rest sid filename global_override
+  local actual_root default_root root rest sid filename
 
   [ -n "$path" ] || return 1
   filename="${path##*/}"
@@ -743,10 +724,6 @@ eci_path_is_eci_control_file() {
         sid="${rest%%/*}"
         [ "$rest" != "$sid" ] || continue
         case "$rest" in
-          */.eci-accidental-mistake-override.claim|*/.eci-accidental-mistake-override.claim/*)
-            eci_valid_session_id "$sid" && return 0
-            continue
-            ;;
           */eci-wait-repair-authorize.claim|*/eci-wait-repair-authorize.claim/*)
             eci_valid_session_id "$sid" && return 0
             continue
@@ -771,16 +748,6 @@ eci_path_is_eci_control_file() {
     fi
   fi
   eci_path_is_session_ledger_file "$path" && return 0
-  global_override="$eci_hook_roots_global_override"
-  if [ -n "$global_override" ] && [ "$path" = "$global_override" ]; then
-    return 0
-  fi
-  if [ -n "$global_override" ] && [ "$path" = "$global_override.claim" ]; then
-    return 0
-  fi
-  if [ -n "$global_override" ] && [[ "$path" == "$global_override.claim/"* ]]; then
-    return 0
-  fi
   return 1
 }
 
@@ -811,20 +778,6 @@ eci_hash_string() {
   printf '%s\n' "${digest%% *}"
 }
 
-eci_accidental_override_tool_is_valid() {
-  case "${1:-}" in
-    validate-bash|validate-apply-patch) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-eci_accidental_override_scope_is_valid() {
-  case "${1:-}" in
-    session|global) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 eci_home_lexical_root() {
   local home="${HOME:-}" root
 
@@ -840,7 +793,7 @@ eci_home_lexical_root() {
   printf '%s\n' "$root"
 }
 
-eci_accidental_override_global_root() {
+eci_global_state_root() {
   local root canonical
 
   root="$(eci_home_lexical_root)" || return 1
@@ -848,222 +801,6 @@ eci_accidental_override_global_root() {
   canonical="$(eci_realpath_existing "$root" 2>/dev/null || true)"
   [ -n "$canonical" ] && [ "$canonical" = "$(eci_realpath_canonical "$canonical" 2>/dev/null || true)" ] || return 1
   printf '%s\n' "$canonical"
-}
-
-eci_accidental_override_record_path() {
-  local scope="$1" session_id="${2:-}" root path
-
-  eci_accidental_override_scope_is_valid "$scope" || return 1
-  case "$scope" in
-    session)
-      eci_valid_session_id "$session_id" || return 1
-      eci_proof_root_load
-      root="$eci_proof_root_value"
-      eci_session_dir_is_safe "$root" "$session_id" || return 1
-      path="$root/$session_id/.eci-accidental-mistake-override"
-      eci_state_path_is_safe "$path" "$root" || return 1
-      ;;
-    global)
-      root="$(eci_accidental_override_global_root)" || return 1
-      path="$root/.eci-accidental-mistake-override"
-      [ "$(eci_realpath_canonical "$path" 2>/dev/null || true)" = "$path" ] || return 1
-      [ ! -L "$path" ] || return 1
-      ;;
-  esac
-  printf '%s\n' "$path"
-}
-
-# Cleanup accepts only the canonical session-claim spelling below the active
-# proof root.  In particular, the global override record is intentionally not
-# a target for this narrow recovery route.
-eci_accidental_override_claim_path_is_canonical() {
-  local claim="${1:-}" root rest session_id
-
-  root="$(eci_proof_root)" || return 1
-  eci_proof_root_is_safe || return 1
-  case "$claim" in
-    /*) ;;
-    *) return 1 ;;
-  esac
-  case "$claim" in
-    *[![:print:]]*) return 1 ;;
-  esac
-  case "$claim" in
-    "$root"/*) rest="${claim#"$root"/}" ;;
-    *) return 1 ;;
-  esac
-  [ "$claim" = "$(eci_realpath_canonical "$claim" 2>/dev/null || true)" ] || return 1
-  session_id="${rest%%/*}"
-  [ "$rest" = "$session_id/.eci-accidental-mistake-override.claim" ] || return 1
-  eci_valid_session_id "$session_id" || return 1
-  eci_session_dir_is_safe "$root" "$session_id" || return 1
-  [ "$claim" = "$root/$session_id/.eci-accidental-mistake-override.claim" ] || return 1
-  [ -d "$claim" ] && [ ! -L "$claim" ] || return 1
-  [ "$claim" = "$(eci_realpath_existing "$claim" 2>/dev/null || true)" ] || return 1
-}
-
-# Prints the operator command that removes an orphaned claim. The command names
-# the eci-active under the provider tree that owns this library copy: the ECI
-# runtime ($HOME/.omp/agent/eci) or the Kimi peer (${KIMI_CODE_HOME:-$HOME/.kimi-code}).
-# Any other library location yields no command.
-eci_accidental_override_cleanup_command() {
-  local claim="${1:-}" library_path provider_root eci_root kimi_root
-
-  eci_accidental_override_claim_path_is_canonical "$claim" || return 1
-  library_path="$(eci_realpath_existing "${BASH_SOURCE[0]}" 2>/dev/null || true)"
-  case "$library_path" in
-    */hooks/lib/eci-proof-state.sh)
-      provider_root="${library_path%/hooks/lib/eci-proof-state.sh}"
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-  eci_root="$(eci_realpath_existing "${HOME:-}/.omp/agent/eci" 2>/dev/null || true)"
-  kimi_root="$(eci_realpath_existing "${KIMI_CODE_HOME:-${HOME:-}/.kimi-code}" 2>/dev/null || true)"
-
-  case "$provider_root" in
-    "$eci_root")
-      [ -n "$eci_root" ] || return 1
-      printf '"$HOME/.omp/agent/eci/bin/eci-active" accidental-override-cleanup --authorized-by-user %q\n' "$claim"
-      ;;
-    "$kimi_root")
-      [ -n "$kimi_root" ] || return 1
-      printf '"${KIMI_CODE_HOME:-$HOME/.kimi-code}/bin/eci-active" accidental-override-cleanup --authorized-by-user %q\n' "$claim"
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-eci_accidental_override_fingerprint() {
-  local scope="$1" tool="$2" session_id="${3:-}" cwd="${4:-}" payload="${5-}" canonical_cwd
-
-  eci_accidental_override_scope_is_valid "$scope" || return 1
-  eci_accidental_override_tool_is_valid "$tool" || return 1
-  eci_valid_session_id "$session_id" || return 1
-  [ -d "$cwd" ] && [ ! -L "$cwd" ] || return 1
-  canonical_cwd="$(eci_canonical_cwd "$cwd")"
-  case "$canonical_cwd" in
-    /*) ;;
-    *) return 1 ;;
-  esac
-  case "$scope" in
-    session)
-      eci_hash_string "eci-accidental-mistake-override/v1
-session
-$session_id
-$canonical_cwd
-$tool
-$payload"
-      ;;
-    global)
-      eci_hash_string "eci-accidental-mistake-override/v1
-global
-$tool
-$payload"
-      ;;
-  esac
-}
-
-eci_accidental_override_record_is_valid() {
-  local scope="$1" tool="$2" session_id="$3" cwd="$4" payload="${5-}" record expected_fingerprint canonical_cwd
-  local -a lines=()
-
-  # Legacy structured records are parsed only for status/cleanup compatibility.
-  # They never authorize an operation or affect ordinary command routing.
-
-  record="$(eci_accidental_override_record_path "$scope" "$session_id")" || return 1
-  [ -f "$record" ] && [ ! -L "$record" ] || return 1
-  eci_state_file_owner_is_valid "$record" || return 1
-  [ "$(eci_realpath_canonical "$record" 2>/dev/null || true)" = "$record" ] || return 1
-  [ "$(wc -c <"$record" 2>/dev/null || printf 999999)" -le 4096 ] || return 1
-  [ "$(tail -c 1 -- "$record" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')" = 0a ] || return 1
-  LC_ALL=C grep -q $'\r' "$record" 2>/dev/null && return 1 || true
-  mapfile -t lines <"$record" || return 1
-  [ "${#lines[@]}" -eq 7 ] || return 1
-  for line in "${lines[@]}"; do
-    LC_ALL=C printf '%s' "$line" | LC_ALL=C grep -q '[[:cntrl:]]' && return 1
-  done
-  canonical_cwd="$(eci_canonical_cwd "$cwd")"
-  [ "${lines[0]}" = 'schema: eci-accidental-mistake-override/v1' ] || return 1
-  [ "${lines[1]}" = "scope: $scope" ] || return 1
-  case "$scope" in
-    session)
-      [ "${lines[2]}" = "session_id: $session_id" ] || return 1
-      [ "${lines[4]}" = "cwd: $canonical_cwd" ] || return 1
-      ;;
-    global)
-      [ "${lines[2]}" = 'session_id: *' ] || return 1
-      [ "${lines[4]}" = 'cwd: *' ] || return 1
-      ;;
-  esac
-  [ "${lines[3]}" = "tool: $tool" ] || return 1
-  expected_fingerprint="$(eci_accidental_override_fingerprint "$scope" "$tool" "$session_id" "$cwd" "$payload")" || return 1
-  [ "${lines[5]}" = "fingerprint: $expected_fingerprint" ] || return 1
-  [ "${lines[6]}" = 'authorized_by: user' ] || return 1
-}
-
-# Legacy override records are retained only for status/cleanup compatibility.
-# Command admission never consumes them or treats their provenance as authority.
-eci_accidental_override_matches() {
-  local scope="$1" tool="$2" session_id="$3" cwd="$4" payload="${5-}"
-  eci_accidental_override_record_is_valid "$scope" "$tool" "$session_id" "$cwd" "$payload"
-}
-
-eci_accidental_override_consume_reason=""
-eci_accidental_override_consume() {
-  local scope="$1" tool="$2" session_id="$3" cwd="$4" payload="${5-}"
-  local record lock_path claim lock_fd recovery_command
-
-  record="$(eci_accidental_override_record_path "$scope" "$session_id")" || return 1
-  claim="$record.claim"
-  if { [ ! -f "$record" ] || [ -L "$record" ]; } &&
-     [ ! -e "$claim" ] && [ ! -L "$claim" ]; then
-    return 1
-  fi
-  lock_path="$(eci_lock_path 2>/dev/null || true)"
-  [ -n "$lock_path" ] || return 1
-  [ ! -L "$lock_path" ] && { [ ! -e "$lock_path" ] || [ -f "$lock_path" ]; } || return 1
-  if ! exec {lock_fd}>>"$lock_path" 2>/dev/null; then
-    return 1
-  fi
-  if ! eci_file_lock_acquire_fd "$lock_fd" try 2>/dev/null; then
-    eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-    return 1
-  fi
-
-  claim="$record.claim"
-  if [ -e "$claim" ] || [ -L "$claim" ]; then
-    if ! { [ -d "$claim" ] && [ ! -L "$claim" ] &&
-           [ -f "$record" ] && [ ! -L "$record" ] &&
-           rmdir -- "$claim" 2>/dev/null; }; then
-      eci_accidental_override_consume_reason="authorization state is already consumed or interrupted (state=$claim); publish a new explicitly authorized record and retry; do not restore the old record"
-      eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-      return 1
-    fi
-  fi
-  if [ -e "$claim" ] || [ -L "$claim" ] || ! mkdir -- "$claim" 2>/dev/null; then
-    eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-    return 1
-  fi
-  if ! eci_accidental_override_record_is_valid "$scope" "$tool" "$session_id" "$cwd" "$payload"; then
-    rmdir -- "$claim" 2>/dev/null || true
-    eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-    return 1
-  fi
-  if ! mv -- "$record" "$claim/record" 2>/dev/null; then
-    rmdir -- "$claim" 2>/dev/null || true
-    eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-    return 1
-  fi
-  if ! rm -f -- "$claim/record" 2>/dev/null || ! rmdir -- "$claim" 2>/dev/null; then
-    eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-    return 1
-  fi
-  eci_file_lock_release_fd "$lock_fd" 2>/dev/null || true
-  return 0
 }
 
 eci_session_permissive_scope_is_valid() {
@@ -1091,7 +828,7 @@ eci_session_permissive_record_path() {
     path="$root/$session_id/eci-permissive-mode"
     eci_state_path_is_safe "$path" "$root" || return 1
   else
-    root="$(eci_accidental_override_global_root)" || return 1
+    root="$(eci_global_state_root)" || return 1
     path="$root/.eci-permissive-mode"
     [ "$(eci_realpath_canonical "$path" 2>/dev/null || true)" = "$path" ] && [ ! -L "$path" ] || return 1
   fi

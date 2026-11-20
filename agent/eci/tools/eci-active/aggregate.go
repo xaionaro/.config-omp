@@ -570,3 +570,11 @@ func jqIterate(doc any, key string) []any {
 	}
 	return nil
 }
+
+// sessionDirSafe reports true when the session path is absent or a real directory.
+//
+// Example: a symlink at <root>/<sid> is not safe.
+func sessionDirSafe(root, sid string) bool {
+	fi, err := os.Lstat(filepath.Join(root, sid))
+	return err != nil || fi.IsDir()
+}

@@ -25,15 +25,14 @@ global_home="$tmp/global-home"
 global_eci="$global_home/.omp/agent/eci"
 global_foreign_eci="$tmp/global-foreign-eci"
 mkdir -p "$global_eci" "$global_foreign_eci"
-global_paths="$(
+global_root="$(
   HOME="$global_home" ECI_HOME="$global_foreign_eci" \
-    bash -c '. "$1"; eci_accidental_override_global_root; eci_accidental_override_record_path global' \
+    bash -c '. "$1"; eci_global_state_root' \
       bash "$ROOT/hooks/lib/eci-proof-state.sh"
 )"
 expected_global_root="$(eci_realpath_existing "$global_eci")"
-expected_global_paths="$expected_global_root"$'\n'"$expected_global_root/.eci-accidental-mistake-override"
-[ "$global_paths" = "$expected_global_paths" ] || {
-  printf 'global authority paths followed poisoned ECI_HOME: %s\n' "$global_paths" >&2
+[ "$global_root" = "$expected_global_root" ] || {
+  printf 'global state root followed poisoned ECI_HOME: %s\n' "$global_root" >&2
   exit 1
 }
 
