@@ -126,7 +126,7 @@ export function identityFor(ctx: EciSessionContext, options: { useHostAgentKind?
 		const kind = ctx.agent?.kind;
 		if (kind === "main" || kind === "sub") agentKind = kind;
 	} catch {
-		// Older or unavailable host identity retains transcript-only classification.
+		// Unavailable host identity falls back to transcript-only classification.
 	}
 	return {
 		sessionId: process.env.PI_SESSION_ID ?? "",

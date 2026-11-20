@@ -575,7 +575,7 @@ func hookNoSymlinkIntoRoot(path, base, resolved string) error {
 }
 
 // hookTranscriptRole resolves documented host identity against verified transcript evidence.
-// Absent or invalid identity retains legacy transcript-only classification.
+// Without valid host identity, classification uses verified transcript evidence only.
 //
 // Example: host main can use no-session or a verified fork, but host sub always stays Worker.
 func hookTranscriptRole(
