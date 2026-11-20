@@ -527,7 +527,7 @@ func decodeSyncEffectValue(effect syncEffect) (any, error) {
 			err := yaml.Unmarshal(raw, &text)
 			return text, err
 		}
-		if effect.Target == syncTargetReport && (effect.Field == "top_priorities" || effect.Field == "priority_order") {
+		if effect.Target == syncTargetReport && effect.Field == "top_priorities" {
 			return decodeSyncStringList(raw)
 		}
 		var value any

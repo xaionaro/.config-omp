@@ -17,7 +17,7 @@ func validStructuredSyncUpdate(u syncUpdate) bool {
 	allowed := map[syncTarget]map[string]bool{
 		syncTargetTask:             {"effort": true, "impact": true, "impact_points": true, "impact_basis": true, "priority": true, "work_refs": true, "indivisible_reason": true, "title": true, "parent_id": true},
 		syncTargetPriorityEstimate: {"min_minutes": true, "max_minutes": true, "as_of": true, "basis": true, "assumptions": true, "dependencies": true, "critical_path": true},
-		syncTargetReport:           {"completion_estimate": true, "top_priorities": true, "roster": true, "priority_order": true, "impact_scale": true},
+		syncTargetReport:           {"completion_estimate": true, "top_priorities": true, "roster": true, "impact_scale": true},
 		syncTargetReview:           {"reporter": true, "critic": true, "rounds": true, "estimate": true, "impact": true, "priority": true, "unresolved": true},
 	}
 	if strings.TrimSpace(u.ID) == "" || len(u.Values)+len(u.Clear) == 0 || u.Retract || allowed[u.Target] == nil || (u.Target == syncTargetReport && u.ID != "current") {
@@ -159,7 +159,7 @@ func decodeStructuredSyncValue(
 		err := value.Decode(&text)
 		return text, err
 	}
-	if update.Target == syncTargetReport && (field == "top_priorities" || field == "priority_order") {
+	if update.Target == syncTargetReport && field == "top_priorities" {
 		var labels []string
 		err := value.Decode(&labels)
 		return labels, err

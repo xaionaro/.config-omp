@@ -1038,14 +1038,13 @@ func TestTimelineWindowBoundaryAndEquivalentUTCOffsets(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestLegacyPriorityOrderCompatibility checks that legacy ordering remains accepted.
+// TestPriorityOrderRejected checks that the removed priority_order field is an unknown field.
 //
-// Example: A legacy high label does not supply missing score inputs.
-func TestLegacyPriorityOrderCompatibility(t *testing.T) {
+// Example: A report still carrying priority_order fails to parse.
+func TestPriorityOrderRejected(t *testing.T) {
 	t.Parallel()
-	r, err := parse([]byte(valid + "priority_order: [high]\n"))
-	require.NoError(t, err)
-	require.Contains(t, render(r), "unscored:")
+	_, err := parse([]byte(valid + "priority_order: [high]\n"))
+	require.ErrorContains(t, err, "priority_order")
 }
 
 // TestForecastBaselineTruth verifies baseline comparisons and explicit uncertainty.
@@ -1069,17 +1068,6 @@ func TestForecastBaselineTruth(t *testing.T) {
 	doc := valid + "root_forecasts:\n  - {outcome: Work, target: '2026-11-02T16:00:00Z', baseline: nonsense, assessment: complete}\n"
 	_, err := parse([]byte(doc))
 	require.Error(t, err)
-}
-
-// TestLegacyPriorityOrderValidation rejects invalid legacy ordering labels.
-//
-// Example: Duplicate and unknown labels are rejected.
-func TestLegacyPriorityOrderValidation(t *testing.T) {
-	t.Parallel()
-	for _, order := range []string{"[high, high]", "[high, unknown]", "[high, '']", "[high, UNKNOWN]"} {
-		_, err := parse([]byte(valid + "priority_order: " + order + "\n"))
-		require.Error(t, err, order)
-	}
 }
 
 // TestForecastPriorAndBaselineValidation checks metadata without invented history.

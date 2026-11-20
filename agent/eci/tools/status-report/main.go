@@ -122,7 +122,6 @@ type report struct {
 	ScopeComplete      *bool                `yaml:"scope_complete"`
 	Tasks              []task               `yaml:"tasks"`
 	TopPriorities      []taskID             `yaml:"top_priorities"`
-	PriorityOrder      []priorityLabel      `yaml:"priority_order"`
 	ImpactScale        string               `yaml:"impact_scale"`
 	Lanes              []lane               `yaml:"lanes"`
 	RootCompletions    []rootCompletion     `yaml:"root_completions"`
@@ -211,9 +210,6 @@ func parse(data []byte) (report, error) {
 		if children[t.ID] == 0 && *t.Effort.MaxMinutes > maxLeafMinutes && strings.TrimSpace(t.IndivisibleReason) == "" {
 			return r, fmt.Errorf("task %s: leaf longer than 30 minutes needs indivisible_reason", t.ID)
 		}
-	}
-	if err := validatePriorityOrder(r.PriorityOrder); err != nil {
-		return r, err
 	}
 	seenTop := map[taskID]bool{}
 	for _, id := range r.TopPriorities {

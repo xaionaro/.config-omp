@@ -188,12 +188,7 @@ func verifyTopPriorityStyles(
 	candidate []byte,
 	effects []syncEffect,
 ) error {
-	for _, field := range []string{"top_priorities", "priority_order"} {
-		if err := verifyStringListStyles(original, candidate, effects, field); err != nil {
-			return err
-		}
-	}
-	return nil
+	return verifyStringListStyles(original, candidate, effects, "top_priorities")
 }
 
 // verifyStringListStyles protects untouched lexical labels in one report list.
@@ -287,7 +282,6 @@ type syncVerificationIDs struct {
 		Priority string `yaml:"priority"`
 	} `yaml:"priority_estimates"`
 	TopPriorities []string `yaml:"top_priorities"`
-	PriorityOrder []string `yaml:"priority_order"`
 }
 
 // decodeSyncVerificationReport keeps task IDs as the report schema interprets them.
@@ -341,9 +335,6 @@ func decodeSyncVerificationReport(data []byte) (map[string]any, error) {
 		return nil, err
 	}
 	if err := normalizeSyncStringList(report, "top_priorities", ids.TopPriorities); err != nil {
-		return nil, err
-	}
-	if err := normalizeSyncStringList(report, "priority_order", ids.PriorityOrder); err != nil {
 		return nil, err
 	}
 	return report, nil

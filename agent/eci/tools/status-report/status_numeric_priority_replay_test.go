@@ -87,17 +87,6 @@ func TestVerificationProtectsNumericPriorityLabels(t *testing.T) {
 	require.Error(t, verifyStatusSyncEffects(before, changedTask, effects))
 }
 
-// TestVerificationProtectsNumericPriorityOrder checks unrelated scalar styles.
-//
-// Example: A task update cannot rewrite a numeric priority order entry as text.
-func TestVerificationProtectsNumericPriorityOrder(t *testing.T) {
-	t.Parallel()
-	before := []byte("tasks: [{id: one, owner: old}]\npriority_order: [1.10, 1.1]\n")
-	after := []byte("tasks: [{id: one, owner: new}]\npriority_order: ['1.10', 1.1]\n")
-	effects := []syncEffect{{Target: syncTargetTask, ID: "one", Field: "owner", Value: "new", Operation: syncEffectSet}}
-	require.Error(t, verifyStatusSyncEffects(before, after, effects))
-}
-
 // TestNumericPriorityMergeRetiresExactEstimate checks paired replay.
 //
 // Example: A numeric destination or source label remains lexical through retirement.
@@ -209,39 +198,6 @@ func TestNumericPriorityValueKeepsLexicalOwnership(t *testing.T) {
 	parsed, err = parse(result)
 	require.NoError(t, err)
 	require.Equal(t, priorityLabel("1.10"), parsed.Tasks[0].Priority)
-	require.NotEmpty(t, parsed.StatusSync.Groups)
-}
-
-// TestNumericPriorityOrderOwnershipKeepsLexicalValues checks report-level labels.
-//
-// Example: A later 1.100 owner edit cannot be confused with projected 1.10.
-func TestNumericPriorityOrderOwnershipKeepsLexicalValues(t *testing.T) {
-	t.Parallel()
-	report := linkedReport + "priority_order: [1.1, 1.10]\n"
-	dir := writeLinkedSources(t, linkedLedger, linkedForecasts)
-	path := filepath.Join(dir, "latest-status-report.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(report), 0600))
-	first := `{"event":"decision","details":{"status_update":{"updates":[{"target":"report","id":"current","values":{"priority_order":[1.10,1.1]}}]}}}` + "\n"
-	require.NoError(t, writeSessionLog(dir, []byte(first)))
-	var out, errOut bytes.Buffer
-	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
-	result, err := os.ReadFile(path)
-	require.NoError(t, err)
-	parsed, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, []priorityLabel{"1.10", "1.1"}, parsed.PriorityOrder)
-	edited := strings.Replace(string(result), "priority_order: [1.10,1.1]", "priority_order: [1.100,1.1]", 1)
-	require.NotEqual(t, string(result), edited)
-	require.NoError(t, os.WriteFile(path, []byte(edited), 0600))
-	require.NoError(t, writeSessionLog(dir, []byte(first+first)))
-	out.Reset()
-	errOut.Reset()
-	require.Equal(t, 0, run([]string{"refresh", dir, "decision"}, strings.NewReader(""), &out, &errOut), errOut.String())
-	result, err = os.ReadFile(path)
-	require.NoError(t, err)
-	parsed, err = parse(result)
-	require.NoError(t, err)
-	require.Equal(t, []priorityLabel{"1.100", "1.1"}, parsed.PriorityOrder)
 	require.NotEmpty(t, parsed.StatusSync.Groups)
 }
 

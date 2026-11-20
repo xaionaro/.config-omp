@@ -44,21 +44,6 @@ func (s prioritySorter) compare(
 	}
 }
 
-// validatePriorityOrder validates the legacy forecast grouping order.
-//
-// Example: Unknown labels cannot be assigned a rank.
-func validatePriorityOrder(order []priorityLabel) error {
-	seen := map[priorityLabel]bool{}
-	for _, label := range order {
-		trimmed := strings.TrimSpace(string(label))
-		if trimmed == "" || strings.EqualFold(trimmed, "unknown") || seen[label] {
-			return fmt.Errorf("priority_order requires unique nonblank ranked labels other than unknown")
-		}
-		seen[label] = true
-	}
-	return nil
-}
-
 // priorityScore computes comparable impact per remaining work minute or explains why it cannot.
 //
 // Example: Nine points over thirty work minutes yields 0.3.
