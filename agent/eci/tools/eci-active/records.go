@@ -15,7 +15,6 @@ const (
 	repoRecordName       = "eci-additional-repository"
 	permissiveRecordName = "eci-permissive-mode"
 	globalPermissiveName = ".eci-permissive-mode"
-	coordinatorRecord    = "eci-coordinator-edit"
 	maxRecordBytes       = 4096
 	maxRequestBytes      = 1048576
 	maxReasonBytes       = 2048
@@ -504,26 +503,5 @@ func permissiveOff(args []string) error {
 		}
 	}
 	fmt.Printf("ECI permissive mode inactive: %s\n", path)
-	return nil
-}
-
-// coordinatorEditStatus always reports inactive: the legacy hook marker it
-// depends on is retired. Unsafe state targets are still reported as errors.
-func coordinatorEditStatus(args []string) error {
-	if len(args) != 1 {
-		return usageError()
-	}
-	sid, _, err := repoContext()
-	if err != nil {
-		return exitError{code: 1, msg: err.Error()}
-	}
-	path, err := sessionStatePath(sid, coordinatorRecord)
-	if err != nil {
-		return exitError{code: 1, msg: "Coordinator edit state target is unsafe."}
-	}
-	if exists(path) && !isRegularNoFollow(path) {
-		return exitError{code: 1, msg: "Coordinator edit state target is unsafe."}
-	}
-	fmt.Println("ECI coordinator edit state inactive")
 	return nil
 }

@@ -63,8 +63,6 @@ func run(args []string) error {
 	}
 
 	switch cmd {
-	case "coordinator-edit-status":
-		return coordinatorEditStatus(args)
 	case "repository-allow-status":
 		return repositoryAllowStatus(args)
 	case "repository-allow-on":
@@ -128,7 +126,6 @@ func usage(w io.Writer) {
   %[1]s ledger-apply --json <operations-array>
   %[1]s ledger-read
   %[1]s status-refresh --event <event-name>
-  %[1]s coordinator-edit-status
   %[1]s repository-allow-status
   %[1]s repository-allow-on <repository> <reason>
   %[1]s repository-allow-off <repository>

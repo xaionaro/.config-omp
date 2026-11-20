@@ -257,27 +257,6 @@ eci_valid_session_id() {
   esac
 }
 
-# Session marker directories have historically appeared in both bare and
-# session_-prefixed forms.  When a caller supplies an expected session, treat
-# those forms as aliases for discovery, but keep an empty expectation as the
-# intentionally broad "any owner" query used by legacy callers.
-eci_marker_path_session_matches() {
-  local marker="$1" expected_session="${2:-}" marker_name expected_name
-
-  [ -n "$expected_session" ] || return 0
-  marker_name="${marker%/*}"
-  marker_name="${marker_name##*/}"
-  expected_name="$expected_session"
-  case "$marker_name" in
-    session_?*) marker_name="${marker_name#session_}" ;;
-  esac
-  case "$expected_name" in
-    session_?*) expected_name="${expected_name#session_}" ;;
-  esac
-  [ -n "$marker_name" ] && [ -n "$expected_name" ] &&
-    [ "$marker_name" = "$expected_name" ]
-}
-
 # Active markers are deliberately tiny control records.  Keep this limit in
 # the shared writer/reader helpers so creation and the Stop fast path enforce
 # the same finite bound without scanning recovery state.
@@ -1941,42 +1920,6 @@ eci_aggregate_manifest_evidence_is_scoped() {
   ' "$manifest")
 }
 
-# Aggregate recovery has its own namespaced proof records. Singleton lifecycle
-# artifacts are local coordination residue, not competing authority: bots here
-# are non-malicious and this support layer catches accidental deviation rather
-# than enforcing an adversarial security boundary. Keep observing residue for
-# diagnostics, but do not follow, rewrite, or deny selected safe aggregate
-# work because of it. The historical predicate name remains for callers.
-eci_aggregate_coordination_residue_seen=false
-eci_aggregate_normal_evidence_is_absent() {
-  local session_dir="$1" path
-  local nullglob_was_set=false
-
-  eci_aggregate_coordination_residue_seen=false
-  shopt -q nullglob && nullglob_was_set=true
-  shopt -s nullglob
-  for path in \
-    "$session_dir"/eci-required-critics.json* \
-    "$session_dir"/eci-required-critics.* \
-    "$session_dir"/eci-critic-identities.ledger* \
-    "$session_dir"/eci-acceptance-anchor* \
-    "$session_dir"/eci-acceptance-transaction* \
-    "$session_dir"/eci-teardown-complete* \
-    "$session_dir"/eci-prewrite-admitted.* \
-    "$session_dir"/eci-baseline-binding* \
-    "$session_dir"/baseline_head* \
-    "$session_dir"/eci-commit-admitted* \
-    "$session_dir"/eci-user-closed.ledger* \
-    "$session_dir"/ate_nested_eci_active* \
-    "$session_dir"/ate_nested_eci_completion* \
-    "$session_dir"/eci_wait*; do
-    [ -e "$path" ] || [ -L "$path" ] || continue
-    eci_aggregate_coordination_residue_seen=true
-  done
-  [ "$nullglob_was_set" = true ] || shopt -u nullglob
-  return 0
-}
-
 # Read only the direct marker fields that establish the live current-session
 # mapping. Other bytes are historical/advisory metadata: ordinary lifecycle
 # work must not depend on record size, order, schema, receipt, or ownership
@@ -2312,63 +2255,10 @@ eci_marker_path_owner_is_valid() {
   eci_marker_metadata_is_valid "$1"
 }
 
-# Return only ECI markers whose path owner and embedded session_id agree.  The
-# ordinary direct-session marker and the reserved legacy marker namespace are
-# checked together so callers can detect duplicate active owners instead of
-# returning on the first glob match.  This helper is intentionally bounded to
-# one proof-root directory scan and marker metadata; it is not used for
-# transcript or ledger recovery.
+# Report whether one marker's metadata is valid and bound to the given
+# canonical cwd. Callers pass a single marker path; this does no scan.
 eci_marker_is_valid_for_cwd() {
   eci_marker_metadata_is_valid "$1" "$2"
-}
-
-eci_markers_for_cwd() {
-  local cwd="${1:-}" strict="${2:-}" expected_session="${3:-}" root canonical marker found=false
-  local marker_dir marker_name marker_owner
-  [ -n "$cwd" ] || return 1
-  root="$(eci_proof_root)"
-  if ! eci_proof_root_is_safe; then
-    printf '%s\n' "$eci_marker_scan_unsafe_token"
-    return 0
-  fi
-  [ -d "$root" ] || return 1
-  canonical="$(eci_canonical_cwd "$cwd")"
-  while IFS= read -r marker; do
-    if [ "$marker" = "$eci_marker_scan_overflow_token" ] ||
-      [ "$marker" = "$eci_marker_scan_unsafe_token" ]; then
-      printf '%s\n' "$marker"
-      return 0
-    fi
-    # A valid marker from another session may share this cwd.  It is not
-    # evidence of activity for a typed session-scoped callback; filter it by
-    # path identity before validating/returning the candidate.  The empty
-    # expectation deliberately retains the broad legacy discovery behavior.
-    eci_marker_path_session_matches "$marker" "$expected_session" || continue
-    # In strict discovery, surface path/owner corruption instead of silently
-    # dropping it.  Callers can then fail closed without adding recovery I/O.
-    if ! eci_marker_path_owner_is_valid "$marker"; then
-      if [ "$strict" = strict ]; then
-        marker_dir="${marker%/*}"
-        marker_name="${marker_dir##*/}"
-        marker_owner="$(eci_state_value "$marker" session_id false || true)"
-        # A typed caller is interested in its own malformed direct marker.
-        # Do not let an unrelated stale session poison every current session;
-        # valid same-cwd owners still remain visible and fail closed as
-        # duplicate ownership below.
-        # Any existing marker that fails strict metadata validation is unsafe
-        # control state.  Do not silently turn malformed session IDs or
-        # malformed records into inactivity.
-        printf '%s\n' "$marker"
-        found=true
-      fi
-      continue
-    fi
-    if eci_marker_is_valid_for_cwd "$marker" "$canonical"; then
-      printf '%s\n' "$marker"
-      found=true
-    fi
-  done < <(eci_marker_candidates_bounded "$expected_session")
-  [ "$found" = true ]
 }
 
 eci_side_stop_applies_to_session() {

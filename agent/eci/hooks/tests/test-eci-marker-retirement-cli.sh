@@ -28,7 +28,6 @@ printf 'existing record\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-additional-rep
 if output="$("$base_dir/bin/eci-active" repository-allow-off "$fixture/repository" 2>&1)"; then exit 1; fi
 [[ "$output" == *'No matching repository allowance'* ]]
 [ "$(cat "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-additional-repository")" = 'existing record' ]
-[ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-coordinator-edit" ]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-permissive-mode" ]
 [ ! -e "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci-aggregate-plan.json" ]
 printf 'stale marker\n' > "$ECI_PROOF_ROOT/$ECI_SESSION_ID/eci_active"
