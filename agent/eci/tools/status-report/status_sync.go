@@ -97,7 +97,6 @@ type syncState struct {
 	PendingAdditions     map[string]syncPendingAddition     `json:"pending_additions,omitempty" yaml:"pending_additions,omitempty"`
 	PendingRootAdditions map[string]syncPendingRootAddition `json:"pending_root_additions,omitempty" yaml:"pending_root_additions,omitempty"`
 	Groups               map[string]syncPendingGroup        `json:"groups,omitempty" yaml:"groups,omitempty"`
-	PendingTimeline      *syncPendingTimeline               `json:"pending_timeline,omitempty" yaml:"pending_timeline,omitempty"`
 	PendingTimelines     map[string]syncPendingTimeline     `json:"pending_timelines,omitempty" yaml:"pending_timelines,omitempty"`
 	TimelineAppliedLine  int                                `json:"timeline_applied_line,omitempty" yaml:"timeline_applied_line,omitempty"`
 }
@@ -315,16 +314,11 @@ func projectLogStatusStep(
 	if state.PendingRootAdditions == nil {
 		state.PendingRootAdditions = map[string]syncPendingRootAddition{}
 	}
-	migratePendingRootAdditions(state.PendingAdditions, state.PendingRootAdditions, fullLog, state.Applied, original, ledger)
 	if state.Groups == nil {
 		state.Groups = map[string]syncPendingGroup{}
 	}
 	if state.PendingTimelines == nil {
 		state.PendingTimelines = map[string]syncPendingTimeline{}
-	}
-	if state.PendingTimeline != nil {
-		state.PendingTimelines[strconv.Itoa(state.PendingTimeline.Line)] = *state.PendingTimeline
-		state.PendingTimeline = nil
 	}
 	legacyPending := make(map[string]syncPending, len(state.Pending))
 	for key, value := range state.Pending {

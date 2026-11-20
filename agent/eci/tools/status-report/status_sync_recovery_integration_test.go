@@ -114,27 +114,3 @@ func TestLegacyLaneCompletionRecoveryRequiresCanonicalCompletion(t *testing.T) {
 			})
 	}
 }
-
-// TestLegacyPendingTimelineRecovery publishes a saved complete snapshot.
-//
-// Example: A verified-empty timeline keeps its supplied anchor during migration.
-func TestLegacyPendingTimelineRecovery(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
-	// saved is the historical wire format retained across upgrades.
-	//
-	// Example: Resume an update queued before grouped replay.
-	const saved = `{"cursor":1,"applied":null,"latest":null,"pending":null,"pending_timeline":{"line":1,"snapshot":"{\"as_of\":\"2026-11-02T15:24:00Z\",\"state\":\"verified_empty\",\"entries\":[]}"}}`
-	initial, err := putSyncState([]byte(linkedReport), saved)
-	require.NoError(t, err)
-	result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})
-	require.NoError(t, err)
-	report, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, timelineVerifiedEmpty, report.TimelineState)
-	require.Equal(t, "2026-11-02T15:24:00Z", report.TimelineAsOf)
-	require.Empty(t, report.Timeline)
-	require.Nil(t, report.StatusSync.PendingTimeline)
-	require.Empty(t, report.StatusSync.PendingTimelines)
-}
