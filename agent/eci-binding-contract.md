@@ -13,7 +13,7 @@ Binding rules for omp sessions on this workstation. Ported from the prior bindin
 | Hook files (`hooks/…`) | `~/.omp/agent/eci/hooks/…` |
 | Runtime root | `~/.omp/agent/eci/` |
 | Worker Git wrapper | `"$HOME/.omp/agent/eci/bin/eci-worker-git"` (built natively by `hooks/build-native-binaries.sh`, sha256 receipt; built but not launcher-wired, so its typed operations are unavailable; see Pending native targets); source `~/.omp/agent/eci/hooks/lib/eci-worker-git-go/` |
-| Worker Git invocation log | the pre-migration cache log for eci-worker-git (source 575bb81); native: `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) |
+| Worker Git invocation log | `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) |
 | Gate catalog | `~/.omp/agent/eci/hooks/gate-escape-hatches.md` |
 | Stop checklist | `~/.omp/agent/eci/hooks/stop-checklist.md` |
 
@@ -119,7 +119,7 @@ Name each leaf's task by its title, its `work` phrase. Name each other task by a
 - Establish intended authority from maintained contracts and consumer relationships. An active stray copy does not become authoritative merely because it is selected. Reuse or repair the intended owner within authorized scope.
 - Repair derived copies through their authoritative source and normal generation or publication route. Resolve access, scope, and ownership boundaries through existing routes rather than creating a competing copy.
 - Consolidate relevant duplicates touched by authorized work: reconcile required behavior, route consumers, verify results, then retire only authorized obsolete copies. Preserve unrelated user work. Report other duplicates as follow-ups.
-- Generated artifacts, backups, fixtures, replicas, distinct supported deployments or versions, and necessary isolation may coexist with a defined source, owner, purpose, and lifecycle. Temporary copies need a cleanup condition. Replacements need an activation and retirement plan.
+- Generated artifacts, backups, fixtures, replicas, distinct deployments or versions that a current requirement or external contract needs, and necessary isolation may coexist with a defined source, owner, purpose, and lifecycle. Temporary copies need a cleanup condition. A replacement retires the replaced form in the same change; convert data only as `~/.omp/agent/skills/coding-common/SKILL.md#design-complexity` requires.
 
 ### Work estimates
 
@@ -187,7 +187,7 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 
 - One-use Git exception: unavailable. The `run-once` exception of the typed Worker Git route is built but not launcher-wired, so report the unavailable route instead of invoking another executable. Contract when provisioned: only after explicit user authorization for the exact command and environment, run `"$HOME/.omp/agent/eci/bin/eci-worker-git" --repo <repository> run-once --reason "<reason>" --user-authorized -- <native Git args>` (see Pending native targets). A nonblank reason and acknowledgment are required. Git runs once with no stored grant or retry; native arguments and environment retain their effects, including repository selection. This implementation's availability grants no authorization to use it. Routine ownership and coordination rules apply outside the exact authorized exception.
 
-- Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` (native; legacy source: the pre-migration cache log for eci-worker-git, source 575bb81; UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
+- Every Git wrapper call logs UTC timestamp, PID, argument count and fixed route to `$HOME/.cache/eci/eci-worker-git.jsonl` (UNVERIFIED: not confirmed live; native tree has no `~/.cache/eci`) before validation. This call inventory omits arguments, repository, reason and environment; it cannot reconstruct commands. Normal native streams are preserved; unavailable logging emits a stderr warning and continues the original behavior.
 
 - During active ECI the typed Worker Git route is built but not launcher-wired. Native Git retains its repository context and remains subject to concrete effect checks and SSOT policy.
 - Never expose secrets or credentials in code, commits, logs, prompts, or final output.
@@ -239,7 +239,7 @@ Treat these as binding workspace requirements. Keep the gate catalog (`~/.omp/ag
 
 Assign every new tracked repository contribution, including code, documentation, policy, and administrative deliverables, to a Producer to author, check, and commit. Do not have the Supervisor author or commit a new tracked contribution. Preserve pre-existing authorized Supervisor-authored tracked content with exact provenance and hand it to a Producer under a bounded assignment for integration, checks, and commit. If no Producer is free, queue the assignment and continue other admitted work; capacity alone does not make work await the user.
 
-The Supervisor may edit session-local coordination records, ledgers, plans, status reports, handoffs, and proof notes outside the tracked repository. Resolve routing edge cases through explicit session coordination while hook migration is deferred. Do not call retired self-edit helpers; Producer ownership and the Git rules still apply.
+The Supervisor may edit session-local coordination records, ledgers, plans, status reports, handoffs, and proof notes outside the tracked repository. Resolve routing edge cases through explicit session coordination while hook migration is deferred. Producer ownership and the Git rules still apply.
 
 - Before substantive work or investigating or answering questions about coding instructions, read every installed matching skill as `skill://<name>` without a line range. Matches are cumulative. A worker loads every skill named in its brief's `Skills:` line. A trigger row's skill matches for a role unless that role's Module routing entry (`~/.omp/agent/skills/explore-critique-implement/SKILL.md`) restricts it; a restricted skill matches only when its stated predicate is met. Slash-paired cells map positionally only when both cells have equal slash-part counts. Skill routing is instruction-only; never port Claude `Skill` `PostToolUse` markers without real native skill identity/path fields.
 

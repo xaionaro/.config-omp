@@ -119,7 +119,7 @@ Push back when:
 - Reviewer lacks full context
 - Violates YAGNI (unused feature)
 - Technically incorrect for this stack
-- A current supported target or external contract still needs it; history alone is no reason
+- A current supported target or external contract needs it; history alone is no reason
 - Conflicts with your human partner's architectural decisions
 
 **How to push back:**

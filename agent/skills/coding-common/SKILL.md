@@ -58,8 +58,9 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
 - Decrease moving parts, state, and call depth when touching code.
 - Simplify through understanding, never by dropping behavior, contracts, or handled cases just to look simpler.
-- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete reason you state, such as a requirement, an external contract, or a consumer need; that it exists is not a reason.
-- Never keep or add code whose only reason is history, such as compatibility branches, aliases, old-format readers, version shims, or paths kept for old callers. Break the old form instead: migrate every caller in the same change. Migrate persisted data only with separate external tooling, never inside the main code.
+- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete current reason you state, such as a requirement or the contract of a consumer we do not own. That it exists, or that our own code or data uses it, is not a reason.
+- Never keep or add code whose only reason is history, such as compatibility branches, aliases, old-format readers, version shims, or paths kept for old callers. Break the old form instead: in the same change, migrate every caller, doc, and test we own. Read only the current format and reject any other with an error.
+- Convert persisted data only with a separate migration tool kept outside the repository. Main code never imports, runs, or detects it. Run it once in the window that deploys the new format, verify the result, then delete it.
 
 ### Computational complexity
 

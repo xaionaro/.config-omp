@@ -288,8 +288,6 @@ lanes:
           evidence_gap_next_action: 'Confirm test service availability.'
 ```
 
-If a session has only `latest-status-report.md`, create the YAML projection from current authoritative records at its next required refresh. Preserve the Markdown unchanged as a historical snapshot; only YAML is current thereafter. Do not bulk-convert other sessions or overwrite YAML from legacy Markdown.
-
 A ledger or material forecast update without its required same-turn log entry and report refresh is defective.
 
 ## Current State, Not History
