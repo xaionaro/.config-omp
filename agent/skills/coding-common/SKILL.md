@@ -59,6 +59,7 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Decrease moving parts, state, and call depth when touching code.
 - Simplify through understanding, never by dropping behavior, contracts, or handled cases just to look simpler.
 - When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete reason you state, such as a requirement, an external contract, or a consumer need; that it exists is not a reason.
+- Never keep or add code whose only reason is history, such as compatibility branches, aliases, old-format readers, version shims, or paths kept for old callers. Break the old form instead: migrate every caller in the same change. Migrate persisted data only with separate external tooling, never inside the main code.
 
 ### Computational complexity
 
