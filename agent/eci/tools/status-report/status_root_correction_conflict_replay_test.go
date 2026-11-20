@@ -17,7 +17,7 @@ func TestRootCorrectionReplayPreservesConflicts(t *testing.T) {
 	newer := `{"work_ref":"project-understanding.yaml#/records/w","outcome":"Result","completed_at":"2026-11-02T15:05:00Z"}`
 	first := `{"event":"lifecycle_change","details":{"status_update":{"additions":[{"target":"root_completion","evidence":"accepted","record":` + old + `}]}}}` + "\n"
 	second := `{"event":"correction","details":{"corrects":1,"status_update":{"additions":[{"target":"root_completion","evidence":"corrected","expected_prior":` + old + `,"record":` + newer + `}]}}}` + "\n"
-	saved := `{"cursor":1,"applied":{"addition/root_completion/project-understanding.yaml#/records/w":` + strconv.Quote(old) + `},"latest":{"addition/root_completion/project-understanding.yaml#/records/w":1},"pending":{}}`
+	saved := `{"cursor":1,"applied":{"addition/root_completion/project-understanding.yaml#/records/w":` + strconv.Quote(old) + `},"latest":{"addition/root_completion/project-understanding.yaml#/records/w":1}}`
 	for _, mode := range []string{"owner edit", "comment", "source mismatch"} {
 		t.Run(mode,
 			// Check one reason an explicit correction must remain pending.

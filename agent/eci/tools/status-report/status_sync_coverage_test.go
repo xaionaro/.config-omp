@@ -185,7 +185,7 @@ func TestSyncRetriesAfterTaskAddition(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, parsed.Tasks, 3)
 	require.Equal(t, "worker", parsed.Tasks[2].Owner)
-	require.Empty(t, parsed.StatusSync.Pending)
+	require.Empty(t, parsed.StatusSync.Groups)
 }
 
 // TestSyncUpdatesDistinctLaneAndReportFields checks explicit selectors.

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -75,15 +74,7 @@ func normalizeSyncOwnership(state *syncState) error {
 			}
 		}
 	}
-	pending := map[string]syncPending{}
-	for key, value := range state.Pending {
-		canonical := canonicalSyncOwnershipKey(key)
-		if prior, ok := pending[canonical]; ok && !reflect.DeepEqual(prior, value) {
-			return fmt.Errorf("conflicting legacy pending updates for %s", canonical)
-		}
-		pending[canonical] = value
-	}
-	state.Applied, state.Latest, state.AppliedOrdinals, state.Pending = applied, latest, ordinals, pending
+	state.Applied, state.Latest, state.AppliedOrdinals = applied, latest, ordinals
 	return nil
 }
 
@@ -159,9 +150,6 @@ func syncEarlierPendingField(
 				return true
 			}
 		}
-	}
-	if pending, ok := state.Pending[key]; ok && pending.Line < line {
-		return true
 	}
 	return false
 }

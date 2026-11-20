@@ -68,7 +68,7 @@ func TestMissingLogWithoutConsumedEventsRemainsOptional(t *testing.T) {
 	// saved is a zero cursor from a prior empty synchronization.
 	//
 	// Example: An empty saved cursor still permits a missing fresh log.
-	const saved = `{"cursor":0,"applied":{},"latest":{},"pending":{}}`
+	const saved = `{"cursor":0,"applied":{},"latest":{}}`
 	initial, err := putSyncState([]byte(linkedReport), saved)
 	require.NoError(t, err)
 	result, logBytes, err = projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})

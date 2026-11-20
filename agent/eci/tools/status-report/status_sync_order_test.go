@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -31,28 +30,6 @@ func TestSyncBatchReplayMatchesIncrementalClosure(t *testing.T) {
 	require.Equal(t, statusClosed, sequential.Tasks[0].Status)
 	require.Equal(t, sequential.Tasks[0].Status, replayed.Tasks[0].Status)
 	require.Equal(t, sequential.Tasks[0].Evidence, replayed.Tasks[0].Evidence)
-}
-
-// TestSyncLegacyPendingSurvivesTransactionUpgrade checks existing session compatibility.
-//
-// Example: A saved field-wise assignment remains retryable after the upgrade.
-func TestSyncLegacyPendingSurvivesTransactionUpgrade(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
-	update := syncUpdate{Target: syncTargetTask, ID: "1", Fields: map[string]string{"owner": "worker"}}
-	key := syncTargetKey(update, "owner")
-	state := syncState{Cursor: 1, Applied: map[string]string{}, Latest: map[string]int{key: 1}, Pending: map[string]syncPending{key: {Line: 1, Update: update}}}
-	encoded, err := json.Marshal(state)
-	require.NoError(t, err)
-	report, err := putSyncState([]byte(linkedReport), string(encoded))
-	require.NoError(t, err)
-	result, _, err := projectLogStatus(dir, report, ledgerSource{}, forecastSource{})
-	require.NoError(t, err)
-	parsed, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, "worker", parsed.Tasks[0].Owner)
-	require.Empty(t, parsed.StatusSync.Pending)
 }
 
 // TestSyncSameEventTransactionsKeepSuppliedOrder checks target transaction ordering.

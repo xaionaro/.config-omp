@@ -15,7 +15,7 @@ func TestLegacyLaneAdditionRecoversSelectorAndOwner(t *testing.T) {
 	// saved is an older pending lane without explicit selector metadata.
 	//
 	// Example: Reconstruct identity from its complete original record.
-	const saved = `{"cursor":1,"applied":{},"latest":{"addition/lane/1":1},"pending":{},"pending_additions":{"addition/lane/1":{"line":1,"target":"lane","record":"{\"task_id\":\"1\",\"work_ref\":\"project-understanding.yaml#/records/w\",\"outcome\":\"Result\",\"owner\":\"first\",\"required_environment\":\"implementation\",\"implementation_status\":\"NEW\",\"test_status\":\"NEW\",\"prod_status\":\"NEW\",\"forecast\":{\"forecast_ref\":\"forecasts.yaml#/records/f\",\"outcome\":\"Result\",\"target\":\"2026-11-02T16:00:00Z\",\"assessment\":\"complete\"}}"}}}`
+	const saved = `{"cursor":1,"applied":{},"latest":{"addition/lane/1":1},"pending_additions":{"addition/lane/1":{"line":1,"target":"lane","record":"{\"task_id\":\"1\",\"work_ref\":\"project-understanding.yaml#/records/w\",\"outcome\":\"Result\",\"owner\":\"first\",\"required_environment\":\"implementation\",\"implementation_status\":\"NEW\",\"test_status\":\"NEW\",\"prod_status\":\"NEW\",\"forecast\":{\"forecast_ref\":\"forecasts.yaml#/records/f\",\"outcome\":\"Result\",\"target\":\"2026-11-02T16:00:00Z\",\"assessment\":\"complete\"}}"}}}`
 	// update is a later assignment for that exact lane.
 	//
 	// Example: Keep an owner's intervening manual edit instead of replacing it.

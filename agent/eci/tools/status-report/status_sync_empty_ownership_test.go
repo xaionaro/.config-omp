@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -41,29 +40,6 @@ func TestSyncEmptyAndNullOwnersPreserveLaterEdits(t *testing.T) {
 				require.NotEmpty(t, report.StatusSync.Groups)
 			})
 	}
-}
-
-// TestSyncLegacyEmptyOwnerRemainsProtected checks saved field-wise replay state.
-//
-// Example: A legacy pending assignment preserves an owner-added value.
-func TestSyncLegacyEmptyOwnerRemainsProtected(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n")))
-	update := syncUpdate{Target: syncTargetTask, ID: "1", Fields: map[string]string{"owner": "later"}}
-	key := syncTargetKey(update, "owner")
-	state := syncState{Cursor: 1, Applied: map[string]string{key: ""}, Latest: map[string]int{key: 1}, Pending: map[string]syncPending{key: {Line: 1, Update: update}}}
-	encoded, err := json.Marshal(state)
-	require.NoError(t, err)
-	report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", "status: IN PROGRESS, owner: manual, work_refs:", 1)
-	initial, err := putSyncState([]byte(report), string(encoded))
-	require.NoError(t, err)
-	result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})
-	require.NoError(t, err)
-	parsed, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, "manual", parsed.Tasks[0].Owner)
-	require.NotEmpty(t, parsed.StatusSync.Pending)
 }
 
 // TestSyncNullOwnerAndLiteralNullAreDistinct checks YAML scalar identity.
@@ -108,41 +84,4 @@ func TestSyncLiteralNullOwnerAndNullAreDistinct(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, parsed.Tasks[2].Owner)
 	require.NotEmpty(t, parsed.StatusSync.Groups)
-}
-
-// TestSyncAmbiguousLegacyNullOwnerStaysPending preserves older ambiguous metadata.
-//
-// Example: A legacy "null" baseline cannot establish whether an owner edited its type.
-func TestSyncAmbiguousLegacyNullOwnerStaysPending(t *testing.T) {
-	t.Parallel()
-	for _, owner := range []string{`null`, `"null"`} {
-		t.Run(owner,
-			// Keep each ambiguous historical representation unchanged.
-			//
-			// Example: A quoted null remains the owner's literal string.
-			func(t *testing.T) {
-				dir := t.TempDir()
-				first := `{}` + "\n"
-				second := `{"event":"assignment_change","details":{"status_update":{"updates":[{"target":"task","id":"1","fields":{"owner":"later"}}]}}}` + "\n"
-				require.NoError(t, writeSessionLog(dir, []byte(first+second)))
-				update := syncUpdate{Target: syncTargetTask, ID: "1"}
-				key := syncTargetKey(update, "owner")
-				state := syncState{Cursor: 1, Applied: map[string]string{key: "null"}, Latest: map[string]int{key: 1}, Pending: map[string]syncPending{}}
-				encoded, err := json.Marshal(state)
-				require.NoError(t, err)
-				report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", "status: IN PROGRESS, owner: "+owner+", work_refs:", 1)
-				initial, err := putSyncState([]byte(report), string(encoded))
-				require.NoError(t, err)
-				result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})
-				require.NoError(t, err)
-				parsed, err := parse(result)
-				require.NoError(t, err)
-				require.NotEmpty(t, parsed.StatusSync.Groups)
-				if owner == `"null"` {
-					require.Equal(t, "null", parsed.Tasks[0].Owner)
-				} else {
-					require.Empty(t, parsed.Tasks[0].Owner)
-				}
-			})
-	}
 }

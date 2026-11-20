@@ -91,7 +91,7 @@ func TestSyncMigratesLegacyTaskSelectorOwnership(t *testing.T) {
 	// A prior version incorrectly included the irrelevant work reference in this key.
 	encoded, _ := json.Marshal([]string{"task", "1", selector.WorkRef, ""})
 	alias := string(encoded) + "/owner"
-	state := syncState{Cursor: 1, Applied: map[string]string{alias: "projected"}, Latest: map[string]int{alias: 1}, Pending: map[string]syncPending{}}
+	state := syncState{Cursor: 1, Applied: map[string]string{alias: "projected"}, Latest: map[string]int{alias: 1}}
 	raw, err := json.Marshal(state)
 	require.NoError(t, err)
 	report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", `status: IN PROGRESS, owner: manual, work_refs:`, 1)
@@ -119,32 +119,6 @@ func TestSyncLegacyAliasConflictDoesNotDiscardOwnership(t *testing.T) {
 	state := syncState{Applied: map[string]string{canonical: "first", alias: "second"}}
 	require.ErrorContains(t, normalizeSyncOwnership(&state), "conflicting legacy status ownership")
 	require.Len(t, state.Applied, 2)
-}
-
-// TestSyncLegacyQueuedAliasUsesActualTaskIdentity checks pending compatibility.
-//
-// Example: A previously queued update retains its intent after alias migration.
-func TestSyncLegacyQueuedAliasUsesActualTaskIdentity(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, writeSessionLog(dir, []byte("{}\n{}\n")))
-	update := syncUpdate{Target: syncTargetTask, ID: "1", WorkRef: "legacy reference", Fields: map[string]string{"owner": "next"}}
-	encodedUpdate, err := encodeSyncGroup(update)
-	require.NoError(t, err)
-	selector, _ := json.Marshal([]string{"task", "1", "legacy reference", ""})
-	alias := string(selector) + "/owner"
-	state := syncState{Cursor: 2, Applied: map[string]string{alias: "projected"}, Latest: map[string]int{alias: 1}, Pending: map[string]syncPending{}, Groups: map[string]syncPendingGroup{"legacy": {Line: 2, Update: encodedUpdate}}}
-	raw, err := json.Marshal(state)
-	require.NoError(t, err)
-	report := strings.Replace(linkedReport, "status: IN PROGRESS, work_refs:", "status: IN PROGRESS, owner: projected, work_refs:", 1)
-	initial, err := putSyncState([]byte(report), string(raw))
-	require.NoError(t, err)
-	result, _, err := projectLogStatus(dir, initial, ledgerSource{}, forecastSource{})
-	require.NoError(t, err)
-	parsed, err := parse(result)
-	require.NoError(t, err)
-	require.Equal(t, "next", parsed.Tasks[0].Owner)
-	require.Empty(t, parsed.StatusSync.Groups)
 }
 
 // TestSyncAddedTaskPreservesLaterOwnerEdits checks field ownership after insertion.

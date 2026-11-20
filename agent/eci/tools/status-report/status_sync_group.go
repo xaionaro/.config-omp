@@ -576,49 +576,6 @@ func applyPendingSyncGroups(
 	return data, effects, invalid
 }
 
-// legacySyncEffects describes successfully replayed field-wise pending work.
-//
-// Example: Preserve a pending assignment created by an earlier report version.
-func legacySyncEffects(
-	before map[string]syncPending,
-	after syncState,
-	removed map[string]bool,
-) []syncEffect {
-	keys := make([]string, 0, len(before))
-	for key := range before {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var effects []syncEffect
-	for _, key := range keys {
-		pending := before[key]
-		if _, exists := after.Pending[key]; exists {
-			continue
-		}
-		update := pending.Update
-		if update.Retract {
-			if removed[key] {
-				effects = append(effects, syncEffect{Target: update.Target, ID: update.ID, Operation: syncEffectRemove})
-			}
-			continue
-		}
-		for field, value := range update.Fields {
-			expected := value
-			if update.Target == syncTargetTask || update.Target == syncTargetLane || update.Target == syncTargetReport {
-				expected = scalarSyncStoredValue(value)
-			}
-			if after.Applied[key] != expected {
-				continue
-			}
-			effects = append(effects, syncEffect{Target: update.Target, ID: update.ID, WorkRef: update.WorkRef, RequiredEnvironment: update.RequiredEnvironment, Field: field, Value: value, Evidence: syncGroupEvidence(update), Operation: syncEffectSet})
-			if update.Target == syncTargetTask && field == "lifecycle" && value == "cancelled" {
-				effects = append(effects, syncEffect{ID: update.ID, Operation: syncEffectPriorityRemove})
-			}
-		}
-	}
-	return effects
-}
-
 // syncGroupDependencies describes fields that must remain ordered together.
 //
 // Example: Task acceptance depends on both status and supporting evidence.

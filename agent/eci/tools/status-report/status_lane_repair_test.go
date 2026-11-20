@@ -45,7 +45,7 @@ func TestExplorationForecastedLaneCompletion(t *testing.T) {
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"accepted","fields":{"implementation_status":"CLOSED","completed_at":"2026-11-02T15:25:00Z"}}]}}}`
 	r := explorationProjection(t, linkedReport, log, ledger, forecasts)
 	if r.Lanes[0].ImplementationStatus != statusClosed || r.Lanes[0].Forecast != nil {
-		require.FailNowf(t, "assertion failed", "canonical completion + inactive forecast did not close/retire report lane: status=%v forecast=%v pending=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].Forecast != nil, len(r.StatusSync.Pending))
+		require.FailNowf(t, "assertion failed", "canonical completion + inactive forecast did not close/retire report lane: status=%v forecast=%v pending=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].Forecast != nil, len(r.StatusSync.Groups))
 	}
 }
 
@@ -59,7 +59,7 @@ func TestExplorationForecastedLaneCancellation(t *testing.T) {
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","evidence":"owner cancelled","fields":{"lifecycle":"cancelled"}}]}}}`
 	r := explorationProjection(t, linkedReport, log, ledger, forecasts)
 	if r.Lanes[0].Lifecycle != laneLifecycleCancelled || r.Lanes[0].Forecast != nil {
-		require.FailNowf(t, "assertion failed", "canonical cancellation + inactive forecast did not cancel/retire report lane: lifecycle=%v forecast=%v pending=%d", r.Lanes[0].Lifecycle, r.Lanes[0].Forecast != nil, len(r.StatusSync.Pending))
+		require.FailNowf(t, "assertion failed", "canonical cancellation + inactive forecast did not cancel/retire report lane: lifecycle=%v forecast=%v pending=%d", r.Lanes[0].Lifecycle, r.Lanes[0].Forecast != nil, len(r.StatusSync.Groups))
 	}
 }
 
@@ -73,7 +73,7 @@ func TestExplorationClosedLaneCorrection(t *testing.T) {
 	log := `{"event":"lifecycle_change","details":{"status_update":{"updates":[{"target":"lane","id":"1","work_ref":"project-understanding.yaml#/records/work:first","required_environment":"implementation","fields":{"implementation_status":"IN PROGRESS"}}]}}}`
 	r := explorationProjection(t, report, log, ledgerSource{}, forecastSource{})
 	if r.Lanes[0].ImplementationStatus != statusInProgress || r.Lanes[0].CompletedAt != "" {
-		require.FailNowf(t, "assertion failed", "reopening lane could not clear terminal completion: status=%v completed_at=%q pending=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].CompletedAt, len(r.StatusSync.Pending))
+		require.FailNowf(t, "assertion failed", "reopening lane could not clear terminal completion: status=%v completed_at=%q pending=%d", r.Lanes[0].ImplementationStatus, r.Lanes[0].CompletedAt, len(r.StatusSync.Groups))
 	}
 }
 

@@ -93,7 +93,6 @@ type syncState struct {
 	Applied              map[string]string                  `json:"applied" yaml:"applied"`
 	Latest               map[string]int                     `json:"latest" yaml:"latest"`
 	AppliedOrdinals      map[string]int                     `json:"applied_ordinals,omitempty" yaml:"applied_ordinals,omitempty"`
-	Pending              map[string]syncPending             `json:"pending" yaml:"pending"`
 	PendingAdditions     map[string]syncPendingAddition     `json:"pending_additions,omitempty" yaml:"pending_additions,omitempty"`
 	PendingRootAdditions map[string]syncPendingRootAddition `json:"pending_root_additions,omitempty" yaml:"pending_root_additions,omitempty"`
 	Groups               map[string]syncPendingGroup        `json:"groups,omitempty" yaml:"groups,omitempty"`
@@ -116,15 +115,6 @@ type syncPendingGroup struct {
 	Line    int    `json:"line" yaml:"line"`
 	Ordinal int    `json:"ordinal" yaml:"ordinal"`
 	Update  string `json:"update" yaml:"update"`
-}
-
-// syncPending retains one unapplied field and its log position.
-//
-// Example: Retry a task field after a manual conflict is resolved.
-type syncPending struct {
-	Line       int        `json:"line" yaml:"line"`
-	Update     syncUpdate `json:"update" yaml:"update"`
-	Acceptance string     `json:"acceptance,omitempty" yaml:"acceptance,omitempty"`
 }
 
 // projectLogStatus applies explicit log updates to the supplied report snapshot.
@@ -305,9 +295,6 @@ func projectLogStatusStep(
 	if err := normalizeSyncOwnership(&state); err != nil {
 		return nil, nil, err
 	}
-	if state.Pending == nil {
-		state.Pending = map[string]syncPending{}
-	}
 	if state.PendingAdditions == nil {
 		state.PendingAdditions = map[string]syncPendingAddition{}
 	}
@@ -320,15 +307,6 @@ func projectLogStatusStep(
 	if state.PendingTimelines == nil {
 		state.PendingTimelines = map[string]syncPendingTimeline{}
 	}
-	legacyPending := make(map[string]syncPending, len(state.Pending))
-	for key, value := range state.Pending {
-		legacyPending[key] = value
-	}
-	legacyApplied := make(map[string]string, len(state.Applied))
-	for key, value := range state.Applied {
-		legacyApplied[key] = value
-	}
-	legacyRemovals := map[string]bool{}
 	lines := bytes.Split(logBytes, []byte("\n"))
 	if len(lines) > 0 && len(lines[len(lines)-1]) == 0 {
 		lines = lines[:len(lines)-1]
@@ -566,127 +544,6 @@ func projectLogStatusStep(
 			}
 		}
 	}
-	// Legacy field entries have no saved ordinal. Hold ambiguous same-line
-	// corrections until their source occurrence can be identified uniquely.
-	heldLegacy, invalidLegacy := holdAmbiguousLegacyCorrections(&state, legacyPending, fullLog)
-	invalidUpdate = invalidUpdate || invalidLegacy
-	result = applyTaskCancellations(result, &state)
-	result = applyLaneCompletions(result, ledger, forecasts, &state)
-	keys := make([]string, 0, len(state.Pending))
-	for k := range state.Pending {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys,
-		// Order text before evidence for a newly inserted subject.
-		//
-		// Example: Insert a progress text before its evidence field.
-		func(
-			i int,
-			j int,
-		) bool {
-			// New keyed narratives need their text before their evidence.
-			a, b := strings.TrimSuffix(keys[i], "/text"), strings.TrimSuffix(keys[j], "/text")
-			if strings.HasSuffix(keys[i], "/text") && strings.TrimSuffix(keys[j], "/evidence") == a {
-				return true
-			}
-			if strings.HasSuffix(keys[j], "/text") && strings.TrimSuffix(keys[i], "/evidence") == b {
-				return false
-			}
-			return keys[i] < keys[j]
-		})
-	for _, key := range keys {
-		pending := state.Pending[key]
-		if state.Latest[key] != pending.Line {
-			delete(state.Pending, key)
-			continue
-		}
-		if pending.Update.Retract {
-			textKey, evidenceKey := syncTargetKey(pending.Update, "text"), syncTargetKey(pending.Update, "evidence")
-			latest := state.Latest[textKey]
-			if state.Latest[evidenceKey] > latest {
-				latest = state.Latest[evidenceKey]
-			}
-			if latest != pending.Update.Corrects {
-				delete(state.Pending, key)
-				continue
-			}
-			if state.Applied[textKey] == "" {
-				delete(state.Pending, textKey)
-				delete(state.Pending, evidenceKey)
-				state.Latest[textKey], state.Latest[evidenceKey] = pending.Line, pending.Line
-				delete(state.Pending, key)
-				continue
-			}
-			text, hasText := state.Applied[textKey]
-			evidence, hasEvidence := state.Applied[evidenceKey]
-			updated, ok := retractNarrativeSync(result, pending.Update, text, hasText, evidence, hasEvidence)
-			if ok {
-				if _, err := parse(updated); err != nil {
-					continue
-				}
-				originalText, present := legacyApplied[textKey]
-				legacyRemovals[key] = narrativeSyncItemOwned(original, pending.Update, originalText, present)
-				result = updated
-				delete(state.Applied, textKey)
-				delete(state.Applied, evidenceKey)
-				state.Latest[textKey], state.Latest[evidenceKey] = pending.Line, pending.Line
-				delete(state.Pending, key)
-			}
-			continue
-		}
-		field := ""
-		value := ""
-		for field, value = range pending.Update.Fields {
-			break
-		}
-		if pending.Update.Target == syncTargetTask {
-			lifecycle := state.Pending[syncTargetKey(pending.Update, "lifecycle")]
-			if lifecycle.Line == pending.Line && (field == "lifecycle" || field == "status" || field == "evidence") {
-				continue
-			}
-		}
-		if pending.Update.Target == syncTargetLane && (field == "completed_at" || (strings.HasSuffix(field, "_status") && field == pending.Update.RequiredEnvironment.String()+"_status" && value == "CLOSED")) {
-			continue
-		}
-		if pending.Update.Target == syncTargetTask && field == "status" && value == "CLOSED" && !taskHasEvidence(result, pending.Update.ID, pending.Acceptance) {
-			continue
-		}
-		if pending.Update.Target == syncTargetLane && !laneSyncAllowed(result, ledger, forecasts, pending.Update, field, value) {
-			continue
-		}
-		var updated []byte
-		var applied bool
-		if validNarrativeSyncUpdate(pending.Update) {
-			textKey := syncTargetKey(pending.Update, "text")
-			text, hasText := state.Applied[textKey]
-			owned := narrativeSyncItemOwned(result, pending.Update, text, hasText)
-			prior, exists := state.Applied[key]
-			updated, applied = applyNarrativeSyncField(result, pending.Update, field, value, prior, exists, owned)
-		} else {
-			prior, exists := state.Applied[key]
-			updated, applied = applySyncField(result, pending.Update, field, value, prior, exists)
-		}
-		if applied {
-			if _, err := parse(updated); err != nil {
-				continue
-			}
-			result = updated
-			if pending.Update.Target == syncTargetTask || pending.Update.Target == syncTargetLane || pending.Update.Target == syncTargetReport {
-				state.Applied[key] = scalarSyncStoredValue(value)
-			} else {
-				state.Applied[key] = value
-			}
-			delete(state.Pending, key)
-		}
-	}
-	for key, pending := range heldLegacy {
-		state.Pending[key] = pending
-	}
-	legacyEffects := legacySyncEffects(legacyPending, state, legacyRemovals)
-	if err := verifyStatusSyncCanonicalEffects(original, result, legacyEffects, ledger, forecasts); err != nil {
-		return nil, nil, err
-	}
-	effects = append(effects, legacyEffects...)
 	var groupEffects []syncEffect
 	var groupInvalid bool
 	result, groupEffects, groupInvalid = applyPendingSyncGroups(result, &state, ledger, forecasts, fullLog)
@@ -766,7 +623,7 @@ func projectLogStatusStep(
 		}
 		effects = append(effects, syncEffect{Operation: syncEffectDiagnostic, Value: refreshIssuePrefix + "invalid status_update requires manual review"})
 	}
-	if len(state.Pending) > 0 || len(state.PendingAdditions) > 0 || len(state.PendingRootAdditions) > 0 || len(state.Groups) > 0 || len(state.PendingTimelines) > 0 {
+	if len(state.PendingAdditions) > 0 || len(state.PendingRootAdditions) > 0 || len(state.Groups) > 0 || len(state.PendingTimelines) > 0 {
 		result, err = prepareInvalidation(result, refreshIssuePrefix+"status updates remain pending manual reconciliation")
 		if err != nil {
 			return nil, nil, err
@@ -774,63 +631,6 @@ func projectLogStatusStep(
 		effects = append(effects, syncEffect{Operation: syncEffectDiagnostic, Value: refreshIssuePrefix + "status updates remain pending manual reconciliation"})
 	}
 	return result, effects, nil
-}
-
-// applyTaskCancellations atomically records cancellation without completing children.
-//
-// Example: Cancel one task, retaining its independent descendants.
-func applyTaskCancellations(
-	data []byte,
-	state *syncState,
-) []byte {
-	keys := make([]string, 0, len(state.Pending))
-	for key := range state.Pending {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, lifecycleKey := range keys {
-		pending, ok := state.Pending[lifecycleKey]
-		if !ok || pending.Update.Target != syncTargetTask || pending.Update.Fields["lifecycle"] != "cancelled" {
-			continue
-		}
-		statusKey, evidenceKey := syncTargetKey(pending.Update, "status"), syncTargetKey(pending.Update, "evidence")
-		status, hasStatus := state.Pending[statusKey]
-		evidence, hasEvidence := state.Pending[evidenceKey]
-		if !hasStatus || !hasEvidence || status.Line != pending.Line || evidence.Line != pending.Line || status.Update.Fields["status"] != "unknown" {
-			continue
-		}
-		if state.Latest[lifecycleKey] != pending.Line || state.Latest[statusKey] != pending.Line || state.Latest[evidenceKey] != pending.Line {
-			continue
-		}
-		priorEvidence, hadEvidence := state.Applied[evidenceKey]
-		candidate, applied := applySyncField(data, evidence.Update, "evidence", evidence.Update.Fields["evidence"], priorEvidence, hadEvidence)
-		if !applied {
-			continue
-		}
-		priorStatus, hadStatus := state.Applied[statusKey]
-		candidate, applied = applySyncField(candidate, status.Update, "status", "unknown", priorStatus, hadStatus)
-		if !applied {
-			continue
-		}
-		priorLifecycle, hadLifecycle := state.Applied[lifecycleKey]
-		candidate, applied = applySyncField(candidate, pending.Update, "lifecycle", "cancelled", priorLifecycle, hadLifecycle)
-		if !applied {
-			continue
-		}
-		candidate, applied = removeCancelledPriority(candidate, taskID(pending.Update.ID))
-		if !applied {
-			continue
-		}
-		if _, err := parse(candidate); err != nil {
-			continue
-		}
-		data = candidate
-		state.Applied[lifecycleKey], state.Applied[statusKey], state.Applied[evidenceKey] = "cancelled", "unknown", evidence.Update.Fields["evidence"]
-		delete(state.Pending, lifecycleKey)
-		delete(state.Pending, statusKey)
-		delete(state.Pending, evidenceKey)
-	}
-	return data
 }
 
 // removeCancelledPriority removes one cancelled task from the priority list.
@@ -1064,91 +864,6 @@ func advanceSyncTimestamp(
 		return nil, err
 	}
 	return append(append(append([]byte(nil), data[:edit.Start]...), []byte(edit.Value)...), data[edit.End:]...), nil
-}
-
-// applyLaneCompletions publishes the required status and completion time together.
-//
-// Example: Close a lane only after canonical work completion.
-func applyLaneCompletions(
-	data []byte,
-	ledger ledgerSource,
-	forecasts forecastSource,
-	state *syncState,
-) []byte {
-	keys := make([]string, 0, len(state.Pending))
-	for key := range state.Pending {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, timeKey := range keys {
-		if !strings.HasSuffix(timeKey, "/completed_at") {
-			continue
-		}
-		timePending, exists := state.Pending[timeKey]
-		if !exists || timePending.Update.Target != syncTargetLane {
-			continue
-		}
-		u := timePending.Update
-		field := u.RequiredEnvironment.String() + "_status"
-		statusKey := strings.TrimSuffix(timeKey, "/completed_at") + "/" + field
-		statusPending, exists := state.Pending[statusKey]
-		if !exists || statusPending.Line != timePending.Line || statusPending.Update.Fields[field] != "CLOSED" {
-			continue
-		}
-		if state.Latest[timeKey] != timePending.Line || state.Latest[statusKey] != statusPending.Line {
-			continue
-		}
-		completed := u.Fields["completed_at"]
-		if !laneSyncAllowed(data, ledger, forecasts, u, "completed_at", completed) {
-			continue
-		}
-		priorTime, hadTime := state.Applied[timeKey]
-		candidate, ok := applySyncField(data, u, "completed_at", completed, priorTime, hadTime)
-		if !ok || !laneSyncAllowed(candidate, ledger, forecasts, statusPending.Update, field, "CLOSED") {
-			continue
-		}
-		priorStatus, hadStatus := state.Applied[statusKey]
-		candidate, ok = applySyncField(candidate, statusPending.Update, field, "CLOSED", priorStatus, hadStatus)
-		if !ok {
-			continue
-		}
-		if _, err := parse(candidate); err != nil {
-			continue
-		}
-		data = candidate
-		state.Applied[timeKey], state.Applied[statusKey] = completed, "CLOSED"
-		delete(state.Pending, timeKey)
-		delete(state.Pending, statusKey)
-	}
-	return data
-}
-
-// taskHasEvidence requires the exact accompanying acceptance before closing a task.
-//
-// Example: Verify the evidence supplied with a closure is present.
-func taskHasEvidence(
-	data []byte,
-	id string,
-	evidence string,
-) bool {
-	if strings.TrimSpace(evidence) == "" {
-		return false
-	}
-	var doc yaml.Node
-	if yaml.Unmarshal(data, &doc) != nil {
-		return false
-	}
-	tasks := mapValue(doc.Content[0], "tasks")
-	if tasks == nil || tasks.Kind != yaml.SequenceNode {
-		return false
-	}
-	for _, node := range tasks.Content {
-		key, value := mapValue(node, "id"), mapValue(node, "evidence")
-		if key != nil && key.Value == id && value != nil && value.Value == evidence {
-			return true
-		}
-	}
-	return false
 }
 
 // scalarSyncFields returns the allowed scalar fields for a projection target.

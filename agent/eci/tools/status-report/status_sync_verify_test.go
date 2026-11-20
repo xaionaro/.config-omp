@@ -72,11 +72,11 @@ func TestVerifyStatusSyncEffectsChecksFullRecordAndMetadata(t *testing.T) {
 		{ID: "a", Operation: syncEffectPriorityRemove},
 		{Operation: syncEffectMetadata, Value: syncState{Cursor: 1}},
 	}
-	good := []byte("tasks: [{id: c, effort: 2}]\ntop_priorities: [b]\nstatus_sync: {cursor: 1, applied: null, latest: null, pending: null}\n")
+	good := []byte("tasks: [{id: c, effort: 2}]\ntop_priorities: [b]\nstatus_sync: {cursor: 1, applied: null, latest: null}\n")
 	if err := verifyStatusSyncEffects(original, good, effects); err != nil {
 		t.Fatal(err)
 	}
-	bad := []byte("tasks: [{id: c, effort: 3}]\ntop_priorities: [b]\nstatus_sync: {cursor: 1, applied: null, latest: null, pending: null}\n")
+	bad := []byte("tasks: [{id: c, effort: 3}]\ntop_priorities: [b]\nstatus_sync: {cursor: 1, applied: null, latest: null}\n")
 	if err := verifyStatusSyncEffects(original, bad, effects); err == nil {
 		t.Fatal("accepted altered record")
 	}
