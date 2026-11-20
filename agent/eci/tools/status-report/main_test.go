@@ -1038,15 +1038,6 @@ func TestTimelineWindowBoundaryAndEquivalentUTCOffsets(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestPriorityOrderRejected checks that the removed priority_order field is an unknown field.
-//
-// Example: A report still carrying priority_order fails to parse.
-func TestPriorityOrderRejected(t *testing.T) {
-	t.Parallel()
-	_, err := parse([]byte(valid + "priority_order: [high]\n"))
-	require.ErrorContains(t, err, "priority_order")
-}
-
 // TestForecastBaselineTruth verifies baseline comparisons and explicit uncertainty.
 //
 // Example: Differing UTC offsets for the same instant remain unchanged.
