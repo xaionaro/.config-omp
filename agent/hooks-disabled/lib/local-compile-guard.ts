@@ -1,7 +1,29 @@
-// Detects local C/C++ compile commands, which this host forbids: builds run remotely.
+// Detects local C/C++ compile commands, which this host forbids: compiles run remotely.
 
-/** The denial names the remote route that replaces a local compile. */
-export const LOCAL_COMPILE_HATCH = "build remotely: ssh <gorbe|.131> … (or scripts/gorbe/go-test.sh, which compiles on the gorbe server)";
+/** The denial names the remote routes that replace a local compile. */
+export const LOCAL_COMPILE_HATCH = "build remotely: ssh <gorbe|.131> …, scripts/gorbe/go-test.sh, or distcc to .131 with no local fallback: `DISTCC_FALLBACK=0 DISTCC_HOSTS=<remote hosts only> CCACHE_PREFIX=distcc` (or CC/CXX=\"distcc …\") under `nice`, e.g. `DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 CC=\"distcc clang\" nice -n 19 make -j16`";
+
+const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
+
+/** Reports whether a DISTCC_HOSTS value names only remote hosts. */
+function remoteOnlyHosts(value: string | undefined): boolean {
+	if (value === undefined) return false;
+	const hosts = value.split(/\s+/).filter((h) => h !== "" && !h.startsWith("-") && !h.startsWith("--"));
+	if (hosts.length === 0) return false;
+	return hosts.every((h) => {
+		const host = h.replace(/^@/, "").replace(/^[^@]*@/, "").replace(/[/:,].*$/, "").replace(/^\[|\]$/g, "");
+		return host !== "" && host !== "localhost" && !host.startsWith("127.") && host !== "::1" && host !== "0.0.0.0";
+	});
+}
+
+/** Reports whether env routes every compile through distcc to remote hosts only, with no local fallback. */
+function remoteDistcc(env: Record<string, string>, niced: boolean, program: string): boolean {
+	if (!niced || env.DISTCC_FALLBACK !== "0" || !remoteOnlyHosts(env.DISTCC_HOSTS)) return false;
+	if (program === "distcc") return true;
+	if (env.CCACHE_PREFIX === "distcc") return true;
+	const compilers = [env.CC, env.CXX].filter((v) => v !== undefined);
+	return compilers.length > 0 && compilers.every((v) => /^(?:\S*\/)?distcc(?:\s|$)/.test(v.trim()));
+}
 
 /** Commands that run their remaining arguments as the real command. */
 const WRAPPERS = ["env", "nice", "ionice", "timeout", "nohup", "time", "command", "exec", "sudo", "stdbuf", "chrt", "taskset", "setsid", "xargs", "prlimit", "systemd-run", "load-gate.sh"];
@@ -101,17 +123,28 @@ function simpleCommands(command: string): string[][] {
 
 const SHELL_KEYWORDS = ["if", "then", "else", "elif", "while", "until", "do", "!", "{", "}"];
 
-/** Returns the denied program of one simple command, or undefined. */
-function deniedProgram(words: string[], depth: number): string | undefined {
+/** Returns the denied program of one simple command, or undefined. env holds the variables
+ * exported before it; niced is whether an enclosing command already runs under nice.
+ */
+function deniedProgram(words: string[], depth: number, exported: Record<string, string>, outerNiced: boolean): string | undefined {
+	const env = { ...exported };
+	let niced = outerNiced;
 	let i = 0;
 	while (i < words.length) {
 		const w = words[i];
-		if (SHELL_KEYWORDS.includes(w) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || /^\d*[<>]/.test(w)) {
+		const assignment = ASSIGNMENT.exec(w);
+		if (assignment) {
+			env[assignment[1]] = assignment[2];
+			i++;
+			continue;
+		}
+		if (SHELL_KEYWORDS.includes(w) || /^\d*[<>]/.test(w)) {
 			i += /^\d*[<>]+&?$/.test(w) ? 2 : 1;
 			continue;
 		}
 		const name = w.slice(w.lastIndexOf("/") + 1);
 		if (WRAPPERS.includes(name)) {
+			if (name === "nice") niced = true;
 			i++;
 			let leading = WRAPPER_LEADING_VALUES[name] ?? 0;
 			while (i < words.length) {
@@ -124,7 +157,9 @@ function deniedProgram(words: string[], depth: number): string | undefined {
 					i += WRAPPER_VALUE_OPTIONS[name]?.includes(a) ? 2 : 1;
 					continue;
 				}
-				if (name === "env" && /^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) {
+				const wrapperAssignment = name === "env" ? ASSIGNMENT.exec(a) : null;
+				if (wrapperAssignment) {
+					env[wrapperAssignment[1]] = wrapperAssignment[2];
 					i++;
 					continue;
 				}
@@ -139,19 +174,29 @@ function deniedProgram(words: string[], depth: number): string | undefined {
 		}
 		if (SHELLS.includes(name)) {
 			const flag = words.findIndex((a, k) => k > i && /^-[a-z]*c[a-z]*$/.test(a));
-			if (flag > 0 && flag + 1 < words.length && depth < 4) return localCompileProgram(words[flag + 1], depth + 1);
+			if (flag > 0 && flag + 1 < words.length && depth < 4) return localCompileProgram(words[flag + 1], depth + 1, env, niced);
 			return undefined;
 		}
-		if (COMPILERS.test(name) || BUILD_DRIVERS.includes(name)) return name;
-		if (name === "cmake" && words.slice(i + 1).some((a) => a === "--build" || a === "--install")) return "cmake --build";
-		return undefined;
+		let program: string | undefined;
+		if (COMPILERS.test(name) || BUILD_DRIVERS.includes(name)) program = name;
+		else if (name === "cmake" && words.slice(i + 1).some((a) => a === "--build" || a === "--install")) program = "cmake --build";
+		if (program === undefined || remoteDistcc(env, niced, name)) return undefined;
+		return program;
 	}
 	return undefined;
 }
 
-function localCompileProgram(command: string, depth: number): string | undefined {
+function localCompileProgram(command: string, depth: number, inherited: Record<string, string>, niced: boolean): string | undefined {
+	const exported = { ...inherited };
 	for (const words of simpleCommands(command)) {
-		const program = deniedProgram(words, depth);
+		if (words[0] === "export") {
+			for (const word of words.slice(1)) {
+				const assignment = ASSIGNMENT.exec(word);
+				if (assignment) exported[assignment[1]] = assignment[2];
+			}
+			continue;
+		}
+		const program = deniedProgram(words, depth, exported, niced);
 		if (program !== undefined) return program;
 	}
 	return undefined;
@@ -159,7 +204,7 @@ function localCompileProgram(command: string, depth: number): string | undefined
 
 /** Returns the denial reason for a Bash command that compiles C/C++ locally, or undefined. */
 export function localCompileDenial(command: string): string | undefined {
-	const program = localCompileProgram(withoutHereDocuments(command), 0);
+	const program = localCompileProgram(withoutHereDocuments(command), 0, {}, false);
 	if (program === undefined) return undefined;
 	return `ECI_LOCAL_COMPILE_DENIED: \`${program}\` compiles C/C++ on this host, and local C/C++ compiles are forbidden. ${LOCAL_COMPILE_HATCH}`;
 }

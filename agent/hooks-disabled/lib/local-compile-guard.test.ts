@@ -24,6 +24,11 @@ test("denies local C/C++ compiles, also behind wrappers and shells", () => {
 		"echo start; ( make )",
 		"prlimit --as=1073741824 -- make -j4",
 		"systemd-run --scope -p MemoryMax=1G ninja",
+		"DISTCC_HOSTS=192.168.0.131/16 CC='distcc clang' nice -n 19 make -j16",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS='localhost/4 192.168.0.131/16' CC='distcc clang' nice -n 19 make",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 CC='distcc clang' make -j16",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 nice -n 19 make -j16",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=127.0.0.1 CCACHE_PREFIX=distcc nice ninja",
 	]) {
 		const reason = localCompileDenial(command);
 		expect(reason, command).toBeDefined();
@@ -46,6 +51,13 @@ test("allows remote builds, Go, Bazel, gorbe and text that only mentions compile
 		"cmake -S . -B build",
 		"cat > m.txt <<'EOF'\nmake all\ng++ a.cc\nEOF\ngit status",
 		"rg 'gcc|clang' .",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 CC='distcc clang' CXX='distcc clang++' nice -n 19 make -j16",
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 CCACHE_PREFIX=distcc nice -n 19 ninja -C build",
+		"export DISTCC_FALLBACK=0 DISTCC_HOSTS='192.168.0.131/16,lzo'; nice -n 19 env CCACHE_PREFIX=distcc cmake --build build -j16",
+		"nice -n 19 env DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 distcc clang -c a.c",
+		// The WingOut APK lane: the gate sees only the script; its remote-only-android-cxx
+		// launcher compiles through distcc to .131 with DISTCC_FALLBACK=0.
+		"DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 nice -n 19 ./scripts/build_android_debug.sh",
 	]) {
 		expect(localCompileDenial(command), command).toBeUndefined();
 	}
