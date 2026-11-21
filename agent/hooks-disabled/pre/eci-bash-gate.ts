@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { join } from "node:path";
 import { BASH_GATE_DEADLINE_SEC, basePayload, bashGateRepairable, bashGateUnavailable, bashHostCwd, bashPreToolVerdict, eciHome, identityFor, resolveHookBash, runEciHook } from "../lib/eci-hook-runner.ts";
 import { registerBashGateRepair } from "../lib/eci-bash-repair.ts";
+import { localCompileDenial } from "../lib/local-compile-guard.ts";
 
 const SCRIPT = "validate-bash.sh";
 const REPAIR_COMMAND = ": eci-bash-gate-repair";
@@ -18,6 +19,8 @@ export default function eciBashGate(pi: ExtensionAPI): void {
 			if (event.toolName !== "bash") return undefined;
 			const input = event.input as { command?: unknown; cwd?: unknown };
 			const command = typeof input.command === "string" ? input.command : "";
+			const localCompile = localCompileDenial(command);
+			if (localCompile !== undefined) return { block: true, reason: localCompile };
 			const cwd = bashHostCwd(input.cwd, command, ctx.cwd);
 			const id = { ...identityFor(ctx, { useHostAgentKind: true }), sessionId: ctx.sessionManager.getSessionId() };
 			const home = eciHome();
