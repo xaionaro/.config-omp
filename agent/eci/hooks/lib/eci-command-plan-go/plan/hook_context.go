@@ -114,9 +114,9 @@ type HookInput struct {
 
 // hookRequest resolves callback and transcript metadata into planner facts.
 //
-// Example: a child transcript selects the Worker role without activating legacy markers.
+// Example: a child transcript selects the Worker role.
 func hookRequest(input HookInput) (Request, error) {
-	request := Request{Provider: ProviderOmp, Role: RoleCoordinator, CWD: input.CWD, Command: input.ToolInput.Command, Marker: MarkerInactive, ActiveSession: input.SessionID}
+	request := Request{Role: RoleCoordinator, CWD: input.CWD, Command: input.ToolInput.Command, ActiveSession: input.SessionID}
 	request.HookSessionID = input.SessionID
 	switch {
 	case input.CWDUnknown:

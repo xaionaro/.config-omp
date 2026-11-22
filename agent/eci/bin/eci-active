@@ -17,7 +17,6 @@ fi
 if [ "${1-}" = maintain-planner ]; then
   printf '%s\n' 'eci-active: maintain-planner unavailable until coordinated cutover' \
     'For the planner tools, run: bash "$HOME/.omp/agent/eci/hooks/build-native-binaries.sh" eci-command-plan eci-safe-import eci-hook-helper' \
-    'After that build, refresh the optional Kimi peer: bash "$HOME/.omp/agent/eci/bin/eci-runtime-sync" planner-apply --target "${KIMI_CODE_HOME:-$HOME/.kimi-code}"' \
     'Module-directory refresh remains unavailable until coordinated cutover.' >&2
   exit 1
 fi

@@ -45,7 +45,7 @@ expect_call warm-assignment 1 'flag: help requested' bash "$root/bin/eci-require
 # The old pinned planner must not be invoked until a coordinated cutover.
 expect_call denied-planner 1 'maintain-planner unavailable until coordinated cutover' \
   bash "$root/bin/eci-active" maintain-planner
-for marker in 'build-native-binaries.sh' 'eci-runtime-sync" planner-apply'; do
+for marker in 'build-native-binaries.sh'; do
   grep -qF "$marker" "$tmp/denied-planner.err" || {
     printf 'no-go-run: denied-planner missing %s\n' "$marker" >&2
     cat "$tmp/denied-planner.err" >&2

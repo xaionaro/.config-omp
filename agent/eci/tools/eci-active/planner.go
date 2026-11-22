@@ -37,14 +37,12 @@ var plannerScrubbedEnv = map[string]bool{
 }
 
 // plannerEvent is a no-op rendezvous before and after each publication step. Tests replace it to inject a
-// failure at an exact step, as planner_publication_event does in pre-migration source 575bb81
-// bin/eci-runtime-sync.
+// failure at an exact step.
 var plannerEvent = func(step, path string) error { return nil }
 
 // maintainPlanner rebuilds the planner pair from source with the go command on PATH and publishes it, with its
 // receipts, into the canonical bin/ as one transaction. It then refreshes the module-directory planner that
-// the eci-command-plan tests execute, and runs bin/eci-runtime-sync planner-apply for the optional Kimi peer.
-// Peer failure is advisory.
+// the eci-command-plan tests execute.
 func maintainPlanner(args []string) error {
 	if len(args) != 1 {
 		return usageError()
@@ -68,21 +66,7 @@ func maintainPlanner(args []string) error {
 	} else if err := copyFileAtomic(built, srcPlanner, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "ECI planner advisory: module-directory planner not refreshed: %v\n", err)
 	}
-	peer := exec.Command(filepath.Join(root, "bin", "eci-runtime-sync"), "planner-apply", "--target", kimiHome())
-	peer.Stdout = os.Stderr
-	peer.Stderr = os.Stderr
-	if err := peer.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ECI planner peer synchronization advisory: %v; the local planner pair is synchronized.\n", err)
-	}
 	return nil
-}
-
-// kimiHome is the optional Kimi peer home.
-func kimiHome() string {
-	if v := os.Getenv("KIMI_CODE_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(homeDir(), ".kimi-code")
 }
 
 // plannerGoTool returns the go command on PATH, which must resolve to an absolute path, as

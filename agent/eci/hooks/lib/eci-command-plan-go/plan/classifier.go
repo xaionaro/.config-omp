@@ -70,16 +70,6 @@ const (
 	RoleWorker Role = "worker"
 )
 
-// Marker identifies whether the callback has a validated active ECI marker.
-type Marker string
-
-const (
-	// MarkerActive indicates that ECI ownership checks are active.
-	MarkerActive Marker = "active"
-	// MarkerInactive indicates that no active ECI marker was discovered.
-	MarkerInactive Marker = "inactive"
-)
-
 // DecisionKind is the compiled planner's admission disposition.
 type DecisionKind string
 
@@ -234,14 +224,12 @@ type Request struct {
 	CDPathSet           bool            `json:"cd_path_set"`
 	TimeoutReplay       bool            `json:"timeout_replay,omitempty"`
 	TimeoutReplays      []TimeoutReplay `json:"timeout_replays,omitempty"`
-	Marker              Marker          `json:"marker"`
 	ActiveSession       string          `json:"active_session"`
 	Command             string          `json:"command"`
-	ActiveMarkers       []string        `json:"active_markers"`
 	ApprovedRoots       []string        `json:"approved_roots"`
 	// SegmentCWD and SegmentCWDKnown are an internal adapter handoff for a
 	// recursively validated compound segment. The outer callback CWD remains
-	// the marker-ownership anchor while this verified planner fact resolves
+	// the ownership anchor while this verified planner fact resolves
 	// relative segment effects.
 	SegmentCWD                   string   `json:"segment_cwd,omitempty"`
 	SegmentCWDKnown              *bool    `json:"segment_cwd_known,omitempty"`
@@ -577,7 +565,7 @@ type gateModeIdentity struct {
 //
 // Example: latest-status-report.yaml is indexed as a session control document.
 var eciControlBasenames = [...]string{
-	"eci_active", "goal_state", "eci_wait", "eci_user_owned_wait.md", "eci-additional-repository",
+	"goal_state", "eci_wait", "eci_user_owned_wait.md", "eci-additional-repository",
 	"eci-required-critics.json", "eci-critic-identities.ledger",
 	"eci-acceptance-anchor", "eci-acceptance-transaction",
 	"eci-teardown-complete", "eci-baseline-binding", "baseline_head",
@@ -933,25 +921,9 @@ func Classify(request Request) Result {
 	} else if request.SegmentCWDKnown == nil {
 		request.CWDUnknown = true
 	}
-	if request.Provider == ProviderOmp && !request.HookMode {
-		if _, verb, candidate := classifyEciLifecycleTargetCandidate(request.Command); candidate &&
-			(isLifecycleReadOnlyVerb(verb) || request.Marker == MarkerActive && request.Role == RoleCoordinator) {
+	if !request.HookMode {
+		if _, verb, candidate := classifyEciLifecycleTargetCandidate(request.Command); candidate && isLifecycleReadOnlyVerb(verb) {
 			return Result{Decision: DecisionDefer, DeferredRoute: DeferredRouteEciLifecycle}
-		}
-		if request.Marker == MarkerActive {
-			if word, verb, dispatcher := classifyEciLifecycleDispatcherInvocation(request.Command); dispatcher &&
-				verb != "--help" && verb != "-h" {
-				return deniedResult(request, eciLifecycleDispatcherDiagnostic(request.Command, word))
-			}
-		}
-	}
-	if !request.HookMode && request.Provider == ProviderOmp && request.Marker == MarkerActive && request.Role == RoleCoordinator {
-		if trace, ok := reviewedScriptTraceTopology(request.Command); ok {
-			return Result{
-				Decision:      DecisionDefer,
-				DeferredRoute: DeferredRouteReviewedScriptTrace,
-				Plan:          &PlanTopology{Trace: trace},
-			}
 		}
 	}
 
@@ -966,9 +938,6 @@ func Classify(request Request) Result {
 		if err.diagnostic.Code == CodePlanLimitDenied {
 			// Parser capacity alone establishes no effect. Retain the planner's
 			// advisory result; Go callback checks use any established typed facts.
-			if request.Marker == MarkerActive {
-				return Result{Decision: DecisionDefer}
-			}
 			return Result{Decision: DecisionAllow}
 		}
 		if err.diagnostic.Code == CodePlanSyntaxDenied {
@@ -977,8 +946,8 @@ func Classify(request Request) Result {
 			// caller instead of turning punctuation or expansion into a gate.
 			return Result{Decision: DecisionAllow}
 		}
-		if request.Marker == MarkerInactive && strings.HasPrefix(string(err.diagnostic.Code), "ECI_PLAN_") {
-			// Inactive callbacks remain transparent to shell syntax, while
+		if strings.HasPrefix(string(err.diagnostic.Code), "ECI_PLAN_") {
+			// Callbacks remain transparent to shell syntax, while
 			// deferring dynamic expansion lets the provider adapter retain
 			// ownership of protected children such as Git mutations.
 			if err.diagnostic.Predicate == "dynamic-expansion" {
@@ -996,10 +965,7 @@ func Classify(request Request) Result {
 	if shellDenial != nil {
 		return *shellDenial
 	}
-	var timeoutLaunches []TimeoutLaunch
-	var timeoutReplays []TimeoutReplay
 	decision := DecisionAllow
-	ledgerRedirectAppend := false
 	for index, current := range parsed.segments {
 		segmentRequest := request
 		segmentState := segmentStates[index]
@@ -1018,28 +984,6 @@ func Classify(request Request) Result {
 		segmentRequest.CWDUnknown = segmentCWD.unknown
 		segmentRequest.CWDCandidates = append([]string(nil), segmentCWD.candidates...)
 		segmentRequest.CWDPhysicalCandidates = append([]string(nil), segmentCWD.physicalCandidates...)
-		if !request.HookMode && request.Marker == MarkerActive && segmentState.reachability != segmentUnreachable &&
-			segmentCWD.known && !segmentCWD.unknown &&
-			len(segmentCWD.candidates) == 1 && segmentState.replayKnown {
-			// Observe this segment only after all earlier segments have had a
-			// chance to return their concrete diagnostic.
-			replay, recorded := timeoutReplayForSegment(request, current, index+1, segmentState.replayState)
-			if recorded {
-				timeoutReplays = append(timeoutReplays, replay)
-				if replay.Disposition == TimeoutReplayObserved {
-					// Preserve the callback request as the outer scope anchor while
-					// resolving this observed child from timeout's effective CWD.
-					segmentRequest.CWD = replay.CWD
-					segmentRequest.CWDPhysical = replay.CWDPhysical
-					segmentRequest.CWDKnown = true
-					segmentRequest.CWDCandidates = []string{replay.CWD}
-					timeoutLaunches = append(timeoutLaunches, TimeoutLaunch{
-						Segment: index + 1,
-						Prefix:  append([]string(nil), replay.Prefix...),
-					})
-				}
-			}
-		}
 		if segmentState.reachability == segmentUnreachable {
 			continue
 		}
@@ -1052,83 +996,36 @@ func Classify(request Request) Result {
 			inspectionSegment,
 			index+1,
 			wholeSingleSegmentPlan,
-			timeoutLaunches,
-			&ledgerRedirectAppend,
 		)
 		if diagnostic != nil {
 			diagnostic.RejectedSegment = rejectedSegment(current, diagnostic.Code)
-			if suppressInactiveDiagnostic(request, diagnostic) {
-				// Inactive syntax diagnostics can hide a protected child
+			if suppressAdvisoryDiagnostic(request, diagnostic) {
+				// Syntax diagnostics can hide a protected child
 				// capability behind shell context (assignments, wrappers,
 				// or interpreter payloads). Defer the complete literal to
-				// the provider adapter; ordinary inactive commands remain
+				// the provider adapter; ordinary commands remain
 				// admitted when that adapter finds no protected operation.
 				decision = DecisionDefer
 				continue
 			}
-			result := withCompoundPlan(deniedResult(request, *diagnostic), parsed, segmentStates)
-			result.TimeoutLaunches = timeoutLaunches
-			result.TimeoutReplays = timeoutReplays
-			return result
+			return withCompoundPlan(deniedResult(request, *diagnostic), parsed, segmentStates)
 		}
 		if segmentDecision == DecisionDefer {
 			decision = DecisionDefer
 		}
 	}
-	if request.Marker == MarkerActive && request.Role == RoleCoordinator &&
-		compoundPlanContainsFiniteShellScriptInvocation(parsed) {
-		// A compound shell-script invocation needs the provider's reviewed-script
-		// adapter to validate the complete raw topology before it can execute.
-		decision = DecisionDefer
-	}
-	gitCloneLaunch := gitCloneSourceAcquisitionLaunchForPlan(request, parsed, decision, timeoutLaunches)
-	capabilities := capabilitiesForPlan(request, parsed, decision, gitCloneLaunch, timeoutLaunches)
 	topology := compoundPlanTopology(parsed, segmentStates)
-	deferredRoute := deferredRouteForPlan(request, parsed, decision, capabilities)
 	if shellAnalysis != nil {
 		// Provider effect readers consume typed argv/context records. The raw
 		// lossless compound topology retains Git routing hints independently;
 		// compoundPlanTopology already excludes projected multiline text.
 		decision = DecisionDefer
-		capabilities = nil
-		gitCloneLaunch = nil
-		deferredRoute = ""
 	}
 	return Result{
-		Decision:             decision,
-		Capabilities:         capabilities,
-		GitCloneLaunch:       gitCloneLaunch,
-		DeferredRoute:        deferredRoute,
-		LedgerRedirectAppend: ledgerRedirectAppend,
-		TimeoutLaunches:      timeoutLaunches,
-		TimeoutReplays:       timeoutReplays,
-		Plan:                 topology,
-		ShellAnalysis:        shellAnalysis,
+		Decision:      decision,
+		Plan:          topology,
+		ShellAnalysis: shellAnalysis,
 	}
-}
-
-// deferredRouteForPlan selects a provider route only after the complete plan
-// has been classified. The route intentionally inspects one raw env argv and
-// the child selected by the existing env grammar; it does not inherit any
-// executable basename, generic wrapper, or Git option interpretation.
-func deferredRouteForPlan(request Request, parsed plan, decision DecisionKind, capabilities []Capability) DeferredRoute {
-	if request.Provider != ProviderOmp || request.Marker != MarkerActive {
-		return ""
-	}
-	if decision != DecisionDefer || len(capabilities) != 0 {
-		return ""
-	}
-	if request.Role == RoleCoordinator && compoundPlanContainsFiniteShellScriptInvocation(parsed) {
-		return DeferredRouteReviewedScriptCompound
-	}
-	if request.Role != RoleWorker {
-		return ""
-	}
-	if len(parsed.segments) != 1 || len(parsed.operators) != 0 {
-		return ""
-	}
-
-	return ""
 }
 
 // isWorkerEnvGitFsckLostFound recognizes the one direct env child grammar that
@@ -1151,61 +1048,6 @@ func isWorkerEnvGitFsckLostFound(argv []token) bool {
 	}
 	_, ok := gitFsckLostFoundOption(child, 1)
 	return ok
-}
-
-// capabilitiesForPlan returns the one protected capability that the planner
-// can fast-admit after every segment and envelope predicate has succeeded.
-//
-// Example: the exact current-provider gate-mode binary followed by `set`
-// returns CapabilityGateMode; a direct Git clone returns
-// CapabilityGitCloneSourceAcquisition; a bare command name returns no capability.
-func capabilitiesForPlan(
-	request Request,
-	parsed plan,
-	decision DecisionKind,
-	gitCloneLaunch *GitCloneLaunch,
-	timeoutLaunches []TimeoutLaunch,
-) []Capability {
-	if request.Marker != MarkerActive || decision != DecisionAllow ||
-		len(parsed.segments) != 1 || len(parsed.operators) != 0 {
-		return nil
-	}
-	if gitCloneLaunch != nil {
-		return []Capability{CapabilityGitCloneSourceAcquisition}
-	}
-	original := parsed.segments[0].argv
-	unwrapped, diagnostic := unwrapWithMetadata(original, 1, timeoutLaunches)
-	if diagnostic != nil {
-		return nil
-	}
-	if !isExactGateModeEnvelope(request, original, unwrapped.argv, true) ||
-		len(unwrapped.argv) < 2 || unwrapped.argv[1].value != "set" {
-		return nil
-	}
-	return []Capability{CapabilityGateMode}
-}
-
-// gitCloneSourceAcquisitionLaunchForPlan returns launch metadata only for one
-// active, fully allowed direct plan. Compound topology remains planner-owned:
-// its adapter recursively classifies each segment rather than carrying this
-// top-level capability across shell operators.
-func gitCloneSourceAcquisitionLaunchForPlan(
-	request Request,
-	parsed plan,
-	decision DecisionKind,
-	timeoutLaunches []TimeoutLaunch,
-) *GitCloneLaunch {
-	if request.Marker != MarkerActive || decision != DecisionAllow ||
-		len(parsed.segments) != 1 || len(parsed.operators) != 0 {
-		return nil
-	}
-	original := parsed.segments[0].argv
-	unwrapped, diagnostic := unwrapWithMetadata(original, 1, timeoutLaunches)
-	if diagnostic != nil {
-		return nil
-	}
-	launch, _ := gitCloneSourceAcquisitionLaunch(original, unwrapped, true)
-	return launch
 }
 
 // gitCloneSourceAcquisitionLaunch recognizes the finite launch forms whose
@@ -3732,8 +3574,6 @@ func inspectSegment(
 	current segment,
 	segmentIndex int,
 	wholeSingleSegmentPlan bool,
-	timeoutLaunches []TimeoutLaunch,
-	ledgerRedirectAppend *bool,
 ) (DecisionKind, *Diagnostic) {
 	if len(current.argv) == 0 {
 		return DecisionDeny, diagnosticForToken(
@@ -3745,40 +3585,6 @@ func inspectSegment(
 			"supply one finite literal argv",
 			"empty-segment",
 		)
-	}
-	safeLedgerRedirects := make([]bool, len(current.redirects))
-	var controlIndex activeControlIndex
-	if request.Marker == MarkerActive {
-		controlIndex = activeControlFileIndex(request.ActiveMarkers)
-		deferToProvider := false
-		for redirectIndex, redirect := range current.redirects {
-			currentLedgerAppend := false
-			decision, diagnostic := inspectProofPathOwnership(
-				request,
-				redirectWriterArgv(redirect),
-				segmentIndex,
-				&redirect,
-				&currentLedgerAppend,
-				controlIndex,
-			)
-			if diagnostic != nil {
-				return decision, diagnostic
-			}
-			deferToProvider = deferToProvider || decision == DecisionDefer
-			if currentLedgerAppend {
-				safeLedgerRedirects[redirectIndex] = true
-				if ledgerRedirectAppend != nil {
-					*ledgerRedirectAppend = true
-				}
-			}
-		}
-		decision, diagnostic := inspectProofPathOwnership(request, current.argv, segmentIndex, nil, nil, controlIndex)
-		if diagnostic != nil {
-			return decision, diagnostic
-		}
-		if deferToProvider || decision == DecisionDefer {
-			return DecisionDefer, nil
-		}
 	}
 	if request.HookMode {
 		for _, redirect := range current.redirects {
@@ -3797,7 +3603,7 @@ func inspectSegment(
 		return DecisionAllow, nil
 	}
 
-	unwrapped, diagnostic := unwrapWithMetadata(argvForUnwrap, segmentIndex, timeoutLaunches)
+	unwrapped, diagnostic := unwrapWithMetadata(argvForUnwrap, segmentIndex, nil)
 	if diagnostic != nil {
 		// Wrapper option spelling and an incomplete wrapper do not identify a
 		// concrete target. Leave those ordinary forms to the invoked shell.
@@ -3810,40 +3616,13 @@ func inspectSegment(
 		// families after gathering every compound and nested command effect.
 		return DecisionAllow, nil
 	}
-	gitCloneLaunch, gitCloneLaunchVisible := gitCloneSourceAcquisitionLaunch(
-		current.argv,
-		unwrapped,
-		wholeSingleSegmentPlan,
-	)
-	if request.Marker == MarkerActive && request.Role == RoleWorker && name == "git" && !gitCloneLaunchVisible {
-		// The provider owns native Git family routing; keep clone acquisition separate.
-		return DecisionDefer, nil
-	}
 	if name == "git" {
-		if optionIndex, ok := gitFsckLostFoundOption(argv, gitSubcommandIndex(argv)); ok {
-			routeQualified := wholeSingleSegmentPlan && isWorkerEnvGitFsckLostFound(current.argv)
-			if request.Provider == ProviderOmp && request.Marker == MarkerActive && request.Role == RoleWorker && !routeQualified {
-				return DecisionDeny, diagnosticForToken(
-					CodeWorkerGitOwnershipDenied,
-					"worker argv selects Git fsck --lost-found writer",
-					segmentIndex,
-					originalTokenIndex(current.argv, argv[optionIndex]),
-					argv[optionIndex],
-					"remove --lost-found or route the repository-metadata write request to the ECI Supervisor",
-					"worker-git-ownership",
-				)
-			}
+		if _, ok := gitFsckLostFoundOption(argv, gitSubcommandIndex(argv)); ok {
 			if hasAttachedGitContextOption(argv) {
 				return inspectGit(request, argv, segmentIndex)
 			}
 			return DecisionDefer, nil
 		}
-	}
-	if request.Marker == MarkerActive && name == "mktemp" {
-		// The provider resolves direct worker directory templates against its
-		// protected-control namespace and retains the coordinator template
-		// route. Defer before generic admission so neither target check is lost.
-		return DecisionDefer, nil
 	}
 
 	// Interpreter selectors, environment helpers, and utility options are
@@ -3858,84 +3637,9 @@ func inspectSegment(
 		}
 		return DecisionAllow, nil
 	}
-	if request.Marker == MarkerActive && request.Role == RoleWorker && isWorkerRepositoryAllowInvocation(argv) {
-		// The provider-side lifecycle adapter still validates the canonical
-		// executable, active marker, repository, and reason. Defer this exact
-		// owner-scoped route before the generic worker lifecycle identity check.
-		return DecisionDefer, nil
-	}
-	if request.Marker == MarkerActive && request.Role == RoleWorker && !isLifecycleReadOnlyInvocation(argv) {
-		if diagnostic := inspectActiveWorkerLifecycleIdentity(request, current.argv, argv, segmentIndex); diagnostic != nil {
-			return DecisionDeny, diagnostic
-		}
-		if !request.HookMode && argv[0].value == "eci-active" {
-			return DecisionDeny, diagnosticForToken(
-				CodeControlOwnerRequired,
-				"worker argv selects coordinator-owned bare lifecycle command: executable=eci-active invocation=unwrapped",
-				segmentIndex,
-				originalTokenIndex(current.argv, argv[0]),
-				argv[0],
-				"route the exact lifecycle/control invocation through the coordinator",
-				"worker-lifecycle-control",
-			)
-		}
-	}
 	effectiveCWD := ""
 	if request.CWDKnown {
 		effectiveCWD = request.CWD
-	}
-	if request.Marker == MarkerActive && isLifecycleScriptCapability(effectiveCWD, argv) {
-		// The provider adapter owns canonical lifecycle-script identity,
-		// arguments, and role authorization. Recognize only a visible script
-		// position here so active fast admission cannot bypass that route.
-		return DecisionDefer, nil
-	}
-	if request.Marker == MarkerActive && isCoordinatorHookRepair(argv) {
-		// The legacy coordinator route performs the canonical script digest,
-		// repository-root, and peer-identity checks. Defer this capability by
-		// shape so those checks remain authoritative without embedding provider
-		// paths or peer allowlists in the compiled planner.
-		return DecisionDefer, nil
-	}
-	if request.Marker == MarkerActive && wholeSingleSegmentPlan && request.ShellDepth == 0 {
-		if target, ok := isPreCommitHookModeRepair(current.argv); ok {
-			// Hook-mode repair is an emergency resume exception for one complete
-			// direct plan. A compound plan retains its ordinary segment policy.
-			switch request.Role {
-			case RoleWorker:
-				return DecisionDeny, diagnosticForToken(
-					CodeControlOwnerRequired,
-					"worker argv selects coordinator-owned pre-commit hook mode repair",
-					segmentIndex,
-					originalTokenIndex(current.argv, target),
-					target,
-					"route the exact pre-commit hook mode repair through the coordinator",
-					"hook-mode-repair",
-				)
-			case RoleCoordinator:
-				return DecisionDefer, nil
-			}
-		}
-	}
-	if request.Marker == MarkerActive {
-		if target, resolved, ok := protectedHookModeMutation(effectiveCWD, argv); ok {
-			switch request.Role {
-			case RoleCoordinator:
-				return DecisionDefer, nil
-			case RoleWorker:
-				diagnostic := diagnosticForToken(
-					CodeControlOwnerRequired,
-					"worker argv selects coordinator-owned protected hook mode mutation",
-					segmentIndex,
-					originalTokenIndex(current.argv, target),
-					target,
-					"route the protected hook-mode mutation through the coordinator",
-					"worker-hook-mode-ownership",
-				)
-				diagnostic.Path = resolved
-				return DecisionDeny, diagnostic
-			}
-		}
 	}
 	if name == "git" {
 		decision, diagnostic := inspectGit(request, argv, segmentIndex)
@@ -3943,23 +3647,8 @@ func inspectSegment(
 			return DecisionDeny, diagnostic
 		}
 		if decision == DecisionDefer {
-			if request.Marker == MarkerActive && gitCloneLaunchVisible {
-				return DecisionDeny, gitCloneLaunchContextDiagnostic(current.argv, segmentIndex)
-			}
 			return DecisionDefer, nil
 		}
-		if request.Marker == MarkerActive {
-			if gitCloneLaunch != nil {
-				return DecisionAllow, nil
-			}
-			if gitCloneLaunchVisible {
-				return DecisionDeny, gitCloneLaunchContextDiagnostic(current.argv, segmentIndex)
-			}
-			return DecisionDefer, nil
-		}
-	}
-	if request.Marker == MarkerActive && gitCloneLaunchVisible {
-		return DecisionDeny, gitCloneLaunchContextDiagnostic(current.argv, segmentIndex)
 	}
 	if isLifecycleScriptPath(effectiveCWD, argv[0].value) {
 		return DecisionDefer, nil
@@ -3973,36 +3662,6 @@ func inspectSegment(
 	if request.HookMode {
 		if diagnostic := inspectHookSessionsWriter(request, argv, segmentIndex); diagnostic != nil {
 			return DecisionDeny, diagnostic
-		}
-	}
-	if !request.HookMode && request.Marker == MarkerActive && request.Role == RoleCoordinator && name == "find" {
-		// Check each parsed segment before a compound plan can reach later
-		// commands; every find action launches an unbounded per-match operation.
-		if action, ok := findDynamicAction(argv); ok {
-			return DecisionDeny, diagnosticForToken(
-				CodePlanDynamicLaunchDenied,
-				"find action executes a per-match operation outside a finite direct argv",
-				segmentIndex,
-				originalTokenIndex(current.argv, action),
-				action,
-				"replace the find action with a finite direct command, or use -print for inspection",
-				"dynamic-find-action",
-			)
-		}
-	}
-	if request.Marker == MarkerActive && request.Role == RoleWorker {
-		if isSourceWriter(name, argv) {
-			if diagnostic := inspectLiveControl(request, argv, segmentIndex, controlIndex); diagnostic != nil {
-				return DecisionDeny, diagnostic
-			}
-		}
-		for redirectIndex, redirect := range current.redirects {
-			if safeLedgerRedirects[redirectIndex] {
-				continue
-			}
-			if diagnostic := inspectLiveControl(request, redirectWriterArgv(redirect), segmentIndex, controlIndex); diagnostic != nil {
-				return DecisionDeny, diagnostic
-			}
 		}
 	}
 	return DecisionAllow, nil
@@ -4604,448 +4263,6 @@ func resolveExecutable(value, cwd string) string {
 		return ""
 	}
 	return filepath.Clean(resolved)
-}
-
-// inspectProofPathOwnership classifies concrete writer and redirect targets
-// before deferring ordinary proof artifacts to the provider.
-//
-// Example: a note-named marker alias retains the marker's control identity,
-// while an ordinary coordination note retains its provider route.
-func inspectProofPathOwnership(
-	request Request,
-	argv []token,
-	segmentIndex int,
-	redirect *outputRedirect,
-	ledgerRedirectAppend *bool,
-	controlIndex activeControlIndex,
-) (DecisionKind, *Diagnostic) {
-	if request.CWDKnown || len(request.CWDCandidates) == 0 {
-		return inspectProofPathOwnershipExact(request, argv, segmentIndex, redirect, ledgerRedirectAppend, controlIndex)
-	}
-	deferToProvider := false
-	for _, candidate := range verifiedUniqueDirectories(request.CWDCandidates) {
-		candidateRequest := request
-		candidateRequest.CWD = candidate
-		candidateRequest.CWDKnown = true
-		candidateRequest.CWDCandidates = []string{candidate}
-		decision, diagnostic := inspectProofPathOwnershipExact(
-			candidateRequest,
-			argv,
-			segmentIndex,
-			redirect,
-			ledgerRedirectAppend,
-			controlIndex,
-		)
-		if diagnostic != nil {
-			return decision, diagnostic
-		}
-		deferToProvider = deferToProvider || decision == DecisionDefer
-	}
-	if deferToProvider {
-		return DecisionDefer, nil
-	}
-	return DecisionAllow, nil
-}
-
-// inspectProofPathOwnershipExact resolves one concrete CWD candidate. The
-// caller joins multiple planner-reachable candidates before invoking it.
-//
-// Example: a redirected `cd` checks both its pre- and post-redirect paths.
-func inspectProofPathOwnershipExact(
-	request Request,
-	argv []token,
-	segmentIndex int,
-	redirect *outputRedirect,
-	ledgerRedirectAppend *bool,
-	controlIndex activeControlIndex,
-) (DecisionKind, *Diagnostic) {
-	proofSessions := make([]proofSession, 0, len(request.ActiveMarkers))
-	for _, marker := range request.ActiveMarkers {
-		if !filepath.IsAbs(marker) {
-			return DecisionDefer, nil
-		}
-		lexical := filepath.Clean(filepath.Dir(marker))
-		resolved, err := resolvePathWithMissingSuffix(lexical)
-		if err != nil {
-			return DecisionDefer, nil
-		}
-		proofSessions = append(proofSessions, proofSession{lexical: lexical, resolved: resolved})
-	}
-	if len(proofSessions) == 0 {
-		return DecisionAllow, nil
-	}
-	selectedProofSession := proofSessions[0]
-	deferToProvider := false
-	entryMutation := request.HookMode && hookUnlinksDirectoryEntry(argv)
-
-	for sourceIndex, argument := range argv {
-		pathArgument, argumentIndex, pathLike := outputDestinationOperand(argv, sourceIndex)
-		outputWriter := pathLike
-		switch {
-		case filepath.Base(argv[0].value) == "cp":
-			// Copy operands are authoritative: a generic --output spelling
-			// cannot manufacture a destination for an unsupported cp form.
-			argumentIndex = sourceIndex
-			pathArgument, pathLike = argument, argumentIndex > 0
-			outputWriter = false
-		case !pathLike:
-			argumentIndex = sourceIndex
-			pathArgument, pathLike = commandPathOperand(argv[0].value, argument)
-		}
-		if !pathLike {
-			continue
-		}
-		writer := outputWriter || isSourceWriterOperand(argv, argumentIndex)
-		lexical := pathArgument.value
-		if !filepath.IsAbs(lexical) {
-			if !request.CWDKnown {
-				// The segment CWD is unknown. Keep absolute target checks
-				// available, but defer unresolved relative effects to the
-				// provider's targeted ownership boundary.
-				deferToProvider = true
-				continue
-			}
-			lexical = filepath.Join(request.CWD, lexical)
-		}
-		lexical = filepath.Clean(lexical)
-
-		resolved, resolveErr := resolvePathWithMissingSuffix(lexical)
-		if entryMutation {
-			resolved, resolveErr = resolvePathEntryWithMissingSuffix(lexical)
-		}
-		containingSession := ""
-		contained := false
-		anchorSearchComplete := true
-		for _, proofSession := range proofSessions {
-			if resolveErr == nil && pathWithin(resolved, proofSession.resolved) {
-				contained = true
-				break
-			}
-			if pathWithin(lexical, proofSession.lexical) {
-				containingSession = proofSession.lexical
-				continue
-			}
-			anchored, complete := pathHasResolvedProofAnchor(filepath.Dir(lexical), proofSession.resolved)
-			if !complete {
-				anchorSearchComplete = false
-			}
-			if anchored {
-				containingSession = proofSession.lexical
-			}
-		}
-		selectedRedirect := redirect
-		if outputWriter {
-			selectedRedirect = &outputRedirect{target: pathArgument, effect: outputRedirectOverwrite}
-		}
-		if selectedRedirect != nil {
-			handled, diagnostic := inspectCurrentLedgerRedirect(
-				*selectedRedirect,
-				selectedProofSession,
-				lexical,
-				resolved,
-				resolveErr,
-				segmentIndex,
-				argumentIndex,
-			)
-			if diagnostic != nil {
-				return DecisionDeny, diagnostic
-			}
-			if handled {
-				if ledgerRedirectAppend != nil && selectedRedirect.effect == outputRedirectAppend {
-					*ledgerRedirectAppend = true
-				}
-				continue
-			}
-		}
-		canonicalHandoff := isCanonicalWorkerHandoffPath(lexical, request.ActiveMarkers) ||
-			(resolveErr == nil && isCanonicalWorkerHandoffPath(resolved, request.ActiveMarkers))
-		if writer {
-			controlPath := activeControlResolvedPath(lexical, controlIndex.files)
-			if entryMutation && controlPath != "" {
-				protectedEntry, err := resolvePathEntryWithMissingSuffix(controlPath)
-				if err != nil || resolveErr != nil || protectedEntry != resolved {
-					controlPath = ""
-				}
-			}
-			if controlPath != "" {
-				if isCanonicalWorkerHandoffPath(controlPath, request.ActiveMarkers) &&
-					filepath.Base(controlPath) != "high_level_log.jsonl" &&
-					(lexical == controlPath || (resolveErr == nil && resolved == controlPath)) {
-					// The destination is the canonical handoff inode by its own
-					// pathname; the provider owns that exact file.  An alias
-					// with a different pathname that shares the inode falls
-					// through to the concrete control-target denial below.
-					deferToProvider = true
-					continue
-				}
-				code := CodePlanLiveControlDenied
-				reason := "writer destination resolves to an active-session ECI control artifact"
-				predicate := string(request.Role) + "-proof-control"
-				remediation := "route this exact control operation through the coordinator lifecycle route"
-				// The inode index retains the marker's lexical directory spelling;
-				// do not pass that spelling as an already-resolved path.
-				if request.Role == RoleCoordinator && isAppendOnlyLedgerPath(controlPath, "", proofSessions) {
-					code = CodeLedgerAppendOnly
-					reason = "active-session high-level ledger files are append-only coordinator artifacts"
-					predicate = "append-only-ledger"
-					remediation = ledgerAppendRemediation(request.Provider)
-				}
-				diagnostic := diagnosticForToken(code, reason, segmentIndex, argumentIndex, pathArgument, remediation, predicate)
-				diagnostic.Path = controlPath
-				return DecisionDeny, diagnostic
-			}
-		}
-		if writer && canonicalHandoff &&
-			!isAppendOnlyLedgerPath(lexical, resolved, proofSessions) {
-			deferToProvider = true
-			continue
-		}
-		if contained {
-			if request.Role == RoleCoordinator && writer &&
-				isAppendOnlyLedgerPath(lexical, resolved, proofSessions) {
-				diagnostic := diagnosticForToken(
-					CodeLedgerAppendOnly,
-					"active-session high-level ledger files are append-only coordinator artifacts",
-					segmentIndex,
-					argumentIndex,
-					pathArgument,
-					ledgerAppendRemediation(request.Provider),
-					"append-only-ledger",
-				)
-				diagnostic.Path = lexical
-				return DecisionDeny, diagnostic
-			}
-			if request.Role == RoleCoordinator && writer &&
-				isReservedProofControlPath(lexical, resolved, proofSessions) {
-				diagnostic := diagnosticForToken(
-					CodePlanLiveControlDenied,
-					"coordinator argv targets a reserved ECI control artifact inside the active proof session",
-					segmentIndex,
-					argumentIndex,
-					pathArgument,
-					"use the matching coordinator lifecycle route for the reserved ECI control operation",
-					"coordinator-proof-control",
-				)
-				diagnostic.Path = lexical
-				return DecisionDeny, diagnostic
-			}
-			if request.Role == RoleWorker && writer &&
-				isReservedProofControlPath(lexical, resolved, proofSessions) {
-				diagnostic := diagnosticForToken(
-					CodePlanLiveControlDenied,
-					"worker argv targets a reserved ECI control artifact inside the active proof session",
-					segmentIndex,
-					argumentIndex,
-					pathArgument,
-					"route the reserved ECI control operation through the coordinator",
-					"worker-proof-control",
-				)
-				diagnostic.Path = lexical
-				return DecisionDeny, diagnostic
-			}
-			if writer {
-				deferToProvider = true
-				continue
-			}
-			if request.Role == RoleWorker && pathHasMissingComponent(lexical) &&
-				isReservedProofControlPath(lexical, resolved, proofSessions) {
-				deferToProvider = true
-			}
-			continue
-		}
-		if request.Role == RoleWorker && pathHasMissingComponent(lexical) {
-			for _, proofSession := range proofSessions {
-				if pathWithin(lexical, proofSession.lexical) &&
-					isReservedProofControlPath(lexical, resolved, proofSessions) {
-					deferToProvider = true
-				}
-			}
-		}
-		if containingSession == "" {
-			if !anchorSearchComplete {
-				deferToProvider = true
-			}
-			continue
-		}
-		if resolveErr != nil {
-			deferToProvider = true
-		}
-		// A lexical proof alias does not change an ordinary resolved effect.
-	}
-
-	if deferToProvider {
-		return DecisionDefer, nil
-	}
-	return DecisionAllow, nil
-}
-
-// inspectCurrentLedgerRedirect classifies one resolved output redirect against
-// the selected proof session's ledger artifacts and their concrete inode.
-//
-// Example: an EOF append to current/high_level_log.jsonl is handled and allowed,
-// while a sibling session's high_level_log.jsonl receives a foreign-session denial.
-func inspectCurrentLedgerRedirect(
-	redirect outputRedirect,
-	selectedSession proofSession,
-	lexical string,
-	resolved string,
-	resolveErr error,
-	segmentIndex int,
-	argumentIndex int,
-) (bool, *Diagnostic) {
-	selectedLexicalName := filepath.Base(selectedSession.lexical)
-	if session, artifact, ok := ledgerSessionArtifact(lexical, filepath.Dir(selectedSession.lexical)); ok {
-		switch {
-		case session == selectedLexicalName && artifact == "high_level_log.anchor":
-			diagnostic := diagnosticForToken(
-				CodeLedgerAnchorWriteDenied,
-				"selected-session ledger anchor is control state: target=high_level_log.anchor path="+lexical,
-				segmentIndex,
-				argumentIndex,
-				redirect.target,
-				"leave high_level_log.anchor for normal ledger reconciliation",
-				"current-ledger-anchor",
-			)
-			diagnostic.Path = lexical
-			return true, diagnostic
-		case session != selectedLexicalName:
-			diagnostic := diagnosticForToken(
-				CodeLedgerForeignSessionDenied,
-				"ledger redirect targets a sibling proof session: target_session="+session+" path="+lexical,
-				segmentIndex,
-				argumentIndex,
-				redirect.target,
-				"write only the selected session's high_level_log.jsonl",
-				"foreign-ledger-session",
-			)
-			diagnostic.Path = lexical
-			return true, diagnostic
-		}
-	}
-	if resolveErr != nil {
-		return false, nil
-	}
-
-	selectedResolvedName := filepath.Base(selectedSession.resolved)
-	if session, artifact, ok := ledgerSessionArtifact(resolved, filepath.Dir(selectedSession.resolved)); ok {
-		switch {
-		case session == selectedResolvedName && artifact == "high_level_log.anchor":
-			diagnostic := diagnosticForToken(
-				CodeLedgerAnchorWriteDenied,
-				"selected-session ledger anchor is control state: target=high_level_log.anchor path="+resolved,
-				segmentIndex,
-				argumentIndex,
-				redirect.target,
-				"leave high_level_log.anchor for normal ledger reconciliation",
-				"current-ledger-anchor",
-			)
-			diagnostic.Path = lexical
-			return true, diagnostic
-		case session != selectedResolvedName:
-			diagnostic := diagnosticForToken(
-				CodeLedgerForeignSessionDenied,
-				"ledger redirect targets a sibling proof session: target_session="+session+" path="+resolved,
-				segmentIndex,
-				argumentIndex,
-				redirect.target,
-				"write only the selected session's high_level_log.jsonl",
-				"foreign-ledger-session",
-			)
-			diagnostic.Path = lexical
-			return true, diagnostic
-		}
-	}
-
-	selectedLog, err := resolvePathWithMissingSuffix(filepath.Join(selectedSession.lexical, "high_level_log.jsonl"))
-	if err != nil {
-		return false, nil
-	}
-	artifactSession, artifact, info, sameArtifact := ledgerArtifactByInode(selectedSession, resolved)
-	if !sameArtifact {
-		if resolved != selectedLog {
-			return false, nil
-		}
-		artifactSession = selectedLexicalName
-		artifact = "high_level_log.jsonl"
-	}
-	if artifactSession != selectedLexicalName {
-		diagnostic := diagnosticForToken(
-			CodeLedgerForeignSessionDenied,
-			"ledger redirect targets a sibling proof session: target_session="+artifactSession+" path="+resolved,
-			segmentIndex,
-			argumentIndex,
-			redirect.target,
-			"write only the selected session's high_level_log.jsonl",
-			"foreign-ledger-session",
-		)
-		diagnostic.Path = lexical
-		return true, diagnostic
-	}
-	if artifact == "high_level_log.anchor" {
-		diagnostic := diagnosticForToken(
-			CodeLedgerAnchorWriteDenied,
-			"selected-session ledger anchor is control state: target=high_level_log.anchor path="+resolved,
-			segmentIndex,
-			argumentIndex,
-			redirect.target,
-			"leave high_level_log.anchor for normal ledger reconciliation",
-			"current-ledger-anchor",
-		)
-		diagnostic.Path = lexical
-		return true, diagnostic
-	}
-	if artifact != "high_level_log.jsonl" {
-		return false, nil
-	}
-	if redirect.effect != outputRedirectAppend {
-		diagnostic := diagnosticForToken(
-			CodeLedgerRewriteDenied,
-			"selected-session ledger redirect would replace its target: effect="+string(redirect.effect)+" target="+resolved,
-			segmentIndex,
-			argumentIndex,
-			redirect.target,
-			"append at EOF to the selected session's high_level_log.jsonl",
-			"current-ledger-rewrite",
-		)
-		diagnostic.Path = lexical
-		return true, diagnostic
-	}
-
-	if info == nil {
-		info, err = os.Stat(resolved)
-	}
-	if err != nil || info == nil || !info.Mode().IsRegular() {
-		diagnostic := diagnosticForToken(
-			CodeLedgerAppendOnly,
-			"selected-session ledger append target is not a regular file: target="+resolved,
-			segmentIndex,
-			argumentIndex,
-			redirect.target,
-			"append only to the existing regular selected-session high_level_log.jsonl",
-			"current-ledger-target",
-		)
-		diagnostic.Path = lexical
-		return true, diagnostic
-	}
-	state, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || state.Nlink != 1 {
-		linkCount := "unavailable"
-		if ok {
-			linkCount = fmt.Sprintf("%d", state.Nlink)
-		}
-		diagnostic := diagnosticForToken(
-			CodeLedgerSharedInodeDenied,
-			"selected-session ledger append target must have one link: target="+resolved+" nlink="+linkCount,
-			segmentIndex,
-			argumentIndex,
-			redirect.target,
-			"restore a uniquely linked selected-session high_level_log.jsonl before appending",
-			"ledger-shared-inode",
-		)
-		diagnostic.Path = lexical
-		return true, diagnostic
-	}
-	return true, nil
 }
 
 // ledgerArtifactByInode identifies a selected or sibling ledger artifact by
@@ -6746,7 +5963,7 @@ func inspectGit(
 		// modes once for its ref, acceptance, and repository readers.
 		return DecisionDefer, nil
 	}
-	mutationIndex, action := gitMutation(argv, subcommandIndex)
+	_, action := gitMutation(argv, subcommandIndex)
 	if action == "add" || action == "reset" || action == "commit" ||
 		action == "mv" || action == "rm" || action == "restore" || action == "checkout" {
 		// Resolve the repository and actual index/history effect in the provider.
@@ -6754,46 +5971,19 @@ func inspectGit(
 		// the Git verb alone cannot establish the intended ownership boundary.
 		return DecisionDefer, nil
 	}
-	remediation := "route this protected Git mutation request to the ECI Supervisor; ordinary scoped Producer checkpoint commits use the separate resolved repository/effect checks"
-	if action == "update-index" {
-		remediation = "the responsible Producer stages exact owned paths or agreed hunks with git add; stages agreed removals with git add -u -- <paths> or git rm --cached -- <paths>; unstages with git restore --staged -- <paths>; preserve unrelated content; these routes do not replace arbitrary index metadata, cache, or mode-only operations"
-	}
 	if repositoryContext {
 		// Repository selection is provider-owned capability: the adapter must
 		// establish that the target is one approved canonical root before a
-		// worker can use an otherwise read-only Git verb. Preserve the worker
-		// ownership diagnostic for mutations even when a -C context is visible.
-		if action != "" && request.Marker == MarkerActive && request.Role == RoleWorker {
-			return DecisionDeny, diagnosticForToken(
-				CodeWorkerGitOwnershipDenied,
-				fmt.Sprintf("worker argv selects acceptance-sensitive Git operation %s", action),
-				segmentIndex,
-				mutationIndex,
-				argv[mutationIndex],
-				remediation,
-				"worker-git-ownership",
-			)
-		}
+		// read-only Git verb can be admitted here.
 		if request.Role == RoleCoordinator && approvedRepositoryContext && action == "" {
 			return DecisionAllow, nil
 		}
-		// In particular this prevents an active worker fast path from
-		// admitting git -C /tmp/foreign status without approved-root proof.
+		// In particular this prevents admitting git -C /tmp/foreign status
+		// without approved-root proof.
 		return DecisionDefer, nil
 	}
 	if action == "" {
 		return DecisionAllow, nil
-	}
-	if request.Marker == MarkerActive && request.Role == RoleWorker {
-		return DecisionDeny, diagnosticForToken(
-			CodeWorkerGitOwnershipDenied,
-			fmt.Sprintf("worker argv selects acceptance-sensitive Git operation %s", action),
-			segmentIndex,
-			mutationIndex,
-			argv[mutationIndex],
-			remediation,
-			"worker-git-ownership",
-		)
 	}
 	return DecisionDefer, nil
 }
@@ -6923,247 +6113,12 @@ func inspectBroadDestruction(
 	return nil
 }
 
-type activeControlFile struct {
-	path string
-	info os.FileInfo
-}
-
-// activeControlIndex retains concrete inode facts from immediate session controls.
-//
-// Example: an observed marker hardlink remains protected beside many controls.
-type activeControlIndex struct {
-	files []activeControlFile
-}
-
-// activeControlFileIndex observes immediate control files without discarding facts.
-//
-// Example: the 129th control leaves earlier marker and control aliases visible.
-func activeControlFileIndex(markers []string) activeControlIndex {
-	index := activeControlIndex{
-		files: make([]activeControlFile, 0, len(markers)*len(eciControlBasenames)),
-	}
-	seenSessionDirs := make(map[string]struct{}, len(markers))
-	for _, marker := range markers {
-		sessionDir := filepath.Clean(filepath.Dir(marker))
-		if _, seen := seenSessionDirs[sessionDir]; seen {
-			continue
-		}
-		seenSessionDirs[sessionDir] = struct{}{}
-		directory, err := os.Open(sessionDir)
-		if err != nil {
-			continue
-		}
-		entries, err := directory.ReadDir(-1)
-		closeErr := directory.Close()
-		if errors.Is(err, io.EOF) {
-			err = nil
-		}
-		if observationErr := errors.Join(err, closeErr); observationErr != nil {
-			hookAdvisory("observe active controls", observationErr)
-		}
-		for _, entry := range entries {
-			name := entry.Name()
-			if entry.Type()&os.ModeSymlink != 0 || !isECIControlBasename(name) {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-			index.files = append(index.files, activeControlFile{
-				path: filepath.Join(sessionDir, entry.Name()),
-				info: info,
-			})
-		}
-	}
-	return index
-}
-
-func isECIControlBasename(value string) bool {
-	for _, name := range eciControlBasenames {
-		if value == name || strings.HasPrefix(value, name+".") {
-			return true
-		}
-	}
-	return false
-}
-
-func activeControlHardlinkPath(path string, index []activeControlFile) string {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return ""
-	}
-	for _, control := range index {
-		if os.SameFile(info, control.info) {
-			return control.path
-		}
-	}
-	return ""
-}
-
-// isCanonicalWorkerHandoffPath reports whether a path is a handoff document in an active session.
-//
-// Example: latest-status-report.yaml beside an active marker is a handoff document.
-func isCanonicalWorkerHandoffPath(
-	path string,
-	markers []string,
-) bool {
-	base := filepath.Base(path)
-	switch base {
-	case "instructions.md", "project-understanding.yaml", "high_level_log.jsonl", "latest-status-report.md", "latest-status-report.yaml":
-		for _, marker := range markers {
-			if path == filepath.Join(filepath.Dir(marker), base) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// activeControlResolvedPath resolves one visible writer operand and compares
-// its target inode with the bounded active-control index.
-//
-// Example: a hardlink used as a touch target resolves to the active marker,
-// while read-only aliases never reach this writer-only check.
-func activeControlResolvedPath(
-	path string,
-	index []activeControlFile,
-) string {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return ""
-	}
-	var handoffPath string
-	for _, control := range index {
-		if os.SameFile(info, control.info) {
-			// A note-named hardlink cannot hide another control record sharing
-			// its inode. Prefer the concrete control over the ordinary note.
-			switch filepath.Base(control.path) {
-			case "instructions.md", "project-understanding.yaml", "latest-status-report.md", "latest-status-report.yaml":
-				handoffPath = control.path
-				continue
-			}
-			return control.path
-		}
-	}
-	return handoffPath
-}
-
-// inspectLiveControl rejects a worker's concrete active-control write target
-// while leaving index completeness and read-only discovery advisory.
-//
-// Example: `printf value > eci_active` reaches this check through its redirect
-// target, while `cat eci_active` does not.
-func inspectLiveControl(
-	request Request,
-	argv []token,
-	segmentIndex int,
-	controlIndex activeControlIndex,
-) *Diagnostic {
-	if request.CWDKnown || len(request.CWDCandidates) == 0 {
-		return inspectLiveControlExact(request, argv, segmentIndex, controlIndex)
-	}
-	for _, candidate := range verifiedUniqueDirectories(request.CWDCandidates) {
-		candidateRequest := request
-		candidateRequest.CWD = candidate
-		candidateRequest.CWDKnown = true
-		candidateRequest.CWDCandidates = []string{candidate}
-		if diagnostic := inspectLiveControlExact(candidateRequest, argv, segmentIndex, controlIndex); diagnostic != nil {
-			return diagnostic
-		}
-	}
-	return nil
-}
-
-// inspectLiveControlExact checks one concrete CWD candidate for a worker
-// writer. Reachable candidates are joined by inspectLiveControl.
-//
-// Example: a relative `rm eci_active` is denied if any reachable directory
-// contains the active marker.
-func inspectLiveControlExact(
-	request Request,
-	argv []token,
-	segmentIndex int,
-	controlIndex activeControlIndex,
-) *Diagnostic {
-	// A bounded alias index can be incomplete when a session has many control
-	// records. Its completeness is diagnostic metadata, never a reason to
-	// deny a visible concrete write target. Exact marker paths below remain
-	// independently checked.
-	for argumentIndex, argument := range argv[1:] {
-		if !isSourceWriterOperand(argv, argumentIndex+1) {
-			continue
-		}
-		pathArgument, pathLike := commandPathOperand(argv[0].value, argument)
-		if filepath.Base(argv[0].value) == "cp" {
-			pathArgument, pathLike = argument, true
-		}
-		if !pathLike {
-			continue
-		}
-		candidate := pathArgument.value
-		if !filepath.IsAbs(candidate) {
-			if !request.CWDKnown {
-				continue
-			}
-			candidate = filepath.Join(request.CWD, candidate)
-		}
-		candidate = filepath.Clean(candidate)
-		for _, markerPath := range request.ActiveMarkers {
-			cleanMarker := filepath.Clean(markerPath)
-			if candidate == cleanMarker {
-				diagnostic := diagnosticForToken(
-					CodePlanLiveControlDenied,
-					"worker argv resolves to an exact active-session live-control artifact",
-					segmentIndex,
-					argumentIndex+1,
-					pathArgument,
-					"route this exact live-control operation through the coordinator",
-					"worker-live-control",
-				)
-				diagnostic.Path = candidate
-				return diagnostic
-			}
-		}
-		controlPath := activeControlResolvedPath(candidate, controlIndex.files)
-		if request.HookMode && hookUnlinksDirectoryEntry(argv) && controlPath != "" {
-			entry, entryErr := resolvePathEntryWithMissingSuffix(candidate)
-			protectedEntry, protectedErr := resolvePathEntryWithMissingSuffix(controlPath)
-			if entryErr != nil || protectedErr != nil || entry != protectedEntry {
-				controlPath = ""
-			}
-		}
-		if isCanonicalWorkerHandoffPath(candidate, request.ActiveMarkers) &&
-			(controlPath == "" || (isCanonicalWorkerHandoffPath(controlPath, request.ActiveMarkers) &&
-				filepath.Base(controlPath) == filepath.Base(candidate))) {
-			continue
-		}
-		if controlPath != "" {
-			diagnostic := diagnosticForToken(
-				CodePlanLiveControlDenied,
-				"worker argv inode matches an active-session live-control artifact",
-				segmentIndex,
-				argumentIndex+1,
-				pathArgument,
-				"route this exact live-control operation through the coordinator",
-				"worker-live-control",
-			)
-			diagnostic.Path = controlPath
-			return diagnostic
-		}
-	}
-	return nil
-}
-
 func deniedResult(request Request, diagnostic Diagnostic) Result {
-	marker := string(request.Marker)
 	reason := fmt.Sprintf(
-		"[%s] ECI gate denied (phase=PreToolUse, operation=%s, provider=%s, role=%s, marker=%s, segment=%d, argv_index=%d, byte_offset=%d, token=%s, path=%s, predicate=%s); reason: %s; rejected segment=%s; remediation: %s.",
+		"[%s] ECI gate denied (phase=PreToolUse, operation=%s, role=%s, segment=%d, argv_index=%d, byte_offset=%d, token=%s, path=%s, predicate=%s); reason: %s; rejected segment=%s; remediation: %s.",
 		diagnostic.Code,
 		diagnostic.Operation,
-		request.Provider,
 		request.Role,
-		marker,
 		diagnostic.Segment,
 		diagnostic.ArgvIndex,
 		diagnostic.ByteOffset,
@@ -7185,13 +6140,10 @@ func deniedResult(request Request, diagnostic Diagnostic) Result {
 	}
 }
 
-// suppressInactiveDiagnostic keeps unsupported inactive-scope denials advisory.
+// suppressAdvisoryDiagnostic keeps unsupported syntax-scope denials advisory.
 //
 // Example: concrete Worker session writes remain denied in hook mode.
-func suppressInactiveDiagnostic(request Request, diagnostic *Diagnostic) bool {
-	if request.Marker != MarkerInactive {
-		return false
-	}
+func suppressAdvisoryDiagnostic(request Request, diagnostic *Diagnostic) bool {
 	if diagnostic.Operation == "worker-control" || diagnostic.Predicate == "broad-destructive-root" ||
 		(request.HookMode && diagnostic.Code == hookCodeWorkerSessionsRootDenied) {
 		return false

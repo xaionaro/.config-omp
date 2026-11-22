@@ -2849,8 +2849,6 @@ run_case "hooks tests use no GNU-only userland forms" \
   bash "$ROOT/hooks/tests/test-tests-bsd-userland.sh"
 run_case "direct lifecycle visibility accepts semantic current markers" \
   bash "$ROOT/hooks/tests/test-eci-lifecycle-visibility.sh"
-run_case "provider lifecycle dispatcher authority" \
-  bash "$ROOT/hooks/tests/test-eci-provider-dispatch.sh"
 run_case "planner-maintenance runtime receipt binding" \
   bash "$ROOT/hooks/tests/test-eci-maintain-planner.sh"
 run_case "planner provenance uses a descriptor-pinned execution handoff" \

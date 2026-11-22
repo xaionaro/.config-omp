@@ -12,11 +12,7 @@
 #   export XDG_RUNTIME_DIR="$(mktemp -d "$TMPDIR/eci-xdg.XXXXXX")"
 # HOME is set to <work>/home. The runtime is copied to <work>/home/.omp/agent/eci
 # and the test runs from that copy, so ROOT equals the HOME-derived runtime path.
-# The published Go helpers ($HOME/tmp/eci-runtime) are copied too. ~/.kimi-code is
-# a scratch copy of the Kimi peer (KIMI_CODE_HOME), not a link: the peer sync and
-# some tests write into it, and a write through a link would reach the account.
-# The copied runtime's peer-apply then refreshes that scratch peer's shared hooks/bin
-# surface, the same step sync-runtime runs, so the peer matches the copied runtime.
+# The published Go helpers ($HOME/tmp/eci-runtime) are copied too.
 # ~/.omp/agent/AGENTS.md is a
 # symlink to the account's global instructions (read by the reviewer prompt) and
 # ~/.omp/agent/skills to the account's skills tree (read by tests).
@@ -86,42 +82,9 @@ done
 if [ -d "$account_home/tmp/eci-runtime" ]; then
   cp -a "$account_home/tmp/eci-runtime" "$work/home/tmp/eci-runtime"
 fi
-# The Kimi peer copy keeps every entry except the 180 MB upstream bin/kimi; cache/
-# and search-index/ stay empty (no ECI test reads them). ECI_ACCOUNT_KIMI_CODE_HOME
-# names the account peer for the regression probe, test-run-isolated-kimi-peer.sh.
-kimi_account="$account_home/.kimi-code"
-kimi_home="$work/home/.kimi-code"
-mkdir -p -m 700 "$kimi_home/bin"
-shopt -s dotglob nullglob
-for entry in "$kimi_account"/*; do
-  name="${entry##*/}"
-  case "$name" in
-    bin)
-      for tool in "$entry"/*; do
-        [ "${tool##*/}" = kimi ] || cp -a -- "$tool" "$kimi_home/bin/"
-      done ;;
-    cache|search-index) mkdir -m 700 -- "$kimi_home/$name" ;;
-    *) cp -a -- "$entry" "$kimi_home/" ;;
-  esac
-done
-shopt -u dotglob nullglob
-export KIMI_CODE_HOME="$kimi_home"
-export ECI_ACCOUNT_KIMI_CODE_HOME="$kimi_account"
 ln -s "$account_home/.omp/agent/AGENTS.md" "$work/home/.omp/agent/AGENTS.md"
 ln -s "$account_home/.omp/agent/skills" "$work/home/.omp/agent/skills"
 ln -s "$account_home/.omp/agent/eci-binding-contract.md" "$work/home/.omp/agent/eci-binding-contract.md"
-# Refresh the scratch peer through the copied runtime's own peer-apply, as sync-runtime does.
-# HOME is the work home here (the export below is later); set -e aborts on failure.
-HOME="$work/home" "$work/home/.omp/agent/eci/bin/eci-runtime-sync" peer-apply --target "$kimi_home" >/dev/null
-gate_source="$work/home/.omp/agent/eci/bin/eci-command-gate-mode"
-if [ ! -e "$gate_source" ] && [ ! -L "$gate_source" ]; then
-  printf 'run-isolated: WARNING scratch gate source is absent; scratch gate hardlink skipped: %s\n' "$gate_source" >&2
-elif [ -L "$gate_source" ] || [ ! -f "$gate_source" ]; then
-  printf 'run-isolated: scratch gate source is a symlink or not a regular file: %s\n' "$gate_source" >&2
-  exit 1
-else
-  ln -f -- "$gate_source" "$kimi_home/bin/eci-command-gate-mode"
-fi
 
 # Tracked config.toml keys hooks.state by the template root
 # "~/.omp/agent/eci/hooks.json:"; ECI looks trust up by the canonical absolute

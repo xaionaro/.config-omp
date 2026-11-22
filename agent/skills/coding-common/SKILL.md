@@ -11,7 +11,9 @@ Apply these requirements alongside the language-specific coding skill. Language-
 
 ### Design and APIs
 
-- Choose the correct, clean solution even when it is harder than the simple, practical, or convenient one.
+- Make illegal states unrepresentable.
+- Compression is intelligence. Thrive for more flexibility with less complexity. Thrive for discovering reusable structure (and smaller if possible), so that many separate observations can be understood through a smaller set of concepts, rules, and models.
+- Choose the correct, clean solution even when it is harder than the easy, "practical", or convenient one.
 - **Read before using.** Before first use of any package or library, read its API surface in documentation or source. Do not guess signatures, defaults, or behavior.
 - Prefer established, adequate implementations over reimplementing functionality. Search for them before writing from scratch. Follow the language-specific standard-library and third-party dependency policy.
 - Prefer reusable domain primitives over one-off code.
@@ -20,7 +22,16 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Group related behavior through types and interfaces. Encode domain relationships in the type system instead of scattering them across unrelated functions.
 - Define each logic rule or constant once and reference its authoritative source.
 - Return values must be orthogonal. If a caller can derive one result from another without losing information, return only the authoritative result. Add another result only for independent state or ambiguity the authoritative result cannot encode.
-- Make illegal states unrepresentable.
+
+### Design complexity
+
+- Whenever you design or modify code, you MUST eliminate compensating complexity and patchwork by correcting the underlying design. First establish the domain model, invariants, and responsibilities from domain semantics and contracts, without assuming the existing structure is correct. Use that model to derive or validate a coherent design that solves the problem directly, then implement it and remove the code and mechanisms it makes unnecessary. A sounder design may be more general or flexible.
+- Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
+- Decrease moving parts, state, and call depth when touching code.
+- Simplify through understanding, never by dropping behavior, contracts, or handled cases just to look simpler.
+- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete current reason you state, such as a requirement or the contract of a consumer we do not own. That it exists, or that our own code or data uses it, is not a reason.
+- Never keep or add code whose only reason is history, such as compatibility branches, aliases, old-format readers, version shims, or paths kept for old callers. Break the old form instead: in the same change, migrate every caller, doc, and test we own. Read only the current format and reject any other with an error.
+- Convert persisted data only with a separate migration tool kept outside the repository. Main code never imports, runs, or detects it. Run it once in the window that deploys the new format, verify the result, then delete it.
 
 ### Organization and names
 
@@ -51,16 +62,6 @@ Apply these requirements alongside the language-specific coding skill. Language-
 - Fix generators rather than editing generated files.
 - Use canonical sources for licenses, ignore templates, and configuration schemas instead of generating them from memory.
 - Satisfy all applicable linters.
-
-### Design complexity
-
-- Whenever you design or modify code, you MUST eliminate compensating complexity and patchwork by correcting the underlying design. First establish the domain model, invariants, and responsibilities from domain semantics and contracts, without assuming the existing structure is correct. Use that model to derive or validate a coherent design that solves the problem directly, then implement it and remove the code and mechanisms it makes unnecessary. A sounder design may be more general or flexible.
-- Justify every increase. A reusable, implementation-agnostic domain boundary is a concrete reason for an abstraction. Other increases need a concrete reason a simpler design cannot satisfy.
-- Decrease moving parts, state, and call depth when touching code.
-- Simplify through understanding, never by dropping behavior, contracts, or handled cases just to look simpler.
-- When redesigning, choose the better behavior over existing behavior. Keep existing behavior only for a concrete current reason you state, such as a requirement or the contract of a consumer we do not own. That it exists, or that our own code or data uses it, is not a reason.
-- Never keep or add code whose only reason is history, such as compatibility branches, aliases, old-format readers, version shims, or paths kept for old callers. Break the old form instead: in the same change, migrate every caller, doc, and test we own. Read only the current format and reject any other with an error.
-- Convert persisted data only with a separate migration tool kept outside the repository. Main code never imports, runs, or detects it. Run it once in the window that deploys the new format, verify the result, then delete it.
 
 ### Computational complexity
 

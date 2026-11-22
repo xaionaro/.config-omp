@@ -16,8 +16,6 @@ BIN="$ECI_HOME/bin"
 MODULE_PLANNER="$ECI_HOME/hooks/lib/eci-command-plan-go/eci-command-plan"
 OUTPUT="$TEST_ROOT/maintain-planner-output"
 
-# There deliberately is no Kimi home under TEST_HOME. The local planner pair in
-# bin/ is the maintenance operation; an optional peer cannot prevent its repair.
 mkdir -p -- "$TEST_HOME/tmp" "$ECI_HOME"
 cp -a -- "$ROOT/bin" "$ROOT/hooks" "$ROOT/tools" "$ECI_HOME/"
 cp -- "$ROOT/hooks.json" "$ECI_HOME/hooks.json"
@@ -31,9 +29,8 @@ for name in eci-command-plan eci-safe-import eci-hook-helper; do
 done
 printf '%s\n' 'stale module planner' >"$MODULE_PLANNER"
 
-if ! HOME="$TEST_HOME" KIMI_CODE_HOME="$TEST_HOME/.kimi-code" \
-  "$BIN/eci-active" maintain-planner >"$OUTPUT" 2>&1; then
-  printf '%s\n' 'maintain-planner should repair the local ECI planner pair when Kimi is unavailable:' >&2
+if ! HOME="$TEST_HOME" "$BIN/eci-active" maintain-planner >"$OUTPUT" 2>&1; then
+  printf '%s\n' 'maintain-planner should repair the local ECI planner pair:' >&2
   cat -- "$OUTPUT" >&2
   exit 1
 fi
@@ -55,6 +52,5 @@ fi
 )
 [ -z "$(find "$BIN" -maxdepth 1 -name '.planner-importer.txn.*')" ]
 grep -Fq "PLANNER_LOCAL_SYNCED $BIN" "$OUTPUT"
-grep -Fq 'ECI pair complete: local=true peer=false requested=eci' "$OUTPUT"
 
 printf '%s\n' 'eci-maintain-planner local-first: PASS'

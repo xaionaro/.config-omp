@@ -59,16 +59,8 @@ func Run(input io.Reader, output io.Writer) int {
 }
 
 func validRequest(request Request) bool {
-	validProvider := request.Provider == ProviderOmp || request.Provider == ProviderKimi
 	validRole := request.Role == RoleCoordinator || request.Role == RoleWorker
-	validMarker := request.Marker == MarkerActive || request.Marker == MarkerInactive
-	if !validProvider || !validRole || !validMarker || request.CWD == "" {
-		return false
-	}
-	if request.Marker == MarkerActive && request.ActiveSession == "" {
-		return false
-	}
-	return true
+	return validRole && request.CWD != ""
 }
 
 func writeInternalResult(output io.Writer, predicate string) int {
@@ -84,7 +76,7 @@ func writeInternalResult(output io.Writer, predicate string) int {
 			Path:        "n/a",
 			Predicate:   predicate,
 			Reason:      "command-plan request could not be classified",
-			Remediation: "submit one bounded JSON request with provider, role, cwd, marker, session, command, and marker paths",
+			Remediation: "submit one bounded JSON request with role, cwd, session, and command",
 		},
 	}
 	if err := json.NewEncoder(output).Encode(result); err != nil {

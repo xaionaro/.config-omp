@@ -4,6 +4,7 @@ run/
 logs/
 cache/
 natives/
+*.lock
 *.db
 *.db-shm
 *.db-wal
@@ -30,6 +31,8 @@ agent/eci/bin/*
 !agent/eci/bin/eci-requirement-assignment
 # eci-active-dispatch is a tracked provider-routing script; its built siblings stay ignored.
 !agent/eci/bin/eci-active-dispatch
+agent/codex-client-version.json
+agent/session-pins.json
 
 # Secrets and credentials
 auth*.json

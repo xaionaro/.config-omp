@@ -15,16 +15,13 @@ trap 'rm -rf -- "$TMP_ROOT"' EXIT HUP INT TERM
 HOME_ROOT="$TMP_ROOT/home"
 HOME_ALIAS="$TMP_ROOT/home-alias"
 FIXTURE_HOME="$HOME_ROOT/.omp/agent/eci"
-KIMI_HOME="$HOME_ROOT/.kimi-code"
 PROOF_ROOT="$TMP_ROOT/proof"
 SESSION_ID='maintain-planner-session'
 PLANNER_SENTINEL="$TMP_ROOT/planner-invoked"
-DISPATCH_LOG="$TMP_ROOT/dispatch.log"
 RUNTIME_RECEIPT="$FIXTURE_HOME/.eci-runtime-sync-manifest"
 BASELINE_RECEIPT="$TMP_ROOT/full-runtime-receipt"
 
-mkdir -p -- "$HOME_ROOT/tmp" "$FIXTURE_HOME/bin" \
-  "$KIMI_HOME/bin" "$PROOF_ROOT/$SESSION_ID"
+mkdir -p -- "$HOME_ROOT/tmp" "$FIXTURE_HOME/bin" "$PROOF_ROOT/$SESSION_ID"
 MAIN_TRANSCRIPT="$HOME_ROOT/.omp/agent/sessions/maintain-planner/main.jsonl"
 mkdir -p -- "$(dirname -- "$MAIN_TRANSCRIPT")"
 printf '%s\n' \
@@ -32,8 +29,7 @@ printf '%s\n' \
   '{"type":"message","role":"user","content":"maintain planner"}' >"$MAIN_TRANSCRIPT"
 ln -s -- "$HOME_ROOT" "$HOME_ALIAS"
 cp -- "$ROOT/bin/eci-active" "$FIXTURE_HOME/bin/eci-active"
-cp -- "$ROOT/bin/eci-active" "$KIMI_HOME/bin/eci-active"
-cp -- "$ROOT/bin/eci-active-dispatch" "$FIXTURE_HOME/bin/eci-active-dispatch"
+cp -- "$ROOT/bin/eci-runtime-sync" "$FIXTURE_HOME/bin/eci-runtime-sync"
 cp -- "$ROOT/hooks.json" "$FIXTURE_HOME/hooks.json"
 cp -a -- "$ROOT/hooks/." "$FIXTURE_HOME/hooks/"
 cp -a -- "$ROOT/tools" "$FIXTURE_HOME/tools"
@@ -48,13 +44,7 @@ mkdir -p -- "$UNREADABLE_MANAGED_DIR"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$UNREADABLE_MANAGED_FILE"
 chmod 755 -- "$UNREADABLE_MANAGED_DIR" "$UNREADABLE_MANAGED_FILE"
 
-cat >"$FIXTURE_HOME/bin/eci-runtime-sync" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >"${ECI_TEST_DISPATCH_LOG:?}"
-EOF
-chmod 755 -- "$FIXTURE_HOME/bin/eci-active" "$KIMI_HOME/bin/eci-active" \
-  "$FIXTURE_HOME/bin/eci-active-dispatch" "$FIXTURE_HOME/bin/eci-runtime-sync"
+chmod 755 -- "$FIXTURE_HOME/bin/eci-active" "$FIXTURE_HOME/bin/eci-runtime-sync"
 fixture_active_digest="$(eci_sha256_hex "$FIXTURE_HOME/bin/eci-active")"
 fixture_validate_bash_digest="$(eci_sha256_hex "$FIXTURE_HOME/hooks/validate-bash.sh")"
 fixture_validate_bash_mode="$(eci_stat mode "$FIXTURE_HOME/hooks/validate-bash.sh")"
@@ -75,7 +65,6 @@ write_full_runtime_receipt() {
   {
     printf '%s\n' hooks.json
     printf '%s\n' bin/eci-active
-    printf '%s\n' bin/eci-active-dispatch
     printf '%s\n' bin/eci-runtime-sync
     [ -f "$FIXTURE_HOME/bin/eci-command-gate-mode" ] && printf '%s\n' bin/eci-command-gate-mode
     find "$FIXTURE_HOME/hooks" -type f ! -path "$FIXTURE_HOME/hooks/tests/*" \
@@ -101,18 +90,8 @@ restore_full_runtime_receipt() {
   chmod 600 -- "$RUNTIME_RECEIPT"
 }
 
-printf '%s\n' \
-  'scope: maintain-planner test' \
-  "cwd: $FIXTURE_HOME" \
-  "session_id: $SESSION_ID" \
-  'created_utc: 2026-08-25T00:00:00Z' \
-  >"$PROOF_ROOT/$SESSION_ID/eci_active"
-
-HOME="$HOME_ROOT" ECI_HOME="$FIXTURE_HOME" KIMI_CODE_HOME="$KIMI_HOME" \
-  ECI_TEST_DISPATCH_LOG="$DISPATCH_LOG" \
-  ECI_ROLE=coordinator \
+HOME="$HOME_ROOT" ECI_HOME="$FIXTURE_HOME" ECI_ROLE=coordinator \
   "$FIXTURE_HOME/bin/eci-active" maintain-planner
-grep -Fx -- "planner-apply --target $KIMI_HOME" "$DISPATCH_LOG" >/dev/null
 
 # Publish the native command planner where validate-bash resolves it. The
 # non-native stub under the hooks tree must never execute.
@@ -140,7 +119,7 @@ run_hook_with_home() {
   local command="$1" selected_home="$2" selected_eci_home="$3" transcript="${4-}" output="$TMP_ROOT/hook-output-$RANDOM"
   jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$command" --arg transcript "$transcript" \
     '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}} + (if $transcript == "" then {} else {transcript_path:$transcript} end)' |
-    HOME="$selected_home" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$selected_eci_home" KIMI_CODE_HOME="$KIMI_HOME" \
+    HOME="$selected_home" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$selected_eci_home" \
       ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
       bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$output" || return $?
   printf '%s\n' "$output"
@@ -150,7 +129,7 @@ assert_hook_unavailable() {
   local command="$1" transcript="$2" status
   if jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$command" --arg transcript "$transcript" \
     '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",transcript_path:$transcript,tool_input:{command:$command}}' |
-    HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$FIXTURE_HOME" KIMI_CODE_HOME="$KIMI_HOME" \
+    HOME="$HOME_ROOT" ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$FIXTURE_HOME" \
       ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
       bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$TMP_ROOT/unavailable.out" 2>"$TMP_ROOT/unavailable.err"; then
     status=0
@@ -239,22 +218,6 @@ assert_maintenance_target_admitted 'eci-active maintain-planner'
 assert_maintenance_target_admitted '~/.omp/agent/eci/bin/eci-active maintain-planner'
 assert_maintenance_target_admitted "$FIXTURE_HOME/bin/eci-active maintain-planner"
 
-kimi_target_output="$(run_hook '"$HOME/.kimi-code/bin/eci-active" maintain-planner')"
-# ECI_LIFECYCLE_TARGET_DENIED is retired (not produced at HEAD or by source
-# 575bb81; see test-validate-bash-classifier.sh:376-378). Assert the denial the
-# hook actually produces for a foreign lifecycle target: a worker-role deny on
-# the coordinator-owned lifecycle control predicate, with no token pin.
-jq -e '
-  .hookSpecificOutput.permissionDecision == "deny" and
-  (.hookSpecificOutput.permissionDecisionReason | contains("operation=worker-control")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("predicate=worker-lifecycle-control")) and
-  (.hookSpecificOutput.permissionDecisionReason | contains("role=worker"))
-' "$kimi_target_output" >/dev/null || {
-  printf '%s\n' 'different Kimi lifecycle target was not denied as worker lifecycle control:' >&2
-  cat -- "$kimi_target_output" >&2
-  exit 1
-}
-
 assert_receipt_drift_admitted() {
   local label="$1" command="$2" output
 
@@ -334,11 +297,6 @@ restore_full_runtime_receipt
 eci_sed_inplace "s#^bin/eci-runtime-sync\t$fixture_runtime_sync_digest\t#bin/eci-runtime-sync\t$zero_digest\t#" "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'stale runtime-sync digest' "$exact_command"
 
-fixture_dispatch_digest="$(eci_sha256_hex "$FIXTURE_HOME/bin/eci-active-dispatch")"
-restore_full_runtime_receipt
-eci_sed_inplace "s#^bin/eci-active-dispatch\t$fixture_dispatch_digest\t#bin/eci-active-dispatch\t$zero_digest\t#" "$RUNTIME_RECEIPT"
-assert_receipt_drift_admitted 'stale lifecycle dispatcher digest' "$exact_command"
-
 # Exact producer shape is required: reject malformed, missing, extra,
 # duplicate, and noncanonical ordering records even if eci-active matches.
 restore_full_runtime_receipt
@@ -350,8 +308,8 @@ eci_sed_inplace '/^hooks\/validate-bash.sh\t/d' "$RUNTIME_RECEIPT"
 assert_receipt_drift_admitted 'missing validate-bash record' "$quoted_exact_command"
 
 restore_full_runtime_receipt
-eci_sed_inplace '/^bin\/eci-active-dispatch\t/d' "$RUNTIME_RECEIPT"
-assert_receipt_drift_admitted 'missing lifecycle dispatcher record' "$exact_command"
+eci_sed_inplace '/^bin\/eci-runtime-sync\t/d' "$RUNTIME_RECEIPT"
+assert_receipt_drift_admitted 'missing runtime-sync record' "$exact_command"
 
 # `find` failure must be terminal. With the late-sorting managed row removed,
 # a process-substitution consumer used to accept the remaining partial
@@ -416,7 +374,7 @@ extra_output="$(run_hook "$FIXTURE_HOME/bin/eci-active maintain-planner extra" "
 worker_output="$TMP_ROOT/worker-output"
 jq -cn --arg cwd "$FIXTURE_HOME" --arg command "$FIXTURE_HOME/bin/eci-active maintain-planner" \
   '{session_id:"maintain-planner-session",cwd:$cwd,tool_name:"Bash",tool_input:{command:$command}}' |
-  ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$FIXTURE_HOME" KIMI_CODE_HOME="$KIMI_HOME" \
+  ECI_PROOF_ROOT="$PROOF_ROOT" ECI_HOME="$FIXTURE_HOME" \
     ECI_HOOK_IS_SUBAGENT=true ECI_ROLE=worker \
     ECI_TEST_PLANNER_SENTINEL="$PLANNER_SENTINEL" PATH="$FIXTURE_HOME/bin:$PATH" \
     bash "$FIXTURE_HOME/hooks/validate-bash.sh" >"$worker_output"

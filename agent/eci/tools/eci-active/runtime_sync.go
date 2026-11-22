@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// Runtime synchronization ports the local publication of the pre-migration source's eci_runtime_sync_run
-// (hooks/lib/eci-runtime-sync.sh at 575bb81). The canonical source is the running omp ECI home. Its managed
-// surface is the hooks/ tree plus the bin/ entries the pre-migration source publishes. After the local publish,
-// the source's own bin/eci-runtime-sync runs peer-apply against the Kimi peer home; the peer is advisory on failure.
+// Runtime synchronization publishes the canonical source, the running omp ECI home, to every target home. Its
+// managed surface is the hooks/ tree plus the bin/ entries in runtimeSyncBins.
 const (
 	runtimeSyncProvider    = "eci"
 	runtimeSyncHomeSuffix  = "/.omp/agent/eci"
@@ -25,9 +22,9 @@ const (
 // runtimeSyncRequired must exist in the canonical source before anything is published.
 var runtimeSyncRequired = []string{"bin/eci-active", "hooks/validate-bash.sh"}
 
-// runtimeSyncBins are the bin/ entries published when present (the pre-migration source's list).
+// runtimeSyncBins are the bin/ entries published when present.
 var runtimeSyncBins = []string{
-	"bin/eci-active", "bin/eci-active-dispatch", "bin/eci-runtime-sync",
+	"bin/eci-active", "bin/eci-runtime-sync",
 	"bin/eci-command-gate-mode", "bin/eci-worker-git",
 }
 
@@ -38,13 +35,12 @@ type runtimeRow struct {
 	mode os.FileMode
 }
 
-// runtimeSyncFail formats a refusal in the pre-migration source's shape.
+// runtimeSyncFail formats a refusal as "[CODE] ECI runtime synchronization denied: detail".
 func runtimeSyncFail(code, format string, args ...any) error {
 	return exitError{code: 1, msg: fmt.Sprintf("[%s] ECI runtime synchronization denied: %s", code, fmt.Sprintf(format, args...))}
 }
 
-// syncRuntime publishes the canonical ECI runtime to every resolved target home, refreshes the source receipt, and
-// applies the runtime to the Kimi peer home.
+// syncRuntime publishes the canonical ECI runtime to every resolved target home and refreshes the source receipt.
 func syncRuntime(args []string) error {
 	if len(args) != 1 {
 		return usageError()
@@ -84,12 +80,6 @@ func syncRuntime(args []string) error {
 	publishRuntimeSourceReceipt(source, manifest)
 	fmt.Fprintf(os.Stdout, "ECI runtime synchronization complete: provider=%s source=%s targets=%d staging=cleaned\n",
 		runtimeSyncProvider, source, len(targets))
-	peer := exec.Command(filepath.Join(source, "bin", "eci-runtime-sync"), "peer-apply", "--target", kimiHome())
-	peer.Stdout = os.Stderr
-	peer.Stderr = os.Stderr
-	if err := peer.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ECI runtime peer synchronization advisory: local runtime synchronization succeeded; the Kimi peer runtime was not synchronized: %v\n", err)
-	}
 	return nil
 }
 
@@ -107,7 +97,7 @@ func runtimeSyncTmpRoot() (string, error) {
 	return canon, nil
 }
 
-// runtimeSafeRel accepts only plain printable relative paths, as the pre-migration source's manifest validation does.
+// runtimeSafeRel accepts only plain printable relative paths, so a manifest row is one tab-separated line.
 func runtimeSafeRel(rel string) bool {
 	return !strings.HasPrefix(rel, "/") && !strings.Contains(rel, "..") &&
 		strings.IndexFunc(rel, func(r rune) bool { return r < 0x20 || r > 0x7e }) < 0
@@ -200,7 +190,8 @@ func stageRuntime(source, stage string) ([]runtimeRow, []byte, error) {
 	return rows, manifest.Bytes(), nil
 }
 
-// runtimeMountPoints lists mount points from mountinfo, skipping entries the pre-migration source also skips.
+// runtimeMountPoints lists mount points from mountinfo. It skips entries that hold an escape sequence or a
+// non-printable byte, because their literal text is not a usable path.
 func runtimeMountPoints() []string {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {

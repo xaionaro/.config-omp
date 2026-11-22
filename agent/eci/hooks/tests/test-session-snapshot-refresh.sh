@@ -313,13 +313,12 @@ test_old_marker_dir_with_symlink_eci_marker_is_pruned() {
 
 # A source-only checkout has no native tools. SessionStart must not compile them;
 # hooks/build-native-binaries.sh provisions the canonical pair into bin/, and
-# bin/eci-runtime-sync verifies that pair and provisions the Kimi peer copy.
+# bin/eci-runtime-sync verifies that pair.
 test_source_checkout_provisions_native_tools_into_bin() {
   local HOME="$TMP_ROOT/home"
   local fixture="$HOME/.omp/agent/eci" module tool importer_saved
-  local kimi="$TMP_ROOT/kimi/.kimi-code"
   local -a tools=(eci-command-plan eci-safe-import eci-hook-helper)
-  mkdir -p "$fixture/hooks/lib" "$fixture/bin" "$HOME/tmp" "$kimi"
+  mkdir -p "$fixture/hooks/lib" "$fixture/bin" "$HOME/tmp"
   cp "$ROOT/hooks/session-snapshot.sh" "$ROOT/hooks/build-native-binaries.sh" "$fixture/hooks/"
   cp "$ROOT/bin/eci-active" "$ROOT/bin/eci-runtime-sync" "$fixture/bin/"
   cp "$ROOT/hooks/lib/"*.sh "$fixture/hooks/lib/"
@@ -342,13 +341,8 @@ test_source_checkout_provisions_native_tools_into_bin() {
     [ -x "$fixture/bin/$tool" ]
     [ -f "$fixture/bin/$tool.sha256" ]
   done
-  KIMI_CODE_HOME="$kimi" "$fixture/bin/eci-runtime-sync" planner-check --target "$kimi" >"$TMP_ROOT/check.out"
-  [ "$(cat "$TMP_ROOT/check.out")" = "$(printf 'OK\tmanaged pair\teci')" ]
-  KIMI_CODE_HOME="$kimi" "$fixture/bin/eci-runtime-sync" planner-apply --target "$kimi" >"$TMP_ROOT/peer.out"
-  for tool in "${tools[@]}"; do
-    cmp -- "$fixture/bin/$tool" "$kimi/bin/$tool"
-    cmp -- "$fixture/bin/$tool.sha256" "$kimi/bin/$tool.sha256"
-  done
+  "$fixture/bin/eci-runtime-sync" planner-check >"$TMP_ROOT/check.out"
+  [ "$(cat "$TMP_ROOT/check.out")" = "$(printf 'OK\tmanaged pair')" ]
 
   printf '%s\n' '{"provider":"omp","role":"coordinator","cwd":"/tmp","marker":"inactive","command":"pwd"}' |
     "$fixture/bin/eci-command-plan" |

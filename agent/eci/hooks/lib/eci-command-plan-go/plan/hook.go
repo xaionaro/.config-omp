@@ -124,7 +124,7 @@ func finalizeHookDenial(
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 		return denial, nil
 	}
-	command := exec.Command(tool, "finalize", string(request.Provider), string(request.Role), string(request.Marker), "parser")
+	command := exec.Command(tool, "finalize", string(request.Role))
 	command.Env = append(os.Environ(),
 		"ECI_GATE_DENIAL_COMMAND="+finalizeEnvValue(request.Command),
 		"ECI_GATE_DENIAL_CWD="+finalizeEnvValue(request.CWD),

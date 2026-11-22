@@ -20,23 +20,21 @@ eci_runtime_hook_helper_path() {
   printf '%s\n' "$binary"
 }
 
-# Source the original publisher only inside this owned child. The publisher
-# alone acquires its pair lock, and rechecks requested tools after waiting.
+# Source the publisher only inside this owned child. The publisher alone
+# acquires its pair lock, and rechecks requested tools after waiting.
 eci_runtime_ensure_pair() (
-  local provider="$1" source_root peer_root
-  shift
+  local source_root
   source_root="$(eci_realpath_existing "$HOME/.omp/agent/eci")" || return 1
-  peer_root="$(eci_realpath_existing "${KIMI_CODE_HOME:-$HOME/.kimi-code}" 2>/dev/null || true)"
   source "$source_root/bin/eci-runtime-sync" || return 1
-  planner_sync ensure "$source_root" "$peer_root" "$provider" "$@"
+  planner_sync ensure "$source_root" "$@"
 )
 
-# Build absent Go runtime tools from this provider's sources. Compatible
+# Build absent Go runtime tools from the ECI home's sources. Compatible
 # executables stay in place; explicit maintenance owns source refreshes.
 # The planner pair is not compiled here: hooks/build-native-binaries.sh
-# provisions it, and ensure only verifies or copies the canonical pair.
+# provisions it, and ensure only verifies the canonical pair.
 eci_runtime_build_missing() (
-  local root="$1" name module binary compiler lock_fd temporary='' provider resolved_root
+  local root="$1" name module binary compiler lock_fd temporary='' resolved_root
   local -a pair_tools=()
   shift
   [ "$#" -gt 0 ] || set -- eci-command-gate-mode eci-command-plan eci-safe-import eci-hook-helper eci-worker-git
@@ -49,15 +47,11 @@ eci_runtime_build_missing() (
   done
   if [ "${#pair_tools[@]}" -gt 0 ]; then
     resolved_root="$(eci_realpath_existing "$root")" || return 1
-    if [ "$resolved_root" = "$(eci_realpath_existing "$HOME/.omp/agent/eci")" ]; then
-      provider=eci
-    elif [ "$resolved_root" = "$(eci_realpath_existing "${KIMI_CODE_HOME:-$HOME/.kimi-code}")" ]; then
-      provider=kimi
-    else
-      printf 'ECI runtime build: unknown provider: %s\n' "$root" >&2
+    if [ "$resolved_root" != "$(eci_realpath_existing "$HOME/.omp/agent/eci")" ]; then
+      printf 'ECI runtime build: planner pair is verified only in the ECI home: %s\n' "$root" >&2
       return 1
     fi
-    eci_runtime_ensure_pair "$provider" "${pair_tools[@]}" || return 1
+    eci_runtime_ensure_pair "${pair_tools[@]}" || return 1
   fi
   trap '[ -z "$temporary" ] || rm -rf -- "$temporary"' EXIT
   for name in "$@"; do
