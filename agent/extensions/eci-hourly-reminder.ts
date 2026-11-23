@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 // The user asked for this reminder in one retained ECI Supervisor session; every other session loading this global extension stays inert.
-// Delete this file and restart once that session is no longer retained.
-const ROOT_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
+// Delete this file and restart after root ECI teardown for this session or if the user withdraws the reminder request.
+const REMINDER_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
 const HOUR_MS = 60 * 60 * 1000;
 const REMINDER = `Most important:
 Remember: you are an ECI supervisor. Do not forget to always immediatelly update the project ledger (keep in mind that it is present simple, and you must do that always, not just when I send this message). Read ECI, project ledger and coding skills, and strictly follow them. Never forget that you are not just proxy, you actually must critically and proactively ensure the project is progressing forward. Continously reflect on any violations of the skills mentioned and correct for the mistakes.
@@ -12,8 +12,8 @@ Print me the full list of violations that you found and what are you doing to co
 
 When I give to you this prompt, you tend to just start making a verification report. But I'm RE-EMPHASIZING: THE MOST IMPORTANT IS THE FIRST PARAGRAPH, DO MOST OF YOUR WORK THERE. The second is just verification AFTER the first.`;
 
-function isSupervisorSession(ctx: ExtensionContext): boolean {
-  return ctx.sessionManager.getSessionId() === ROOT_SESSION_ID;
+function isReminderSession(ctx: ExtensionContext): boolean {
+  return ctx.sessionManager.getSessionId() === REMINDER_SESSION_ID;
 }
 
 export default function eciHourlyReminder(pi: ExtensionAPI): void {
@@ -25,14 +25,14 @@ export default function eciHourlyReminder(pi: ExtensionAPI): void {
   }
 
   function sync(_event: unknown, ctx: ExtensionContext) {
-    if (!isSupervisorSession(ctx)) {
+    if (!isReminderSession(ctx)) {
       stop();
       return;
     }
     if (cancel !== undefined) return;
     const timer = ctx.setInterval(() => {
       // Check eligibility at delivery time, not just when arming the timer.
-      if (isSupervisorSession(ctx)) {
+      if (isReminderSession(ctx)) {
         // The user's prompt, verbatim with default user attribution; "aside" lands at the next step boundary of a live run instead of waiting for it to end.
         return pi.sendUserMessage(REMINDER, { deliverAs: "aside" });
       }
