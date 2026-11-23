@@ -20,6 +20,8 @@ The current Job owner—its Orchestrator—assigns the Job's required workflow r
 
 Check applicable coding skills, formatter/linter/config anchors, actual scope, exceptions, and post-write tool evidence under [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Report every source-backed applicable requirement violation; reserve `NIT` for discretionary preferences.
 
+When the reviewed scope adds, changes, or runs tests, check them against [testing-discipline](../../testing-discipline/SKILL.md)'s Efficient tests and Speed-review record rules. Report a suite run over 60 s without a qualifying speed review, or an avoidable test cost, as a requirement violation.
+
 ## Critic B — correctness and fidelity
 
 Check correctness, safety, concrete requirements, interfaces, non-style boundaries, and root-cause/regression rationale. Check scope fidelity and least restriction against `exact user source → faithful requested outcome → bounded scope`. Distinguish a repair needed to meet or prove that outcome from an invented separate outcome; report the latter as `REJECT` without treating stale lineage as a work gate. Verify that named functions, types, and interfaces actually provide their claimed behavior.
