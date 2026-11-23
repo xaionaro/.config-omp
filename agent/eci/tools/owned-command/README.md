@@ -95,6 +95,13 @@ If the guard crashes or is SIGKILLed, nothing retires the command subtree; it
 continues under its memory and swap limits until it exits, when systemd can
 collect the scope.
 
+Choose a cap of at most 512 MiB (536870912 bytes) unless evidence shows the
+current cap is too low for the workload. To go above 512 MiB, increase the
+current cap by at most 30% at a time. Before each such increase, require
+evidence that the current cap is insufficient, such as a receipt showing a
+command-group OOM at that cap. An unrelated failure or exit status alone is
+not evidence. Stop increasing once the cap is sufficient.
+
 For resource-sensitive builds, measure need and fresh headroom before launch,
 and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` measures
 need only for workloads that start no nested units; otherwise add each nested
