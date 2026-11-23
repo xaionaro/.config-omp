@@ -50,7 +50,9 @@ ECI means “implement everything, then test” in every iteration. A normal ite
 
 ## Test efficiency
 
-Read and apply [testing-discipline](../testing-discipline/SKILL.md) when your activity matches its [trigger](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), including when work changes. Apply its **Efficient tests** and **Speed-review record** rules to focused checks, combined iteration proof, Fast checks, and applicable E2E. For each suite used as proof, cite its command and elapsed time in the existing handoff or review. When the suite meets testing-discipline's speed-defect criterion, also cite the speed review or qualifying record. Passing proof does not waive an in-scope efficiency requirement.
+When the [Tests trigger](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing) matches, read [testing-discipline](../testing-discipline/SKILL.md) in its own `read` call. Recover missing or elided text and recheck applicability when work changes. Apply **Efficient tests** and **Speed-review record** to focused checks, combined iteration proof, Fast checks, and applicable E2E.
+
+For each suite used as proof, cite its command and elapsed time in the existing handoff or review. Include build, setup and waits the suite invokes; exclude external queue time and unrelated phases. If the available timing cannot isolate the suite, report the uncertainty. When the suite meets testing-discipline’s speed-defect criterion, cite its speed review or qualifying record. Passing proof does not waive an in-scope efficiency requirement.
 
 ## Configuration E2E contract
 
@@ -84,6 +86,7 @@ Match the task against the [trigger table](../../eci-binding-contract.md#eci-sup
 - A unit whose skill cell names several skills gets one line listing each matched skill as `match: <skill>, <skill> [Ref N]`; its `no match` line gives one reason.
 - A unit excluded by a restricted skill whose stated predicate is not met gets `no match: <module predicate not met>`.
 - The `Skills:` line lists exactly the `match:` skills with their markers, or `none, <reason>` when there are none. The dispatcher derives it from the Routing lines.
+- Check the brief as sent, including shared context and per-Worker text. Reviewing suite proof matches the testing-discipline trigger even in a read-only review with no test edits. If you miss a match, supply the skill to the Worker and refresh any affected evidence.
 
 For task-backed ECI work, select the role below before Model selection. Presets supply defaults, not lifecycle authority; preserve each brief's assignment, exclusions, skill routing, owner, and review role.
 

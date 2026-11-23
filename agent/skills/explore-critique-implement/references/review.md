@@ -20,7 +20,7 @@ The current Job owner—its Orchestrator—assigns the Job's required workflow r
 
 Check applicable coding skills, formatter/linter/config anchors, actual scope, exceptions, and post-write tool evidence under [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Report every source-backed applicable requirement violation; reserve `NIT` for discretionary preferences.
 
-Check in-scope tests and the test runs used as proof against the [test-efficiency rules](../SKILL.md#test-efficiency), even when no test files changed. Report violations even when the proof passes.
+Check in-scope tests and the test runs used as proof against the [test-efficiency rules](../SKILL.md#test-efficiency), even when no test files changed. Report violations even when the proof passes. Check each proof suite’s command, elapsed time, and any required speed review or qualifying record against the underlying evidence. Distinguish a concrete violation from missing evidence.
 
 ## Critic B — correctness and fidelity
 
