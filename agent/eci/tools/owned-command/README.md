@@ -13,12 +13,14 @@ is cleared, trimmed or replaced. The wrapper then prints a build notice on stder
 and that build runs in the caller's process tree without a memory cap.
 
 For repeated, capped or timed phases, prepare once before starting their budgets
-or caps, so any build happens outside them:
+or caps, so any build happens outside them. Linux example:
 
 ```sh
 guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable)
-"$guard" -deadline 3s -receipt receipt.json -- command args...
+"$guard" -memory-max 67108864 -deadline 3s -receipt receipt.json -- command args...
 ```
+
+On macOS, omit `-memory-max` and its argument; the backend does not support it.
 
 Resolution accepts no other arguments, performs the same native build/cache
 validation, and prints one absolute immutable executable path without running it.
@@ -29,8 +31,9 @@ cache version while callers use it. Ordinary wrapper invocations still recheck
 source before each execution, and a call that has to compile is a cold build: the
 warm limits apply only to a current executable resolved with the GOCACHE that built it.
 
+Linux launch and cancellation:
+
 ```sh
-owned-command -deadline 3s -receipt receipt.json -- command args...
 owned-command -cancel-pid PID -cancel-birth BIRTH -receipt receipt.json
 owned-command -memory-max 67108864 -deadline 3s -receipt receipt.json -- command args...
 ```
@@ -65,11 +68,12 @@ command membership. A process migrating through another service manager,
 including a nested `owned-command` or `systemd-run`, leaves inherited-family
 coverage; this tool is not a sandbox.
 
-`-memory-max BYTES` opts into an aggregate cgroup-v2 workload limit; omit the flag
-to preserve the original uncapped topology. Explicit zero is a usage error (exit 2,
-no receipt). The delegated scope has `guard` and
-`command` siblings, so the guard is outside the capped workload. Setup enables
-the memory controller and verifies `memory.max`, `memory.swap.max=0`, and
+On Linux, `-memory-max BYTES` sets an aggregate cgroup v2 workload limit. The
+CLI accepts omission (uncapped), but that does not satisfy the Linux launch
+policy below. Explicit zero is a usage error (exit 2, no receipt). The delegated
+scope has `guard` and `command` siblings, so the guard is outside the capped
+workload. Setup enables the memory controller and verifies `memory.max`,
+`memory.swap.max=0`, and
 `memory.oom.group=1` before launch; missing controls fail closed with status 125.
 The effective limit is rounded down to a page; explicit values below one page
 are usage errors (exit 2 before launch, no receipt).
@@ -95,12 +99,18 @@ If the guard crashes or is SIGKILLed, nothing retires the command subtree; it
 continues under its memory and swap limits until it exits, when systemd can
 collect the scope.
 
-Choose a cap of at most 512 MiB (536870912 bytes) unless evidence shows the
-current cap is too low for the workload. To go above 512 MiB, increase the
-current cap by at most 30% at a time. Before each such increase, require
-evidence that the current cap is insufficient, such as a receipt showing a
-command-group OOM at that cap. An unrelated failure or exit status alone is
-not evidence. Stop increasing once the cap is sufficient.
+For Linux launches, pass `-memory-max BYTES`. Start with a cap of at most
+512 MiB (536870912 bytes) unless the evidence below justifies a higher cap.
+Before each increase, require workload-specific evidence that the current cap
+is insufficient. Increase by at most 30% of the current cap per step and stop
+once the cap is sufficient. To exceed 512 MiB, also establish that 512 MiB is
+insufficient. If no cap has been established for the workload, size its first
+cap above 512 MiB as an increase from 512 MiB.
+
+Use the effective cap if the requested value was rounded down. Evidence can be
+a comparable workload measurement or a receipt showing that the command cgroup
+hit its own limit and ran out of memory. An exit status, an OOM kill alone, or
+a failure unrelated to the cap does not establish that the cap is too low.
 
 For resource-sensitive builds, measure need and fresh headroom before launch,
 and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` measures
