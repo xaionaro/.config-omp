@@ -2,12 +2,13 @@ This opt-in test starts the installed ECI app-server and feeds it deterministic 
 
 The model requests an ordinary shell command and a protected ECI control mutation. Assertions require the actual registered Bash PreToolUse hook to complete, the ordinary command to produce its expected output, and the control mutation to be denied with ECI_CONTROL_OWNER_REQUIRED. Failed hook events fail the test.
 
-Run from the source checkout, using owned-command to retire the whole process family.
+Run from `agent/eci` in the source checkout under owned-command. See its [Linux launch coverage](../../../tools/owned-command/README.md#command-launch) and [macOS process-group coverage](../../../tools/owned-command/README.md#macos-darwin-pgroup-backend).
 On Linux, set `cap_bytes` using the [memory cap sizing rules](../../../tools/owned-command/README.md#command-launch). On macOS, omit `-memory-max` and its argument.
 
 ```sh
+guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable) &&
 ECI_E2E=1 ECI_E2E_EVIDENCE="$HOME/tmp/eci-hook-e2e-$(date -u +%Y%m%dT%H%M%SZ)" \
-  "$HOME/.omp/agent/eci/bin/owned-command" -memory-max "$cap_bytes" -deadline 90s \
+  "$guard" -memory-max "$cap_bytes" -deadline 90s \
   -receipt "$HOME/tmp/eci-hook-e2e-receipt-$(date -u +%Y%m%dT%H%M%SZ).json" -- \
   go -C hooks/tests/eci-hook-e2e-go test -v -count=1
 ```

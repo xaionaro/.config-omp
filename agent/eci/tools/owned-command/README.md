@@ -104,18 +104,23 @@ For Linux launches, pass `-memory-max BYTES`. Start with a cap of at most
 Before each increase, require workload-specific evidence that the current cap
 is insufficient. Increase by at most 30% of the current cap per step and stop
 once the cap is sufficient. To exceed 512 MiB, also establish that 512 MiB is
-insufficient. If no cap has been established for the workload, size its first
-cap above 512 MiB as an increase from 512 MiB.
+insufficient. If no cap has been established for the workload, start sizing
+above 512 MiB from 512 MiB. Comparable evidence can justify several sizing
+steps before the first launch, without running at intermediate caps. Each
+step still needs evidence that the preceding effective cap is insufficient.
 
 Use the effective cap if the requested value was rounded down. Evidence can be
-a comparable workload measurement or a receipt showing that the command cgroup
-hit its own limit and ran out of memory. An exit status, an OOM kill alone, or
-a failure unrelated to the cap does not establish that the cap is too low.
+a comparable measurement showing the workload cannot meet its needs at that
+cap, or a receipt showing an allocation OOM attributable to the command
+cgroup's effective limit. Exit status or a failure unrelated to the cap is
+not evidence. Neither `max` plus `oom_kill` nor hierarchical counts alone
+attribute an allocation OOM to that limit.
 
 For resource-sensitive builds, measure need and fresh headroom before launch,
-and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` measures
-need only for workloads that start no nested units; otherwise add each nested
-unit's separately measured peak. Estimates are not a reservation; if the
+and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` records
+observed usage for headroom estimates, not the minimum cap the workload needs:
+usage can include reclaimable cache. Add each nested unit's separately
+measured peak to the usage estimate. Estimates are not a reservation; if the
 inequality does not hold, reduce concurrency or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process

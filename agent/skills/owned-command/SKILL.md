@@ -9,16 +9,18 @@ Use `"$HOME/.omp/agent/eci/bin/owned-command"` for finite host command families 
 
 On Linux, pass `-memory-max BYTES` and follow the [memory cap sizing rules](../../eci/tools/owned-command/README.md#command-launch). Omit `-memory-max` on macOS.
 
-Launch with an explicit `-deadline` (default 3s; longer commands are retired with status 125), a unique receipt and `--` before the command. Linux example:
+Launch with an explicit `-deadline` (default 3s; longer commands are retired with status 125), a unique receipt and `--` before the command. Linux example, with preparation before the timed launch:
 
 ```bash
-receipt_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-command.XXXXXXXX")
-status=0
-"$HOME/.omp/agent/eci/bin/owned-command" -memory-max 67108864 -deadline 150ms \
-  -receipt "$receipt_dir/launch.json" -- \
-  /bin/sh -c 'sleep 30 & wait' || status=$?
-printf 'status=%s\n' "$status"
-cat "$receipt_dir/launch.json"
+guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable) &&
+receipt_dir=$(mktemp -d "${TMPDIR:-/tmp}/owned-command.XXXXXXXX") && {
+  status=0
+  "$guard" -memory-max 67108864 -deadline 150ms \
+    -receipt "$receipt_dir/launch.json" -- \
+    /bin/sh -c 'sleep 30 & wait' || status=$?
+  printf 'status=%s\n' "$status"
+  cat "$receipt_dir/launch.json"
+}
 ```
 
 Cancel only a separately recorded positive Linux host PID with its positive `/proc/PID/stat` field 22 birth identity (on macOS `-cancel-pid` with `-cancel-birth` returns 125 with a receipt and signals nothing):
@@ -32,7 +34,7 @@ The guard validates that identity through anchored reads and retained pidfd cust
 
 Launch uses a private inherited cgroup v2 subtree and native child reaping; it requires a reachable systemd user manager with delegation, including for direct-built binaries. Missing facilities return 125 before command launch. Foreign PID cancellation instead covers one bounded observed static-family snapshot; children outside that snapshot or changing ancestry are unproved. Read `Backend` and `FamilyCoverage` with settlement fields; cancellation never authorizes killing the target's ambient cgroup.
 
-Explicit values below one page, including zero, are usage errors on both backends: exit 2 before launch, no receipt. Before a capped or timed phase, resolve with `--resolve-executable` and run the printed path: wrapper compilation runs uncapped in the caller's process tree before the cap applies. The guard moves to a sibling `guard` cgroup; only `command` is capped, with swap disabled. An OOM at the cap kills the whole command group: expect status 137 and `Memory.Events.oom_kill` above zero. Setup returns 125 before launch when enforcement is unavailable. The cap reserves no memory and gives no host-wide safety. Nested `owned-command`, `systemd-run` or other new systemd units leave the cap, custody and `Memory.Peak`. On macOS, a cap of at least one page is refused with status 125 and a guard-error receipt; the command does not run. Combining any cap with `-cancel-pid` is invalid.
+Explicit values below one page, including zero, are usage errors on both backends: exit 2 before launch, no receipt. Before a capped or timed phase, resolve with `--resolve-executable` and run the printed path: wrapper compilation runs uncapped in the caller's process tree before the cap applies. The guard moves to a sibling `guard` cgroup; only `command` is capped, with swap disabled. An OOM at the cap kills the whole command group: expect status 137 and `Memory.Events.oom_kill` above zero, but these signs do not establish that the cap is too low. Setup returns 125 before launch when enforcement is unavailable. The cap reserves no memory and gives no host-wide safety. Nested `owned-command`, `systemd-run` or other new systemd units leave the cap, custody and `Memory.Peak`. On macOS, a cap of at least one page is refused with status 125 and a guard-error receipt; the command does not run. Combining any cap with `-cancel-pid` is invalid.
 
 On macOS the wrapper runs the `darwin-pgroup` backend (`Backend=darwin-pgroup`; `main_darwin.go`, `pgroup.go`): the command runs in its own process group, and a deadline, an interruption (SIGINT, SIGTERM or SIGHUP to the guard) or the command's exit sends SIGTERM and SIGCONT to that group, then SIGKILL after `-grace`; the final check runs at 2·`-grace`. The guarantee is deadline and cleanup only, with `FamilyCoverage` set to "command process group only": there is no birth identity and no PID-reuse guard, so `-cancel-pid` with `-cancel-birth` returns 125 with a receipt (`Cause` "guard error") and signals nothing, and without `-cancel-birth` the arguments are invalid and no receipt is written. There is no subreaper and no cgroup, so a descendant that calls `setsid` or `setpgid` leaves the group and is not cleaned up; it can outlive `HostChildrenSettled: true`, which means only that the command was reaped and its process group is empty. The receipt's `Guarantee` field states these limits, and its `Survivors` and `Events` fields are present. Use this backend for non-interactive families only.
 
