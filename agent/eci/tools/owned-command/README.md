@@ -16,7 +16,7 @@ For repeated, capped or timed phases, prepare once before starting their budgets
 or caps, so any build happens outside them. Linux example:
 
 ```sh
-guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable)
+guard=$("$HOME/.omp/agent/eci/bin/owned-command" --resolve-executable) &&
 "$guard" -memory-max 67108864 -deadline 3s -receipt receipt.json -- command args...
 ```
 
@@ -110,10 +110,13 @@ step still needs evidence that the preceding effective cap is insufficient.
 
 Use the effective cap if the requested value was rounded down. Evidence can be
 a comparable measurement showing the workload cannot meet its needs at that
-cap, or a receipt showing an allocation OOM attributable to the command
-cgroup's effective limit. Exit status or a failure unrelated to the cap is
-not evidence. Neither `max` plus `oom_kill` nor hierarchical counts alone
-attribute an allocation OOM to that limit.
+cap, or evidence of an allocation OOM attributable to the command cgroup's
+effective limit. The receipt fields alone do not identify the limiting cgroup:
+neither `max` plus `oom_kill` nor hierarchical counts establish attribution.
+For example, match a kernel allocation-OOM diagnostic's limiting `oom_memcg`
+(not `task_memcg`) to the receipt's command cgroup and run. Exit status or a
+failure unrelated to the cap is not evidence. A comparable measurement can
+establish insufficiency without a receipt or kernel diagnostic.
 
 For resource-sensitive builds, measure the capped workload's need and check
 fresh headroom before launch. Require measured in-cgroup need ≤ cap and
