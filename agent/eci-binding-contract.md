@@ -249,7 +249,7 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Writing / modifying / reviewing code in any language, including diffs and PRs | `coding-common` |
 | Go / Python code | `coding-go` / `coding-python` |
 | Questions or investigations about coding instructions | `coding-common` and relevant language skills; inspect available language-specific skills when no language is specified |
-| Tests / code implementation / logic-heavy implementation | `testing-discipline` / `test-driven-development` / `proof-driven-development` |
+| Writing, running, or reviewing tests, including suites used as proof / code implementation / logic-heavy implementation | `testing-discipline` / `test-driven-development` / `proof-driven-development` |
 | Android device work: `adb`, `fastboot`, flashing, kernel updates | `android-device` |
 | ECI selection (`~/.omp/agent/skills/explore-critique-implement/SKILL.md`) | `explore-critique-implement` |
 | User explicitly asks to use `ATE` or `agent-teams-execution` | `agent-teams-execution` |

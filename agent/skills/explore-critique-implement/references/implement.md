@@ -13,7 +13,7 @@ Read the Step 2 critic's full output as the authoritative winner, disposition, a
 
 A missing record, receipt, hash, marker, or coordination detail does not deny a bounded in-scope write. Reconcile useful context alongside the work. Stop or reroute only a concrete wrong target, destructive effect, or separate requested outcome.
 
-For code/debug work, load test-driven-development, testing-discipline, debugging-discipline, and every matching coding skill. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
+For code/debug work, load test-driven-development, debugging-discipline, and every matching coding skill. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
 
 Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
 
@@ -33,10 +33,12 @@ You may delegate bounded support recursively to Helpers within your inherited as
 
 ## Test and debugging discipline
 
-Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time; it is your batch under test-driven-development's [Batch Order](../../test-driven-development/SKILL.md#batch-order). Run its focused checks over all of it. Fix every implementation defect the checks expose together and rerun them over all of it until they pass and meet testing-discipline's efficiency rules. Report each suite's elapsed time. A WIP commit is not a handoff.
+Apply the [test-efficiency rules](../SKILL.md#test-efficiency) to each Producer's focused checks and the combined iteration proof.
 
-When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits for every other handoff, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix the implementation defects that proof exposes together, in any part, and rerun the proof until it passes and meets testing-discipline's efficiency rules. Report each suite's elapsed time.
+Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time; it is your batch under test-driven-development's [Batch Order](../../test-driven-development/SKILL.md#batch-order). Run its focused checks over all of it. Fix every implementation defect the checks expose together and rerun them over all of it until they pass. A WIP commit is not a handoff.
 
-For code work, test-driven-development governs test quality within this procedure. testing-discipline governs test efficiency: a suite run over 60 s is a speed defect to fix or report under its Efficient tests and Speed-review record rules. For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If test/E2E infrastructure is unavailable, report the exact missing resource and the shortest faithful evidence attempted; do not silently substitute proxy evidence for a required real path.
+When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits for every other handoff, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix the implementation defects that proof exposes together, in any part, and rerun the proof until it passes.
+
+For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If test/E2E infrastructure is unavailable, report the exact missing resource and the shortest faithful evidence attempted; do not silently substitute proxy evidence for a required real path.
 
 Do not declare the outcome accepted/complete, publish a manifest, or tear down ECI. The current Job owner assigns independent Step 4 review; the Supervisor retains acceptance.
