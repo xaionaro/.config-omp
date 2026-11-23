@@ -50,7 +50,7 @@ ECI means “implement everything, then test” in every iteration. A normal ite
 
 ## Test efficiency
 
-Read and apply [testing-discipline](../testing-discipline/SKILL.md) when your activity matches its [trigger](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), including when work changes. Apply its **Efficient tests** and **Speed-review record** rules to focused checks, combined iteration proof, Fast checks, and applicable E2E. For each suite used as proof, cite its command and elapsed time in the existing handoff or review. For a run over 60 s, also cite the speed review or qualifying record. Passing proof does not waive an in-scope efficiency requirement.
+Read and apply [testing-discipline](../testing-discipline/SKILL.md) when your activity matches its [trigger](../../eci-binding-contract.md#eci-supervisor-repository-edit-routing), including when work changes. Apply its **Efficient tests** and **Speed-review record** rules to focused checks, combined iteration proof, Fast checks, and applicable E2E. For each suite used as proof, cite its command and elapsed time in the existing handoff or review. When the suite meets testing-discipline's speed-defect criterion, also cite the speed review or qualifying record. Passing proof does not waive an in-scope efficiency requirement.
 
 ## Configuration E2E contract
 
