@@ -31,11 +31,10 @@ cache version while callers use it. Ordinary wrapper invocations still recheck
 source before each execution, and a call that has to compile is a cold build: the
 warm limits apply only to a current executable resolved with the GOCACHE that built it.
 
-Linux launch and cancellation:
+Linux cancellation:
 
 ```sh
 owned-command -cancel-pid PID -cancel-birth BIRTH -receipt receipt.json
-owned-command -memory-max 67108864 -deadline 3s -receipt receipt.json -- command args...
 ```
 
 PID and BIRTH must be positive for cancellation; BIRTH is the separately recorded
@@ -116,12 +115,15 @@ cgroup's effective limit. Exit status or a failure unrelated to the cap is
 not evidence. Neither `max` plus `oom_kill` nor hierarchical counts alone
 attribute an allocation OOM to that limit.
 
-For resource-sensitive builds, measure need and fresh headroom before launch,
-and require measured need ≤ cap ≤ headroom − margin. `Memory.Peak` records
-observed usage for headroom estimates, not the minimum cap the workload needs:
-usage can include reclaimable cache. Add each nested unit's separately
-measured peak to the usage estimate. Estimates are not a reservation; if the
-inequality does not hold, reduce concurrency or do not run.
+For resource-sensitive builds, measure the capped workload's need and check
+fresh headroom before launch. Require measured in-cgroup need ≤ cap and
+cap + estimated concurrent out-of-cap workload usage ≤ headroom − margin.
+With no out-of-cap usage, this reduces to measured need ≤ cap ≤ headroom −
+margin. Estimate out-of-cap usage separately, including concurrent usage by
+nested units and processes that leave `command`; the cap does not cover them.
+`Memory.Peak` records observed in-cgroup usage, which can include reclaimable
+cache; it does not establish the minimum cap the workload needs. Estimates
+are not a reservation. If either bound fails, reduce concurrency or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process
 group. Early signal notification can reset formerly ignored HUP/INT to default
