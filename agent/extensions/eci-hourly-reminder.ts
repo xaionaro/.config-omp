@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
+// The user asked for this reminder in one retained ECI Supervisor session; every other session loading this global extension stays inert.
 const ROOT_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
 const HOUR_MS = 60 * 60 * 1000;
 const REMINDER = `Most important:
@@ -26,6 +27,7 @@ export default function eciHourlyReminder(pi: ExtensionAPI) {
     if (cancel !== undefined) return;
     const timer = ctx.setInterval(() => {
       if (ctx.sessionManager.getSessionId() === ROOT_SESSION_ID) {
+        // The user's prompt, verbatim with default user attribution; "aside" lands at the next step boundary of a live run instead of waiting for it to end.
         return pi.sendUserMessage(REMINDER, { deliverAs: "aside" });
       }
     }, HOUR_MS);
