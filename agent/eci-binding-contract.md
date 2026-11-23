@@ -198,7 +198,7 @@ These scheduling rules apply to ECI tasks, including bounded ECI under ATE. Dire
 - Before a destructive Git action, inspect `git status` and the affected paths. Stop and explain a safe narrower action only when the resolved target is broad, unresolved, or would discard unrelated user work. Examples: an unscoped `reset --hard`, `clean -fdx` without an agreed target, or removing an unrelated worktree.
 - Normal commits and targeted Git actions need no approval artifact, canonical spelling, receipt, hash, or command-shape ceremony. Keep normal review and preservation of unrelated changes.
 - Push only on explicit user request.
-- Stage only your own paths or hunks, never a whole dirty path or tree to capture one hunk. Inspect the complete candidate commit (the staged diff) immediately before committing. A change that builds on another author's uncommitted lines would commit part of theirs; resolve that overlap with its author first. Preserve other authors’ staged and unstaged work; never include or clear it.
+- Inspect the complete candidate commit (the staged diff) immediately before committing. A change that builds on another author's uncommitted lines would commit part of theirs; consider resolving that overlap with its author first.
 - A repair is a separate commit. Do not amend, erase, or delay an earlier checkpoint.
 - Within ECI, apply the fast-path adoption and review boundary (`~/.omp/agent/skills/explore-critique-implement/references/fast-path.md#adoption-review-and-closure`) to overlapping checkpoints and retained fast changes.
 - Do not add AI co-author lines.
