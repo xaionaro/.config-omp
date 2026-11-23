@@ -1,4 +1,4 @@
-// Detects local C/C++ compile commands, which this host forbids: compiles run remotely.
+// Keeps recognized C++ or unclassified compiler invocations on the remote routes.
 
 /** The denial names the remote routes that replace a local compile. */
 export const LOCAL_COMPILE_HATCH = "build remotely: ssh <gorbe|.131> …, scripts/gorbe/go-test.sh, or distcc to .131 with no local fallback: `DISTCC_FALLBACK=0 DISTCC_HOSTS=<remote hosts only> CCACHE_PREFIX=distcc` (or CC/CXX=\"distcc …\") under `nice`, e.g. `DISTCC_FALLBACK=0 DISTCC_HOSTS=192.168.0.131/16 CC=\"distcc clang\" nice -n 19 make -j16`";
@@ -21,6 +21,7 @@ function remoteDistcc(env: Record<string, string>, niced: boolean, program: stri
 	if (!niced || env.DISTCC_FALLBACK !== "0" || !remoteOnlyHosts(env.DISTCC_HOSTS)) return false;
 	if (program === "distcc") return true;
 	if (env.CCACHE_PREFIX === "distcc") return true;
+	if (program === "ccache") return false; // A direct ccache launch does not use CC or CXX.
 	const compilers = [env.CC, env.CXX].filter((v) => v !== undefined);
 	return compilers.length > 0 && compilers.every((v) => /^(?:\S*\/)?distcc(?:\s|$)/.test(v.trim()));
 }
@@ -45,9 +46,48 @@ const WRAPPER_LEADING_VALUES: Record<string, number> = { timeout: 1, chrt: 1, ta
 
 const SHELLS = ["bash", "sh", "dash", "zsh", "ksh"];
 
-/** Compiler and build-driver names, matched against a command's basename. */
-const COMPILERS = /^(?:[\w.]+-)*(?:gcc|g\+\+|cc|c\+\+|clang|clang\+\+|cc1|cc1plus)(?:-\d+(?:\.\d+)*)?$/;
+/** Compiler driver names, optionally target-prefixed or version-suffixed. */
+const COMPILERS = /^(?:[\w.]+-)*(gcc|g\+\+|cc|c\+\+|clang|clang\+\+|cc1|cc1plus)(?:-\d+(?:\.\d+)*)?$/;
+const C_CAPABLE_COMPILERS = ["gcc", "cc", "clang", "cc1"];
+const NATIVE_LANGUAGES = ["c", "c-header", "cpp-output", "assembler", "assembler-with-cpp"];
+const NATIVE_INPUT = /\.(?:c|i|s|S|o|a|so(?:\.\d+)*)$/;
+const COMPILER_VALUE_OPTIONS = [
+	"-o", "-I", "-D", "-U", "-L", "-B", "-l", "-T", "-MF", "-MT", "-MQ", "-isystem",
+	"-iquote", "-idirafter", "-iprefix", "-iwithprefix", "-iwithprefixbefore", "-include",
+	"-imacros", "-isysroot", "--sysroot", "-target", "--target", "-arch", "-resource-dir",
+	"-Xassembler", "-Xlinker", "-Xpreprocessor",
+];
+const OPAQUE_COMPILER_OPTIONS = /^(?:--config|--driver-mode|-specs|-fplugin)(?:=|$)/;
 const BUILD_DRIVERS = ["make", "gmake", "ninja", "distcc", "ccache", "icecc", "samu"];
+
+/** GCC and Clang can compile C++ under C-style driver names; classify each input, not the name. */
+function nativeCompilerInputs(words: string[], start: number): boolean {
+	let language: string | undefined;
+	let input = false;
+	let options = true;
+	for (let i = start; i < words.length; i++) {
+		const word = words[i];
+		if (word.startsWith("@")) return false;
+		if (options && word === "--") {
+			options = false;
+			continue;
+		}
+		if (options && word.startsWith("-") && word !== "-") {
+			if (word === "-ObjC" || word === "-ObjC++" || word.startsWith("-Xclang") || OPAQUE_COMPILER_OPTIONS.test(word)) return false;
+			if (word.startsWith("-x")) {
+				language = word === "-x" ? words[++i] : word.slice(2);
+				if (language === "none") language = undefined;
+				else if (language === undefined || !NATIVE_LANGUAGES.includes(language)) return false;
+			} else if (COMPILER_VALUE_OPTIONS.includes(word)) {
+				if (++i === words.length || words[i].startsWith("@")) return false;
+			}
+			continue;
+		}
+		if (language === undefined && !NATIVE_INPUT.test(word)) return false;
+		input = true;
+	}
+	return input;
+}
 
 /** Removes here-document bodies, which are data rather than commands. */
 function withoutHereDocuments(command: string): string {
@@ -178,9 +218,11 @@ function deniedProgram(words: string[], depth: number, exported: Record<string, 
 			return undefined;
 		}
 		let program: string | undefined;
-		if (COMPILERS.test(name) || BUILD_DRIVERS.includes(name)) program = name;
+		const compiler = COMPILERS.exec(name)?.[1];
+		if (compiler !== undefined || BUILD_DRIVERS.includes(name)) program = name;
 		else if (name === "cmake" && words.slice(i + 1).some((a) => a === "--build" || a === "--install")) program = "cmake --build";
-		if (program === undefined || remoteDistcc(env, niced, name)) return undefined;
+		if (program === undefined || (compiler === undefined && remoteDistcc(env, niced, name))) return undefined;
+		if (compiler !== undefined && C_CAPABLE_COMPILERS.includes(compiler) && nativeCompilerInputs(words, i + 1)) return undefined;
 		return program;
 	}
 	return undefined;
@@ -202,9 +244,9 @@ function localCompileProgram(command: string, depth: number, inherited: Record<s
 	return undefined;
 }
 
-/** Returns the denial reason for a Bash command that compiles C/C++ locally, or undefined. */
+/** Returns the denial reason for a recognized local compile not established as native C, or undefined. */
 export function localCompileDenial(command: string): string | undefined {
 	const program = localCompileProgram(withoutHereDocuments(command), 0, {}, false);
 	if (program === undefined) return undefined;
-	return `ECI_LOCAL_COMPILE_DENIED: \`${program}\` compiles C/C++ on this host, and local C/C++ compiles are forbidden. ${LOCAL_COMPILE_HATCH}`;
+	return `ECI_LOCAL_COMPILE_DENIED: \`${program}\` is a C++ compiler or a build not established as native C. ${LOCAL_COMPILE_HATCH}`;
 }
