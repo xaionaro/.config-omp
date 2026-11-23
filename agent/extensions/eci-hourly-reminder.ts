@@ -19,29 +19,29 @@ function isReminderSession(ctx: ExtensionContext): boolean {
 export default function eciHourlyReminder(pi: ExtensionAPI): void {
   let cancel: (() => void) | undefined;
 
-  function stop() {
+  function stopReminderTimer() {
     cancel?.();
     cancel = undefined;
   }
 
-  function sync(_event: unknown, ctx: ExtensionContext) {
+  function syncReminderTimer(_event: unknown, ctx: ExtensionContext) {
     if (!isReminderSession(ctx)) {
-      stop();
+      stopReminderTimer();
       return;
     }
     if (cancel !== undefined) return;
     const timer = ctx.setInterval(() => {
       // Check eligibility at delivery time, not just when arming the timer.
-      if (isReminderSession(ctx)) {
-        // The user's prompt, verbatim with default user attribution; "aside" lands at the next step boundary of a live run instead of waiting for it to end.
-        return pi.sendUserMessage(REMINDER, { deliverAs: "aside" });
-      }
+      if (!isReminderSession(ctx)) return;
+      // The user's prompt, verbatim with default user attribution; "aside" lands at the next step boundary of a live run instead of waiting for it to end.
+      // Return the promise so the managed timer can handle a rejection rather than leave it unhandled.
+      return pi.sendUserMessage(REMINDER, { deliverAs: "aside" });
     }, HOUR_MS);
     cancel = () => ctx.clearTimer(timer);
   }
 
-  pi.on("session_start", sync);
-  pi.on("session_switch", sync);
-  pi.on("session_branch", sync);
-  pi.on("session_shutdown", stop);
+  pi.on("session_start", syncReminderTimer);
+  pi.on("session_switch", syncReminderTimer);
+  pi.on("session_branch", syncReminderTimer);
+  pi.on("session_shutdown", stopReminderTimer);
 }
