@@ -39,10 +39,13 @@ type memoryClaim struct {
 }
 
 // memoryTopologyWalker accumulates claims and protections in preorder.
+// The root and command are normalized absolute paths with command below root.
+// The topology is assembled by the walk so protections stay maximal in
+// preorder and the prospective command never becomes a peer claim.
 //
 // Example: walk records a protected parent before visiting its children.
 type memoryTopologyWalker struct {
-	view     memoryHostView
+	View     memoryHostView
 	root     string
 	command  string
 	topology memoryTopology
@@ -64,7 +67,7 @@ func discoverMemoryTopology(
 	}
 
 	walker := memoryTopologyWalker{
-		view:     view,
+		View:     view,
 		root:     root,
 		command:  command,
 		topology: memoryTopology{Protected: make(map[memoryBoundID][]string)},
@@ -93,7 +96,7 @@ func (w *memoryTopologyWalker) walk(
 	if err := w.record(dir); err != nil {
 		return err
 	}
-	entries, err := fs.ReadDir(w.view.source, hostMemoryFSPath(dir))
+	entries, err := fs.ReadDir(w.View.Source, hostMemoryFSPath(dir))
 	switch {
 	case dir != w.root && isGoneMemoryCgroup(err):
 		return nil
@@ -138,7 +141,7 @@ func (w *memoryTopologyWalker) recordClaim(
 	if leaf != commandLeaf || !isOwnedCommandScope(filepath.Base(filepath.Dir(path))) {
 		return nil
 	}
-	limit, finite, err := w.view.readMemoryControl(path, memoryMaxFile, memoryLimitControl)
+	limit, finite, err := w.View.readMemoryControl(path, memoryMaxFile, memoryLimitControl)
 	if isGoneMemoryCgroup(err) {
 		return nil
 	}
@@ -153,7 +156,7 @@ func (w *memoryTopologyWalker) recordClaim(
 // Example: neither a missing control nor a zero gives reclaim protection.
 func (w *memoryTopologyWalker) hasProtection(path string) (bool, error) {
 	for _, name := range [...]string{memoryMinFile, memoryLowFile} {
-		value, _, err := w.view.readMemoryControl(path, name, memoryProtectionControl)
+		value, _, err := w.View.readMemoryControl(path, name, memoryProtectionControl)
 		if isGoneMemoryCgroup(err) {
 			continue
 		}

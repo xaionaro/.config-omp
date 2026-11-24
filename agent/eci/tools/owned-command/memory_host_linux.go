@@ -69,14 +69,14 @@ type memoryControlKind uint8
 //
 // Example: production supplies os.DirFS("/"); tests can use fstest.MapFS.
 type memoryHostView struct {
-	source fs.FS
+	Source fs.FS
 }
 
 // readFile reads the given absolute host path through the view.
 //
 // Example: /proc/meminfo becomes the FS path proc/meminfo.
 func (v memoryHostView) readFile(absolute string) ([]byte, error) {
-	return fs.ReadFile(v.source, hostMemoryFSPath(absolute))
+	return fs.ReadFile(v.Source, hostMemoryFSPath(absolute))
 }
 
 // hostMemoryFSPath maps an absolute host path to a valid io/fs name.

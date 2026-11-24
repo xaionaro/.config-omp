@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	// memoryCgroupTypeFile exists in every non-root cgroup v2 directory.
+	// cgroupTypeFile exists in every non-root cgroup v2 directory.
 	//
 	// Example: a delegated mount root must not contain this file.
-	memoryCgroupTypeFile = "cgroup.type"
+	cgroupTypeFile = "cgroup.type"
 
 	// memoryAdmissionLockRetry is the polling interval for contended flocks.
 	//
@@ -78,7 +78,7 @@ func createClaimedCommandCgroup(
 	if err := configureCommandMemory(path, limit); err != nil {
 		return err
 	}
-	view := memoryHostView{source: os.DirFS("/")}
+	view := memoryHostView{Source: os.DirFS("/")}
 	topology, err := discoverMemoryTopology(ctx, view, cgroupRoot, path)
 	if err != nil {
 		return err
@@ -101,9 +101,9 @@ func lockHostMemoryAdmission(
 	ctx context.Context,
 	root string,
 ) (*os.File, error) {
-	_, err := os.Lstat(filepath.Join(root, memoryCgroupTypeFile))
+	_, err := os.Lstat(filepath.Join(root, cgroupTypeFile))
 	if err == nil {
-		return nil, fmt.Errorf("memory admission requires the host cgroup root; %s contains %s", root, memoryCgroupTypeFile)
+		return nil, fmt.Errorf("memory admission requires the host cgroup root; %s contains %s", root, cgroupTypeFile)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("verify host cgroup root: %w", err)

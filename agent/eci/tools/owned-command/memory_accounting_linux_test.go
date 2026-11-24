@@ -136,7 +136,7 @@ func TestSampledMemoryBounds(t *testing.T) {
 		writeMemorySample(t, tree, path+"/memory.stat", memoryFixtureStat(0, 90))
 	}
 
-	source := memoryHostView{source: os.DirFS(tree)}
+	source := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	var refusal *memoryAdmissionRefusal
 	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 100*4096))
@@ -190,7 +190,7 @@ func TestDisjointMemoryClaim(t *testing.T) {
 	writeMemorySample(t, tree, parent+"/memory.current", strconv.Itoa(20*4096))
 	writeMemorySample(t, tree, parent+"/memory.stat", memoryFixtureStat(0, 0))
 
-	ctx, source := context.Background(), memoryHostView{source: os.DirFS(tree)}
+	ctx, source := context.Background(), memoryHostView{Source: os.DirFS(tree)}
 	var refusal *memoryAdmissionRefusal
 	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 800 kB\n")
 	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096))
@@ -243,7 +243,7 @@ func TestProtectedMemoryClaimTurnover(t *testing.T) {
 			FS: os.DirFS(tree), Claim: claim, Before: 80, After: 80,
 			Stat: [2]string{memoryFixtureStat(0, 80), tc.after},
 		}
-		view := memoryHostView{source: &source}
+		view := memoryHostView{Source: &source}
 		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 10*4096), tc.name)
 		source.Pass = 0
 		var refusal *memoryAdmissionRefusal
@@ -299,7 +299,7 @@ func TestMemoryClaimBracket(t *testing.T) {
 				writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: "+strconv.Itoa(headroom*4)+" kB\n")
 				writeMemorySample(t, tree, parent+"/memory.current", strconv.Itoa((200-headroom)*4096))
 				source := memorySampleTestFS{FS: os.DirFS(tree), Claim: claim, Before: tc.first, After: tc.second, Gone: tc.gone}
-				view := memoryHostView{source: &source}
+				view := memoryHostView{Source: &source}
 				require.NoError(t, checkCommandMemory(ctx, view, topology, 0, tc.want*4096))
 				source.Pass = 0
 				var refusal *memoryAdmissionRefusal
@@ -328,7 +328,7 @@ func TestMemoryAnonLRUAdmission(t *testing.T) {
 	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 800 kB\n")
 	writeMemorySample(t, tree, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
 	writeMemorySample(t, tree, claim+"/memory.current", strconv.Itoa(110*4096))
-	view := memoryHostView{source: os.DirFS(tree)}
+	view := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	for _, tc := range []struct {
 		name   string
@@ -367,7 +367,7 @@ func TestMemoryCurrentRejectsUnlimited(t *testing.T) {
 	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 16 kB\n")
 	writeMemorySample(t, tree, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
 	writeMemorySample(t, tree, claim+"/memory.stat", memoryFixtureStat(1, 0))
-	view := memoryHostView{source: os.DirFS(tree)}
+	view := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	writeMemorySample(t, tree, claim+"/memory.current", "4096\n")
 	require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 4096))
@@ -414,7 +414,7 @@ func TestMemoryGoneProtection(t *testing.T) {
 	source := os.DirFS(tree)
 	ctx := context.Background()
 	for _, gone := range []error{fs.ErrNotExist, unix.ENODEV} {
-		view := memoryHostView{source: memoryReadFaultFS{FS: source, Path: protected + "/memory.stat", Err: gone}}
+		view := memoryHostView{Source: memoryReadFaultFS{FS: source, Path: protected + "/memory.stat", Err: gone}}
 		writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 360 kB\n")
 		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 90*4096))
 		var hostRefusal *memoryAdmissionRefusal
@@ -426,7 +426,7 @@ func TestMemoryGoneProtection(t *testing.T) {
 		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 91*4096), &refusal)
 		require.IsType(t, cgroupMemoryBound{}, refusal.Bound)
 
-		view.source = memoryReadFaultFS{FS: source, Path: group + "/memory.stat", Err: gone}
+		view.Source = memoryReadFaultFS{FS: source, Path: group + "/memory.stat", Err: gone}
 		require.ErrorIs(t, checkCommandMemory(ctx, view, topology, 0, 4096), gone)
 	}
 }
@@ -479,7 +479,7 @@ func TestMemoryCoincidentAndNestedClaims(t *testing.T) {
 				scripted.Pass = 0
 				scripted.middleRead = false
 			}
-			return checkCommandMemory(ctx, memoryHostView{source: source}, topology, 0, MemoryBytes(requested)*4096)
+			return checkCommandMemory(ctx, memoryHostView{Source: source}, topology, 0, MemoryBytes(requested)*4096)
 		}
 		writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: "+strconv.Itoa((hostHeld+40)*4)+" kB\n")
 		require.NoError(t, check(40))

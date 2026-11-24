@@ -20,7 +20,7 @@ import (
 func TestMemoryTopologyClaims(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	view := memoryHostView{source: os.DirFS("/")}
+	view := memoryHostView{Source: os.DirFS("/")}
 	candidate := filepath.Join(root, "system.slice", "owned-command-new.scope", commandLeaf)
 	peer := filepath.Join(root, "custom.slice", ownedCommandScopeName(123, 456), commandLeaf)
 	uncapped := filepath.Join(root, "custom.slice", "owned-command-uncapped.scope", commandLeaf)
@@ -56,7 +56,7 @@ func TestMemoryTopologyGone(t *testing.T) {
 		},
 		gone: "cg/owned-command-stale.scope",
 	}
-	got, err := discoverMemoryTopology(context.Background(), memoryHostView{source: source}, "/cg", "/cg/new/command")
+	got, err := discoverMemoryTopology(context.Background(), memoryHostView{Source: source}, "/cg", "/cg/new/command")
 	require.NoError(t, err)
 	require.Equal(t, []memoryClaim{{Path: "/cg/owned-command-live.scope/command", Cap: 8192}}, got.Claims)
 }
@@ -113,7 +113,7 @@ func TestMemoryTopologyUnreadableSubtree(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read the permission-denied fixture")
 	}
-	got, err := discoverMemoryTopology(context.Background(), memoryHostView{source: os.DirFS("/")}, root, candidate)
+	got, err := discoverMemoryTopology(context.Background(), memoryHostView{Source: os.DirFS("/")}, root, candidate)
 	require.ErrorIs(t, err, os.ErrPermission)
 	require.Empty(t, got.Claims)
 }
@@ -145,7 +145,7 @@ func TestMemoryTopologyProtection(t *testing.T) {
 	writeMemorySample(t, tree, q+"/memory.high", "max")
 	writeMemorySample(t, tree, q+"/memory.stat", memoryFixtureStat(0, 32))
 	writeMemorySample(t, tree, nested+"/memory.low", "1")
-	view := memoryHostView{source: os.DirFS(tree)}
+	view := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	got, err := discoverMemoryTopology(ctx, view, root, candidate)
 	require.NoError(t, err)
@@ -271,7 +271,7 @@ func TestReadHostMemoryFloor(t *testing.T) {
 		"proc/13/cmdline": {Data: []byte("/usr/bin/earlyoom\x00--unknown\x00")},
 		"proc/13/cgroup":  {Data: []byte("0::/system.slice/elsewhere.service")},
 	}}
-	view := memoryHostView{source: source}
+	view := memoryHostView{Source: source}
 	ctx := context.Background()
 	got, err := readEarlyoomMemoryFloor(ctx, view, "/cg")
 	require.NoError(t, err)

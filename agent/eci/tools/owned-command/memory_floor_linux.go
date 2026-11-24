@@ -48,6 +48,77 @@ const (
 	memoryPercentBase = 100
 )
 
+// The option names follow earlyoom v1.9.0 main.c's getopt_long short_opt and
+// long_opt tables: https://github.com/rfjakob/earlyoom/blob/v1.9.0/main.c
+// Keep the existing kernel-oom extension outside that version's option table.
+const (
+	// earlyoomMemoryPercentFlag selects the memory percentage threshold.
+	//
+	// Example: -m18 sets the floor to 18 percent.
+	earlyoomMemoryPercentFlag = 'm'
+	// earlyoomMemoryKiBFlag selects the absolute memory threshold.
+	//
+	// Example: -M1048576 sets a 1 GiB threshold.
+	earlyoomMemoryKiBFlag = 'M'
+	// earlyoomSwapPercentFlag selects the swap percentage threshold.
+	//
+	// Example: -s100 does not reduce the memory floor.
+	earlyoomSwapPercentFlag = 's'
+	// earlyoomSwapKiBFlag selects the absolute swap threshold.
+	//
+	// Example: -S512 is parsed without changing the memory floor.
+	earlyoomSwapKiBFlag = 'S'
+	// earlyoomShortNoValue lists flags without values.
+	//
+	// Example: -d can appear before another short option.
+	earlyoomShortNoValue = "kingdvph"
+	// earlyoomShortWithValue lists flags that consume a value.
+	//
+	// Example: -N and -m both consume an attached or next argument.
+	earlyoomShortWithValue = string(earlyoomMemoryPercentFlag) + string(earlyoomMemoryKiBFlag) +
+		string(earlyoomSwapPercentFlag) + string(earlyoomSwapKiBFlag) + "NPr"
+	// earlyoomLongPrefer selects a preferred process pattern.
+	//
+	// Example: --prefer=worker consumes a pattern.
+	earlyoomLongPrefer = "prefer"
+	// earlyoomLongAvoid selects a process pattern to avoid.
+	//
+	// Example: --avoid=worker consumes a pattern.
+	earlyoomLongAvoid = "avoid"
+	// earlyoomLongIgnore selects a process pattern to ignore.
+	//
+	// Example: --ignore=worker consumes a pattern.
+	earlyoomLongIgnore = "ignore"
+	// earlyoomLongIgnoreRoot excludes root-owned processes.
+	//
+	// Example: --ignore-root-user takes no value.
+	earlyoomLongIgnoreRoot = "ignore-root-user"
+	// earlyoomLongDryRun requests observation without signaling.
+	//
+	// Example: --dryrun takes no value.
+	earlyoomLongDryRun = "dryrun"
+	// earlyoomLongSortRSS selects RSS-based victim ordering.
+	//
+	// Example: --sort-by-rss takes no value.
+	earlyoomLongSortRSS = "sort-by-rss"
+	// earlyoomLongSyslog enables syslog output.
+	//
+	// Example: --syslog takes no value.
+	earlyoomLongSyslog = "syslog"
+	// earlyoomLongKernelOOM names a previously accepted extension to the v1.9.0 table.
+	//
+	// Example: --kernel-oom takes no value.
+	earlyoomLongKernelOOM = "kernel-oom"
+	// earlyoomLongHelp requests usage information.
+	//
+	// Example: --help takes no value.
+	earlyoomLongHelp = "help"
+	// earlyoomLongDebug enables debug output.
+	//
+	// Example: --debug takes no value.
+	earlyoomLongDebug = "debug"
+)
+
 // readEarlyoomMemoryFloor takes the maximum threshold among current members of
 // the trusted service cgroup; the independent swap condition is not credited.
 //
@@ -226,6 +297,7 @@ func (o *earlyoomMemoryOptions) consume(
 }
 
 // earlyoomMemoryOptions records the last -m and -M threshold options.
+// Threshold fields are set only after parsing and checking each option's range.
 //
 // Example: the two options combine using the lower floor when both occur.
 type earlyoomMemoryOptions struct {
@@ -244,10 +316,10 @@ func (o *earlyoomMemoryOptions) consumeShort(
 	for len(flags) != 0 {
 		flag := flags[0]
 		flags = flags[1:]
-		if strings.IndexByte("kingdvph", flag) >= 0 {
+		if strings.IndexByte(earlyoomShortNoValue, flag) >= 0 {
 			continue
 		}
-		if strings.IndexByte("msMSNPr", flag) < 0 {
+		if strings.IndexByte(earlyoomShortWithValue, flag) < 0 {
 			return nil, fmt.Errorf("unknown earlyoom short option")
 		}
 		value, rest, err := earlyoomShortValue(flag, flags, args)
@@ -289,14 +361,14 @@ func (o *earlyoomMemoryOptions) setThreshold(
 ) error {
 	var err error
 	switch flag {
-	case 'm':
+	case earlyoomMemoryPercentFlag:
 		o.percent, err = parseEarlyoomThreshold(value, earlyoomMaxMemoryPercent)
-	case 'M':
+	case earlyoomMemoryKiBFlag:
 		upper := float64(total/bytesPerKiB) * memoryPercentBase / earlyoomMaxMemoryPercent
 		o.kib, err = parseEarlyoomThreshold(value, math.Floor(upper))
-	case 's':
+	case earlyoomSwapPercentFlag:
 		_, err = parseEarlyoomThreshold(value, memoryPercentBase)
-	case 'S':
+	case earlyoomSwapKiBFlag:
 		_, err = parseEarlyoomThreshold(value, math.Inf(1))
 	}
 	return err
@@ -316,7 +388,7 @@ func consumeEarlyoomLongOption(
 		return nil, err
 	}
 	switch match {
-	case "prefer", "avoid", "ignore":
+	case earlyoomLongPrefer, earlyoomLongAvoid, earlyoomLongIgnore:
 		if attached {
 			return args, nil
 		}
@@ -338,7 +410,11 @@ func consumeEarlyoomLongOption(
 func matchEarlyoomLongOption(name string) (string, error) {
 	var match string
 	ambiguous := false
-	for _, option := range [...]string{"prefer", "avoid", "ignore", "ignore-root-user", "dryrun", "sort-by-rss", "syslog", "kernel-oom", "help", "debug"} {
+	for _, option := range [...]string{
+		earlyoomLongPrefer, earlyoomLongAvoid, earlyoomLongIgnore, earlyoomLongIgnoreRoot,
+		earlyoomLongDryRun, earlyoomLongSortRSS, earlyoomLongSyslog, earlyoomLongKernelOOM,
+		earlyoomLongHelp, earlyoomLongDebug,
+	} {
 		if option == name {
 			return option, nil
 		}
