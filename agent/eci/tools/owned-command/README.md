@@ -92,10 +92,11 @@ manager `app.slice` scopes on that mount, including jobs whose guards died and
 whose command cgroups still exist. A refused launch returns 125 without starting
 the command. Jobs removed from the cgroup hierarchy no longer hold a claim.
 
-At the host boundary, `MemAvailable` already includes an estimate of reclaimable
-RAM. Only nonswappable resident anonymous memory reduces another command's claim;
-its potentially reclaimable cache is not counted again. For finite ancestors,
-admission uses current charges without assuming additional local reclaim. These
+Host `MemAvailable` already estimates reclaimable RAM. Admission does not add
+peer cache estimates to it or grant unobserved reclaim at a finite ancestor.
+It charges each existing cap in full: crediting a peer's sampled resident bytes
+can overbook if the peer releases those bytes before the headroom read and later
+refills its cap. The check can therefore refuse jobs that would fit. These
 are sampled budgets, not preallocated RAM. They do not guarantee headroom
 against concurrent activity outside this coordinator, including older
 launchers, uncapped jobs, guards, or work that leaves owned command scopes.
