@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import eciHourlyReminder from "../extensions/eci-hourly-reminder.ts";
 
-const SUPERVISOR_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
+const REMINDER_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
 type Handler = (event: unknown, ctx: unknown) => void;
 
 test("delivers hourly only in the retained Supervisor session", async () => {
@@ -42,7 +42,7 @@ test("delivers hourly only in the retained Supervisor session", async () => {
   emit("session_start");
   assert.equal(timers.size, 0);
 
-  sessionId = SUPERVISOR_SESSION_ID;
+  sessionId = REMINDER_SESSION_ID;
   emit("session_switch");
   emit("session_start");
   assert.equal(timers.size, 1);
@@ -56,13 +56,13 @@ test("delivers hourly only in the retained Supervisor session", async () => {
   assert.deepEqual(deliveries[0].options, { deliverAs: "aside" });
   assert.ok(deliveries[0].text.startsWith("Most important:\n"));
 
-  sessionId = `${SUPERVISOR_SESSION_ID}-child`;
+  sessionId = `${REMINDER_SESSION_ID}-child`;
   await tick();
   assert.equal(deliveries.length, 1);
   emit("session_switch");
   assert.equal(timers.size, 0);
 
-  sessionId = SUPERVISOR_SESSION_ID;
+  sessionId = REMINDER_SESSION_ID;
   emit("session_switch");
   assert.equal(timers.size, 1);
   emit("session_shutdown");
