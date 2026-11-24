@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -18,25 +20,84 @@ import (
 func TestMemoryTopologyClaims(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	view := memoryHostView{source: os.DirFS("/")}
 	candidate := filepath.Join(root, "system.slice", "owned-command-new.scope", commandLeaf)
-	peer := filepath.Join(root, "custom.slice", "owned-command-peer.scope", commandLeaf)
+	peer := filepath.Join(root, "custom.slice", ownedCommandScopeName(123, 456), commandLeaf)
 	uncapped := filepath.Join(root, "custom.slice", "owned-command-uncapped.scope", commandLeaf)
 	foreign := filepath.Join(root, "custom.slice", "unrelated.scope", commandLeaf)
 	for path, value := range map[string]string{candidate: "4096", peer: "4096", uncapped: "max", foreign: "4096"} {
 		writeMemoryTopologyFixture(t, path, "memory.max", value)
 	}
-	got, err := discoverMemoryTopology(context.Background(), root, candidate)
+	noController := filepath.Join(root, "custom.slice", ownedCommandScopeName(456, 789), commandLeaf)
+	writeMemoryTopologyFixture(t, noController, cgroupProcsFile, "1234")
+	got, err := discoverMemoryTopology(context.Background(), view, root, candidate)
 	require.NoError(t, err)
 	require.Equal(t, []memoryClaim{{Path: peer, Cap: 4096}}, got.Claims)
 	require.Equal(t, []string{filepath.Dir(candidate), filepath.Dir(filepath.Dir(candidate))}, got.Ancestors)
 	require.NoError(t, os.RemoveAll(peer))
-	got, err = discoverMemoryTopology(context.Background(), root, candidate)
+	got, err = discoverMemoryTopology(context.Background(), view, root, candidate)
 	require.NoError(t, err)
 	require.Empty(t, got.Claims)
 	writeMemoryTopologyFixture(t, peer, "memory.max", "invalid")
-	got, err = discoverMemoryTopology(context.Background(), root, candidate)
+	got, err = discoverMemoryTopology(context.Background(), view, root, candidate)
 	require.Error(t, err)
 	require.Empty(t, got.Claims)
+}
+
+// TestMemoryTopologyGone skips deactivated kernel directories and their claims.
+//
+// Example: a scope removed while the walk opens its command leaf is not discovered.
+func TestMemoryTopologyGone(t *testing.T) {
+	t.Parallel()
+	source := &memoryTopologyFixtureFS{
+		MapFS: fstest.MapFS{
+			"cg/owned-command-stale.scope/command/memory.max": {Data: []byte("4096")},
+			"cg/owned-command-live.scope/command/memory.max":  {Data: []byte("8192")},
+		},
+		gone: "cg/owned-command-stale.scope",
+	}
+	got, err := discoverMemoryTopology(context.Background(), memoryHostView{source: source}, "/cg", "/cg/new/command")
+	require.NoError(t, err)
+	require.Equal(t, []memoryClaim{{Path: "/cg/owned-command-live.scope/command", Cap: 8192}}, got.Claims)
+}
+
+// memoryTopologyFixtureFS simulates a disappearing kernfs directory or PID.
+//
+// Example: a PID vanishes from cgroup.procs between sequential membership reads.
+type memoryTopologyFixtureFS struct {
+	fstest.MapFS
+	gone          string
+	exitedOnRetry bool
+}
+
+// Open injects ENODEV when a kernfs directory is deactivated.
+//
+// Example: fs.WalkDir attempts to read a directory that no longer exists.
+func (f *memoryTopologyFixtureFS) Open(path string) (fs.File, error) {
+	if path == f.gone {
+		return nil, &fs.PathError{Op: "open", Path: path, Err: unix.ENODEV}
+	}
+	return f.MapFS.Open(path)
+}
+
+// ReadDir makes the simulated directory failure visible to fs.WalkDir.
+//
+// Example: a live sibling is still read after the deactivated path fails.
+func (f *memoryTopologyFixtureFS) ReadDir(path string) ([]fs.DirEntry, error) {
+	if path == f.gone {
+		return nil, &fs.PathError{Op: "readdir", Path: path, Err: unix.ENODEV}
+	}
+	return f.MapFS.ReadDir(path)
+}
+
+// ReadFile simulates process exit while opening a missing command line.
+//
+// Example: a reread of cgroup.procs no longer contains the missing PID.
+func (f *memoryTopologyFixtureFS) ReadFile(path string) ([]byte, error) {
+	if f.exitedOnRetry && path == "proc/14/cmdline" {
+		f.MapFS["cg/system.slice/earlyoom.service/cgroup.procs"] = &fstest.MapFile{}
+	}
+	return f.MapFS.ReadFile(path)
 }
 
 // TestMemoryTopologyUnreadableSubtree refuses to admit from a partial scan.
@@ -52,7 +113,7 @@ func TestMemoryTopologyUnreadableSubtree(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read the permission-denied fixture")
 	}
-	got, err := discoverMemoryTopology(context.Background(), root, candidate)
+	got, err := discoverMemoryTopology(context.Background(), memoryHostView{source: os.DirFS("/")}, root, candidate)
 	require.ErrorIs(t, err, os.ErrPermission)
 	require.Empty(t, got.Claims)
 }
@@ -63,24 +124,40 @@ func TestMemoryTopologyUnreadableSubtree(t *testing.T) {
 // Example: P is protected for R but only Q is protected for P.
 func TestMemoryTopologyProtection(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	r := filepath.Join(root, "R")
-	p := filepath.Join(r, "P")
-	q := filepath.Join(p, "Q")
-	nested := filepath.Join(q, "nested")
-	candidate := filepath.Join(p, "owned-command-pending.scope", commandLeaf)
-	writeMemoryTopologyFixture(t, r, "memory.min", "0")
-	writeMemoryTopologyFixture(t, p, "memory.low", "1")
-	writeMemoryTopologyFixture(t, q, "memory.min", "1")
-	writeMemoryTopologyFixture(t, q, "memory.max", "max")
-	writeMemoryTopologyFixture(t, q, "memory.high", "max")
-	writeMemoryTopologyFixture(t, nested, "memory.low", "1")
-	got, err := discoverMemoryTopology(context.Background(), root, candidate)
+	tree := t.TempDir()
+	root := "/cg"
+	r := root + "/R"
+	p := r + "/P"
+	q := p + "/Q"
+	nested := q + "/nested"
+	candidate := p + "/command"
+	for _, path := range []string{r, p} {
+		writeMemorySample(t, tree, path+"/memory.max", "4194304")
+		writeMemorySample(t, tree, path+"/memory.high", "max")
+		writeMemorySample(t, tree, path+"/memory.current", "262144")
+		writeMemorySample(t, tree, path+"/memory.stat", memoryFixtureStat(0, 32))
+	}
+	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 4096 kB")
+	writeMemorySample(t, tree, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	writeMemorySample(t, tree, p+"/memory.low", "max")
+	writeMemorySample(t, tree, q+"/memory.min", "max")
+	writeMemorySample(t, tree, q+"/memory.max", "max")
+	writeMemorySample(t, tree, q+"/memory.high", "max")
+	writeMemorySample(t, tree, q+"/memory.stat", memoryFixtureStat(0, 32))
+	writeMemorySample(t, tree, nested+"/memory.low", "1")
+	view := memoryHostView{source: os.DirFS(tree)}
+	ctx := context.Background()
+	got, err := discoverMemoryTopology(ctx, view, root, candidate)
 	require.NoError(t, err)
-	require.Equal(t, []string{p}, got.Protected[""])
-	require.Equal(t, []string{p}, got.Protected[r])
-	require.Equal(t, []string{q}, got.Protected[p])
-	require.Empty(t, got.Protected[filepath.Dir(candidate)])
+	require.Equal(t, []string{p}, got.Protected[hostMemoryBoundID])
+	require.Equal(t, []string{p}, got.Protected[cgroupMemoryBoundID(r)])
+	require.Equal(t, []string{q}, got.Protected[cgroupMemoryBoundID(p)])
+	require.NoError(t, checkCommandMemory(ctx, view, got, 0, 3932160))
+	var refusal *memoryAdmissionRefusal
+	require.ErrorAs(t, checkCommandMemory(ctx, view, got, 0, 3932160+4096), &refusal)
+	writeMemorySample(t, tree, q+"/memory.min", "invalid")
+	_, err = discoverMemoryTopology(context.Background(), view, root, candidate)
+	require.ErrorContains(t, err, "memory.min")
 }
 
 // TestMemoryAdmissionRoot verifies that only a hierarchy root can be locked.
@@ -161,25 +238,43 @@ func TestEarlyoomHostFloor(t *testing.T) {
 // Example: a reused PID outside the service must not contribute a floor.
 func TestReadHostMemoryFloor(t *testing.T) {
 	t.Parallel()
-	root, proc := t.TempDir(), t.TempDir()
-	read := // Read the floor from fixture paths in the real reader.
-		func() (MemoryBytes, error) {
-			return readEarlyoomMemoryFloor(context.Background(), root, proc)
-		}
-	got, err := read()
+	source := &memoryTopologyFixtureFS{MapFS: fstest.MapFS{
+		"proc/meminfo":    {Data: []byte("MemTotal: 1000 kB")},
+		"proc/11/cmdline": {Data: []byte("/usr/bin/earlyoom\x00-m10\x00")},
+		"proc/11/cgroup":  {Data: []byte("0::/system.slice/earlyoom.service")},
+		"proc/12/cmdline": {Data: []byte("/usr/bin/earlyoom\x00-m18,13\x00")},
+		"proc/12/cgroup":  {Data: []byte("0::/system.slice/earlyoom.service")},
+		"proc/13/cmdline": {Data: []byte("/usr/bin/earlyoom\x00--unknown\x00")},
+		"proc/13/cgroup":  {Data: []byte("0::/system.slice/elsewhere.service")},
+	}}
+	view := memoryHostView{source: source}
+	ctx := context.Background()
+	got, err := readEarlyoomMemoryFloor(ctx, view, "/cg")
 	require.NoError(t, err)
 	require.Zero(t, got)
-	writeMemoryTopologyFixture(t, proc, "meminfo", "MemTotal: 1000 kB")
-	writeMemoryTopologyFixture(t, filepath.Join(root, "system.slice", "earlyoom.service"), "cgroup.procs", "11\n12\n13\n14")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "11"), "cmdline", "/usr/bin/earlyoom\x00-m10\x00")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "11"), "cgroup", "0::/system.slice/earlyoom.service")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "12"), "cmdline", "/usr/bin/earlyoom\x00-m18,13\x00")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "12"), "cgroup", "0::/system.slice/earlyoom.service")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "13"), "cmdline", "/usr/bin/earlyoom\x00--unknown\x00")
-	writeMemoryTopologyFixture(t, filepath.Join(proc, "13"), "cgroup", "0::/system.slice/elsewhere.service")
-	got, err = read()
+
+	unit := "cg/system.slice/earlyoom.service/cgroup.procs"
+	source.MapFS[unit] = &fstest.MapFile{Data: []byte("11\n12\n13")}
+	got, err = readEarlyoomMemoryFloor(ctx, view, "/cg")
 	require.NoError(t, err)
 	require.Equal(t, MemoryBytes(184320), got)
+
+	source.MapFS[unit] = &fstest.MapFile{Data: []byte("14")}
+	got, err = readEarlyoomMemoryFloor(ctx, view, "/cg")
+	require.ErrorContains(t, err, "PID 14")
+	require.ErrorContains(t, err, "hidepid")
+	require.Zero(t, got)
+
+	source.exitedOnRetry = true
+	got, err = readEarlyoomMemoryFloor(ctx, view, "/cg")
+	require.NoError(t, err)
+	require.Zero(t, got)
+
+	source.exitedOnRetry = false
+	source.MapFS[unit] = &fstest.MapFile{Data: []byte("14")}
+	source.MapFS["proc/14/cmdline"] = &fstest.MapFile{Data: []byte("/usr/bin/earlyoom\x00")}
+	_, err = readEarlyoomMemoryFloor(ctx, view, "/cg")
+	require.ErrorContains(t, err, "PID 14")
 }
 
 // writeMemoryTopologyFixture writes a controller sample into a fixture cgroup.

@@ -816,7 +816,7 @@ func TestCgroupMemoryLimitCancellationRejected(t *testing.T) {
 func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "receipt.json")
-	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
+	cmd := exec.Command("/bin/sh", "-c", `umask 077; exec "$@"`, "guard-with-private-umask", os.Getenv("GUARD_TEST_BINARY"), "-deadline", "15s", "-memory-max", testMemoryLimit, "-receipt", path, "--", "/bin/sh", "-c", "cat /proc/self/cgroup; read x")
 	stdin, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	stdout, err := cmd.StdoutPipe()
@@ -843,6 +843,12 @@ func TestCgroupMemoryLimitTopologyAndInterrupt(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, strings.Fields(string(control)), memoryController)
 	guard := filepath.Join(parent, memoryGuardLeaf)
+	for _, path := range []string{guard, command} {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0005), info.Mode().Perm()&0005, path)
+		require.Zero(t, info.Mode().Perm()&0022, path)
+	}
 	members, err := os.ReadFile(filepath.Join(guard, cgroupProcsFile))
 	require.NoError(t, err)
 	require.Equal(t, strconv.Itoa(cmd.Process.Pid), strings.TrimSpace(string(members)))
@@ -914,7 +920,9 @@ func stopGuardOnCleanup(
 // Example: the same command sees a guard sibling only when a cap is requested.
 func TestCgroupMemoryLimitPairedTopology(t *testing.T) {
 	t.Parallel()
-	script := `group=$(cut -d: -f3 /proc/self/cgroup); test ! -d "/sys/fs/cgroup${group%/` + commandLeaf + `}/` + memoryGuardLeaf + `"`
+	script := `group=$(cut -d: -f3 /proc/self/cgroup); mode=$(stat -c %a "/sys/fs/cgroup$group") || exit 2; ` +
+		`[ $((0$mode & 0005)) -eq 5 ] && [ $((0$mode & 0022)) -eq 0 ] || exit 3; ` +
+		`test ! -d "/sys/fs/cgroup${group%/` + commandLeaf + `}/` + memoryGuardLeaf + `"`
 	for _, capped := range []bool{false, true} {
 		args := []string{"-deadline", "15s"}
 		want := 0

@@ -13,39 +13,117 @@ import (
 // Example: an otherwise valid cap cannot fit under the current host floor.
 var errMemoryCapacity = errors.New("memory admission refused")
 
-// memoryBound holds the measured capacity and outstanding growth at one boundary.
+// memoryBoundKind distinguishes a host budget from a cgroup budget.
 //
-// Example: an empty Path is the host bound; a cgroup path uses Limit, Current, and Credit.
-type memoryBound struct {
-	Path      string
+// Example: a cgroup bound has a path independent of its kind.
+type memoryBoundKind uint8
+
+const (
+	// hostMemoryKind identifies the MemAvailable budget.
+	//
+	// Example: all peer claims contribute to host growth.
+	hostMemoryKind memoryBoundKind = iota
+	// cgroupMemoryKind identifies a finite cgroup budget.
+	//
+	// Example: only descendants contribute growth to a cgroup bound.
+	cgroupMemoryKind
+)
+
+// memoryBoundID identifies where protection applies.
+//
+// Example: protected host roots never share a map entry with a cgroup.
+type memoryBoundID struct {
+	kind memoryBoundKind
+	path string
+}
+
+// hostMemoryBoundID identifies protection relative to the host reclaim root.
+//
+// Example: topology.Protected[hostMemoryBoundID] lists host exclusions.
+var hostMemoryBoundID = memoryBoundID{kind: hostMemoryKind}
+
+// cgroupMemoryBoundID identifies protection relative to an enclosing cgroup.
+//
+// Example: /user.slice and the host always have distinct identities.
+func cgroupMemoryBoundID(path string) memoryBoundID {
+	return memoryBoundID{kind: cgroupMemoryKind, path: path}
+}
+
+// memoryBound checks and reports capacity in one sampled memory domain.
+//
+// Example: both the host and each finite cgroup must independently admit the new cap.
+type memoryBound interface {
+	// admit rejects a request that cannot fit alongside the bound's held growth.
+	//
+	// Example: an existing claim leaves only part of the sampled headroom usable.
+	admit(requested MemoryBytes) error
+	// describe formats sampled terms for the refusal receipt.
+	//
+	// Example: host descriptions include MemAvailable and the earlyoom floor.
+	describe(requested MemoryBytes) string
+}
+
+// hostMemoryBound holds the sampled host budget and total peer growth.
+//
+// Example: protected cache and the earlyoom floor are deductions from MemAvailable.
+type hostMemoryBound struct {
 	Available MemoryBytes
 	Floor     MemoryBytes
 	Protected MemoryBytes
-	Limit     MemoryBytes
-	Current   MemoryBytes
-	Credit    MemoryBytes
 	Held      MemoryBytes
 }
 
-// admit checks the new cap against capacity remaining after existing claims.
+// admit checks host growth against MemAvailable after deductions.
 //
-// Example: when an ancestor exceeds its limit, reclaim must pay off that debt before admitting more.
-func (b memoryBound) admit(requested MemoryBytes) error {
-	base, extra := b.Available-min(b.Available, b.Floor), MemoryBytes(0)
-	base -= min(base, b.Protected)
-	if b.Path != "" {
-		base = b.Limit - min(b.Limit, b.Current)
-		debt := b.Current - min(b.Limit, b.Current)
-		extra = b.Credit - min(b.Credit, debt)
+// Example: earlyoom's floor cannot become negative usable capacity.
+func (b hostMemoryBound) admit(requested MemoryBytes) error {
+	usable := b.Available - min(b.Available, b.Floor)
+	usable -= min(usable, b.Protected)
+	if requested > usable-min(usable, b.Held) {
+		return &memoryAdmissionRefusal{Bound: b, Requested: requested}
 	}
+	return nil
+}
 
-	// Compare the two sums exactly, including when a uint64 would wrap.
+// describe formats the sampled host terms and request.
+//
+// Example: a host refusal names its protected-cache deduction.
+func (b hostMemoryBound) describe(requested MemoryBytes) string {
+	return fmt.Sprintf("at host: %d requested bytes, %d MemAvailable, %d floor, %d protected cache, %d bytes held for existing commands", requested, b.Available, b.Floor, b.Protected, b.Held)
+}
+
+// cgroupMemoryBound holds the finite limit, charges, reclaim credit and descendant growth.
+//
+// Example: memory.high can bind a workload before memory.max is reached.
+type cgroupMemoryBound struct {
+	Path    string
+	Limit   MemoryBytes
+	Current MemoryBytes
+	Credit  MemoryBytes
+	Held    MemoryBytes
+}
+
+// admit checks cgroup growth after applying reclaim to any current overage.
+//
+// Example: reclaim first pays off charges over the limit; only the remainder funds growth.
+func (b cgroupMemoryBound) admit(requested MemoryBytes) error {
+	chargedWithinLimit := min(b.Limit, b.Current)
+	base := b.Limit - chargedWithinLimit
+	debt := b.Current - chargedWithinLimit
+	extra := b.Credit - min(b.Credit, debt)
 	needed, neededCarry := bits.Add64(uint64(requested), uint64(b.Held), 0)
 	usable, usableCarry := bits.Add64(uint64(base), uint64(extra), 0)
 	if neededCarry > usableCarry || (neededCarry == usableCarry && needed > usable) {
 		return &memoryAdmissionRefusal{Bound: b, Requested: requested}
 	}
 	return nil
+}
+
+// describe formats the sampled cgroup terms and request.
+//
+// Example: an ancestor refusal names the binding cgroup path.
+func (b cgroupMemoryBound) describe(requested MemoryBytes) string {
+	return fmt.Sprintf("at %s: %d requested bytes, %d limit, %d current, %d reclaim credit, %d bytes held for existing commands", b.Path, requested, b.Limit, b.Current, b.Credit, b.Held)
 }
 
 // memoryAdmissionRefusal records the binding constraint and its measured terms.
@@ -60,11 +138,8 @@ type memoryAdmissionRefusal struct {
 //
 // Example: a slice refusal includes its finite limit, charges, reclaim credit, and held growth.
 func (r *memoryAdmissionRefusal) Error() string {
-	b := r.Bound
-	if b.Path == "" {
-		return fmt.Sprintf("%s at host: %d requested bytes, %d MemAvailable, %d floor, %d protected cache, %d bytes held for existing commands", errMemoryCapacity, r.Requested, b.Available, b.Floor, b.Protected, b.Held)
-	}
-	return fmt.Sprintf("%s at %s: %d requested bytes, %d limit, %d current, %d reclaim credit, %d bytes held for existing commands", errMemoryCapacity, b.Path, r.Requested, b.Limit, b.Current, b.Credit, b.Held)
+	// TODO: List each claim's path and held growth if the total is not enough to attribute a refusal.
+	return errMemoryCapacity.Error() + " " + r.Bound.describe(r.Requested)
 }
 
 // Unwrap exposes the admission capacity error.
@@ -78,50 +153,35 @@ func (r *memoryAdmissionRefusal) Unwrap() error {
 //
 // Example: File is active_file plus inactive_file, not all cached filesystem data.
 type memoryAccountingStat struct {
-	Anon      MemoryBytes
-	LazyFree  MemoryBytes // Kernel event count in pages, not bytes.
+	AnonLRU   MemoryBytes
 	File      MemoryBytes
 	Slab      MemoryBytes
 	Dirty     MemoryBytes
 	Writeback MemoryBytes
 }
 
-// residentAnon removes possibly reclaimable anonymous pages from resident credit.
+// residentAnon credits swap-backed LRU pages, including shmem, already charged to the claim.
 //
-// Example: a claim with more lazyfree events than resident pages gets no anonymous credit.
+// Example: MADV_FREE pages on the file LRU are excluded without consulting cumulative events.
 func (s memoryAccountingStat) residentAnon(
 	current MemoryBytes,
 	limit MemoryBytes,
-	page MemoryBytes,
 ) MemoryBytes {
-	if s.LazyFree > s.Anon/page {
-		return 0
-	}
-	return min(s.Anon-s.LazyFree*page, current, limit)
+	return min(s.AnonLRU, current, limit)
 }
 
 // reclaimCredit discounts file LRU and reclaimable slab separately after exclusions.
 //
 // Example: exclude claim cache before applying the kernel estimate's low-watermark haircut.
 func (s memoryAccountingStat) reclaimCredit(
-	excluded memoryAccountingStat,
+	excluded memoryCacheSample,
 	watermark MemoryBytes,
 ) MemoryBytes {
 	file := s.File - min(s.File, excluded.File)
 	file -= min(file, s.Dirty)
 	file -= min(file, s.Writeback)
 	slab := s.Slab - min(s.Slab, excluded.Slab)
-	return addMemoryClaims(file-min(file/2, watermark), slab-min(slab/2, watermark))
-}
-
-// addMemoryClaims saturates a total rather than wrapping a sum of byte counts.
-//
-// Example: malformed or extreme inputs cannot wrap held growth to zero.
-func addMemoryClaims(
-	total MemoryBytes,
-	extra MemoryBytes,
-) MemoryBytes {
-	return total + min(extra, ^MemoryBytes(0)-total)
+	return (file - min(file/2, watermark)).saturatingAdd(slab - min(slab/2, watermark))
 }
 
 // parseMemoryAccountingStat extracts the complete set of counters needed by admission.
@@ -129,13 +189,13 @@ func addMemoryClaims(
 // Example: unknown kernel counters are skipped, but missing or duplicate required counters are errors.
 func parseMemoryAccountingStat(input string) (memoryAccountingStat, error) {
 	var stat memoryAccountingStat
-	var inactiveFile MemoryBytes
+	var inactiveAnon, inactiveFile MemoryBytes
 	fields := [...]struct {
 		name  string
 		value *MemoryBytes
 	}{
-		{"anon", &stat.Anon},
-		{"pglazyfree", &stat.LazyFree},
+		{"active_anon", &stat.AnonLRU},
+		{"inactive_anon", &inactiveAnon},
 		{"active_file", &stat.File},
 		{"inactive_file", &inactiveFile},
 		{"slab_reclaimable", &stat.Slab},
@@ -145,27 +205,44 @@ func parseMemoryAccountingStat(input string) (memoryAccountingStat, error) {
 	var seen uint8
 	for line := range strings.Lines(input) {
 		key, raw, _ := strings.Cut(line, " ")
-		for i, field := range fields {
-			if key != field.name {
-				continue
-			}
-			if seen&(1<<i) != 0 {
-				return memoryAccountingStat{}, fmt.Errorf("duplicate %s counter", key)
-			}
-			value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
-			if err != nil {
-				return memoryAccountingStat{}, fmt.Errorf("invalid %s counter: %w", key, err)
-			}
-			*field.value = MemoryBytes(value)
-			seen |= 1 << i
-			break
+		i := memoryStatFieldIndex(fields[:], key)
+		if i < 0 {
+			continue
 		}
+		if seen&(1<<i) != 0 {
+			return memoryAccountingStat{}, fmt.Errorf("duplicate %s counter", key)
+		}
+		value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
+		if err != nil {
+			return memoryAccountingStat{}, fmt.Errorf("invalid %s counter: %w", key, err)
+		}
+		*fields[i].value = MemoryBytes(value)
+		seen |= 1 << i
 	}
 	if seen != (1<<len(fields))-1 {
 		return memoryAccountingStat{}, fmt.Errorf("incomplete memory.stat counters")
 	}
-	stat.File = addMemoryClaims(stat.File, inactiveFile)
+	stat.AnonLRU = stat.AnonLRU.saturatingAdd(inactiveAnon)
+	stat.File = stat.File.saturatingAdd(inactiveFile)
 	return stat, nil
+}
+
+// memoryStatFieldIndex locates a counter used for admission.
+//
+// Example: unrelated kernel counters are ignored without parsing their values.
+func memoryStatFieldIndex(
+	fields []struct {
+		name  string
+		value *MemoryBytes
+	},
+	key string,
+) int {
+	for i, field := range fields {
+		if field.name == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseMemoryZoneLow sums the per-zone low watermarks and converts pages to bytes.

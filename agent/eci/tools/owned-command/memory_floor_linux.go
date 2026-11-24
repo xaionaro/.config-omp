@@ -17,11 +17,6 @@ const (
 	// Example: an unrelated process named earlyoom outside this unit is ignored.
 	earlyoomUnit = "/system.slice/earlyoom.service"
 
-	// earlyoomUnitProcesses names the kernel's list of processes directly in the unit.
-	//
-	// Example: an empty cgroup.procs means there is no earlyoom floor.
-	earlyoomUnitProcesses = "cgroup.procs"
-
 	// earlyoomProcRoot is the procfs used to inspect live process membership.
 	//
 	// Example: /proc/123/cgroup records where PID 123 lives now.
@@ -37,11 +32,6 @@ const (
 	// Example: /proc/123/cmdline supplies the daemon's effective flags.
 	earlyoomProcArguments = "cmdline"
 
-	// earlyoomProcMeminfo names the kernel's memory-total source.
-	//
-	// Example: MemTotal: 1024 kB gives a 1 MiB percentage base.
-	earlyoomProcMeminfo = "meminfo"
-
 	// earlyoomDefaultMemoryPercent is the term threshold with no memory flags.
 	//
 	// Example: earlyoom -s100 still uses the default 10% memory threshold.
@@ -56,19 +46,7 @@ const (
 	//
 	// Example: 18 percent is 18 divided by memoryPercentBase.
 	memoryPercentBase = 100
-
-	// earlyoomKiB converts kernel and daemon KiB values into bytes.
-	//
-	// Example: -M100 corresponds to 102400 bytes.
-	earlyoomKiB = 1024
 )
-
-// readHostMemoryFloor finds the host earlyoom floor under the admission lock.
-//
-// Example: reserve above the active system service's first kill threshold.
-func readHostMemoryFloor(ctx context.Context) (MemoryBytes, error) {
-	return readEarlyoomMemoryFloor(ctx, cgroupRoot, earlyoomProcRoot)
-}
 
 // readEarlyoomMemoryFloor takes the maximum threshold among current members of
 // the trusted service cgroup; the independent swap condition is not credited.
@@ -76,11 +54,12 @@ func readHostMemoryFloor(ctx context.Context) (MemoryBytes, error) {
 // Example: service members at 10% and 18% give an 18% floor.
 func readEarlyoomMemoryFloor(
 	ctx context.Context,
+	view memoryHostView,
 	root string,
-	proc string,
 ) (MemoryBytes, error) {
-	pids, err := os.ReadFile(filepath.Join(root, earlyoomUnit, earlyoomUnitProcesses))
-	if errors.Is(err, os.ErrNotExist) {
+	unit := filepath.Join(root, earlyoomUnit, cgroupProcsFile)
+	pids, err := view.readFile(unit)
+	if isGoneMemoryCgroup(err) {
 		return 0, nil
 	}
 	if err != nil {
@@ -97,7 +76,10 @@ func readEarlyoomMemoryFloor(
 			return 0, fmt.Errorf("invalid PID in earlyoom unit membership")
 		}
 
-		args, err := readEarlyoomArguments(filepath.Join(proc, pid))
+		args, err := readEarlyoomArguments(view, filepath.Join(earlyoomProcRoot, pid))
+		if errors.Is(err, os.ErrNotExist) {
+			err = checkHiddenEarlyoomPID(view, unit, pid)
+		}
 		if err != nil {
 			return 0, fmt.Errorf("inspect earlyoom PID %s: %w", pid, err)
 		}
@@ -105,9 +87,12 @@ func readEarlyoomMemoryFloor(
 			continue
 		}
 		if total == 0 {
-			total, err = readEarlyoomMemTotal(filepath.Join(proc, earlyoomProcMeminfo))
+			total, err = view.meminfoBytes(meminfoTotalKey)
 			if err != nil {
 				return 0, err
+			}
+			if total == 0 {
+				return 0, fmt.Errorf("%s must be positive", meminfoTotalKey)
 			}
 		}
 		threshold, err := earlyoomHostFloor(total, args[1:])
@@ -122,20 +107,20 @@ func readEarlyoomMemoryFloor(
 // readEarlyoomArguments revalidates service membership after reading argv.
 //
 // Example: ignore a PID that exited or moved to another unit before validation.
-func readEarlyoomArguments(dir string) ([]string, error) {
-	cmdline, cmdlineErr := os.ReadFile(filepath.Join(dir, earlyoomProcArguments))
+func readEarlyoomArguments(
+	view memoryHostView,
+	dir string,
+) ([]string, error) {
+	cmdline, cmdlineErr := view.readFile(filepath.Join(dir, earlyoomProcArguments))
 	if errors.Is(cmdlineErr, os.ErrNotExist) {
-		return nil, nil
+		return nil, cmdlineErr
 	}
-	membership, err := os.ReadFile(filepath.Join(dir, earlyoomProcMembership))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+	membership, err := view.readFile(filepath.Join(dir, earlyoomProcMembership))
 	if err != nil {
 		return nil, err
 	}
 	for line := range strings.Lines(string(membership)) {
-		if strings.TrimSuffix(line, "\n") != "0::"+earlyoomUnit {
+		if strings.TrimSuffix(line, "\n") != cgroupV2Prefix+earlyoomUnit {
 			continue
 		}
 		if cmdlineErr != nil {
@@ -150,30 +135,28 @@ func readEarlyoomArguments(dir string) ([]string, error) {
 	return nil, nil
 }
 
-// readEarlyoomMemTotal reads the conservative base for percentage thresholds.
+// checkHiddenEarlyoomPID differentiates an exited member from one hidden
+// by the procfs mount.
 //
-// Example: use MemTotal rather than the post-tmpfs user-memory estimate.
-func readEarlyoomMemTotal(path string) (MemoryBytes, error) {
-	data, err := os.ReadFile(path)
+// Example: a PID still in cgroup.procs might be hidden by hidepid.
+func checkHiddenEarlyoomPID(
+	view memoryHostView,
+	unit string,
+	pid string,
+) error {
+	pids, err := view.readFile(unit)
+	if isGoneMemoryCgroup(err) {
+		return nil
+	}
 	if err != nil {
-		return 0, fmt.Errorf("read earlyoom memory total: %w", err)
+		return fmt.Errorf("recheck earlyoom unit membership: %w", err)
 	}
-	for line := range strings.Lines(string(data)) {
-		rest, ok := strings.CutPrefix(line, "MemTotal:")
-		if !ok {
-			continue
+	for member := range strings.FieldsSeq(string(pids)) {
+		if member == pid {
+			return fmt.Errorf("PID %s is still in the earlyoom unit but /proc hides it (for example, hidepid)", pid)
 		}
-		fields := strings.Fields(rest)
-		if len(fields) != 2 || fields[1] != "kB" {
-			break
-		}
-		value, err := strconv.ParseUint(fields[0], 10, 64)
-		if err == nil && value > 0 && value <= math.MaxUint64/earlyoomKiB {
-			return MemoryBytes(value * earlyoomKiB), nil
-		}
-		break
 	}
-	return 0, fmt.Errorf("invalid or missing MemTotal in %s", path)
+	return nil
 }
 
 // earlyoomHostFloor follows earlyoom's getopt_long option table and threshold
@@ -184,7 +167,7 @@ func earlyoomHostFloor(
 	total MemoryBytes,
 	args []string,
 ) (MemoryBytes, error) {
-	var percent, kib float64
+	var options earlyoomMemoryOptions
 	for len(args) > 0 {
 		arg := args[0]
 		args = args[1:]
@@ -202,48 +185,20 @@ func earlyoomHostFloor(
 		if len(arg) < 2 || arg[0] != '-' {
 			return 0, fmt.Errorf("unexpected positional earlyoom argument")
 		}
-		for flags := arg[1:]; flags != ""; {
-			flag := flags[0]
-			flags = flags[1:]
-			if strings.IndexByte("kingdvph", flag) >= 0 {
-				continue
-			}
-			if strings.IndexByte("msMSNPr", flag) < 0 {
-				return 0, fmt.Errorf("unknown earlyoom short option")
-			}
-			value := flags
-			flags = ""
-			if value == "" {
-				if len(args) == 0 {
-					return 0, fmt.Errorf("missing argument for earlyoom -%c", flag)
-				}
-				value, args = args[0], args[1:]
-			}
-			var err error
-			switch flag {
-			case 'm':
-				percent, err = parseEarlyoomThreshold(value, earlyoomMaxMemoryPercent)
-			case 'M':
-				upper := float64(total/earlyoomKiB) * memoryPercentBase / earlyoomMaxMemoryPercent
-				kib, err = parseEarlyoomThreshold(value, math.Floor(upper))
-			case 's':
-				_, err = parseEarlyoomThreshold(value, memoryPercentBase)
-			case 'S':
-				_, err = parseEarlyoomThreshold(value, math.Inf(1))
-			}
-			if err != nil {
-				return 0, fmt.Errorf("invalid earlyoom -%c threshold: %w", flag, err)
-			}
+		var err error
+		args, err = options.consumeShort(total, arg[1:], args)
+		if err != nil {
+			return 0, err
 		}
 	}
 
-	floor := kib * earlyoomKiB
-	if percent == 0 && kib == 0 {
-		percent = earlyoomDefaultMemoryPercent
+	floor := options.kib * bytesPerKiB
+	if options.percent == 0 && options.kib == 0 {
+		options.percent = earlyoomDefaultMemoryPercent
 	}
-	if percent != 0 {
-		fromPercent := float64(total) * percent / memoryPercentBase
-		if kib == 0 || fromPercent < floor {
+	if options.percent != 0 {
+		fromPercent := float64(total) * options.percent / memoryPercentBase
+		if options.kib == 0 || fromPercent < floor {
 			floor = fromPercent
 		}
 	}
@@ -251,6 +206,83 @@ func earlyoomHostFloor(
 		return 0, fmt.Errorf("earlyoom floor overflows byte count")
 	}
 	return MemoryBytes(math.Ceil(floor)), nil
+}
+
+// earlyoomMemoryOptions records the last -m and -M threshold options.
+//
+// Example: the two options combine using the lower floor when both occur.
+type earlyoomMemoryOptions struct {
+	percent float64
+	kib     float64
+}
+
+// consumeShort processes a cluster of short options and any following value.
+//
+// Example: -dm18 enables debugging and sets an 18% threshold.
+func (o *earlyoomMemoryOptions) consumeShort(
+	total MemoryBytes,
+	flags string,
+	args []string,
+) ([]string, error) {
+	for len(flags) != 0 {
+		flag := flags[0]
+		flags = flags[1:]
+		if strings.IndexByte("kingdvph", flag) >= 0 {
+			continue
+		}
+		if strings.IndexByte("msMSNPr", flag) < 0 {
+			return nil, fmt.Errorf("unknown earlyoom short option")
+		}
+		value, rest, err := earlyoomShortValue(flag, flags, args)
+		if err != nil {
+			return nil, err
+		}
+		if err := o.setThreshold(total, flag, value); err != nil {
+			return nil, fmt.Errorf("invalid earlyoom -%c threshold: %w", flag, err)
+		}
+		return rest, nil
+	}
+	return args, nil
+}
+
+// earlyoomShortValue returns a short option's attached or next argument.
+//
+// Example: -m18 and -m 18 both supply 18.
+func earlyoomShortValue(
+	flag byte,
+	attached string,
+	args []string,
+) (string, []string, error) {
+	if attached != "" {
+		return attached, args, nil
+	}
+	if len(args) == 0 {
+		return "", nil, fmt.Errorf("missing argument for earlyoom -%c", flag)
+	}
+	return args[0], args[1:], nil
+}
+
+// setThreshold validates a memory or swap threshold and records memory values.
+//
+// Example: swap thresholds are parsed but do not reduce the host floor.
+func (o *earlyoomMemoryOptions) setThreshold(
+	total MemoryBytes,
+	flag byte,
+	value string,
+) error {
+	var err error
+	switch flag {
+	case 'm':
+		o.percent, err = parseEarlyoomThreshold(value, earlyoomMaxMemoryPercent)
+	case 'M':
+		upper := float64(total/bytesPerKiB) * memoryPercentBase / earlyoomMaxMemoryPercent
+		o.kib, err = parseEarlyoomThreshold(value, math.Floor(upper))
+	case 's':
+		_, err = parseEarlyoomThreshold(value, memoryPercentBase)
+	case 'S':
+		_, err = parseEarlyoomThreshold(value, math.Inf(1))
+	}
+	return err
 }
 
 // consumeEarlyoomLongOption applies GNU getopt_long's exact-name or unique

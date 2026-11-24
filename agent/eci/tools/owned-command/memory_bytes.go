@@ -11,6 +11,13 @@ import (
 // Example: a limit of 67108864 bounds the workload to 64 MiB.
 type MemoryBytes uint64
 
+// saturatingAdd adds bytes without wrapping beyond the representable range.
+//
+// Example: summing extreme peer caps cannot turn occupied capacity into zero.
+func (b MemoryBytes) saturatingAdd(other MemoryBytes) MemoryBytes {
+	return b + min(other, ^MemoryBytes(0)-b)
+}
+
 // pageFloor rounds a byte quantity down to the kernel page size.
 //
 // Example: a non-page-aligned limit never exceeds its requested value.

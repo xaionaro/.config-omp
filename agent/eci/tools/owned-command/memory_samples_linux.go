@@ -2,20 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 const (
-	// accountingMeminfo names the host's memory availability source.
-	//
-	// Example: MemAvailable in this file includes discounted reclaimable host cache.
-	accountingMeminfo = "/proc/meminfo"
 	// accountingZoneinfo names the source for per-zone reclaim watermarks.
 	//
 	// Example: low watermarks are read in pages before converting to bytes.
@@ -47,8 +39,8 @@ type memoryCacheSample struct {
 // Example: two sibling protected cgroups both exclude cache at the host.
 func (s memoryCacheSample) add(other memoryCacheSample) memoryCacheSample {
 	return memoryCacheSample{
-		File: addMemoryClaims(s.File, other.File),
-		Slab: addMemoryClaims(s.Slab, other.Slab),
+		File: s.File.saturatingAdd(other.File),
+		Slab: s.Slab.saturatingAdd(other.Slab),
 	}
 }
 
@@ -106,16 +98,16 @@ func (s memoryClaimSample) bracket(
 //
 // Example: memory.stat reclaim candidates are discounted after subtracting peer cache.
 type memoryAncestorSample struct {
-	Bound memoryBound
+	Bound cgroupMemoryBound
 	Stat  memoryAccountingStat
 }
 
 // checkCommandMemory reads a bracketed estimate and admits only when every bound fits.
 //
-// Example: callers hold the admission lock and pass os.DirFS("/") plus discovered topology.
+// Example: callers hold the admission lock and pass the host view plus discovered topology.
 func checkCommandMemory(
 	ctx context.Context,
-	source fs.FS,
+	view memoryHostView,
 	topology memoryTopology,
 	floor MemoryBytes,
 	requested MemoryBytes,
@@ -129,14 +121,14 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		first, err := sampleMemoryClaim(source, claim, page)
+		first, err := sampleMemoryClaim(view, claim)
 		if err != nil {
 			return err
 		}
 		peers[i] = first
 	}
 
-	host, low, err := sampleHostMemory(source, floor, page)
+	host, low, err := sampleHostMemory(view, floor, page)
 	if err != nil {
 		return err
 	}
@@ -145,15 +137,15 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		ancestor, err := sampleMemoryAncestor(source, path)
+		ancestor, finite, err := sampleMemoryAncestor(view, path)
 		if err != nil {
 			return err
 		}
-		if ancestor.Bound.Path != "" {
+		if finite {
 			ancestors = append(ancestors, ancestor)
 		}
 	}
-	protected, err := sampleProtectedMemory(ctx, source, topology.Protected, ancestors)
+	protected, err := sampleProtectedMemory(ctx, view, topology.Protected, ancestors)
 	if err != nil {
 		return err
 	}
@@ -162,7 +154,7 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		second, err := sampleMemoryClaim(source, claim, page)
+		second, err := sampleMemoryClaim(view, claim)
 		if err != nil {
 			return err
 		}
@@ -172,15 +164,16 @@ func checkCommandMemory(
 		return err
 	}
 	var excluded memoryCacheSample
-	host.Held, excluded = memoryBoundClaims(hostMemoryProtectionRoot, topology.Protected[hostMemoryProtectionRoot], claims, protected)
-	host.Protected = addMemoryClaims(excluded.File, excluded.Slab)
+	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, topology.Protected[hostMemoryBoundID], claims, protected)
+	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
 	if err := host.admit(requested); err != nil {
 		return err
 	}
 	for _, ancestor := range ancestors {
 		bound := ancestor.Bound
-		bound.Held, excluded = memoryBoundClaims(bound.Path, topology.Protected[bound.Path], claims, protected)
-		bound.Credit = ancestor.Stat.reclaimCredit(memoryAccountingStat{File: excluded.File, Slab: excluded.Slab}, low)
+		id := cgroupMemoryBoundID(bound.Path)
+		bound.Held, excluded = accountBoundClaims(id, topology.Protected[id], claims, protected)
+		bound.Credit = ancestor.Stat.reclaimCredit(excluded, low)
 		if err := bound.admit(requested); err != nil {
 			return err
 		}
@@ -188,68 +181,56 @@ func checkCommandMemory(
 	return nil
 }
 
-// memoryBoundClaims returns held growth and the cache excluded from a bound's reclaim.
+// accountBoundClaims calculates held growth and excluded cache for one typed bound.
 //
-// Example: a protected root adds only the cache not already covered by outermost claims.
-func memoryBoundClaims(
-	bound string,
+// Example: count nested cap growth independently, but exclude cache only through an outer claim.
+func accountBoundClaims(
+	bound memoryBoundID,
 	protectedRoots []string,
 	claims map[string]memoryClaimBracket,
 	protected map[string]memoryCacheSample,
 ) (MemoryBytes, memoryCacheSample) {
-	atHost := bound == hostMemoryProtectionRoot
-	stop := bound
+	atHost := bound.kind == hostMemoryKind
+	stop := bound.path
 	if atHost {
 		stop = "/"
 	}
 	remainders := make(map[string]memoryCacheSample, len(protectedRoots))
-protectedRoot:
 	for _, root := range protectedRoots {
-		for parent := filepath.Dir(root); parent != stop; parent = filepath.Dir(parent) {
-			if _, covered := claims[parent]; covered {
-				continue protectedRoot
-			}
+		if strictMemoryAncestor(claims, root, stop) == "" {
+			remainders[root] = protected[root]
 		}
-		remainders[root] = protected[root]
 	}
 
 	var held MemoryBytes
 	var excluded memoryCacheSample
-claimRoot:
 	for path, claim := range claims {
 		switch {
 		case atHost:
-			held = addMemoryClaims(held, claim.HostGrowth)
+			held = held.saturatingAdd(claim.HostGrowth)
 			if len(remainders) == 0 {
 				continue
 			}
-		case isStrictMemoryDescendant(path, bound):
-			held = addMemoryClaims(held, claim.AncestorGrowth)
+		case isStrictMemoryDescendant(path, bound.path):
+			held = held.saturatingAdd(claim.AncestorGrowth)
 		default:
 			continue
 		}
-
-		for parent := filepath.Dir(path); parent != stop; parent = filepath.Dir(parent) {
-			if _, nested := claims[parent]; nested {
-				continue claimRoot
-			}
-			if cache, ok := remainders[parent]; ok {
-				// The smaller sample is the overlap we can safely remove.
-				remainders[parent] = cache.subtract(claim.CacheMin)
-				break
-			}
+		if strictMemoryAncestor(claims, path, stop) != "" {
+			continue
 		}
-		if cache, ok := remainders[path]; ok {
-			if atHost {
-				delete(remainders, path)
-			} else {
-				// Exact overlap keeps the larger of the claim and protected samples.
-				remainders[path] = cache.subtract(claim.CacheMax)
-			}
+		if owner := strictMemoryAncestor(remainders, path, stop); owner != "" {
+			remainders[owner] = remainders[owner].subtract(claim.CacheMin)
 		}
-		if !atHost {
-			excluded = excluded.add(claim.CacheMax)
+		if atHost {
+			delete(remainders, path)
+			continue
 		}
+		if cache, exact := remainders[path]; exact {
+			// Exact overlap contributes the larger of the two samples.
+			remainders[path] = cache.subtract(claim.CacheMax)
+		}
+		excluded = excluded.add(claim.CacheMax)
 	}
 	for _, cache := range remainders {
 		excluded = excluded.add(cache)
@@ -257,21 +238,40 @@ claimRoot:
 	return held, excluded
 }
 
+// strictMemoryAncestor finds the nearest indexed parent strictly below the reclaim root.
+//
+// Example: look up a claim's containing protected root without counting the cgroup itself.
+func strictMemoryAncestor[T any](
+	index map[string]T,
+	path string,
+	stop string,
+) string {
+	if len(index) == 0 {
+		return ""
+	}
+	for dir := filepath.Dir(path); dir != stop && dir != "/"; dir = filepath.Dir(dir) {
+		if _, found := index[dir]; found {
+			return dir
+		}
+	}
+	return ""
+}
+
 // sampleProtectedMemory reads each protected cgroup at most once, before the second peer pass.
 //
 // Example: a child protected for both the host and a finite ancestor is read once.
 func sampleProtectedMemory(
 	ctx context.Context,
-	source fs.FS,
-	protected map[string][]string,
+	view memoryHostView,
+	protected map[memoryBoundID][]string,
 	ancestors []memoryAncestorSample,
 ) (map[string]memoryCacheSample, error) {
 	cache := make(map[string]memoryCacheSample)
-	if err := sampleProtectedCache(ctx, source, cache, protected[hostMemoryProtectionRoot]); err != nil {
+	if err := sampleProtectedCache(ctx, view, cache, protected[hostMemoryBoundID]); err != nil {
 		return nil, err
 	}
 	for _, ancestor := range ancestors {
-		if err := sampleProtectedCache(ctx, source, cache, protected[ancestor.Bound.Path]); err != nil {
+		if err := sampleProtectedCache(ctx, view, cache, protected[cgroupMemoryBoundID(ancestor.Bound.Path)]); err != nil {
 			return nil, err
 		}
 	}
@@ -283,7 +283,7 @@ func sampleProtectedMemory(
 // Example: an unreadable subtree must not expand claimable capacity.
 func sampleProtectedCache(
 	ctx context.Context,
-	source fs.FS,
+	view memoryHostView,
 	cache map[string]memoryCacheSample,
 	paths []string,
 ) error {
@@ -294,8 +294,12 @@ func sampleProtectedCache(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		stat, err := sampleMemoryStat(source, path)
-		if err != nil {
+		stat, err := sampleMemoryStat(view, path)
+		switch {
+		case isGoneMemoryCgroup(err):
+			cache[path] = memoryCacheSample{}
+			continue
+		case err != nil:
 			return err
 		}
 		cache[path] = memoryCacheSample{File: stat.File, Slab: stat.Slab}
@@ -305,163 +309,104 @@ func sampleProtectedCache(
 
 // sampleMemoryClaim reads current charges and stats from one peer.
 //
-// Example: ENOENT during either read yields no resident credit for this pass.
+// Example: a disappearing controller file yields no resident credit for this pass.
 func sampleMemoryClaim(
-	source fs.FS,
+	view memoryHostView,
 	claim memoryClaim,
-	page MemoryBytes,
 ) (memoryClaimSample, error) {
-	current, _, err := sampleMemoryControl(source, claim.Path, accountingMemoryCurrent)
+	current, _, err := view.memoryControl(claim.Path, accountingMemoryCurrent, memoryCounterControl)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case isGoneMemoryCgroup(err):
 		return memoryClaimSample{}, nil
 	case err != nil:
 		return memoryClaimSample{}, err
 	}
-	stat, err := sampleMemoryStat(source, claim.Path)
+	stat, err := sampleMemoryStat(view, claim.Path)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case isGoneMemoryCgroup(err):
 		return memoryClaimSample{}, nil
 	case err != nil:
 		return memoryClaimSample{}, err
 	}
 	return memoryClaimSample{
 		Current: current,
-		Anon:    stat.residentAnon(current, claim.Cap, page),
+		Anon:    stat.residentAnon(current, claim.Cap),
 		Cache:   memoryCacheSample{File: stat.File, Slab: stat.Slab},
 	}, nil
 }
 
 // sampleMemoryAncestor reads the effective finite limit, current charges and cache counters.
 //
-// Example: if both controls are unlimited, the zero sample has no bound path.
+// Example: if both limit controls are unlimited, finite is false.
 func sampleMemoryAncestor(
-	source fs.FS,
+	view memoryHostView,
 	path string,
-) (memoryAncestorSample, error) {
-	limit, finiteMax, err := sampleMemoryControl(source, path, memoryClaimCapFile)
+) (sample memoryAncestorSample, finite bool, err error) {
+	limit, finiteMax, err := view.memoryControl(path, memoryMaxFile, memoryLimitControl)
 	if err != nil {
-		return memoryAncestorSample{}, err
+		return memoryAncestorSample{}, false, err
 	}
-	high, finiteHigh, err := sampleMemoryControl(source, path, accountingMemoryHigh)
+	high, finiteHigh, err := view.memoryControl(path, accountingMemoryHigh, memoryLimitControl)
 	if err != nil {
-		return memoryAncestorSample{}, err
+		return memoryAncestorSample{}, false, err
 	}
-	if !finiteMax && !finiteHigh {
-		return memoryAncestorSample{}, nil
+	switch {
+	case !finiteMax && !finiteHigh:
+		return memoryAncestorSample{}, false, nil
+	case !finiteMax:
+		limit = high
+	case finiteHigh:
+		limit = min(limit, high)
 	}
-	current, _, err := sampleMemoryControl(source, path, accountingMemoryCurrent)
+	current, _, err := view.memoryControl(path, accountingMemoryCurrent, memoryCounterControl)
 	if err != nil {
-		return memoryAncestorSample{}, err
+		return memoryAncestorSample{}, false, err
 	}
-	stat, err := sampleMemoryStat(source, path)
+	stat, err := sampleMemoryStat(view, path)
 	if err != nil {
-		return memoryAncestorSample{}, err
+		return memoryAncestorSample{}, false, err
 	}
-	return memoryAncestorSample{Bound: memoryBound{Path: path, Limit: min(limit, high), Current: current}, Stat: stat}, nil
+	return memoryAncestorSample{Bound: cgroupMemoryBound{Path: path, Limit: limit, Current: current}, Stat: stat}, true, nil
 }
 
 // sampleHostMemory reads the host aggregate and the low watermark needed by ancestor estimates.
 //
 // Example: MemAvailable needs no extra host-wide reclaim credit.
 func sampleHostMemory(
-	source fs.FS,
+	view memoryHostView,
 	floor MemoryBytes,
 	page MemoryBytes,
-) (memoryBound, MemoryBytes, error) {
-	data, err := readMemorySample(source, accountingMeminfo)
+) (hostMemoryBound, MemoryBytes, error) {
+	available, err := view.meminfoBytes(meminfoAvailableKey)
 	if err != nil {
-		return memoryBound{}, 0, err
+		return hostMemoryBound{}, 0, err
 	}
-	available, err := parseSampledMemAvailable(data)
+	data, err := view.readFile(accountingZoneinfo)
 	if err != nil {
-		return memoryBound{}, 0, fmt.Errorf("%s: %w", accountingMeminfo, err)
+		return hostMemoryBound{}, 0, err
 	}
-	data, err = readMemorySample(source, accountingZoneinfo)
+	low, err := parseMemoryZoneLow(string(data), page)
 	if err != nil {
-		return memoryBound{}, 0, err
+		return hostMemoryBound{}, 0, fmt.Errorf("%s: %w", accountingZoneinfo, err)
 	}
-	low, err := parseMemoryZoneLow(data, page)
-	if err != nil {
-		return memoryBound{}, 0, fmt.Errorf("%s: %w", accountingZoneinfo, err)
-	}
-	return memoryBound{Available: available, Floor: floor}, low, nil
-}
-
-// parseSampledMemAvailable extracts the kernel's estimate of available RAM.
-//
-// Example: MemAvailable: 1024 kB corresponds to 1048576 bytes.
-func parseSampledMemAvailable(data string) (MemoryBytes, error) {
-	for line := range strings.Lines(data) {
-		key, value, _ := strings.Cut(line, ":")
-		if key != "MemAvailable" {
-			continue
-		}
-		fields := strings.Fields(value)
-		if len(fields) == 2 && fields[1] == "kB" {
-			kib, err := strconv.ParseUint(fields[0], 10, 64)
-			if err == nil && kib <= ^uint64(0)/1024 {
-				return MemoryBytes(kib * 1024), nil
-			}
-		}
-		break
-	}
-	return 0, fmt.Errorf("invalid or missing MemAvailable")
+	return hostMemoryBound{Available: available, Floor: floor}, low, nil
 }
 
 // sampleMemoryStat reads and parses a cgroup sample with contextual errors.
 //
 // Example: errors identify the specific memory.stat file that could not be read.
 func sampleMemoryStat(
-	source fs.FS,
+	view memoryHostView,
 	path string,
 ) (memoryAccountingStat, error) {
 	file := filepath.Join(path, accountingMemoryStat)
-	data, err := readMemorySample(source, file)
+	data, err := view.readFile(file)
 	if err != nil {
 		return memoryAccountingStat{}, err
 	}
-	stat, err := parseMemoryAccountingStat(data)
+	stat, err := parseMemoryAccountingStat(string(data))
 	if err != nil {
 		return memoryAccountingStat{}, fmt.Errorf("%s: %w", file, err)
 	}
 	return stat, nil
-}
-
-// sampleMemoryControl reads a byte counter or limit, accepting max only for limits.
-//
-// Example: a finite memory.high of zero is a real bound rather than unlimited.
-func sampleMemoryControl(
-	source fs.FS,
-	path string,
-	name string,
-) (MemoryBytes, bool, error) {
-	file := filepath.Join(path, name)
-	data, err := readMemorySample(source, file)
-	if err != nil {
-		return 0, false, err
-	}
-	value := strings.TrimSpace(data)
-	if value == "max" && name != accountingMemoryCurrent {
-		return ^MemoryBytes(0), false, nil
-	}
-	bytes, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return 0, false, fmt.Errorf("%s: %w", file, err)
-	}
-	return MemoryBytes(bytes), true, nil
-}
-
-// readMemorySample reads a virtual absolute path through the supplied system view.
-//
-// Example: an injected fs.FS can supply proc and cgroup samples without changing the host.
-func readMemorySample(
-	source fs.FS,
-	path string,
-) (string, error) {
-	data, err := fs.ReadFile(source, strings.TrimPrefix(path, "/"))
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	return string(data), nil
 }

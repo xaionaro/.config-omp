@@ -5,23 +5,29 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
 
 const (
+	// memoryCgroupTypeFile exists in every non-root cgroup v2 directory.
+	//
+	// Example: a delegated mount root must not contain this file.
+	memoryCgroupTypeFile = "cgroup.type"
+
 	// memoryAdmissionLockRetry is the polling interval for contended flocks.
 	//
 	// Example: contention remains interruptible by the setup context.
 	memoryAdmissionLockRetry = 10 * time.Millisecond
 )
 
-// createReservedCommandCgroup commits a verified cap under the host admission
+// createClaimedCommandCgroup commits a verified cap under the host admission
 // lock. The command cgroup retains the claim until it is removed.
 //
 // Example: a failed admission removes the tentative command cgroup before unlocking.
-func createReservedCommandCgroup(
+func createClaimedCommandCgroup(
 	ctx context.Context,
 	path string,
 	limit MemoryBytes,
@@ -30,8 +36,8 @@ func createReservedCommandCgroup(
 	if err != nil {
 		return err
 	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		return errors.Join(fmt.Errorf("create exclusive command cgroup %s: %w", path, err), lock.Close())
+	if err := makeOwnedCommandCgroup(path); err != nil {
+		return errors.Join(err, lock.Close())
 	}
 	defer
 	// Roll back before unlocking; even a failed lock close must prevent launch.
@@ -49,18 +55,37 @@ func createReservedCommandCgroup(
 	if err := configureCommandMemory(path, limit); err != nil {
 		return err
 	}
-	topology, err := discoverMemoryTopology(ctx, cgroupRoot, path)
+	view := memoryHostView{source: os.DirFS("/")}
+	topology, err := discoverMemoryTopology(ctx, view, cgroupRoot, path)
 	if err != nil {
 		return err
 	}
-	floor, err := readHostMemoryFloor(ctx)
+	floor, err := readEarlyoomMemoryFloor(ctx, view, cgroupRoot)
 	if err != nil {
 		return err
 	}
-	if err := checkCommandMemory(ctx, os.DirFS("/"), topology, floor, limit.pageFloor()); err != nil {
+	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor()); err != nil {
 		return err
 	}
 	return ctx.Err()
+}
+
+// lockHostMemoryAdmission rejects delegated hierarchy views before taking the
+// shared root inode lock. Close the returned file to release the lock.
+//
+// Example: hold the lock across claim discovery and cap publication.
+func lockHostMemoryAdmission(
+	ctx context.Context,
+	root string,
+) (*os.File, error) {
+	_, err := os.Lstat(filepath.Join(root, memoryCgroupTypeFile))
+	if err == nil {
+		return nil, fmt.Errorf("memory admission requires the host cgroup root; %s contains %s", root, memoryCgroupTypeFile)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("verify host cgroup root: %w", err)
+	}
+	return lockMemoryAdmission(ctx, root)
 }
 
 // lockMemoryAdmission serializes capped launchers that see the same cgroup root.

@@ -99,6 +99,13 @@ if its guard dies. Capacity refusal starts no command and returns status 125
 with receipt `Cause` set to `memory admission refused`, `CommandPID` set to 0,
 and the binding budget in `Errors`. It does not wait for memory to free up.
 Capped setup refuses a cgroup view that cannot see the host root.
+An unreadable cgroup also fails capped setup with `Cause: guard error`.
+Owned-command creates cgroups readable and traversable by other users so their
+admissions can count the claims; it does not grant them write access.
+
+The earlyoom floor requires the service processes to be visible in `/proc`.
+A hidden service member or an unsupported earlyoom option fails capped setup
+with `Cause: guard error`.
 
 The check is advisory, not physical reservation. Kernel statistics are
 batched, and a claim can change and change back between samples. Uncapped
@@ -138,13 +145,14 @@ failure unrelated to the cap is not evidence. A comparable measurement can
 establish insufficiency without a receipt or kernel diagnostic.
 
 For resource-sensitive builds, require measured in-cgroup need ≤ cap.
-Admission checks capped workload headroom. Separately check that fresh
-headroom left after capped commitments covers estimated concurrent out-of-cap
-usage plus a margin. Include nested units and processes that leave `command`
-in that estimate; the cap does not cover them. `Memory.Peak` records observed
-in-cgroup usage, which can include reclaimable cache; it does not establish
-the minimum cap the workload needs. If either check fails, reduce concurrency
-or do not run.
+Admission covers only capped growth. Run out-of-cap work such as nested units
+as separate `owned-command` launches with their own `-memory-max` so admission
+counts each claim. For remaining uncapped out-of-cap work, check before launch
+that fresh `MemAvailable` covers the cap, estimated concurrent out-of-cap
+usage, and a margin. This check cannot see other claims' outstanding growth,
+so it is necessary but not sufficient. `Memory.Peak` records observed in-cgroup
+usage, which can include reclaimable cache; it does not establish the minimum
+cap the workload needs. If either check fails, reduce concurrency or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process
 group. Early signal notification can reset formerly ignored HUP/INT to default

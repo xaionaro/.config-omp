@@ -2,21 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
 const (
-	// memoryCgroupTypeFile exists in every non-root cgroup v2 directory.
-	//
-	// Example: a delegated mount root must not contain this file.
-	memoryCgroupTypeFile = "cgroup.type"
-
 	// memoryProtectionMinFile names the explicit hard reclaim protection.
 	//
 	// Example: a child with memory.min>0 is protected from its parent's reclaim.
@@ -26,16 +18,6 @@ const (
 	//
 	// Example: a child with memory.low>0 is excluded from claimable cache credit.
 	memoryProtectionLowFile = "memory.low"
-
-	// hostMemoryProtectionRoot is the key for protections below the host root.
-	//
-	// Example: Protected[hostMemoryProtectionRoot] excludes host cache credit.
-	hostMemoryProtectionRoot = ""
-
-	// memoryClaimCapFile records the finite command limit that establishes a claim.
-	//
-	// Example: a command directory with memory.max=4096 claims one 4 KiB page.
-	memoryClaimCapFile = "memory.max"
 )
 
 // memoryTopology identifies peer claims, enclosing boundaries, and the maximal
@@ -45,7 +27,7 @@ const (
 type memoryTopology struct {
 	Claims    []memoryClaim
 	Ancestors []string
-	Protected map[string][]string
+	Protected map[memoryBoundID][]string
 }
 
 // memoryClaim fixes the finite cap observed while the command cgroup existed.
@@ -56,22 +38,15 @@ type memoryClaim struct {
 	Cap  MemoryBytes
 }
 
-// lockHostMemoryAdmission rejects delegated hierarchy views before taking the
-// shared root inode lock. Close the returned file to release the lock.
+// memoryTopologyWalker retains the traversal context and discovered topology.
 //
-// Example: hold the lock across claim discovery and cap publication.
-func lockHostMemoryAdmission(
-	ctx context.Context,
-	root string,
-) (*os.File, error) {
-	_, err := os.Lstat(filepath.Join(root, memoryCgroupTypeFile))
-	if err == nil {
-		return nil, fmt.Errorf("memory admission requires the host cgroup root; %s contains %s", root, memoryCgroupTypeFile)
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("verify host cgroup root: %w", err)
-	}
-	return lockMemoryAdmission(ctx, root)
+// Example: pass visit to fs.WalkDir to inventory a host cgroup hierarchy.
+type memoryTopologyWalker struct {
+	ctx      context.Context
+	view     memoryHostView
+	root     string
+	command  string
+	topology memoryTopology
 }
 
 // discoverMemoryTopology inventories live peers and the candidate's enclosing
@@ -80,6 +55,7 @@ func lockHostMemoryAdmission(
 // Example: include a finite peer even if its guard is no longer in the scope.
 func discoverMemoryTopology(
 	ctx context.Context,
+	view memoryHostView,
 	root string,
 	command string,
 ) (memoryTopology, error) {
@@ -88,81 +64,114 @@ func discoverMemoryTopology(
 		return memoryTopology{}, fmt.Errorf("memory admission command %s is not below %s", command, root)
 	}
 
-	topology := memoryTopology{Protected: make(map[string][]string)}
+	walker := memoryTopologyWalker{
+		ctx:      ctx,
+		view:     view,
+		root:     root,
+		command:  command,
+		topology: memoryTopology{Protected: make(map[memoryBoundID][]string)},
+	}
 	for dir := filepath.Dir(command); dir != root; dir = filepath.Dir(dir) {
-		topology.Ancestors = append(topology.Ancestors, dir)
+		walker.topology.Ancestors = append(walker.topology.Ancestors, dir)
 	}
 
-	// Visit cgroups in preorder so each ancestor is considered before its descendants.
-	err := filepath.WalkDir(root,
-		// Skip vanished cgroups, but fail closed when a live subtree cannot be read.
-		func(
-			path string,
-			entry fs.DirEntry,
-			walkErr error,
-		) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if walkErr != nil {
-				if path != root && errors.Is(walkErr, fs.ErrNotExist) {
-					return nil
-				}
-				return walkErr
-			}
-			if path == root || path == command || !entry.IsDir() {
-				return nil
-			}
-			if err := topology.discoverProtection(path); err != nil {
-				return err
-			}
-			if entry.Name() != commandLeaf {
-				return nil
-			}
-			scopeName := filepath.Base(filepath.Dir(path))
-			if !strings.HasPrefix(scopeName, "owned-command-") || !strings.HasSuffix(scopeName, ".scope") {
-				return nil
-			}
-			limit, finite, err := readTopologyMemoryControl(path, memoryClaimCapFile)
-			if finite {
-				topology.Claims = append(topology.Claims, memoryClaim{Path: path, Cap: limit})
-			}
-			return err
-		})
-	if err != nil {
+	// Preorder visits explicit protections before any of their descendants.
+	if err := fs.WalkDir(view.source, hostMemoryFSPath(root), walker.visit); err != nil {
 		return memoryTopology{}, fmt.Errorf("discover memory admission topology: %w", err)
 	}
-	return topology, nil
+	return walker.topology, nil
 }
 
-// discoverProtection selects the largest explicitly protected subtrees for
-// each reclaim root independently.
+// visit reads claims and protections for one live cgroup in walk order.
 //
-// Example: a protected ancestor contributes for the host but not itself.
-func (t *memoryTopology) discoverProtection(path string) error {
-	for _, name := range [...]string{memoryProtectionMinFile, memoryProtectionLowFile} {
-		value, _, err := readTopologyMemoryControl(path, name)
-		if err != nil {
-			return err
-		}
-		if value != 0 {
-			t.addProtection(hostMemoryProtectionRoot, path)
-			for _, ancestor := range t.Ancestors {
-				if isStrictMemoryDescendant(path, ancestor) {
-					t.addProtection(ancestor, path)
-				}
-			}
+// Example: skip a peer directory deactivated since listing its parent.
+func (w *memoryTopologyWalker) visit(
+	relative string,
+	entry fs.DirEntry,
+	walkErr error,
+) error {
+	if err := w.ctx.Err(); err != nil {
+		return err
+	}
+	path := "/" + relative
+	if relative == "." {
+		path = "/"
+	}
+	if walkErr != nil {
+		if path != w.root && isGoneMemoryCgroup(walkErr) {
 			return nil
 		}
+		return walkErr
 	}
-	return nil
+	if path == w.root || path == w.command || !entry.IsDir() {
+		return nil
+	}
+	protected, err := w.hasProtection(path)
+	if err != nil {
+		return err
+	}
+	if protected {
+		w.topology.recordProtection(path)
+	}
+	return w.recordClaim(path, entry.Name())
+}
+
+// recordClaim records a finite cap, but not unrelated or unlimited groups.
+//
+// Example: old launchers' scopes use the same name as current scopes.
+func (w *memoryTopologyWalker) recordClaim(
+	path string,
+	leaf string,
+) error {
+	if leaf != commandLeaf || !isOwnedCommandScope(filepath.Base(filepath.Dir(path))) {
+		return nil
+	}
+	limit, finite, err := w.view.memoryControl(path, memoryMaxFile, memoryLimitControl)
+	if isGoneMemoryCgroup(err) {
+		return nil
+	}
+	if finite {
+		w.topology.Claims = append(w.topology.Claims, memoryClaim{Path: path, Cap: limit})
+	}
+	return err
+}
+
+// hasProtection checks both explicit protection controls for a live cgroup.
+//
+// Example: neither a missing control nor a zero gives reclaim protection.
+func (w *memoryTopologyWalker) hasProtection(path string) (bool, error) {
+	for _, name := range [...]string{memoryProtectionMinFile, memoryProtectionLowFile} {
+		value, _, err := w.view.memoryControl(path, name, memoryProtectionControl)
+		if isGoneMemoryCgroup(err) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if value != 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// recordProtection distributes a protected cgroup to the applicable bounds.
+//
+// Example: a protected ancestor contributes for the host but not itself.
+func (t *memoryTopology) recordProtection(path string) {
+	t.addProtection(hostMemoryBoundID, path)
+	for _, ancestor := range t.Ancestors {
+		if isStrictMemoryDescendant(path, ancestor) {
+			t.addProtection(cgroupMemoryBoundID(ancestor), path)
+		}
+	}
 }
 
 // addProtection records a maximal protected subtree in preorder.
 //
 // Example: a protected descendant of the last recorded subtree is already covered.
 func (t *memoryTopology) addProtection(
-	bound string,
+	bound memoryBoundID,
 	path string,
 ) {
 	protected := t.Protected[bound]
@@ -180,31 +189,4 @@ func isStrictMemoryDescendant(
 ) bool {
 	suffix, ok := strings.CutPrefix(path, strings.TrimSuffix(root, "/"))
 	return ok && len(suffix) > 1 && suffix[0] == '/'
-}
-
-// readTopologyMemoryControl reads a numeric topology control, distinguishing an
-// uncapped command from a finite command, and tolerating missing controls.
-//
-// Example: the unlimited kernel marker max does not make a claim.
-func readTopologyMemoryControl(
-	path string,
-	name string,
-) (MemoryBytes, bool, error) {
-	control := filepath.Join(path, name)
-	data, err := os.ReadFile(control)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	value := strings.TrimSpace(string(data))
-	if name == memoryClaimCapFile && value == "max" {
-		return 0, false, nil
-	}
-	bytes, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return 0, false, fmt.Errorf("parse %s: %w", control, err)
-	}
-	return MemoryBytes(bytes), true, nil
 }

@@ -39,6 +39,21 @@ const (
 	// Example: the guard retires processes only in this subtree.
 	commandLeaf = "command"
 
+	// ownedCommandCgroupMode allows other users' admissions to read our claims.
+	//
+	// Example: another user can traverse the command directory, but not modify it.
+	ownedCommandCgroupMode = 0755
+
+	// ownedCommandScopePrefix is the shared creation and discovery name prefix.
+	//
+	// Example: owned-command-123-456.scope holds a workload tree.
+	ownedCommandScopePrefix = "owned-command-"
+
+	// ownedCommandScopeSuffix identifies the systemd unit kind.
+	//
+	// Example: an unrelated service of the same prefix cannot hold a claim.
+	ownedCommandScopeSuffix = ".scope"
+
 	// oomdOmitXattr excludes the guard leaf from systemd-oomd kill selection.
 	// oomd honors it when the leaf and monitored cgroup owners match.
 	//
@@ -171,7 +186,7 @@ func acquireCommandCgroup(
 		return nil, fmt.Errorf("connect to systemd user manager for cgroup delegation: %w", err)
 	}
 	defer connection.Close()
-	unit := fmt.Sprintf("owned-command-%d-%d.scope", os.Getpid(), time.Now().UnixNano())
+	unit := ownedCommandScopeName(os.Getpid(), time.Now().UnixNano())
 	completed := make(chan string, 1)
 	properties := []systemddbus.Property{
 		systemddbus.PropPids(uint32(os.Getpid())),
@@ -220,12 +235,12 @@ func acquireCommandCgroup(
 	path := filepath.Join(cgroupRoot, relative)
 	switch {
 	case memoryMax != 0:
-		if err := createReservedCommandCgroup(ctx, path, memoryMax); err != nil {
+		if err := createClaimedCommandCgroup(ctx, path, memoryMax); err != nil {
 			return nil, err
 		}
 	default:
-		if err := os.Mkdir(path, 0700); err != nil {
-			return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
+		if err := makeOwnedCommandCgroup(path); err != nil {
+			return nil, err
 		}
 	}
 	directory, err := os.Open(path)
@@ -241,6 +256,36 @@ func acquireCommandCgroup(
 		return nil, errors.Join(fmt.Errorf("open command cgroup kill control: %w", err), events.Close(), directory.Close(), os.Remove(path))
 	}
 	return &commandCgroup{Directory: directory, Events: events, Kill: kill, Path: path, Relative: relative}, nil
+}
+
+// ownedCommandScopeName formats the stable name for one delegated scope.
+//
+// Example: PID 123 at 456 nanoseconds gives owned-command-123-456.scope.
+func ownedCommandScopeName(
+	pid int,
+	nanos int64,
+) string {
+	return fmt.Sprintf("%s%d-%d%s", ownedCommandScopePrefix, pid, nanos, ownedCommandScopeSuffix)
+}
+
+// isOwnedCommandScope recognizes the stable name used to find old launchers' claims.
+//
+// Example: another application scope's command directory is not a claim.
+func isOwnedCommandScope(name string) bool {
+	return strings.HasPrefix(name, ownedCommandScopePrefix) && strings.HasSuffix(name, ownedCommandScopeSuffix)
+}
+
+// makeOwnedCommandCgroup creates a fresh leaf readable by other admissions.
+//
+// Example: a private umask cannot conceal an owned command's memory claim.
+func makeOwnedCommandCgroup(path string) error {
+	if err := os.Mkdir(path, ownedCommandCgroupMode); err != nil {
+		return fmt.Errorf("create exclusive cgroup %s: %w", path, err)
+	}
+	if err := os.Chmod(path, ownedCommandCgroupMode); err != nil {
+		return errors.Join(fmt.Errorf("set cgroup %s admissions visibility: %w", path, err), os.Remove(path))
+	}
+	return nil
 }
 
 // userManagerBusAddress returns the configured or standard user manager bus address.
@@ -274,7 +319,7 @@ func prepareMemoryScope(parent string) error {
 		return errors.New("memory controller unavailable")
 	}
 	guard := filepath.Join(scope, memoryGuardLeaf)
-	if err := os.Mkdir(guard, 0700); err != nil {
+	if err := makeOwnedCommandCgroup(guard); err != nil {
 		return fmt.Errorf("create guard cgroup: %w", err)
 	}
 	if err := unix.Setxattr(guard, oomdOmitXattr, []byte(oomdOmitValue), 0); err != nil {
