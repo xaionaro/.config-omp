@@ -174,7 +174,7 @@ Don't add features, refactor other code, or "improve" beyond the test.
 
 ### Verify RED - Watch It Fail
 
-**ECI main-path work:** Validate each new or changed test assertion retained in the deliverable: run that same test against the scratch base under testing-discipline’s [Test validation](../testing-discipline/SKILL.md). If the unmodified base cannot exercise it, repair the scratch setup or use a faithful broken control that exposes the original missing or wrong behavior. Observe the expected assertion failure there and current [GREEN](#verify-green---watch-it-pass). A setup error or a separate direct run does not validate that test. If this RED cannot be shown reasonably, drop the unvalidated test change, prove the behavior with equally faithful product evidence, and record the change; no test needs to remain as product proof. An unvalidated test never counts as proof or stays in the deliverable. Changed test-only code with no changed assertion, such as a helper rename, needs only the [ECI build check](#batch-order).
+**ECI main-path work:** Validate each new test and each retained assertion whose case execution, observed result, or failure condition changes, including through a fixture, helper, or runner: run that same test against the scratch base under testing-discipline’s [Test validation](../testing-discipline/SKILL.md). If the unmodified base cannot exercise it, repair the scratch setup or use a faithful broken control that exposes the original missing or wrong behavior. Observe the expected assertion failure there and current [GREEN](#verify-green---watch-it-pass). A setup error or a separate direct run does not validate that test. If this RED cannot be shown reasonably, drop the unvalidated test change, prove the behavior with equally faithful product evidence, and record the change; product proof alone does not validate a test, and no test needs to remain as product proof. An unvalidated test never counts as proof or stays in the deliverable. The [ECI build check](#batch-order) is the leaf-close check. For other changes to test behavior, show the shortest faithful evidence of the change in focused proof. Behavior-preserving test edits, such as a pure helper rename, need no test execution solely for that edit.
 
 **Other work following this skill:**
 
@@ -193,7 +193,7 @@ Run each new test without the code it tests, by testing-discipline's [Test valid
 
 #### ECI main-path work
 
-Confirm GREEN for the selected tests in the chosen proof. Repair scoped implementation defects; repair or replace deficient proof with equally faithful evidence. Never make unselected tests a prerequisite.
+Confirm GREEN for selected proof tests and all retained test changes covered by [Verify RED](#verify-red---watch-it-fail). Repair scoped implementation defects; repair or replace deficient proof with equally faithful evidence. Never require unrelated tests.
 
 #### Other work following this skill
 
@@ -301,7 +301,9 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 
 ## Red Flags - STOP and Start Over
 
-**ECI main-path work:** Faithful direct proof, chosen initially or as a replacement, is not a flag here and needs no deletion or new test. The [late-proof exception](#overview) changes only a late-needed test's timing and spares sound code from deletion; it does not change proof validity, so a late test that does not discriminate never counts. Omitting a test initially selected as proof is not excused. Other work applies the list below unchanged.
+**ECI main-path work:** A missing or unexpected RED routes to [Verify RED](#verify-red---watch-it-fail), not to deletion or restart. Keep sound product code while repairing or replacing proof. Faithful direct proof, chosen initially or as a replacement, is not a TDD violation. Apply the [Overview](#overview) timing rules: do not postpone an initially selected test or implement before resolving diagnosis; only the late-proof exception permits a late-needed test.
+
+**Other work following this skill:**
 
 - Code before test
 - Test written after implementation
@@ -362,7 +364,7 @@ Before reporting the Job or outcome done:
 
 ### ECI main-path work
 
-Confirm that the chosen proof covers every required behavior and relevant regression. For each new or changed test still selected as proof, confirm expected RED and current GREEN and apply [testing-discipline](../testing-discipline/SKILL.md).
+Confirm that the chosen proof covers every required behavior and relevant regression. Confirm [Verify RED](#verify-red---watch-it-fail) and [Verify GREEN](#verify-green---watch-it-pass) for the tests they cover.
 
 ### Other work following this skill
 
