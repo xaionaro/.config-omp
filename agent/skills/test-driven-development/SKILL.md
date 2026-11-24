@@ -11,7 +11,7 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. Where it selects new or changed tests as proof, this whole skill applies to those tests and their code. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first. Close each implementation leaf by building or type-checking the changed deliverable with a fitting production build target, such as `go build ./...`, unless the change is prose-only; check selected new or changed tests as part of the chosen proof, and never require an unselected test target to build. A new or changed test first needed because the whole-part or combined proof proved unfaithful is the one exception to the Iron Law: keep sound product code, show the test's expected RED without the tested change in a scratch export of the base and GREEN with it under testing-discipline's [Test validation](../testing-discipline/SKILL.md), then rerun the whole chosen proof. It never permits postponing initially selected tests, or implementing before an unresolved diagnosis. This precedence holds only in ECI; other workflows keep this skill unchanged.
+**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. For ECI main-path work, apply TDD to the new or changed tests selected as proof and the behavior they prove. Generic instructions below do not expand that selection. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first. Leaves close with the ECI build check in [Batch Order](#batch-order). A new or changed test first needed because the whole-part or combined proof proved unfaithful is the one exception to the Iron Law: keep sound product code, show the test's expected RED without the tested change in a scratch export of the base and GREEN with it under testing-discipline's [Test validation](../testing-discipline/SKILL.md), then rerun the whole chosen proof. It never permits postponing initially selected tests, or implementing before an unresolved diagnosis. This precedence holds only in ECI; other workflows keep this skill unchanged.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
@@ -21,9 +21,11 @@ Write the tests for all pending work in your batch, then implement it. Close eac
 
 Confirm the build by compiling or type-checking the changed code and its tests without running any test, such as `go test -run '^$' ./...`, `cargo test --no-run`, `tsc --noEmit`, or the language's equivalent. Run this check even when a lint or test run passes. Skip it for a prose-only change. Until the code that new tests reference exists, as in a tests-only task or leaf, report each check's observed result, name each failure that only that later code removes, and fix every other failure.
 
+**ECI build check:** At implementation-leaf close, compile or type-check the changed code without running tests; skip prose-only changes. Use a fitting production target for changed production code. For changed test-only code, use the narrowest compile or type-check that includes that code and its necessary dependencies (for example, `go test -c -o <scratch-output> ./tally`). Do not require unrelated test targets. If a planned later leaf supplies code that the tests refer to, report the observed result under the missing-reference rule above. In a mixed leaf, run both checks; neither substitutes for changed code it excludes, and unchanged test targets never join the production build. A production build cannot certify unchecked test code; selected tests are still proved later in the chosen proof.
+
 | Work | Batch |
 | --- | --- |
-| ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline), which decides whether new or changed tests are written; its leaves close with the production build check under ECI main-path work above |
+| ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline), which decides whether new or changed tests are written; its leaves close with the ECI build check above |
 | ECI Fast Owner | Provisional Fast work need not follow this order ([fast-path](../explore-critique-implement/references/fast-path.md#fast-solving-and-delegation)); when it writes tests, one Fast issue per [checkpoint](../explore-critique-implement/references/fast-path.md#adoption-review-and-closure) |
 | writing-plans plan, run by subagent-driven-development or executing-plans | The whole plan; its final task runs the tests |
 | receiving-code-review | All accepted items |
@@ -200,6 +202,8 @@ Confirm:
 
 **Other tests fail?** Fix now.
 
+**ECI main-path work:** Confirm GREEN for the selected tests in the chosen proof. Repair scoped implementation defects; repair or replace deficient proof with equally faithful evidence. Never make unselected tests a prerequisite.
+
 ### REFACTOR - Clean Up
 
 After green only:
@@ -345,6 +349,8 @@ Extract validation for multiple fields if needed.
 ## Verification Checklist
 
 Before reporting the Job or outcome done:
+
+**ECI main-path work:** Check that the chosen proof covers every required behavior and relevant regression and that each retained new or changed test showed expected RED and current GREEN. Apply the test-quality checks below to those tests; do not require a test per function or passage of unselected tests. Other work checks every box:
 
 - [ ] Every new function/method has a test
 - [ ] Watched each test fail without its code

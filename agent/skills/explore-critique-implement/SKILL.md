@@ -66,7 +66,7 @@ Code/debug work affecting runtime behavior reachable through a UI, API, device, 
 
 Each iteration gets focused tests/proof and independent code review under the [iteration rule](#iteration-rule). Producers commit their checked work whenever they choose, optionally one commit per fix, and report the ranges in their handoff. Do not run routine E2E between iterations. An early E2E is allowed only to investigate a concrete failure or integration uncertainty; run the shortest faithful real-path scenario that can resolve it. Early evidence does not replace final E2E.
 
-For active ECI, this router controls E2E applicability and cadence within ECI iterations. `testing-discipline` still governs focused-check and required-E2E quality, but its generic per-modification E2E default does not add routine E2E between ECI iterations. This ECI-local cadence does not replace separately applicable outer-workflow acceptance evidence, such as ATE root gates.
+For active ECI, this router controls E2E applicability and cadence within ECI iterations. `testing-discipline` still governs focused-check and required-E2E quality. This ECI-local cadence does not replace separately applicable outer-workflow acceptance evidence, such as ATE root gates.
 
 Once main-path implementation, post-Fast findings/dispositions, and any resulting repairs are complete, run one final pair before acceptance whenever a configuration or runtime trigger applies: the Implementer Producer’s E2E and a fresh independent Step 4 E2E on the same stabilized final cumulative revision. The independent run may repeat or extend the Producer’s run. A later material edit affecting exercised behavior, assertions, or configuration invalidates the affected E2E evidence; refresh it before acceptance.
 
