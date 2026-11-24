@@ -162,6 +162,16 @@ Achieve all applicable goals; this order governs conflicts, scheduling, and incr
 7. High performance.
 8. Secure; security findings remain follow-ups.
 
+### Prod-code focus
+
+Prod code is the deliverable; tests and test harnesses are means to verify it.
+
+| Rule | Example |
+|------|---------|
+| Apply `coding-*` skills and similar code-quality policy to prod code only. | A style violation in a test helper is no prod failure and no review blocker. |
+| Never make progress or completion await auto-tests; any faithful evidence suffices. | A manual run proving the behavior counts when no suite exists. |
+| A harness or tooling failure is not a product or E2E failure. | E2E harness crashes mid-run: record it, continue that iteration manually, judge only the product's behavior. |
+
 ### ECI scope admission
 
 Before adding work to ECI scope because something appears broken or making work await that concern, state a concrete practical use case tied to the requested outcome: user action or input, current failure, and expected result. Apply this wherever discovered, including main ECI and Fast. Without a case, do not admit the concern and record it only as a post-ECI follow-up. The use-case requirement does not apply to a review finding about the requested outcome; that finding takes one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`). A missing use case is not evidence for any defer condition. A case does not authorize a separate outcome. Work that a required outcome's acceptance or proof depends on, such as a migration, dependency fix, or API adaptation, is part of that outcome, not a separate outcome, even when it changes another component. Admit authorized child packages under the recursive Job contract (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure`); inherited authorization needs no renewed user request. Preserve explicit requirements and their acceptance criteria.
