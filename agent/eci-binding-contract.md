@@ -164,19 +164,21 @@ Achieve all applicable goals; this order governs conflicts, scheduling, and incr
 
 ### Prod-code focus
 
-Prod code is the deliverable; tests and test harnesses are means to verify it.
+Prod code is the deliverable; tests and test harnesses are means to verify it. Prod code is code with production responsibility: what the delivered product or workflow depends on, including runtime code, build, generation and deployment tooling for shipped artifacts, and instructions, even when tests also call it. Test-only code exists only to verify it: tests, fixtures, mocks, and test harnesses. When a requested outcome is itself test tooling, that tooling is that outcome's prod code.
 
 | Rule | Example |
 |------|---------|
-| Apply `coding-*` skills and similar code-quality policy to prod code only. | A style violation in a test helper is no prod failure and no review blocker. |
-| Never make progress or completion await auto-tests; any faithful evidence suffices. | A manual run proving the behavior counts when no suite exists. |
-| A harness or tooling failure is not a product or E2E failure. | E2E harness crashes mid-run: record it, continue that iteration manually, judge only the product's behavior. |
+| Coding policy (`coding-*` skills, coding-style admission, repository style conventions, formatter/linter configuration) governs prod code only. Test-only code follows testing guidance; its style is at most `NIT`. Independent review of proof still applies to it. | A bare primitive in a test helper is at most `NIT`; the same pattern in a prompt generator is a coding violation. |
+| Never make ordinary progress await automated tests. Acceptance requires faithful evidence of every required behavior. A suite, a coverage level, or a test-speed gain is required work only when that evidence needs it. Choose or replace the proof method; a suite, coverage level, or test-speed gain is not an independent acceptance criterion. | No suite exists: a before/after CLI run with a negative case proves the fix; nobody builds a framework to ship it. |
+| Record harness incidents, missing required observations, and observed product defects separately. A failure that does not prove a product defect does not end E2E: keep trustworthy observations and take reasonable steps in the same run to establish product success or failure. Continue manually on the required real path after harness failure. If continuation becomes difficult and requires real implementation work, you may abort; absent a proved result, report it incomplete, with attempts, missing observations, and what implementation is needed. An observed product defect fails the run even when the harness also broke or observations are missing. Pass only with every required observation and no product defect. | The E2E driver crashes after step 3 of 5: steps 1–3 stand, steps 4–5 run by hand through the CLI. |
+
+Evidence stays faithful: proxy evidence never replaces a required real path, and a check that cannot fail is a proof gap, not a pass.
 
 ### ECI scope admission
 
 Before adding work to ECI scope because something appears broken or making work await that concern, state a concrete practical use case tied to the requested outcome: user action or input, current failure, and expected result. Apply this wherever discovered, including main ECI and Fast. Without a case, do not admit the concern and record it only as a post-ECI follow-up. The use-case requirement does not apply to a review finding about the requested outcome; that finding takes one treatment under review policy (`~/.omp/agent/skills/references/workflow-runtime/review-policy.md#gate-evaluation`). A missing use case is not evidence for any defer condition. A case does not authorize a separate outcome. Work that a required outcome's acceptance or proof depends on, such as a migration, dependency fix, or API adaptation, is part of that outcome, not a separate outcome, even when it changes another component. Admit authorized child packages under the recursive Job contract (`~/.omp/agent/skills/explore-critique-implement/references/task-orchestrator.md#recursive-child-admission-and-closure`); inherited authorization needs no renewed user request. Preserve explicit requirements and their acceptance criteria.
 
-Applicable coding-policy requirements govern the selected design and changed or retained contribution as part of that outcome. A source-backed violation there is a current failure; it needs no additional runtime defect to qualify for repair. Apply coding-policy enforcement (`~/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md`). This does not authorize an unrelated baseline audit or cleanup.
+Applicable coding-policy requirements govern the selected design and the changed or retained prod code (§ Prod-code focus) as part of that outcome. A source-backed violation there is a current failure; it needs no additional runtime defect to qualify for repair. Apply coding-policy enforcement (`~/.omp/agent/skills/references/workflow-runtime/coding-style-admission.md`). This does not authorize an unrelated baseline audit or cleanup.
 
 ### Concurrent tasks
 
@@ -256,8 +258,8 @@ The Supervisor may edit session-local coordination records, ledgers, plans, stat
 | Trigger | Skill |
 |---|---|
 | Debugging/test failures/unexpected behavior/performance/build failures | `debugging-discipline` |
-| Writing / modifying / reviewing code in any language, including diffs and PRs | `coding-common` |
-| Go / Python code | `coding-go` / `coding-python` |
+| Writing / modifying / reviewing prod code in any language, including diffs and PRs | `coding-common` |
+| Go / Python prod code | `coding-go` / `coding-python` |
 | Questions or investigations about coding instructions | `coding-common` and relevant language skills; inspect available language-specific skills when no language is specified |
 | Writing, running, or reviewing tests, including suites used as proof / code implementation / logic-heavy implementation | `testing-discipline` / `test-driven-development` / `proof-driven-development` |
 | Android device work: `adb`, `fastboot`, flashing, kernel updates | `android-device` |

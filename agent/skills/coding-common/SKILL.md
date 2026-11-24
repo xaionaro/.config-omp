@@ -1,11 +1,11 @@
 ---
 name: coding-common
-description: Use when writing, modifying, or reviewing code in any language, including code diffs and pull requests.
+description: Use when writing, modifying, or reviewing prod code in any language, including prod code diffs and pull requests.
 ---
 
 # Coding: Common
 
-Apply these requirements alongside the language-specific coding skill. Language-specific rules govern language syntax, APIs, and explicit policy differences. Apply type-system requirements where the language supports them.
+Apply these requirements alongside the language-specific coding skill. Language-specific rules govern language syntax, APIs, and explicit policy differences. Apply type-system requirements where the language supports them. These skills govern prod code only ([Prod-code focus](../../eci-binding-contract.md#prod-code-focus)), instructions included; test-only code follows [testing-discipline](../testing-discipline/SKILL.md).
 
 ## Strict rules
 

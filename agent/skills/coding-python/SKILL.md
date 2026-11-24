@@ -1,6 +1,6 @@
 ---
 name: coding-python
-description: Use when writing, reviewing, or modifying Python code (*.py, pyproject.toml, setup.cfg files) or reviewing diffs/PRs containing Python changes — ensures code quality and adherence to established Python conventions for naming, error handling, concurrency, typing, logging, and code organization
+description: Use when writing, reviewing, or modifying Python prod code (*.py, pyproject.toml, setup.cfg files) or reviewing diffs/PRs containing Python prod code changes — ensures code quality and adherence to established Python conventions for naming, error handling, concurrency, typing, logging, and code organization
 ---
 
 # Coding: Python
@@ -77,11 +77,6 @@ Read and apply [Coding: Common](../coding-common/SKILL.md) alongside these Pytho
   - `ERROR` — operation failed, needs attention but process continues.
   - `CRITICAL` — unrecoverable, process must exit.
 - **Level consistency:** When adding log statements, scan how the same module uses levels for similar operations and match. If existing usage conflicts with the definitions above, raise the inconsistency to the user after finishing the task.
-
-## Testing
-
-- `pytest` as test runner. `assert` statements directly — no `self.assertEqual`.
-- Use fixtures for setup/teardown. Parametrize for variant coverage.
 
 ## Code Organization
 

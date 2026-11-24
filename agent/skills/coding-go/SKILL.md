@@ -1,6 +1,6 @@
 ---
 name: coding-go
-description: Use when writing, reviewing, or modifying Go code (*.go, go.mod, go.sum files) or reviewing diffs/PRs containing Go changes — ensures code quality and adherence to the established Go conventions for naming, error handling, concurrency, types, logging, and code organization
+description: Use when writing, reviewing, or modifying Go prod code (*.go, go.mod, go.sum files) or reviewing diffs/PRs containing Go prod code changes — ensures code quality and adherence to the established Go conventions for naming, error handling, concurrency, types, logging, and code organization
 ---
 
 # Coding: Go
@@ -108,11 +108,6 @@ func (n *NodeWithCustomData[C, T]) RemovePushTo(
   - `Error` — operation failed, needs attention but process continues.
   - `Fatal` — unrecoverable, process must exit.
 - **Level consistency:** When adding log statements, scan how the same package uses levels for similar operations and match. If existing usage conflicts with the level definitions above, raise the inconsistency to the user after finishing the task.
-
-## Testing
-
-- `github.com/stretchr/testify` — `assert` for soft, `require` for fatal.
-- Start each test function with `t.Parallel()` unless it changes process-wide state: environment, working directory, or any package's variables, such as `time.Local`.
 
 ## Code Organization Principles
 

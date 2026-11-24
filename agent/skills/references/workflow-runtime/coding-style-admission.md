@@ -1,10 +1,10 @@
 # Coding-policy Enforcement
 
-Load this for a governed write or its independent review. It improves the changed work; it never weakens non-coding requirements or becomes permission ceremony.
+Load this for a governed write or its independent review: work on prod code under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus), including retained prod contributions. It improves the changed work; it never weakens non-coding requirements or becomes permission ceremony.
 
 ## Rule
 
-Enforce every applicable requirement from governing instructions, common and language-specific coding skills, repository conventions, and formatter/linter configuration throughout design selection, implementation, review, and final acceptance. Coding skills govern prod code only; test code and harnesses are exempt under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus). Distinguish requirements from discretionary preferences by their source wording, including stated conditions and defaults; a policy's placement in a coding skill does not make it optional. Explicit source-defined exceptions and higher-priority instructions govern actual conflicts. A technical tradeoff alone cannot waive a requirement.
+Enforce every applicable requirement from governing instructions, common and language-specific coding skills, repository conventions, and formatter/linter configuration throughout design selection, implementation, review, and final acceptance. All these sources govern [prod code only](../../../eci-binding-contract.md#prod-code-focus); test-only code follows testing guidance. Distinguish requirements from discretionary preferences by their source wording, including stated conditions and defaults; a policy's placement in a coding skill does not make it optional. Explicit source-defined exceptions and higher-priority instructions govern actual conflicts. A technical tradeoff alone cannot waive a requirement.
 
 Before selecting or writing governed work, resolve readily available applicable sources and relevant exclusions. Check their requirements against the actual design and contribution, including retained Fast work and relevant consumers. Missing, stale, or disputed context prompts source investigation or a concise review question; keep unaffected bounded work moving. A brief, skill invocation, review verdict, or tool output is context, never a write permit or proof of compliance.
 
@@ -14,4 +14,4 @@ Independent review checks actual adherence, including requirements outside forma
 
 ## Consequence boundary
 
-An unresolved applicable requirement violation in the selected or changed contribution requires repair before final acceptance, even when tests and reviews pass. In ECI it is hard, current work: route [redesign findings](review-policy.md#gate-evaluation) through Explore/Critique and every other repair through the Implementer as a patch; impact orders work and does not authorize deferral. Fast provisional delivery may precede that repair under its existing contract, with remaining violations disclosed. Preserve unrelated baseline work and source-defined exceptions.
+An unresolved applicable requirement violation in the selected design or changed or retained prod code requires repair before final acceptance, even when tests and reviews pass. In ECI it is hard, current work: route [redesign findings](review-policy.md#gate-evaluation) through Explore/Critique and every other repair through the Implementer as a patch; impact orders work and does not authorize deferral. Fast provisional delivery may precede that repair under its existing contract, with remaining violations disclosed. Preserve unrelated baseline work and source-defined exceptions.
