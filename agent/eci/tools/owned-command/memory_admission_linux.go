@@ -23,6 +23,29 @@ const (
 	memoryAdmissionLockRetry = 10 * time.Millisecond
 )
 
+// createVisibleCgroup serializes leaf creation with other admissions. A
+// restrictive umask can hide the leaf between mkdir and chmod, causing an
+// admission walker to fail closed if it sees the intermediate mode.
+//
+// Example: uncapped launches lock their visible root without requiring the host view.
+func createVisibleCgroup(
+	ctx context.Context,
+	root string,
+	path string,
+) error {
+	lock, err := lockMemoryAdmission(ctx, root)
+	if err != nil {
+		return err
+	}
+	if err := makeOwnedCommandCgroup(path); err != nil {
+		return errors.Join(err, lock.Close())
+	}
+	if err := lock.Close(); err != nil {
+		return errors.Join(fmt.Errorf("close memory admission lock: %w", err), os.Remove(path))
+	}
+	return nil
+}
+
 // createClaimedCommandCgroup commits a verified cap under the host admission
 // lock. The command cgroup retains the claim until it is removed.
 //
@@ -88,7 +111,7 @@ func lockHostMemoryAdmission(
 	return lockMemoryAdmission(ctx, root)
 }
 
-// lockMemoryAdmission serializes capped launchers that see the same cgroup root.
+// lockMemoryAdmission serializes admission and leaf visibility on one cgroup root.
 //
 // Example: Go's read-only os.Open sets close-on-exec on the lock descriptor.
 func lockMemoryAdmission(

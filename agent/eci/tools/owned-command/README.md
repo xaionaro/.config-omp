@@ -102,6 +102,9 @@ Capped setup refuses a cgroup view that cannot see the host root.
 An unreadable cgroup also fails capped setup with `Cause: guard error`.
 Owned-command creates cgroups readable and traversable by other users so their
 admissions can count the claims; it does not grant them write access.
+It creates them while holding the admission lock, so a restrictive umask never
+exposes an unreadable intermediate directory to another user's admission.
+Uncapped launches therefore also wait for that lock during setup.
 
 The earlyoom floor requires the service processes to be visible in `/proc`.
 A hidden service member or an unsupported earlyoom option fails capped setup

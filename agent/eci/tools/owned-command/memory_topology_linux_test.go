@@ -202,6 +202,30 @@ func TestMemoryTopologyLock(t *testing.T) {
 	require.NoError(t, unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB))
 }
 
+// TestMemoryCgroupVisibilityLock checks leaf creation waits for an admission on the same view.
+//
+// Example: a private cgroup view cannot expose a new leaf before the lock is released.
+func TestMemoryCgroupVisibilityLock(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeMemoryTopologyFixture(t, root, "cgroup.type", "domain")
+	path := filepath.Join(root, "command")
+	lock, err := lockMemoryAdmission(context.Background(), root)
+	require.NoError(t, err)
+	defer lock.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err = createVisibleCgroup(ctx, root, path)
+	_, statErr := os.Stat(path)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	require.NoError(t, lock.Close())
+	require.NoError(t, createVisibleCgroup(context.Background(), root, path))
+	require.DirExists(t, path)
+}
+
 // TestEarlyoomHostFloor covers default, live split thresholds, and a malformed
 // threshold that must not silently allow admission.
 //

@@ -87,13 +87,10 @@ func readEarlyoomMemoryFloor(
 			continue
 		}
 		if total == 0 {
-			total, err = view.meminfoBytes(meminfoTotalKey)
-			if err != nil {
-				return 0, err
-			}
-			if total == 0 {
-				return 0, fmt.Errorf("%s must be positive", meminfoTotalKey)
-			}
+			total, err = readPositiveMemTotal(view)
+		}
+		if err != nil {
+			return 0, err
 		}
 		threshold, err := earlyoomHostFloor(total, args[1:])
 		if err != nil {
@@ -102,6 +99,20 @@ func readEarlyoomMemoryFloor(
 		floor = max(floor, threshold)
 	}
 	return floor, nil
+}
+
+// readPositiveMemTotal reads the nonzero byte total used for percentage thresholds.
+//
+// Example: an active earlyoom process cannot use a zero MemTotal denominator.
+func readPositiveMemTotal(view memoryHostView) (MemoryBytes, error) {
+	total, err := view.meminfoBytes(meminfoTotalKey)
+	if err != nil {
+		return 0, err
+	}
+	if total == 0 {
+		return 0, fmt.Errorf("%s must be positive", meminfoTotalKey)
+	}
+	return total, nil
 }
 
 // readEarlyoomArguments revalidates service membership after reading argv.
@@ -174,19 +185,8 @@ func earlyoomHostFloor(
 		if arg == "--" && len(args) == 0 {
 			break
 		}
-		if long, ok := strings.CutPrefix(arg, "--"); ok {
-			var err error
-			args, err = consumeEarlyoomLongOption(long, args)
-			if err != nil {
-				return 0, err
-			}
-			continue
-		}
-		if len(arg) < 2 || arg[0] != '-' {
-			return 0, fmt.Errorf("unexpected positional earlyoom argument")
-		}
 		var err error
-		args, err = options.consumeShort(total, arg[1:], args)
+		args, err = options.consume(total, arg, args)
 		if err != nil {
 			return 0, err
 		}
@@ -206,6 +206,23 @@ func earlyoomHostFloor(
 		return 0, fmt.Errorf("earlyoom floor overflows byte count")
 	}
 	return MemoryBytes(math.Ceil(floor)), nil
+}
+
+// consume parses an earlyoom option and returns the arguments left after it.
+//
+// Example: a long option that needs a value can consume the next argument.
+func (o *earlyoomMemoryOptions) consume(
+	total MemoryBytes,
+	arg string,
+	args []string,
+) ([]string, error) {
+	if long, ok := strings.CutPrefix(arg, "--"); ok {
+		return consumeEarlyoomLongOption(long, args)
+	}
+	if len(arg) < 2 || arg[0] != '-' {
+		return nil, fmt.Errorf("unexpected positional earlyoom argument")
+	}
+	return o.consumeShort(total, arg[1:], args)
 }
 
 // earlyoomMemoryOptions records the last -m and -M threshold options.
@@ -294,22 +311,11 @@ func consumeEarlyoomLongOption(
 	args []string,
 ) ([]string, error) {
 	name, _, attached := strings.Cut(input, "=")
-	var match string
-	for _, option := range [...]string{"prefer", "avoid", "ignore", "ignore-root-user", "dryrun", "sort-by-rss", "syslog", "kernel-oom", "help", "debug"} {
-		if option == name {
-			match = option
-			break
-		}
-		if strings.HasPrefix(option, name) {
-			if match != "" {
-				return nil, fmt.Errorf("ambiguous earlyoom long option")
-			}
-			match = option
-		}
+	match, err := matchEarlyoomLongOption(name)
+	if err != nil {
+		return nil, err
 	}
 	switch match {
-	case "":
-		return nil, fmt.Errorf("unknown earlyoom long option")
 	case "prefer", "avoid", "ignore":
 		if attached {
 			return args, nil
@@ -323,6 +329,32 @@ func consumeEarlyoomLongOption(
 			return nil, fmt.Errorf("unexpected value for earlyoom --%s", match)
 		}
 		return args, nil
+	}
+}
+
+// matchEarlyoomLongOption resolves an exact long option or an unambiguous prefix.
+//
+// Example: ignore matches exactly, although it also prefixes ignore-root-user.
+func matchEarlyoomLongOption(name string) (string, error) {
+	var match string
+	ambiguous := false
+	for _, option := range [...]string{"prefer", "avoid", "ignore", "ignore-root-user", "dryrun", "sort-by-rss", "syslog", "kernel-oom", "help", "debug"} {
+		if option == name {
+			return option, nil
+		}
+		if !strings.HasPrefix(option, name) {
+			continue
+		}
+		ambiguous = match != ""
+		match = option
+	}
+	switch {
+	case ambiguous:
+		return "", fmt.Errorf("ambiguous earlyoom long option")
+	case match == "":
+		return "", fmt.Errorf("unknown earlyoom long option")
+	default:
+		return match, nil
 	}
 }
 

@@ -8,22 +8,22 @@ import (
 )
 
 const (
-	// accountingZoneinfo names the source for per-zone reclaim watermarks.
+	// zoneinfoFile names the source for per-zone reclaim watermarks.
 	//
 	// Example: low watermarks are read in pages before converting to bytes.
-	accountingZoneinfo = "/proc/zoneinfo"
-	// accountingMemoryHigh names the memory reclaim threshold control.
+	zoneinfoFile = "/proc/zoneinfo"
+	// memoryHighFile names the memory reclaim threshold control.
 	//
 	// Example: a lower memory.high is more restrictive than memory.max for admission.
-	accountingMemoryHigh = "memory.high"
-	// accountingMemoryCurrent names the charged memory counter.
+	memoryHighFile = "memory.high"
+	// memoryCurrentFile names the charged memory counter.
 	//
 	// Example: a claim's charges reduce how much more it can grow at an ancestor.
-	accountingMemoryCurrent = "memory.current"
-	// accountingMemoryStat names the hierarchical memory statistics file.
+	memoryCurrentFile = "memory.current"
+	// memoryStatFile names the hierarchical memory statistics file.
 	//
 	// Example: active_file and inactive_file track the file LRU used for reclaim estimates.
-	accountingMemoryStat = "memory.stat"
+	memoryStatFile = "memory.stat"
 )
 
 // memoryCacheSample holds reclaim candidates in two disjoint cache categories.
@@ -208,12 +208,12 @@ func accountBoundClaims(
 		switch {
 		case atHost:
 			held = held.saturatingAdd(claim.HostGrowth)
-			if len(remainders) == 0 {
-				continue
-			}
 		case isStrictMemoryDescendant(path, bound.path):
 			held = held.saturatingAdd(claim.AncestorGrowth)
 		default:
+			continue
+		}
+		if atHost && len(remainders) == 0 {
 			continue
 		}
 		if strictMemoryAncestor(claims, path, stop) != "" {
@@ -314,7 +314,7 @@ func sampleMemoryClaim(
 	view memoryHostView,
 	claim memoryClaim,
 ) (memoryClaimSample, error) {
-	current, _, err := view.memoryControl(claim.Path, accountingMemoryCurrent, memoryCounterControl)
+	current, _, err := view.readMemoryControl(claim.Path, memoryCurrentFile, memoryCounterControl)
 	switch {
 	case isGoneMemoryCgroup(err):
 		return memoryClaimSample{}, nil
@@ -342,11 +342,11 @@ func sampleMemoryAncestor(
 	view memoryHostView,
 	path string,
 ) (sample memoryAncestorSample, finite bool, err error) {
-	limit, finiteMax, err := view.memoryControl(path, memoryMaxFile, memoryLimitControl)
+	limit, finiteMax, err := view.readMemoryControl(path, memoryMaxFile, memoryLimitControl)
 	if err != nil {
 		return memoryAncestorSample{}, false, err
 	}
-	high, finiteHigh, err := view.memoryControl(path, accountingMemoryHigh, memoryLimitControl)
+	high, finiteHigh, err := view.readMemoryControl(path, memoryHighFile, memoryLimitControl)
 	if err != nil {
 		return memoryAncestorSample{}, false, err
 	}
@@ -358,7 +358,7 @@ func sampleMemoryAncestor(
 	case finiteHigh:
 		limit = min(limit, high)
 	}
-	current, _, err := view.memoryControl(path, accountingMemoryCurrent, memoryCounterControl)
+	current, _, err := view.readMemoryControl(path, memoryCurrentFile, memoryCounterControl)
 	if err != nil {
 		return memoryAncestorSample{}, false, err
 	}
@@ -381,13 +381,13 @@ func sampleHostMemory(
 	if err != nil {
 		return hostMemoryBound{}, 0, err
 	}
-	data, err := view.readFile(accountingZoneinfo)
+	data, err := view.readFile(zoneinfoFile)
 	if err != nil {
 		return hostMemoryBound{}, 0, err
 	}
 	low, err := parseMemoryZoneLow(string(data), page)
 	if err != nil {
-		return hostMemoryBound{}, 0, fmt.Errorf("%s: %w", accountingZoneinfo, err)
+		return hostMemoryBound{}, 0, fmt.Errorf("%s: %w", zoneinfoFile, err)
 	}
 	return hostMemoryBound{Available: available, Floor: floor}, low, nil
 }
@@ -399,7 +399,7 @@ func sampleMemoryStat(
 	view memoryHostView,
 	path string,
 ) (memoryAccountingStat, error) {
-	file := filepath.Join(path, accountingMemoryStat)
+	file := filepath.Join(path, memoryStatFile)
 	data, err := view.readFile(file)
 	if err != nil {
 		return memoryAccountingStat{}, err

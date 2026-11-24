@@ -227,7 +227,7 @@ func acquireCommandCgroup(
 		return nil, fmt.Errorf("delegated scope %s setup canceled: %w", unit, err)
 	}
 	if memoryMax != 0 {
-		if err := prepareMemoryScope(parent); err != nil {
+		if err := prepareMemoryScope(ctx, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -239,7 +239,7 @@ func acquireCommandCgroup(
 			return nil, err
 		}
 	default:
-		if err := makeOwnedCommandCgroup(path); err != nil {
+		if err := createVisibleCgroup(ctx, cgroupRoot, path); err != nil {
 			return nil, err
 		}
 	}
@@ -276,6 +276,7 @@ func isOwnedCommandScope(name string) bool {
 }
 
 // makeOwnedCommandCgroup creates a fresh leaf readable by other admissions.
+// The caller must hold the admission lock through mkdir and chmod.
 //
 // Example: a private umask cannot conceal an owned command's memory claim.
 func makeOwnedCommandCgroup(path string) error {
@@ -309,7 +310,10 @@ func guardCgroup(parent string) string {
 // prepareMemoryScope moves the guard to a sibling before enabling the memory controller.
 //
 // Example: a populated scope cannot enable a domain controller until its guard moves.
-func prepareMemoryScope(parent string) error {
+func prepareMemoryScope(
+	ctx context.Context,
+	parent string,
+) error {
 	scope := filepath.Join(cgroupRoot, parent)
 	controllers, err := os.ReadFile(filepath.Join(scope, cgroupControllersFile))
 	if err != nil {
@@ -319,7 +323,7 @@ func prepareMemoryScope(parent string) error {
 		return errors.New("memory controller unavailable")
 	}
 	guard := filepath.Join(scope, memoryGuardLeaf)
-	if err := makeOwnedCommandCgroup(guard); err != nil {
+	if err := createVisibleCgroup(ctx, cgroupRoot, guard); err != nil {
 		return fmt.Errorf("create guard cgroup: %w", err)
 	}
 	if err := unix.Setxattr(guard, oomdOmitXattr, []byte(oomdOmitValue), 0); err != nil {

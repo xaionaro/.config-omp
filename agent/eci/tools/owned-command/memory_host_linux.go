@@ -90,11 +90,12 @@ func hostMemoryFSPath(absolute string) string {
 	return relative
 }
 
-// memoryControl reads a numeric control or its kind-specific maximum marker.
+// readMemoryControl reads a numeric control or its kind-specific maximum marker.
 // Missing or deactivated files keep their read error for the caller to interpret.
+// On success, the boolean is false only for an unlimited limit.
 //
 // Example: a missing protection file means no protection during discovery.
-func (v memoryHostView) memoryControl(
+func (v memoryHostView) readMemoryControl(
 	dir string,
 	name string,
 	kind memoryControlKind,

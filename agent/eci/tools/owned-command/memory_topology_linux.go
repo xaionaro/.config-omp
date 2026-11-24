@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	// memoryProtectionMinFile names the explicit hard reclaim protection.
+	// memoryMinFile names the explicit hard reclaim protection.
 	//
 	// Example: a child with memory.min>0 is protected from its parent's reclaim.
-	memoryProtectionMinFile = "memory.min"
+	memoryMinFile = "memory.min"
 
-	// memoryProtectionLowFile names the explicit best-effort reclaim protection.
+	// memoryLowFile names the explicit best-effort reclaim protection.
 	//
 	// Example: a child with memory.low>0 is excluded from claimable cache credit.
-	memoryProtectionLowFile = "memory.low"
+	memoryLowFile = "memory.low"
 )
 
 // memoryTopology identifies peer claims, enclosing boundaries, and the maximal
@@ -38,11 +38,10 @@ type memoryClaim struct {
 	Cap  MemoryBytes
 }
 
-// memoryTopologyWalker retains the traversal context and discovered topology.
+// memoryTopologyWalker accumulates claims and protections in preorder.
 //
-// Example: pass visit to fs.WalkDir to inventory a host cgroup hierarchy.
+// Example: walk records a protected parent before visiting its children.
 type memoryTopologyWalker struct {
-	ctx      context.Context
 	view     memoryHostView
 	root     string
 	command  string
@@ -65,7 +64,6 @@ func discoverMemoryTopology(
 	}
 
 	walker := memoryTopologyWalker{
-		ctx:      ctx,
 		view:     view,
 		root:     root,
 		command:  command,
@@ -76,34 +74,48 @@ func discoverMemoryTopology(
 	}
 
 	// Preorder visits explicit protections before any of their descendants.
-	if err := fs.WalkDir(view.source, hostMemoryFSPath(root), walker.visit); err != nil {
+	if err := walker.walk(ctx, root); err != nil {
 		return memoryTopology{}, fmt.Errorf("discover memory admission topology: %w", err)
 	}
 	return walker.topology, nil
 }
 
-// visit reads claims and protections for one live cgroup in walk order.
+// walk visits one cgroup before its children, skipping deactivated subtrees.
 //
-// Example: skip a peer directory deactivated since listing its parent.
-func (w *memoryTopologyWalker) visit(
-	relative string,
-	entry fs.DirEntry,
-	walkErr error,
+// Example: a live sibling is still inspected after another directory disappears.
+func (w *memoryTopologyWalker) walk(
+	ctx context.Context,
+	dir string,
 ) error {
-	if err := w.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	path := "/" + relative
-	if relative == "." {
-		path = "/"
+	if err := w.record(dir); err != nil {
+		return err
 	}
-	if walkErr != nil {
-		if path != w.root && isGoneMemoryCgroup(walkErr) {
-			return nil
+	entries, err := fs.ReadDir(w.view.source, hostMemoryFSPath(dir))
+	switch {
+	case dir != w.root && isGoneMemoryCgroup(err):
+		return nil
+	case err != nil:
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
 		}
-		return walkErr
+		if err := w.walk(ctx, filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
 	}
-	if path == w.root || path == w.command || !entry.IsDir() {
+	return ctx.Err()
+}
+
+// record samples claim and protection controls for a visited cgroup.
+//
+// Example: a candidate's tentative leaf is not counted as a peer claim.
+func (w *memoryTopologyWalker) record(path string) error {
+	if path == w.root || path == w.command {
 		return nil
 	}
 	protected, err := w.hasProtection(path)
@@ -113,7 +125,7 @@ func (w *memoryTopologyWalker) visit(
 	if protected {
 		w.topology.recordProtection(path)
 	}
-	return w.recordClaim(path, entry.Name())
+	return w.recordClaim(path, filepath.Base(path))
 }
 
 // recordClaim records a finite cap, but not unrelated or unlimited groups.
@@ -126,7 +138,7 @@ func (w *memoryTopologyWalker) recordClaim(
 	if leaf != commandLeaf || !isOwnedCommandScope(filepath.Base(filepath.Dir(path))) {
 		return nil
 	}
-	limit, finite, err := w.view.memoryControl(path, memoryMaxFile, memoryLimitControl)
+	limit, finite, err := w.view.readMemoryControl(path, memoryMaxFile, memoryLimitControl)
 	if isGoneMemoryCgroup(err) {
 		return nil
 	}
@@ -140,8 +152,8 @@ func (w *memoryTopologyWalker) recordClaim(
 //
 // Example: neither a missing control nor a zero gives reclaim protection.
 func (w *memoryTopologyWalker) hasProtection(path string) (bool, error) {
-	for _, name := range [...]string{memoryProtectionMinFile, memoryProtectionLowFile} {
-		value, _, err := w.view.memoryControl(path, name, memoryProtectionControl)
+	for _, name := range [...]string{memoryMinFile, memoryLowFile} {
+		value, _, err := w.view.readMemoryControl(path, name, memoryProtectionControl)
 		if isGoneMemoryCgroup(err) {
 			continue
 		}

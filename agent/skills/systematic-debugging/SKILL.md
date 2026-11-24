@@ -222,7 +222,7 @@ If you catch yourself thinking:
 - "Quick fix for now, investigate later"
 - "Just try changing X and see if it works"
 - "Add multiple changes, run tests"
-- "Skip the test, I'll manually verify"
+- "Skip the test, I'll manually verify" (under [Phase 4's ECI entry](#phase-4-implementation), a faithful direct before/after repro is proof; the flag is skipping faithful evidence, not gathering it by hand)
 - "It's probably X, let me fix that"
 - "I don't fully understand but this might work"
 - "Pattern says X but I'll adapt it differently"
@@ -231,7 +231,7 @@ If you catch yourself thinking:
 - **"One more fix attempt" (when already tried 2+)**
 - **Each fix reveals new problem in different place**
 
-**ALL of these mean: STOP. Return to Phase 1.**
+**ALL of these mean: STOP. Return to Phase 1.** Under Phase 4's ECI entry, missing faithful evidence triggers this, not evidence gathered by hand.
 
 **If 3+ fixes failed:** Question the architecture (see Phase 4.5)
 
@@ -253,7 +253,7 @@ If you catch yourself thinking:
 | "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
-| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. Under Phase 4's ECI entry, a faithful direct before/after repro proves it too. |
 | "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
 | "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
 | "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
@@ -266,7 +266,7 @@ If you catch yourself thinking:
 | **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
 | **2. Pattern** | Find working examples, compare | Identify differences |
 | **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
-| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
+| **4. Implementation** | Create failing repro (test, or faithful direct repro under Phase 4's ECI entry), fix, verify | Bug resolved, chosen proof passes |
 
 ## When Process Reveals "No Root Cause"
 
