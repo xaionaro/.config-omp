@@ -171,9 +171,11 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-With several diagnosed bugs, take steps 1–3 for all of them as one batch in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); the diagnostic runs in Phases 1–3 may come earlier.
+Batch the fixes for several diagnosed bugs under test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); where steps 1–3 below apply, take them for all fixes as one batch. Diagnostic runs in Phases 1–3 may come earlier.
 
 **ECI:** for an ECI main-path Producer, ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides implementation order, proof selection, and final verification; for a Fast Owner, the [Fast procedure](../explore-critique-implement/references/fast-path.md#fast-solving-and-delegation) does. A faithful direct before/after repro can be the proof without authoring a test. Phases 1–3, causal and regression checks, required reviews, and test-driven-development for selected new or changed tests still apply.
+
+**Other work:**
 
 1. **Create Failing Test Case**
    - Simplest possible reproduction
@@ -192,6 +194,8 @@ With several diagnosed bugs, take steps 1–3 for all of them as one batch in te
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
+
+**All work:**
 
 4. **If Fix Doesn't Work**
    - STOP
@@ -221,7 +225,7 @@ With several diagnosed bugs, take steps 1–3 for all of them as one batch in te
 If you catch yourself thinking:
 - "Quick fix for now, investigate later"
 - "Just try changing X and see if it works"
-- "Add multiple changes, run tests"
+- "Add multiple changes, run tests" (undiagnosed guesses; [ECI Phase 4](#phase-4-implementation) batches independently diagnosed fixes with a causal check for each)
 - "Skip the test, I'll manually verify" (under [Phase 4's ECI entry](#phase-4-implementation), a faithful direct before/after repro is proof; the flag is skipping faithful evidence, not gathering it by hand)
 - "It's probably X, let me fix that"
 - "I don't fully understand but this might work"
@@ -254,7 +258,7 @@ If you catch yourself thinking:
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
 | "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. Under Phase 4's ECI entry, a faithful direct before/after repro proves it too. |
-| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "Multiple fixes at once saves time" | Bundling guesses makes their effects hard to isolate. Under [ECI Phase 4](#phase-4-implementation), batch independently diagnosed fixes and keep each fix’s causal evidence attributable. |
 | "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
 | "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
 | "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |

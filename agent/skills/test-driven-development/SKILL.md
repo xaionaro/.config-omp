@@ -11,7 +11,7 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. For ECI main-path work, apply TDD to the new or changed tests selected as proof and the behavior they prove. Generic instructions below do not expand that selection. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first. Leaves close with the ECI build check in [Batch Order](#batch-order). A new or changed test first needed because the whole-part or combined proof proved unfaithful is the one exception to the Iron Law: keep sound product code, show the test's expected RED without the tested change in a scratch export of the base and GREEN with it under testing-discipline's [Test validation](../testing-discipline/SKILL.md), then rerun the whole chosen proof. It never permits postponing initially selected tests, or implementing before an unresolved diagnosis. This precedence holds only in ECI; other workflows keep this skill unchanged.
+**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. For ECI main-path work, apply TDD to the new or changed tests selected as proof and the behavior they prove. Generic instructions below do not expand that selection. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first. Leaves close with the ECI build check in [Batch Order](#batch-order). A new or changed test first needed because the whole-part or combined proof proved unfaithful is the one exception to the Iron Law: keep sound product code, validate that test under [Verify RED](#verify-red---watch-it-fail) and [Verify GREEN](#verify-green---watch-it-pass), then rerun the whole chosen proof. It never permits postponing initially selected tests, or implementing before an unresolved diagnosis. For ECI main-path work, this entry and the linked batch procedure govern wherever other instructions in this skill conflict. The other-work instructions remain unchanged.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
@@ -174,6 +174,10 @@ Don't add features, refactor other code, or "improve" beyond the test.
 
 ### Verify RED - Watch It Fail
 
+**ECI main-path work:** For each new or changed test retained as proof, run that same test against the scratch base under testing-discipline’s [Test validation](../testing-discipline/SKILL.md). If the unmodified base cannot exercise it, repair the scratch setup or use a faithful broken control that exposes the original missing or wrong behavior. Observe the expected assertion failure there and current [GREEN](#verify-green---watch-it-pass). A setup error or a separate direct run does not validate that test. If this RED cannot be shown reasonably, replace the test as proof with equally faithful product evidence and record the change. Do not count an unvalidated test as proof.
+
+**Other work following this skill:**
+
 **MANDATORY. Never skip.**
 
 Run each new test without the code it tests, by testing-discipline's [Test validation](../testing-discipline/SKILL.md) method. Confirm:
@@ -312,6 +316,8 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 - "This is different because..."
 
 **All of these mean: Delete code. Start over with TDD.**
+
+**ECI main-path work:** For a test first needed because whole-part or combined proof proved unfaithful, follow the [late-proof exception](#overview): keep sound code and validate the selected test. These flags do not apply to that exception.
 
 ## Example: Bug Fix
 
