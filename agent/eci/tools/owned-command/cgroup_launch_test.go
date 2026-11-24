@@ -42,6 +42,11 @@ const (
 	// Example: the kernel clamps it to max and read-back is refused.
 	testAboveKernelMemoryLimit = "9223372036854775808"
 
+	// testAboveHostMemoryLimit is one EiB, below the kernel control maximum.
+	//
+	// Example: enforcing this limit is possible, but no current host can admit it.
+	testAboveHostMemoryLimit = "1152921504606846976"
+
 	// scopeCollectionLimit bounds the wait for systemd scope removal.
 	//
 	// Example: scope collection fails after five seconds.
@@ -677,7 +682,34 @@ func TestCgroupMemoryLimitAboveKernelMaximumFailsClosed(t *testing.T) {
 	var receipt Receipt
 	require.NoError(t, json.Unmarshal(data, &receipt))
 	require.Zero(t, receipt.CommandPID)
+	require.Equal(t, "guard error", receipt.Cause)
 	require.Contains(t, strings.Join(receipt.Errors, "\n"), memoryMaxFile)
+	_, err = os.Stat(marker)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	assertScopeCollected(t, cmd.Process.Pid)
+}
+
+// TestCgroupMemoryAdmissionRefusal verifies a setup refusal does not launch
+// the requested workload, and distinguishes capacity from enforcement failure.
+//
+// Example: a representable cap greater than all host RAM cannot be admitted.
+func TestCgroupMemoryAdmissionRefusal(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	marker := filepath.Join(t.TempDir(), "launched")
+	cmd := exec.Command(os.Getenv("GUARD_TEST_BINARY"), "-memory-max", testAboveHostMemoryLimit, "-receipt", path, "--", "/usr/bin/touch", marker)
+	output, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit, "%s", output)
+	require.Equal(t, guardFailure, exit.ExitCode(), "%s", output)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var receipt Receipt
+	require.NoError(t, json.Unmarshal(data, &receipt))
+	require.Equal(t, "memory admission refused", receipt.Cause)
+	require.Zero(t, receipt.CommandPID)
+	require.True(t, receipt.CommandStarted.IsZero())
+	require.Contains(t, strings.Join(receipt.Errors, "\n"), "MemAvailable")
 	_, err = os.Stat(marker)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	assertScopeCollected(t, cmd.Process.Pid)

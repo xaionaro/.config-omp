@@ -114,6 +114,16 @@ func (s memoryAccountingStat) reclaimCredit(
 	return addMemoryClaims(file-min(file/2, watermark), slab-min(slab/2, watermark))
 }
 
+// addMemoryClaims saturates a total rather than wrapping a sum of byte counts.
+//
+// Example: malformed or extreme inputs cannot wrap held growth to zero.
+func addMemoryClaims(
+	total MemoryBytes,
+	extra MemoryBytes,
+) MemoryBytes {
+	return total + min(extra, ^MemoryBytes(0)-total)
+}
+
 // parseMemoryAccountingStat extracts the complete set of counters needed by admission.
 //
 // Example: unknown kernel counters are skipped, but missing or duplicate required counters are errors.

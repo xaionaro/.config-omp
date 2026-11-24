@@ -218,12 +218,15 @@ func acquireCommandCgroup(
 	}
 	relative := parent + "/" + commandLeaf
 	path := filepath.Join(cgroupRoot, relative)
-	if memoryMax != 0 {
+	switch {
+	case memoryMax != 0:
 		if err := createReservedCommandCgroup(ctx, path, memoryMax); err != nil {
 			return nil, err
 		}
-	} else if err := os.Mkdir(path, 0700); err != nil {
-		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
+	default:
+		if err := os.Mkdir(path, 0700); err != nil {
+			return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
+		}
 	}
 	directory, err := os.Open(path)
 	if err != nil {
@@ -704,6 +707,10 @@ func (g *guard) runCgroupCommand(
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			err = fmt.Errorf("setup budget %s expired: %w", cgroupSetupTimeout, errors.Join(err, ctx.Err()))
+		}
+		var refusal *memoryAdmissionRefusal
+		if errors.As(err, &refusal) {
+			g.beginRetirement(errMemoryCapacity.Error())
 		}
 		g.fail("acquire command cgroup", err)
 		return

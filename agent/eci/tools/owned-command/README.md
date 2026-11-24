@@ -84,24 +84,28 @@ systemd-oomd kill candidate, and oomd honors the omission only when the leaf's
 owner matches the monitored user-manager cgroup's owner. Setup fails closed if
 the attribute cannot be set.
 
-Capped Linux launches participate in aggregate memory admission. Under a lock on
-the shared cgroup mount, each launch checks host `MemAvailable` and finite
-ancestor `memory.max` and `memory.high` headroom before starting the command.
-The check includes outstanding growth of capped commands in standard systemd user
-manager `app.slice` scopes on that mount, including jobs whose guards died and
-whose command cgroups still exist. A refused launch returns 125 without starting
-the command. Jobs removed from the cgroup hierarchy no longer hold a claim.
+Capped Linux launches coordinate capacity under a lock on the host cgroup root.
+An admission must fit the new cap and all outstanding capped growth in both
+the sampled host budget and the sampled budget of each finite ancestor.
+The host budget uses `MemAvailable` less protected cache and the threshold of
+the active `earlyoom.service`, if present. Ancestor budgets use the tighter
+of `memory.max` and `memory.high`, current charges, and an estimate of
+reclaimable file and slab cache that excludes protected and already-claimed
+cache. Host and ancestor budgets are not added together.
 
-Host `MemAvailable` already estimates reclaimable RAM. Admission does not add
-peer cache estimates to it or grant unobserved reclaim at a finite ancestor.
-It charges each existing cap in full: crediting a peer's sampled resident bytes
-can overbook if the peer releases those bytes before the headroom read and later
-refills its cap. The check can therefore refuse jobs that would fit. These
-are sampled budgets, not preallocated RAM. They do not guarantee headroom
-against concurrent activity outside this coordinator, including older
-launchers, uncapped jobs, guards, or work that leaves owned command scopes.
-Workload charges can still cause ancestor throttling, reclaim, OOM, or
-systemd-oomd pressure kills. Kernel accounting can temporarily exceed the limit.
+Each verified cap holds a claim until its `command` cgroup disappears, even
+if its guard dies. Capacity refusal starts no command and returns status 125
+with receipt `Cause` set to `memory admission refused`, `CommandPID` set to 0,
+and the binding budget in `Errors`. It does not wait for memory to free up.
+Capped setup refuses a cgroup view that cannot see the host root.
+
+The check is advisory, not physical reservation. Kernel statistics are
+batched, and a claim can change and change back between samples. Uncapped
+work, guards, older launchers that do not take the lock, and work that leaves
+`command` can still consume headroom. `systemd-oomd` pressure kills and other
+external memory killers are independent; the earlyoom floor only covers the
+standard system service. Workload charges can still cause ancestor throttling,
+reclaim or OOM, and kernel accounting can temporarily exceed the limit.
 HugeTLB allocations are not covered. The cap and `Memory.Peak` cover only
 processes in `command`. Nested `owned-command`, `systemd-run` and other systemd
 units run outside the enclosing command's cap, `Memory.Peak` and custody, as
@@ -132,15 +136,14 @@ For example, match a kernel allocation-OOM diagnostic's limiting `oom_memcg`
 failure unrelated to the cap is not evidence. A comparable measurement can
 establish insufficiency without a receipt or kernel diagnostic.
 
-For resource-sensitive builds, measure the capped workload's need and check
-fresh headroom before launch. Require measured in-cgroup need ≤ cap and
-cap + estimated concurrent out-of-cap workload usage ≤ headroom − margin.
-With no out-of-cap usage, this reduces to measured need ≤ cap ≤ headroom −
-margin. Estimate out-of-cap usage separately, including concurrent usage by
-nested units and processes that leave `command`; the cap does not cover them.
-`Memory.Peak` records observed in-cgroup usage, which can include reclaimable
-cache; it does not establish the minimum cap the workload needs. Estimates
-are not a reservation. If either bound fails, reduce concurrency or do not run.
+For resource-sensitive builds, require measured in-cgroup need ≤ cap.
+Admission checks capped workload headroom. Separately check that fresh
+headroom left after capped commitments covers estimated concurrent out-of-cap
+usage plus a margin. Include nested units and processes that leave `command`
+in that estimate; the cap does not cover them. `Memory.Peak` records observed
+in-cgroup usage, which can include reclaimable cache; it does not establish
+the minimum cap the workload needs. If either check fails, reduce concurrency
+or do not run.
 
 The command inherits cwd, arguments, environment, stdin/stdout/stderr and process
 group. Early signal notification can reset formerly ignored HUP/INT to default
