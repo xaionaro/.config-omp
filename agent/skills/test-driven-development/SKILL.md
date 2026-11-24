@@ -174,7 +174,7 @@ Don't add features, refactor other code, or "improve" beyond the test.
 
 ### Verify RED - Watch It Fail
 
-**ECI main-path work:** For each new or changed test retained as proof, run that same test against the scratch base under testing-discipline’s [Test validation](../testing-discipline/SKILL.md). If the unmodified base cannot exercise it, repair the scratch setup or use a faithful broken control that exposes the original missing or wrong behavior. Observe the expected assertion failure there and current [GREEN](#verify-green---watch-it-pass). A setup error or a separate direct run does not validate that test. If this RED cannot be shown reasonably, replace the test as proof with equally faithful product evidence and record the change. Do not count an unvalidated test as proof.
+**ECI main-path work:** Validate each new or changed test assertion retained in the deliverable: run that same test against the scratch base under testing-discipline’s [Test validation](../testing-discipline/SKILL.md). If the unmodified base cannot exercise it, repair the scratch setup or use a faithful broken control that exposes the original missing or wrong behavior. Observe the expected assertion failure there and current [GREEN](#verify-green---watch-it-pass). A setup error or a separate direct run does not validate that test. If this RED cannot be shown reasonably, drop the unvalidated test change, prove the behavior with equally faithful product evidence, and record the change; no test needs to remain as product proof. An unvalidated test never counts as proof or stays in the deliverable. Changed test-only code with no changed assertion, such as a helper rename, needs only the [ECI build check](#batch-order).
 
 **Other work following this skill:**
 
@@ -301,6 +301,8 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 
 ## Red Flags - STOP and Start Over
 
+**ECI main-path work:** Faithful direct proof, chosen initially or as a replacement, is not a flag here and needs no deletion or new test. The [late-proof exception](#overview) changes only a late-needed test's timing and spares sound code from deletion; it does not change proof validity, so a late test that does not discriminate never counts. Omitting a test initially selected as proof is not excused. Other work applies the list below unchanged.
+
 - Code before test
 - Test written after implementation
 - Test passes without the code
@@ -316,8 +318,6 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 - "This is different because..."
 
 **All of these mean: Delete code. Start over with TDD.**
-
-**ECI main-path work:** For a test first needed because whole-part or combined proof proved unfaithful, follow the [late-proof exception](#overview): keep sound code and validate the selected test. These flags do not apply to that exception.
 
 ## Example: Bug Fix
 
