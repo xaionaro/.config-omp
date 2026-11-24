@@ -48,7 +48,7 @@ Use either path's available results once independently verified and the next act
 - Defer the main path's design/style/TDD/review sequence for provisional fast work. Run useful focused checks under the [test-efficiency rules](../SKILL.md#test-efficiency); do not run routine E2E between iterations. Any early E2E follows the central policy's shortest-faithful-scope and timing rules. If an early E2E is needed but unavailable, report the missing resource and attempted evidence; never equate proxy checks with E2E.
 - Promptly send actionable discoveries, failed assumptions, observed behavior, tradeoffs, touched targets, and verification limits to the task's current Job owner under the [task-orchestrator handoff rules](task-orchestrator.md#publication-transfer-and-report-drain), for Explorer and Step 2.
 
-Fast Producer E2E follows the [central ECI policy](../SKILL.md#e2e-cadence-scope-and-timing), including per-run timestamps, comparable-run regression checks, and parallel optimization when a material regression appears.
+Fast Producer E2E follows the [central ECI policy](../SKILL.md#e2e-cadence-scope-and-timing), including per-run timestamps and comparable-run timing.
 
 ## Shared tree and ECI priority
 

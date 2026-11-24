@@ -173,6 +173,8 @@ You MUST complete each phase before proceeding to the next.
 
 With several diagnosed bugs, take steps 1–3 for all of them as one batch in test-driven-development's [Batch Order](../test-driven-development/SKILL.md#batch-order); the diagnostic runs in Phases 1–3 may come earlier.
 
+**ECI:** for an ECI main-path Producer, ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides implementation order, proof selection, and final verification; for a Fast Owner, the [Fast procedure](../explore-critique-implement/references/fast-path.md#fast-solving-and-delegation) does. A faithful direct before/after repro can be the proof without authoring a test. Phases 1–3, causal and regression checks, required reviews, and test-driven-development for selected new or changed tests still apply.
+
 1. **Create Failing Test Case**
    - Simplest possible reproduction
    - Automated test if possible

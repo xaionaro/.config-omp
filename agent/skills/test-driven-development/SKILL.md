@@ -11,7 +11,7 @@ Write the tests first. Write minimal code to pass them. Then watch each test fai
 
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
-**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. Where it selects new or changed tests as proof, this whole skill applies to those tests and their code. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first; then only Batch Order's build confirmation applies. This precedence holds only in ECI; other workflows keep this skill unchanged.
+**ECI main-path work:** the Producer's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline) decides. Where it selects new or changed tests as proof, this whole skill applies to those tests and their code. In a mixed batch, write only those selected new or changed tests before implementing the whole part. Running a pre-existing suite or a direct run needs no new test first. Close each implementation leaf by building or type-checking the changed deliverable with a fitting production build target, such as `go build ./...`, unless the change is prose-only; check selected new or changed tests as part of the chosen proof, and never require an unselected test target to build. A new or changed test first needed because the whole-part or combined proof proved unfaithful is the one exception to the Iron Law: keep sound product code, show the test's expected RED without the tested change in a scratch export of the base and GREEN with it under testing-discipline's [Test validation](../testing-discipline/SKILL.md), then rerun the whole chosen proof. It never permits postponing initially selected tests, or implementing before an unresolved diagnosis. This precedence holds only in ECI; other workflows keep this skill unchanged.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
@@ -23,7 +23,7 @@ Confirm the build by compiling or type-checking the changed code and its tests w
 
 | Work | Batch |
 | --- | --- |
-| ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline), which decides whether new or changed tests are written |
+| ECI main-path Producer | Its complete part, under ECI's [batch procedure](../explore-critique-implement/references/implement.md#test-and-debugging-discipline), which decides whether new or changed tests are written; its leaves close with the production build check under ECI main-path work above |
 | ECI Fast Owner | Provisional Fast work need not follow this order ([fast-path](../explore-critique-implement/references/fast-path.md#fast-solving-and-delegation)); when it writes tests, one Fast issue per [checkpoint](../explore-critique-implement/references/fast-path.md#adoption-review-and-closure) |
 | writing-plans plan, run by subagent-driven-development or executing-plans | The whole plan; its final task runs the tests |
 | receiving-code-review | All accepted items |
