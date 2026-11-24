@@ -34,7 +34,7 @@ export default function eciHourlyReminder(pi: ExtensionAPI): void {
       // Check eligibility at delivery time, not just when arming the timer.
       if (!isReminderSession(ctx)) return;
       // The user's prompt, verbatim with default user attribution; "aside" lands at the next step boundary of a live run instead of waiting for it to end.
-      // Return the promise so the managed timer can handle a rejection rather than leave it unhandled.
+      // Return the delivery promise so the managed timer reports a rejected delivery through the extension error channel.
       return pi.sendUserMessage(REMINDER, { deliverAs: "aside" });
     }, HOUR_MS);
     cancel = () => ctx.clearTimer(timer);
