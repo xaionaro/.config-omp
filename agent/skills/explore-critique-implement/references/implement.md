@@ -13,9 +13,9 @@ Read the Step 2 critic's full output as the authoritative winner, disposition, a
 
 A missing record, receipt, hash, marker, or coordination detail does not deny a bounded in-scope write. Reconcile useful context alongside the work. Stop or reroute only a concrete wrong target, destructive effect, or separate requested outcome.
 
-For code/debug work, load test-driven-development, debugging-discipline, and every matching coding skill. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
+For code/debug work, load test-driven-development, debugging-discipline, and every coding skill matching changed prod code. Repair the causal mechanism, not timing/visibility/blast radius unless containment was requested. Apply debugging-discipline's direct-fix or RCA path and proportionate evidence/reporting requirements; explain why the diff repairs the established local defect. Every factual submission claim has a T1–T5 tag.
 
-Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. If required final E2E is unavailable, report the exact missing resource and shortest faithful evidence attempted; do not claim equivalent proof.
+Run early E2E only under the central policy; the implementer owns the required final E2E on the stabilized final cumulative state. Continue or abort the final E2E under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus); report what is observed, what is missing, and the actual product result, if established.
 
 E2E triggers, cadence, scope, and timing: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).
 
@@ -35,10 +35,10 @@ You may delegate bounded support recursively to Helpers within your inherited as
 
 Apply the [test-efficiency rules](../SKILL.md#test-efficiency) to each Producer's focused checks and the combined iteration proof.
 
-Implement and test your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time; it is your batch under test-driven-development's [Batch Order](../../test-driven-development/SKILL.md#batch-order). Run its focused checks over all of it. Fix every implementation defect the checks expose together and rerun them over all of it until they pass. A WIP commit is not a handoff.
+Implement and prove your complete assigned part as one piece under the [iteration rule](../SKILL.md#iteration-rule), never one pending defect at a time. First choose its proof under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus): the shortest faithful evidence of every required behavior, such as existing suites, new or changed tests, or direct real-path runs. Write only the new or changed tests you selected before implementing the complete part; apply test-driven-development's [Batch Order](../../test-driven-development/SKILL.md#batch-order) RED/GREEN to those tests, with your part as the batch. Confirm the build as Batch Order requires whether or not you write tests. Then run the chosen proof over all of it. Repair scoped implementation defects together. Repair unfaithful proof or replace it with equally faithful evidence; record which. Rerun the whole-part proof until it passes. A WIP commit is not a handoff.
 
-When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits for every other handoff, runs the iteration's focused proof over all their parts, and hands off with that proof. Fix the implementation defects that proof exposes together, in any part, and rerun the proof until it passes.
+When several Producers share the iteration's Step 3, they agree which one hands off last. That Producer waits for every other handoff, runs the iteration's focused proof over all their parts, and hands off with that proof. Repair scoped implementation defects together, in any part. Repair unfaithful proof or replace it with equally faithful evidence; record which. Rerun the combined proof until it passes.
 
-For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If test/E2E infrastructure is unavailable, report the exact missing resource and the shortest faithful evidence attempted; do not silently substitute proxy evidence for a required real path.
+For debugging, debugging-discipline governs repro/hypothesis/RCA; do not claim root cause merely because a patch reduces frequency. If focused-proof infrastructure fails, repair or replace the method with equally faithful evidence. Continue E2E under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus); do not substitute proxy evidence for a required real path.
 
 Do not declare the outcome accepted/complete, publish a manifest, or tear down ECI. The current Job owner assigns independent Step 4 review; the Supervisor retains acceptance.

@@ -18,13 +18,13 @@ The current Job owner—its Orchestrator—assigns the Job's required workflow r
 
 ## Critic A — coding requirements
 
-Check applicable coding skills, formatter/linter/config anchors, actual scope, exceptions, and post-write tool evidence under [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Report every source-backed applicable requirement violation; reserve `NIT` for discretionary preferences.
+Check applicable coding skills, formatter/linter/config anchors, actual scope, exceptions, and post-write tool evidence under [coding-policy enforcement](../../references/workflow-runtime/coding-style-admission.md). Report every source-backed applicable requirement violation; reserve `NIT` for discretionary preferences. Apply it to prod code only ([Prod-code focus](../../../eci-binding-contract.md#prod-code-focus)); test-only code style is at most `NIT`.
 
-Check in-scope tests and the test runs used as proof against the [test-efficiency rules](../SKILL.md#test-efficiency), even when no test files changed. Report violations even when the proof passes. Check each proof suite’s command, elapsed time, and any required speed review or qualifying record against the underlying evidence. Distinguish a concrete violation from missing evidence.
+Check in-scope tests and the test runs used as proof against the [test-efficiency rules](../SKILL.md#test-efficiency), even when no test files changed. Check each proof suite’s command and elapsed time against the underlying evidence. Report test-only slowness as a proof gap only when it makes the proof untrustworthy; report other test-only speed work, including a missing speed review or record, as a follow-up. Distinguish a concrete violation from missing evidence.
 
 ## Critic B — correctness and fidelity
 
-Check correctness, safety, concrete requirements, interfaces, non-style boundaries, and root-cause/regression rationale. Check scope fidelity and least restriction against `exact user source → faithful requested outcome → bounded scope`. Distinguish a repair needed to meet or prove that outcome from an invented separate outcome; report the latter as `REJECT` without treating stale lineage as a work gate. Verify that named functions, types, and interfaces actually provide their claimed behavior.
+Check correctness, safety, concrete requirements, interfaces, non-style boundaries, and root-cause/regression rationale. Check scope fidelity and least restriction against `exact user source → faithful requested outcome → bounded scope`. Distinguish a repair needed to meet or prove that outcome from an invented separate outcome; report the latter as `REJECT` without treating stale lineage as a work gate. Verify that named functions, types, and interfaces actually provide their claimed behavior. Check that cited proof is faithful and discriminating: a check that cannot fail, a proxy for a required real path, or a missing required observation is a proof gap. A prod performance regression is a correctness finding.
 
 Verify [clean system and repair](../../../eci-binding-contract.md#clean-system-and-repair): repairs reach original consumers without creating competing authority. Check relevant duplicates within authorized scope, consumer routing and behavior verification before retirement, justified copy lifecycles, and preservation of unrelated work. Report other duplicates as follow-ups.
 
@@ -38,7 +38,7 @@ For an applicable [ownership argument](explore.md#ownership-argument), reconstru
 
 ## E2E
 
-For the final independent E2E, run a fresh check on the stabilized final cumulative revision under the central policy. Use the shortest faithful real path, preserve required criteria and relevant regression coverage, and cite command and output/state/screenshot. Proxy evidence alone is insufficient.
+For the final independent E2E, run a fresh check on the stabilized final cumulative revision under the central policy. Use the shortest faithful real path, preserve required criteria and relevant regression coverage, and cite command and output/state/screenshot. Proxy evidence alone is insufficient. Continue or abort the run under [Prod-code focus](../../../eci-binding-contract.md#prod-code-focus); report incidents, missing observations, and observed product defects separately. Incomplete evidence alone is not a product REJECT.
 
 E2E cadence, scope, timing, and triggers: [ECI E2E policy](../SKILL.md#e2e-cadence-scope-and-timing).
 
