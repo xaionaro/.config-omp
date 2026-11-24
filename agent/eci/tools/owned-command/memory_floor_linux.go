@@ -50,7 +50,7 @@ const (
 
 // The option names follow earlyoom v1.9.0 main.c's getopt_long short_opt and
 // long_opt tables: https://github.com/rfjakob/earlyoom/blob/v1.9.0/main.c
-// Keep the existing kernel-oom extension outside that version's option table.
+// Upstream added --kernel-oom in https://github.com/rfjakob/earlyoom/commit/750a7c0d9.
 const (
 	// earlyoomMemoryPercentFlag selects the memory percentage threshold.
 	//
@@ -105,7 +105,7 @@ const (
 	//
 	// Example: --syslog takes no value.
 	earlyoomLongSyslog = "syslog"
-	// earlyoomLongKernelOOM names a previously accepted extension to the v1.9.0 table.
+	// earlyoomLongKernelOOM selects the kernel OOM killer without changing the memory threshold.
 	//
 	// Example: --kernel-oom takes no value.
 	earlyoomLongKernelOOM = "kernel-oom"
@@ -187,6 +187,8 @@ func readPositiveMemTotal(view memoryHostView) (MemoryBytes, error) {
 }
 
 // readEarlyoomArguments revalidates service membership after reading argv.
+// TODO: On empty argv during exit, re-read cgroup.procs; skip unlisted PIDs
+// and fail closed if the PID is still listed.
 //
 // Example: ignore a PID that exited or moved to another unit before validation.
 func readEarlyoomArguments(
@@ -243,6 +245,7 @@ func checkHiddenEarlyoomPID(
 
 // earlyoomHostFloor follows earlyoom's getopt_long option table and threshold
 // merging in main.c (v1.9.0), conservatively rounded up to a whole byte.
+// It accepts the later upstream --kernel-oom option without changing the floor.
 //
 // Example: -m18,13 -M1048576 uses the lower of 18% and one GiB for the floor.
 func earlyoomHostFloor(
