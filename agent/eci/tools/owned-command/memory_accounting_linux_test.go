@@ -136,8 +136,8 @@ func TestSampledMemoryBounds(t *testing.T) {
 	source := os.DirFS(tree)
 	ctx := context.Background()
 	var refusal *memoryAdmissionRefusal
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 71*4096), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 100*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 101*4096), &refusal)
 	require.Empty(t, refusal.Bound.Path)
 
 	writeMemorySample(t, tree, parent+"/memory.max", strconv.Itoa(120*4096))
@@ -155,6 +155,91 @@ func TestSampledMemoryBounds(t *testing.T) {
 	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 21*4096), &refusal)
 	require.Equal(t, root, refusal.Bound.Path)
 	require.Zero(t, refusal.Bound.Credit)
+}
+
+// TestDisjointMemoryClaim checks a peer counts at the host but not an unrelated finite ancestor.
+//
+// Example: similar directory names are not cgroup ancestry.
+func TestDisjointMemoryClaim(t *testing.T) {
+	t.Parallel()
+	tree := t.TempDir()
+	parent := "/parent.slice"
+	claim := parent + "/owned-command-1.scope/command"
+	disjoint := parent + ".other/owned-command-2.scope/command"
+	topology := memoryTopology{
+		Claims: []memoryClaim{
+			{Path: claim, Cap: 10 * 4096},
+			{Path: disjoint, Cap: 95 * 4096},
+		},
+		Ancestors: []string{parent},
+	}
+	for _, path := range []string{claim, disjoint} {
+		writeMemorySample(t, tree, path+"/memory.current", "0\n")
+		writeMemorySample(t, tree, path+"/memory.stat", memoryFixtureStat(0, 0))
+	}
+	writeMemorySample(t, tree, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	writeMemorySample(t, tree, parent+"/memory.max", strconv.Itoa(100*4096))
+	writeMemorySample(t, tree, parent+"/memory.high", "max\n")
+	writeMemorySample(t, tree, parent+"/memory.current", strconv.Itoa(20*4096))
+	writeMemorySample(t, tree, parent+"/memory.stat", memoryFixtureStat(0, 0))
+
+	ctx, source := context.Background(), os.DirFS(tree)
+	var refusal *memoryAdmissionRefusal
+	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 800 kB\n")
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 71*4096), &refusal)
+	require.Equal(t, parent, refusal.Bound.Path)
+	require.Equal(t, MemoryBytes(10*4096), refusal.Bound.Held)
+
+	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 640 kB\n")
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 55*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 56*4096), &refusal)
+	require.Empty(t, refusal.Bound.Path)
+	require.Equal(t, MemoryBytes(105*4096), refusal.Bound.Held)
+}
+
+// TestProtectedMemoryClaimTurnover checks that a later protected root sample cannot hide earlier peer cache.
+//
+// Example: after a peer replaces file cache with anonymous memory, its earlier cache still cannot fund admission.
+func TestProtectedMemoryClaimTurnover(t *testing.T) {
+	t.Parallel()
+	tree := t.TempDir()
+	parent := "/parent.slice"
+	protected := parent + "/protected.slice"
+	claim := protected + "/owned-command-1.scope/command"
+	topology := memoryTopology{
+		Claims:    []memoryClaim{{Path: claim, Cap: 100 * 4096}},
+		Ancestors: []string{parent},
+		Protected: map[string][]string{parent: {protected}},
+	}
+	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 800 kB\n")
+	writeMemorySample(t, tree, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	writeMemorySample(t, tree, parent+"/memory.max", strconv.Itoa(200*4096))
+	writeMemorySample(t, tree, parent+"/memory.high", "max\n")
+	writeMemorySample(t, tree, parent+"/memory.current", strconv.Itoa(170*4096))
+	writeMemorySample(t, tree, parent+"/memory.stat", memoryFixtureStat(0, 110))
+
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name          string
+		protectedFile int
+		after         string
+	}{
+		{"turnover", 30, memoryFixtureStat(80, 0)},
+		{"stable", 110, memoryFixtureStat(0, 80)},
+	} {
+		writeMemorySample(t, tree, protected+"/memory.stat", memoryFixtureStat(0, tc.protectedFile))
+		source := memorySampleTestFS{
+			FS: os.DirFS(tree), Claim: claim, Before: 80, After: 80,
+			Stat: [2]string{memoryFixtureStat(0, 80), tc.after},
+		}
+		require.NoError(t, checkCommandMemory(ctx, &source, topology, 0, 10*4096), tc.name)
+		source.Pass = 0
+		var refusal *memoryAdmissionRefusal
+		require.ErrorAs(t, checkCommandMemory(ctx, &source, topology, 0, 11*4096), &refusal, tc.name)
+		require.Equal(t, parent, refusal.Bound.Path, tc.name)
+		require.Zero(t, refusal.Bound.Credit, tc.name)
+	}
 }
 
 // TestMemoryClaimBracket checks a growing, shrinking, or disappearing peer against sampled aggregate headroom.
@@ -215,6 +300,7 @@ type memorySampleTestFS struct {
 	Before int
 	After  int
 	Pass   int
+	Stat   [2]string
 }
 
 // ReadFile gives each peer pass its own effective current and stat.
@@ -239,7 +325,11 @@ func (s *memorySampleTestFS) ReadFile(path string) ([]byte, error) {
 	case "memory.current":
 		return []byte(strconv.Itoa(resident * 4096)), nil
 	case "memory.stat":
+		stat := s.Stat[s.Pass]
 		s.Pass++
+		if stat != "" {
+			return []byte(stat), nil
+		}
 		return []byte(memoryFixtureStat(resident, resident)), nil
 	default:
 		return nil, fs.ErrInvalid

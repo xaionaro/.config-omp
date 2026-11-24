@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -113,13 +114,13 @@ func TestMemoryTopologyLock(t *testing.T) {
 	require.NoError(t, err)
 	defer other.Close()
 	require.ErrorIs(t, unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB), unix.EWOULDBLOCK)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
 	unexpected, err := lockHostMemoryAdmission(ctx, root)
 	if unexpected != nil {
 		unexpected.Close()
 	}
-	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.NoError(t, lock.Close())
 	require.NoError(t, unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB))
 }

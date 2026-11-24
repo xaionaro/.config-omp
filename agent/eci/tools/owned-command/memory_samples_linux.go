@@ -52,6 +52,16 @@ func (s memoryCacheSample) add(other memoryCacheSample) memoryCacheSample {
 	}
 }
 
+// subtract removes overlapping cache without allowing a category to become negative.
+//
+// Example: excluding 30 file bytes from a 20-byte sample leaves zero file bytes.
+func (s memoryCacheSample) subtract(other memoryCacheSample) memoryCacheSample {
+	return memoryCacheSample{
+		File: s.File - min(s.File, other.File),
+		Slab: s.Slab - min(s.Slab, other.Slab),
+	}
+}
+
 // memoryClaimSample holds one peer's measured occupancy and reclaimable cache.
 //
 // Example: a vanished peer has a zero sample but retains its published cap.
@@ -61,14 +71,31 @@ type memoryClaimSample struct {
 	Cache   memoryCacheSample
 }
 
-// bracket conservatively merges observations on either side of aggregate sampling.
+// memoryClaimBracket holds a claim's remaining growth and its cache range.
 //
-// Example: a shrinking peer only gets resident credit up to its second sample.
-func (s memoryClaimSample) bracket(other memoryClaimSample) memoryClaimSample {
-	return memoryClaimSample{
-		Current: min(s.Current, other.Current),
-		Anon:    min(s.Anon, other.Anon),
-		Cache: memoryCacheSample{
+// Example: a vanished peer holds its full cap and its cache range starts at zero.
+type memoryClaimBracket struct {
+	HostGrowth     MemoryBytes
+	AncestorGrowth MemoryBytes
+	CacheMin       memoryCacheSample
+	CacheMax       memoryCacheSample
+}
+
+// bracket bounds a claim's growth and cache across both samples.
+//
+// Example: a growing cache uses its larger sample for exclusion and its smaller sample for overlap.
+func (s memoryClaimSample) bracket(
+	other memoryClaimSample,
+	limit MemoryBytes,
+) memoryClaimBracket {
+	return memoryClaimBracket{
+		HostGrowth:     limit - min(s.Anon, other.Anon),
+		AncestorGrowth: limit - min(limit, s.Current, other.Current),
+		CacheMin: memoryCacheSample{
+			File: min(s.Cache.File, other.Cache.File),
+			Slab: min(s.Cache.Slab, other.Cache.Slab),
+		},
+		CacheMax: memoryCacheSample{
 			File: max(s.Cache.File, other.Cache.File),
 			Slab: max(s.Cache.Slab, other.Cache.Slab),
 		},
@@ -130,11 +157,7 @@ func checkCommandMemory(
 	if err != nil {
 		return err
 	}
-	for _, path := range topology.Protected[hostMemoryProtectionRoot] {
-		sample := protected[path]
-		host.Protected = addMemoryClaims(host.Protected, addMemoryClaims(sample.File, sample.Slab))
-	}
-
+	claims := make(map[string]memoryClaimBracket, len(topology.Claims))
 	for i, claim := range topology.Claims {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -143,17 +166,21 @@ func checkCommandMemory(
 		if err != nil {
 			return err
 		}
-		peers[i] = peers[i].bracket(second)
-		host.Held = addMemoryClaims(host.Held, claim.Cap-peers[i].Anon)
+		claims[claim.Path] = peers[i].bracket(second, claim.Cap)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	var excluded memoryCacheSample
+	host.Held, excluded = memoryBoundClaims(hostMemoryProtectionRoot, topology.Protected[hostMemoryProtectionRoot], claims, protected)
+	host.Protected = addMemoryClaims(excluded.File, excluded.Slab)
 	if err := host.admit(requested); err != nil {
 		return err
 	}
 	for _, ancestor := range ancestors {
-		bound := ancestorMemoryBound(ancestor, topology, peers, protected, low)
+		bound := ancestor.Bound
+		bound.Held, excluded = memoryBoundClaims(bound.Path, topology.Protected[bound.Path], claims, protected)
+		bound.Credit = ancestor.Stat.reclaimCredit(memoryAccountingStat{File: excluded.File, Slab: excluded.Slab}, low)
 		if err := bound.admit(requested); err != nil {
 			return err
 		}
@@ -161,50 +188,73 @@ func checkCommandMemory(
 	return nil
 }
 
-// ancestorMemoryBound takes the maximal union of claim and protected cache subtrees.
+// memoryBoundClaims returns held growth and the cache excluded from a bound's reclaim.
 //
-// Example: a claim under a protected child contributes growth but its cache is excluded only through the child.
-func ancestorMemoryBound(
-	ancestor memoryAncestorSample,
-	topology memoryTopology,
-	peers []memoryClaimSample,
+// Example: a protected root adds only the cache not already covered by outermost claims.
+func memoryBoundClaims(
+	bound string,
+	protectedRoots []string,
+	claims map[string]memoryClaimBracket,
 	protected map[string]memoryCacheSample,
-	low MemoryBytes,
-) memoryBound {
-	bound := ancestor.Bound
-	roots := topology.Protected[bound.Path]
-	exclusions := make(map[string]memoryCacheSample, len(roots))
-	for i, claim := range topology.Claims {
-		if !isStrictMemoryDescendant(claim.Path, bound.Path) {
-			continue
-		}
-		peer := peers[i]
-		bound.Held = addMemoryClaims(bound.Held, claim.Cap-min(claim.Cap, peer.Current))
-		exclusions[claim.Path] = peer.Cache
+) (MemoryBytes, memoryCacheSample) {
+	atHost := bound == hostMemoryProtectionRoot
+	stop := bound
+	if atHost {
+		stop = "/"
 	}
-	for _, path := range roots {
-		claimCache := exclusions[path]
-		protectedCache := protected[path]
-		exclusions[path] = memoryCacheSample{
-			File: max(claimCache.File, protectedCache.File),
-			Slab: max(claimCache.Slab, protectedCache.Slab),
+	remainders := make(map[string]memoryCacheSample, len(protectedRoots))
+protectedRoot:
+	for _, root := range protectedRoots {
+		for parent := filepath.Dir(root); parent != stop; parent = filepath.Dir(parent) {
+			if _, covered := claims[parent]; covered {
+				continue protectedRoot
+			}
 		}
+		remainders[root] = protected[root]
 	}
 
+	var held MemoryBytes
 	var excluded memoryCacheSample
-	for path, cache := range exclusions {
-		covered := false
-		for parent := filepath.Dir(path); parent != bound.Path; parent = filepath.Dir(parent) {
-			if _, covered = exclusions[parent]; covered {
+claimRoot:
+	for path, claim := range claims {
+		switch {
+		case atHost:
+			held = addMemoryClaims(held, claim.HostGrowth)
+			if len(remainders) == 0 {
+				continue
+			}
+		case isStrictMemoryDescendant(path, bound):
+			held = addMemoryClaims(held, claim.AncestorGrowth)
+		default:
+			continue
+		}
+
+		for parent := filepath.Dir(path); parent != stop; parent = filepath.Dir(parent) {
+			if _, nested := claims[parent]; nested {
+				continue claimRoot
+			}
+			if cache, ok := remainders[parent]; ok {
+				// The smaller sample is the overlap we can safely remove.
+				remainders[parent] = cache.subtract(claim.CacheMin)
 				break
 			}
 		}
-		if !covered {
-			excluded = excluded.add(cache)
+		if cache, ok := remainders[path]; ok {
+			if atHost {
+				delete(remainders, path)
+			} else {
+				// Exact overlap keeps the larger of the claim and protected samples.
+				remainders[path] = cache.subtract(claim.CacheMax)
+			}
+		}
+		if !atHost {
+			excluded = excluded.add(claim.CacheMax)
 		}
 	}
-	bound.Credit = ancestor.Stat.reclaimCredit(memoryAccountingStat{File: excluded.File, Slab: excluded.Slab}, low)
-	return bound
+	for _, cache := range remainders {
+		excluded = excluded.add(cache)
+	}
+	return held, excluded
 }
 
 // sampleProtectedMemory reads each protected cgroup at most once, before the second peer pass.

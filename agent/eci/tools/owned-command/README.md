@@ -87,11 +87,12 @@ the attribute cannot be set.
 Capped Linux launches coordinate capacity under a lock on the host cgroup root.
 An admission must fit the new cap and all outstanding capped growth in both
 the sampled host budget and the sampled budget of each finite ancestor.
-The host budget uses `MemAvailable` less protected cache and the threshold of
-the active `earlyoom.service`, if present. Ancestor budgets use the tighter
-of `memory.max` and `memory.high`, current charges, and an estimate of
-reclaimable file and slab cache that excludes protected and already-claimed
-cache. Host and ancestor budgets are not added together.
+The host budget uses `MemAvailable` less protected cache not already held by
+claims and the threshold of the active `earlyoom.service`, if present.
+Ancestor budgets use the tighter of `memory.max` and `memory.high`, current
+charges, and an estimate of reclaimable file and slab cache that excludes
+protected and already-claimed cache. Host and ancestor budgets are not added
+together.
 
 Each verified cap holds a claim until its `command` cgroup disappears, even
 if its guard dies. Capacity refusal starts no command and returns status 125
