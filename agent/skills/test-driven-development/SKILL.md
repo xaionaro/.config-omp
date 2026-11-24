@@ -187,6 +187,12 @@ Run each new test without the code it tests, by testing-discipline's [Test valid
 
 ### Verify GREEN - Watch It Pass
 
+#### ECI main-path work
+
+Confirm GREEN for the selected tests in the chosen proof. Repair scoped implementation defects; repair or replace deficient proof with equally faithful evidence. Never make unselected tests a prerequisite.
+
+#### Other work following this skill
+
 **MANDATORY.**
 
 ```bash
@@ -201,8 +207,6 @@ Confirm:
 **Test fails?** Fix code, not test.
 
 **Other tests fail?** Fix now.
-
-**ECI main-path work:** Confirm GREEN for the selected tests in the chosen proof. Repair scoped implementation defects; repair or replace deficient proof with equally faithful evidence. Never make unselected tests a prerequisite.
 
 ### REFACTOR - Clean Up
 
@@ -350,7 +354,11 @@ Extract validation for multiple fields if needed.
 
 Before reporting the Job or outcome done:
 
-**ECI main-path work:** Check that the chosen proof covers every required behavior and relevant regression and that each retained new or changed test showed expected RED and current GREEN. Apply the test-quality checks below to those tests; do not require a test per function or passage of unselected tests. Other work checks every box:
+### ECI main-path work
+
+Confirm that the chosen proof covers every required behavior and relevant regression. For each new or changed test still selected as proof, confirm expected RED and current GREEN and apply [testing-discipline](../testing-discipline/SKILL.md).
+
+### Other work following this skill
 
 - [ ] Every new function/method has a test
 - [ ] Watched each test fail without its code
