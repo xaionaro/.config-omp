@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 // The user asked for this reminder in one retained ECI Supervisor session; every other session loading this global extension stays inert.
-// Delete this file and restart after root ECI teardown for this session or if the user withdraws the reminder request.
+// Delete this file and agent/tests/eci-hourly-reminder.test.ts, then restart after root ECI teardown for this session or if the user withdraws the reminder request.
 const REMINDER_SESSION_ID = "01a1bbe9-3693-7088-a9d7-5142c31c7ba0";
 const HOUR_MS = 60 * 60 * 1000;
 const REMINDER = `Most important:
