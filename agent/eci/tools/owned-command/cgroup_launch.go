@@ -218,13 +218,12 @@ func acquireCommandCgroup(
 	}
 	relative := parent + "/" + commandLeaf
 	path := filepath.Join(cgroupRoot, relative)
-	if err := os.Mkdir(path, 0700); err != nil {
-		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
-	}
 	if memoryMax != 0 {
-		if err := configureCommandMemory(path, memoryMax); err != nil {
-			return nil, errors.Join(err, os.Remove(path))
+		if err := createReservedCommandCgroup(ctx, path, memoryMax); err != nil {
+			return nil, err
 		}
+	} else if err := os.Mkdir(path, 0700); err != nil {
+		return nil, fmt.Errorf("create exclusive command cgroup %s: %w", path, err)
 	}
 	directory, err := os.Open(path)
 	if err != nil {

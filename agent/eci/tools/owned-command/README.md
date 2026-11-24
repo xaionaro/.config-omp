@@ -84,16 +84,29 @@ systemd-oomd kill candidate, and oomd honors the omission only when the leaf's
 owner matches the monitored user-manager cgroup's owner. Setup fails closed if
 the attribute cannot be set.
 
-The cap is not a reservation or a host-wide safety guarantee. Workload charges
-can still cause ancestor throttling, reclaim, OOM, or systemd-oomd pressure
-kills; concurrent activity can consume headroom. Kernel accounting can
-temporarily exceed the limit. HugeTLB allocations are not covered. The cap and
-`Memory.Peak` cover only processes in `command`. A nested `owned-command`,
-`systemd-run` or other new systemd unit started by the workload runs in a
-separate scope outside the cap, `Memory.Peak` and custody, as does any other
-migration out of `command`. The workload runs as the same user and can rewrite
-its own `command` controls; the guard then reports a guard error instead of
-the limit.
+Capped Linux launches participate in aggregate memory admission. Under a lock on
+the shared cgroup mount, each launch checks host `MemAvailable` and finite
+ancestor `memory.max` and `memory.high` headroom before starting the command.
+The check includes outstanding growth of capped commands in standard systemd user
+manager `app.slice` scopes on that mount, including jobs whose guards died and
+whose command cgroups still exist. A refused launch returns 125 without starting
+the command. Jobs removed from the cgroup hierarchy no longer hold a claim.
+
+At the host boundary, `MemAvailable` already includes an estimate of reclaimable
+RAM. Only nonswappable resident anonymous memory reduces another command's claim;
+its potentially reclaimable cache is not counted again. For finite ancestors,
+admission uses current charges without assuming additional local reclaim. These
+are sampled budgets, not preallocated RAM. They do not guarantee headroom
+against concurrent activity outside this coordinator, including older
+launchers, uncapped jobs, guards, or work that leaves owned command scopes.
+Workload charges can still cause ancestor throttling, reclaim, OOM, or
+systemd-oomd pressure kills. Kernel accounting can temporarily exceed the limit.
+HugeTLB allocations are not covered. The cap and `Memory.Peak` cover only
+processes in `command`. Nested `owned-command`, `systemd-run` and other systemd
+units run outside the enclosing command's cap, `Memory.Peak` and custody, as
+does any other migration out of `command`. The workload runs as the same user
+and can rewrite its own `command` controls; the guard then reports a guard error
+instead of the limit.
 If the guard crashes or is SIGKILLed, nothing retires the command subtree; it
 continues under its memory and swap limits until it exits, when systemd can
 collect the scope.
