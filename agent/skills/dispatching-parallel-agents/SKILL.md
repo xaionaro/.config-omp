@@ -143,7 +143,7 @@ References
 
 ### 4. Review and Integrate
 
-Park until the spawned agents' results auto-deliver (the Parking rule in `~/.omp/agent/RULES.md`); integrate only after delivery.
+Await the spawned agents' results under the Parking rule in `~/.omp/agent/RULES.md`; integrate only after delivery.
 
 When agents return:
 - Read each summary
