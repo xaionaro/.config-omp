@@ -188,9 +188,14 @@ func checkCommandMemory(
 	if refusal == nil {
 		return nil
 	}
+	// Prefer the smallest sufficient claim; discovery order breaks ties.
+	var selectedCap MemoryBytes
 	for _, peer := range topology.Claims {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if selectedCap != 0 && peer.Cap >= selectedCap {
+			continue
 		}
 		if !peerCanRelease(requested, host, ancestors, peer, claims[peer.Path]) {
 			continue
@@ -210,7 +215,7 @@ func checkCommandMemory(
 		}
 		if populated {
 			refusal.Peer = peer.Path
-			break
+			selectedCap = peer.Cap
 		}
 	}
 	return refusal

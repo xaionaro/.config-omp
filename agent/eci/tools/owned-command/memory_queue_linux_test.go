@@ -60,6 +60,30 @@ func TestMemoryQueueProjectsAllBounds(t *testing.T) {
 	}
 }
 
+func TestMemoryQueueChoosesSmallestSufficientClaim(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	large := "/large.scope/command"
+	small := "/small.scope/command"
+	for _, path := range []string{large, small} {
+		writeMemorySample(t, root, path+"/memory.current", "0\n")
+		writeMemorySample(t, root, path+"/memory.stat", memoryFixtureStat(0, 0))
+		writeMemorySample(t, root, path+"/cgroup.events", "populated 1\n")
+	}
+	writeMemorySample(t, root, "/proc/meminfo", "MemAvailable: 520 kB\n")
+	writeMemorySample(t, root, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	view := memoryHostView{Source: os.DirFS(root)}
+	topology := memoryTopology{Claims: []memoryClaim{
+		{Path: large, Cap: 100 * 4096},
+		{Path: small, Cap: 60 * 4096},
+	}}
+	var refusal *memoryAdmissionRefusal
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*4096, true), &refusal)
+	require.Equal(t, small, refusal.Peer)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 31*4096, true), &refusal)
+	require.Equal(t, large, refusal.Peer)
+}
+
 func TestMemoryQueueDoesNotWaitForRemovedClaim(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "command")
