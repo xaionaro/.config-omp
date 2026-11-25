@@ -563,6 +563,8 @@ func (w *cgroupWatch) Run(ctx context.Context) {
 // Stop wakes and joins the watcher before releasing its private descriptor.
 //
 // Example: group descriptor closure cannot race a watcher polling a reused fd number.
+//
+// TODO: Replace this separate eventfd with the claim watch's close-signaled pipe, preserving join-before-close and stop error reporting.
 func (w *cgroupWatch) Stop() error {
 	if err := signalStopEvent(w.StopFD); err != nil {
 		return fmt.Errorf("stop command cgroup watcher: %w", err)
