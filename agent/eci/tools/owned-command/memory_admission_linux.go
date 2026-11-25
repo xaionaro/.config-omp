@@ -59,6 +59,7 @@ func createVisibleCgroup(
 func createClaimedCommandCgroup(
 	ctx context.Context,
 	path string,
+	origin string,
 	limit MemoryBytes,
 ) (resultErr error) {
 	lock, err := lockHostMemoryAdmission(ctx, cgroupRoot)
@@ -93,7 +94,7 @@ func createClaimedCommandCgroup(
 	if err != nil {
 		return err
 	}
-	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor()); err != nil {
+	if err := checkCommandMemory(ctx, view, topology, origin, floor, limit.pageFloor()); err != nil {
 		return err
 	}
 	return ctx.Err()

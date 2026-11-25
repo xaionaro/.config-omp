@@ -97,7 +97,7 @@ func (s memoryClaimSample) bracket(
 	}
 }
 
-// memoryAncestorSample keeps an ancestor's scratch sample until peer bracketing completes.
+// memoryAncestorSample holds a finite ancestor’s raw limits, charges and cache counters.
 //
 // Example: memory.stat reclaim candidates are discounted after subtracting peer cache.
 type memoryAncestorSample struct {
@@ -112,6 +112,7 @@ func checkCommandMemory(
 	ctx context.Context,
 	view memoryHostView,
 	topology memoryTopology,
+	origin string,
 	floor MemoryBytes,
 	requested MemoryBytes,
 ) error {
@@ -166,16 +167,9 @@ func checkCommandMemory(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	sampled := sampledMemoryBounds{
-		host: host, ancestors: ancestors, low: low,
-		claims: claims, protectedRoots: topology.Protected, protected: protected,
-	}
-	// Cache the original ancestor terms once; a projection cannot earn extra reclaim.
-	for i := range ancestors {
-		ancestors[i].Bound = sampled.ancestorBound(&ancestors[i], "", 0)
-	}
-	fits, bound := sampled.check(requested, "")
-	if fits {
+	sampled := newSampledMemoryBounds(host, ancestors, low, claims, topology.Protected, protected)
+	bound := sampled.check(requested, "")
+	if bound == nil {
 		return nil
 	}
 	refusal := &memoryAdmissionRefusal{Bound: bound, Requested: requested}
@@ -183,7 +177,10 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if fits, _ := sampled.check(requested, peer.Path); fits {
+		if peer.Path == origin || isStrictMemoryDescendant(origin, peer.Path) {
+			continue // An enclosing claim cannot finish independently of this launch.
+		}
+		if sampled.check(requested, peer.Path) == nil {
 			refusal.SufficientClaims = append(refusal.SufficientClaims, peer)
 		}
 	}
@@ -196,20 +193,42 @@ func checkCommandMemory(
 type sampledMemoryBounds struct {
 	host           hostMemoryBound
 	ancestors      []memoryAncestorSample
+	baseline       []cgroupMemoryBound
 	low            MemoryBytes
 	claims         map[string]memoryClaimBracket
 	protectedRoots map[memoryBoundID][]string
 	protected      map[string]memoryCacheSample
 }
 
-// check tests the sampled bounds, optionally projecting one claim departure.
-// Return diagnostic terms only for actual admission, not for eligibility checks.
+// newSampledMemoryBounds separates raw samples from their derived baseline bounds.
+//
+// Example: projections never see an ancestor before its baseline credit is derived.
+func newSampledMemoryBounds(
+	host hostMemoryBound,
+	ancestors []memoryAncestorSample,
+	low MemoryBytes,
+	claims map[string]memoryClaimBracket,
+	protectedRoots map[memoryBoundID][]string,
+	protected map[string]memoryCacheSample,
+) sampledMemoryBounds {
+	s := sampledMemoryBounds{
+		host: host, ancestors: ancestors, low: low,
+		claims: claims, protectedRoots: protectedRoots, protected: protected,
+		baseline: make([]cgroupMemoryBound, len(ancestors)),
+	}
+	for i := range s.ancestors {
+		s.baseline[i] = s.ancestorBound(&s.ancestors[i], "", 0)
+	}
+	return s
+}
+
+// check returns the first binding bound, or nil if the sampled request fits.
 //
 // Example: a peer outside a binding slice cannot make the request fit there.
 func (s *sampledMemoryBounds) check(
 	requested MemoryBytes,
 	departure string,
-) (bool, memoryBound) {
+) memoryBound {
 	var release MemoryBytes
 	if departure != "" && strictMemoryAncestor(s.claims, departure, "/", "") == "" {
 		release = s.claims[departure].Release
@@ -219,29 +238,22 @@ func (s *sampledMemoryBounds) check(
 	host.Held = held
 	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
 	host.Available = host.Available.saturatingAdd(release)
-	switch {
-	case host.fits(requested):
-	case departure != "":
-		return false, nil
-	default:
-		return false, host
+	if !host.fits(requested) {
+		return host
 	}
 	for i := range s.ancestors {
 		ancestor := &s.ancestors[i]
-		bound := ancestor.Bound
+		bound := s.baseline[i]
 		if departure != "" && isStrictMemoryDescendant(departure, bound.Path) {
-			bound = s.ancestorBound(ancestor, departure, release)
+			projected := s.ancestorBound(ancestor, departure, release)
+			projected.Credit = min(bound.Credit, projected.Credit)
+			bound = projected
 		}
-		switch {
-		case bound.fits(requested):
-			continue
-		case departure != "":
-			return false, nil
-		default:
-			return false, bound
+		if !bound.fits(requested) {
+			return bound
 		}
 	}
-	return true, nil
+	return nil
 }
 
 // ancestorBound derives held growth and cache credit from the same sampled inputs.
@@ -255,11 +267,7 @@ func (s *sampledMemoryBounds) ancestorBound(
 	bound := ancestor.Bound
 	held, excluded := s.accountBoundClaims(cgroupMemoryBoundID(bound.Path), departure)
 	bound.Held = held
-	credit := ancestor.Stat.reclaimCredit(excluded, s.low)
-	if departure != "" {
-		credit = min(bound.Credit, credit)
-	}
-	bound.Credit = credit
+	bound.Credit = ancestor.Stat.reclaimCredit(excluded, s.low)
 	bound.Current -= min(bound.Current, release)
 	return bound
 }

@@ -109,6 +109,11 @@ claims. When one disappears, the guard reruns ordinary admission before starting
 the command. Without a sufficient claim it refuses immediately. Waiting neither
 reserves memory nor establishes FIFO ordering.
 
+A nested launch does not wait on a claim that contains its original cgroup:
+that claim cannot finish independently of the nested launch. This exclusion
+only applies to direct nesting; it cannot detect ancestry after an intervening
+move to another cgroup, such as by `systemd-run`.
+
 The single absolute wait budget starts with the first refusal that can wait.
 It bounds only blocking: a wake before expiry starts another admission attempt
 with a fresh setup budget, and that attempt may finish after the wait budget

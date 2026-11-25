@@ -663,6 +663,8 @@ func TestPgroupMainRejectsInvalidArguments(t *testing.T) {
 		{"--", "/bin/true"},
 		{"-receipt", path, "-cancel-birth", "7", "--", "/bin/true"},
 		{"-receipt", path, "-cancel-pid", "5", "--", "/bin/true"},
+		{"-receipt", path, "-memory-max", "65536", "-memory-wait", "-1s", "--", "/bin/true"},
+		{"-receipt", path, "-memory-wait", "1s", "--", "/bin/true"},
 	}
 	for _, args := range cases {
 		if status := pgroupMain(args); status != pgroupFailure {

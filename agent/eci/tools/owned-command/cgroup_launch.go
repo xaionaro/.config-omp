@@ -141,15 +141,27 @@ const (
 	commandOOMGroup = 1
 )
 
-// selfCgroupMatches reads and compares the supervisor's unified membership.
+// selfCgroupPath reads the supervisor's absolute unified membership path.
+//
+// Example: record membership before systemd moves an opted-in guard to a new scope.
+func selfCgroupPath() (string, error) {
+	membership, err := os.ReadFile(selfCgroupFile)
+	if err != nil {
+		return "", err
+	}
+	path, ok := strings.CutPrefix(strings.TrimSuffix(string(membership), "\n"), cgroupV2Prefix)
+	if !ok || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsRune(path, '\n') {
+		return "", fmt.Errorf("invalid unified membership in %s", selfCgroupFile)
+	}
+	return path, nil
+}
+
+// selfCgroupMatches compares the supervisor's unified membership after a move.
 //
 // Example: a moved guard must match the delegated guard leaf.
 func selfCgroupMatches(expected string) (bool, error) {
-	membership, err := os.ReadFile(selfCgroupFile)
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(string(membership)) == cgroupV2Prefix+expected, nil
+	path, err := selfCgroupPath()
+	return path == expected, err
 }
 
 // commandCgroup owns the exclusive inherited command membership below a delegated scope.
@@ -239,12 +251,13 @@ func prepareCommandScope(
 func acquireCommandCgroup(
 	ctx context.Context,
 	relative string,
+	origin string,
 	memoryMax MemoryBytes,
 ) (*commandCgroup, error) {
 	path := filepath.Join(cgroupRoot, relative)
 	switch {
 	case memoryMax != 0:
-		if err := createClaimedCommandCgroup(ctx, path, memoryMax); err != nil {
+		if err := createClaimedCommandCgroup(ctx, path, origin, memoryMax); err != nil {
 			return nil, err
 		}
 	default:
@@ -781,12 +794,13 @@ func acquireQueuedCommandCgroup(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	relative string,
+	origin string,
 	memoryMax MemoryBytes,
 	memoryWait time.Duration,
 ) (*commandCgroup, context.Context, context.CancelFunc, error) {
 	var queueCtx context.Context
 	for {
-		group, err := acquireCommandCgroup(ctx, relative, memoryMax)
+		group, err := acquireCommandCgroup(ctx, relative, origin, memoryMax)
 		var refusal *memoryAdmissionRefusal
 		if memoryWait == 0 || !errors.As(err, &refusal) || len(refusal.SufficientClaims) == 0 || ctx.Err() != nil {
 			return group, ctx, cancel, err
@@ -832,10 +846,20 @@ func (g *guard) runCgroupCommand(
 		return
 	}
 	runtimeBudget := g.expires.Sub(g.started)
-	relative, err := prepareCommandScope(ctx, memoryMax)
+	var origin, relative string
+	var err error
+	if memoryWait > 0 {
+		origin, err = selfCgroupPath()
+		if err == nil {
+			origin = filepath.Join(cgroupRoot, origin)
+		}
+	}
+	if err == nil {
+		relative, err = prepareCommandScope(ctx, memoryMax)
+	}
 	var group *commandCgroup
 	if err == nil {
-		group, ctx, cancel, err = acquireQueuedCommandCgroup(setupNotices, ctx, cancel, relative, memoryMax, memoryWait)
+		group, ctx, cancel, err = acquireQueuedCommandCgroup(setupNotices, ctx, cancel, relative, origin, memoryMax, memoryWait)
 	}
 	g.consumeNotices()
 	if setupNotices.Err() != nil {

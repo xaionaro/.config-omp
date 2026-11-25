@@ -49,7 +49,7 @@ func TestMemoryQueueProjectsAllBounds(t *testing.T) {
 				Ancestors: []string{ancestor},
 			}
 			var refusal *memoryAdmissionRefusal
-			require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 10*4096, tc.request*4096), &refusal)
+			require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 10*4096, tc.request*4096), &refusal)
 			if tc.eligible {
 				require.Equal(t, topology.Claims, refusal.SufficientClaims)
 				return
@@ -76,10 +76,36 @@ func TestMemoryQueueArmsEveryIndividuallySufficientClaim(t *testing.T) {
 		{Path: small, Cap: 60 * 4096},
 	}}
 	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*4096), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 30*4096), &refusal)
 	require.ElementsMatch(t, topology.Claims, refusal.SufficientClaims)
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 31*4096), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 31*4096), &refusal)
 	require.Equal(t, topology.Claims[:1], refusal.SufficientClaims)
+}
+
+func TestMemoryQueueExcludesOriginClaim(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	const enclosing = "/enclosing.scope/command"
+	const sibling = "/sibling.scope/command"
+	const page = 4096
+	topology := memoryTopology{Claims: []memoryClaim{{Path: enclosing, Cap: 60 * page}, {Path: sibling, Cap: 60 * page}}}
+	writeMemorySample(t, root, "/proc/meminfo", "MemAvailable: 520 kB\n")
+	writeMemorySample(t, root, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	for _, claim := range topology.Claims {
+		writeMemorySample(t, root, claim.Path+"/memory.current", "0\n")
+		writeMemorySample(t, root, claim.Path+"/memory.stat", memoryFixtureStat(0, 0))
+	}
+	view := memoryHostView{Source: os.DirFS(root)}
+	for _, origin := range []string{enclosing, enclosing + "/worker", enclosing + "-other"} {
+		var refusal *memoryAdmissionRefusal
+		require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, origin, 0, 70*page), &refusal)
+		if origin == enclosing+"-other" {
+			require.Equal(t, topology.Claims, refusal.SufficientClaims, origin)
+		} else {
+			require.Equal(t, topology.Claims[1:], refusal.SufficientClaims, origin)
+		}
+		require.Equal(t, MemoryBytes(120*page), refusal.Bound.(hostMemoryBound).Held)
+	}
 }
 
 func TestMemoryQueueDoesNotWaitForRemovedClaim(t *testing.T) {
@@ -130,7 +156,7 @@ func TestMemoryQueueAnonymousRelease(t *testing.T) {
 	} {
 		writeMemorySample(t, root, peer+"/memory.stat", memoryFixtureStatWithAnon(tc.anon, tc.lru, 0))
 		var refusal *memoryAdmissionRefusal
-		require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 50*page), &refusal)
+		require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 50*page), &refusal)
 		if tc.eligible {
 			require.Equal(t, topology.Claims, refusal.SufficientClaims)
 		} else {
@@ -154,9 +180,9 @@ func TestMemoryQueueNestedRelease(t *testing.T) {
 	view := memoryHostView{Source: os.DirFS(root)}
 	topology := memoryTopology{Claims: []memoryClaim{{Path: outer, Cap: 40 * page}, {Path: inner, Cap: 20 * page}}}
 	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 25*page), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 25*page), &refusal)
 	require.ElementsMatch(t, topology.Claims, refusal.SufficientClaims)
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*page), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 30*page), &refusal)
 	require.Equal(t, topology.Claims[:1], refusal.SufficientClaims)
 }
 
@@ -197,9 +223,9 @@ func TestMemoryQueueProtectedDeparture(t *testing.T) {
 		Protected: map[memoryBoundID][]string{hostMemoryBoundID: {protected}},
 	}
 	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 80*page), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 80*page), &refusal)
 	require.Equal(t, topology.Claims, refusal.SufficientClaims)
-	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 85*page), &refusal)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, "", 0, 85*page), &refusal)
 	require.Empty(t, refusal.SufficientClaims)
 }
 
