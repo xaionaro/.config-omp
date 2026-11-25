@@ -101,14 +101,23 @@ and the binding budget in `Errors`. By default it does not wait.
 
 On Linux, add `-memory-wait DURATION` to a capped launch to wait on a capacity
 refusal. A positive duration opts in; zero disables waiting. The guard waits
-only if at least one running capped peer's departure is estimated to make the
-new cap fit within the host and all finite ancestor budgets. It releases the
-admission lock and removes its tentative claim before watching all sufficient
-peers' command cgroups. As soon as one disappears, it runs ordinary admission
-again before starting the command. A shortage without a sufficient running
-peer, expiry of the wait, or interruption does not launch the command.
-Waiting does not reserve memory or establish FIFO ordering. On macOS capped
-launches remain unsupported.
+only if the disappearance of an existing memory claim is estimated to make the
+new cap fit within the host and every finite ancestor budget. This includes
+claims whose command has exited but whose leaf remains. The guard removes its
+tentative claim and releases the admission lock before watching all sufficient
+claims. When one disappears, the guard reruns ordinary admission before starting
+the command. Without a sufficient claim it refuses immediately. Waiting neither
+reserves memory nor establishes FIFO ordering.
+
+The single absolute wait budget starts with the first refusal that can wait.
+It bounds only blocking: a wake before expiry starts another admission attempt
+with a fresh setup budget, and that attempt may finish after the wait budget
+expires. Expiry returns 125 with `Cause: memory admission refused`.
+Interruption also prevents launch. On both backends, a negative wait or a
+positive wait without `-memory-max` is invalid (125, no receipt). Do not combine
+`-memory-wait` with `-cancel-pid` to queue cancellation; cancellation cannot
+use a memory cap. On macOS capped launches, including opted-in waits, remain
+unsupported.
 
 For example, allow up to 30 seconds of waiting before running a capped command:
 
@@ -192,8 +201,6 @@ Native-call, inspection and finalization latency are additional; these are not
 hard wall-clock limits.
 An interruption or setup error prevents launch and returns 125 through the same
 receipt finalizer. An ambiguous manager reply never authorizes launch.
-For an opted-in launch, the wait budget starts with the first attributable
-refusal; each post-wait admission attempt gets a fresh setup budget.
 
 The running command waits for SIGCHLD, root pidfd readiness, cgroup population
 changes, interruption or deadline. Launched supervision performs no global host

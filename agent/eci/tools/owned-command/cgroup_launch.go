@@ -240,12 +240,11 @@ func acquireCommandCgroup(
 	ctx context.Context,
 	relative string,
 	memoryMax MemoryBytes,
-	queue bool,
 ) (*commandCgroup, error) {
 	path := filepath.Join(cgroupRoot, relative)
 	switch {
 	case memoryMax != 0:
-		if err := createClaimedCommandCgroup(ctx, path, memoryMax, queue); err != nil {
+		if err := createClaimedCommandCgroup(ctx, path, memoryMax); err != nil {
 			return nil, err
 		}
 	default:
@@ -742,6 +741,19 @@ func startCommandSetupBudget(ctx context.Context) (context.Context, context.Canc
 	return context.WithTimeout(ctx, cgroupSetupTimeout)
 }
 
+// memoryClaimWaitError preserves refusal only for queue budget expiry.
+//
+// Example: an exhausted inotify watch limit is a guard error, not capacity refusal.
+func memoryClaimWaitError(
+	refusal *memoryAdmissionRefusal,
+	waitErr error,
+) error {
+	if errors.Is(waitErr, context.DeadlineExceeded) {
+		return errors.Join(refusal, fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr))
+	}
+	return fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr)
+}
+
 // runCgroupCommand uses inherited kernel membership and native exit events for launch mode.
 // Setup failures happen before command creation and enter the ordinary 125 receipt path.
 //
@@ -773,12 +785,12 @@ func (g *guard) runCgroupCommand(
 	relative, err := prepareCommandScope(ctx, memoryMax)
 	var group *commandCgroup
 	if err == nil {
-		group, err = acquireCommandCgroup(ctx, relative, memoryMax, memoryWait > 0)
+		group, err = acquireCommandCgroup(ctx, relative, memoryMax)
 	}
 	var queueCtx context.Context
 	for {
-		refusal, ok := err.(*memoryAdmissionRefusal)
-		if !ok || len(refusal.Peers) == 0 || ctx.Err() != nil {
+		var refusal *memoryAdmissionRefusal
+		if memoryWait == 0 || !errors.As(err, &refusal) || len(refusal.Peers) == 0 || ctx.Err() != nil {
 			break
 		}
 		if queueCtx == nil {
@@ -788,11 +800,15 @@ func (g *guard) runCgroupCommand(
 		}
 		cancel()
 		if waitErr := waitForMemoryClaims(queueCtx, refusal.Peers); waitErr != nil {
-			err = errors.Join(refusal, fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr))
+			if setupNotices.Err() != nil {
+				err = waitErr
+			} else {
+				err = memoryClaimWaitError(refusal, waitErr)
+			}
 			break
 		}
 		ctx, cancel = startCommandSetupBudget(setupNotices)
-		group, err = acquireCommandCgroup(ctx, relative, memoryMax, true)
+		group, err = acquireCommandCgroup(ctx, relative, memoryMax)
 	}
 	g.consumeNotices()
 	if setupNotices.Err() != nil {

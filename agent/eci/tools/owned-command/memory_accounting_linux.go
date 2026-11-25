@@ -120,26 +120,13 @@ func (b cgroupMemoryBound) describe(requested MemoryBytes) string {
 	return fmt.Sprintf("at %s: %d requested bytes, %d limit, %d current, %d reclaim credit, %d bytes held for existing commands", b.Path, requested, b.Limit, b.Current, b.Credit, b.Held)
 }
 
-// admitMemoryBound reports a structured refusal only when a sampled bound fails.
-//
-// Example: the host and each finite ancestor must independently fit the request.
-func admitMemoryBound(
-	bound memoryBound,
-	requested MemoryBytes,
-) *memoryAdmissionRefusal {
-	if bound.fits(requested) {
-		return nil
-	}
-	return &memoryAdmissionRefusal{Bound: bound, Requested: requested}
-}
-
 // memoryAdmissionRefusal records the binding constraint and its measured terms.
 //
 // Example: errors.As distinguishes a capacity refusal from a failed kernel read.
 type memoryAdmissionRefusal struct {
 	Bound     memoryBound
 	Requested MemoryBytes
-	Peers     []string
+	Peers     []memoryClaim
 }
 
 // Error formats the observed bound and demand for an admission receipt.
@@ -161,6 +148,7 @@ func (r *memoryAdmissionRefusal) Unwrap() error {
 //
 // Example: File is active_file plus inactive_file, not all cached filesystem data.
 type memoryAccountingStat struct {
+	Anon      MemoryBytes
 	AnonLRU   MemoryBytes
 	File      MemoryBytes
 	Slab      MemoryBytes
@@ -202,6 +190,7 @@ func parseMemoryAccountingStat(input string) (memoryAccountingStat, error) {
 		name  string
 		value *MemoryBytes
 	}{
+		{"anon", &stat.Anon},
 		{"active_anon", &stat.AnonLRU},
 		{"inactive_anon", &inactiveAnon},
 		{"active_file", &stat.File},

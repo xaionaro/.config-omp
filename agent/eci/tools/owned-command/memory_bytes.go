@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 // MemoryBytes identifies a workload memory quantity in bytes.
@@ -49,4 +50,19 @@ func (b *MemoryBytes) Set(value string) error {
 	}
 	*b = MemoryBytes(parsed)
 	return nil
+}
+
+// memoryWaitHelp describes the claim lifetime observed by waiting.
+//
+// Example: a command may have exited while retaining a memory claim.
+const memoryWaitHelp = "maximum wait for a sufficient existing memory claim to disappear, even after its command exits; requires -memory-max"
+
+// validMemoryWait checks the common capped-launch wait argument contract.
+//
+// Example: zero disables waiting; a positive budget requires a cap.
+func validMemoryWait(
+	wait time.Duration,
+	limit MemoryBytes,
+) bool {
+	return wait >= 0 && (wait == 0 || limit != 0)
 }

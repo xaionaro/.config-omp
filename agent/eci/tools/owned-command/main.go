@@ -1564,7 +1564,7 @@ func validArguments(
 	memoryWait time.Duration,
 	args []string,
 ) bool {
-	if deadline <= 0 || grace <= 0 || cancel.PID < 0 || memoryWait < 0 || (memoryWait > 0 && memoryMax == 0) {
+	if deadline <= 0 || grace <= 0 || cancel.PID < 0 || !validMemoryWait(memoryWait, memoryMax) {
 		return false
 	}
 	if cancel.PID == 0 {
@@ -1610,7 +1610,7 @@ func main() {
 	cancelBirth := flag.Uint64("cancel-birth", 0, "required /proc stat field 22 identity")
 	var memoryMax MemoryBytes
 	flag.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; omit to run uncapped")
-	memoryWait := flag.Duration("memory-wait", 0, "maximum wait for a sufficient running memory claim to finish; requires -memory-max")
+	memoryWait := flag.Duration("memory-wait", 0, memoryWaitHelp)
 	flag.Parse()
 	cancel := ProcessIdentity{PID: *cancelPID, Birth: *cancelBirth}
 	if *receipt == "" || !validArguments(*deadline, *grace, cancel, memoryMax, *memoryWait, flag.Args()) {

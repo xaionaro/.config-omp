@@ -60,6 +60,7 @@ func (s memoryCacheSample) subtract(other memoryCacheSample) memoryCacheSample {
 type memoryClaimSample struct {
 	Current MemoryBytes
 	Anon    MemoryBytes
+	Release MemoryBytes
 	Cache   memoryCacheSample
 }
 
@@ -67,6 +68,7 @@ type memoryClaimSample struct {
 //
 // Example: a vanished peer holds its full cap and its cache range starts at zero.
 type memoryClaimBracket struct {
+	Release        MemoryBytes
 	HostGrowth     MemoryBytes
 	AncestorGrowth MemoryBytes
 	CacheMin       memoryCacheSample
@@ -81,6 +83,7 @@ func (s memoryClaimSample) bracket(
 	limit MemoryBytes,
 ) memoryClaimBracket {
 	return memoryClaimBracket{
+		Release:        min(s.Release, other.Release),
 		HostGrowth:     limit - min(s.Anon, other.Anon),
 		AncestorGrowth: limit - min(limit, s.Current, other.Current),
 		CacheMin: memoryCacheSample{
@@ -111,7 +114,6 @@ func checkCommandMemory(
 	topology memoryTopology,
 	floor MemoryBytes,
 	requested MemoryBytes,
-	queue bool,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -167,9 +169,9 @@ func checkCommandMemory(
 	var excluded memoryCacheSample
 	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, topology.Protected[hostMemoryBoundID], claims, protected)
 	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
-	refusal := admitMemoryBound(host, requested)
-	if refusal != nil && !queue {
-		return refusal
+	var refusal *memoryAdmissionRefusal
+	if !host.fits(requested) {
+		refusal = &memoryAdmissionRefusal{Bound: host, Requested: requested}
 	}
 	for i := range ancestors {
 		ancestor := &ancestors[i]
@@ -178,11 +180,8 @@ func checkCommandMemory(
 		bound.Held, excluded = accountBoundClaims(id, topology.Protected[id], claims, protected)
 		bound.Credit = ancestor.Stat.reclaimCredit(excluded, low)
 		ancestor.Bound = bound
-		if refusal == nil {
-			refusal = admitMemoryBound(bound, requested)
-			if refusal != nil && !queue {
-				return refusal
-			}
+		if refusal == nil && !bound.fits(requested) {
+			refusal = &memoryAdmissionRefusal{Bound: bound, Requested: requested}
 		}
 	}
 	if refusal == nil {
@@ -192,24 +191,13 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !peerCanRelease(requested, host, ancestors, peer, claims[peer.Path]) {
-			continue
+		sample := claims[peer.Path]
+		if strictMemoryAncestor(claims, peer.Path, "/") != "" {
+			// The remaining claim's hierarchical accounting absorbs the resident release.
+			sample.Release = 0
 		}
-		data, err := view.readFile(filepath.Join(peer.Path, "cgroup.events"))
-		if isGoneMemoryCgroup(err) {
-			// The measured claim is already gone; retry admission without waiting.
-			refusal.Peers = []string{peer.Path}
-			return refusal
-		}
-		if err != nil {
-			return err
-		}
-		populated, err := parseCgroupPopulation(data)
-		if err != nil {
-			return fmt.Errorf("read peer population %s: %w", peer.Path, err)
-		}
-		if populated {
-			refusal.Peers = append(refusal.Peers, peer.Path)
+		if peerCanRelease(requested, host, ancestors, peer, sample) {
+			refusal.Peers = append(refusal.Peers, peer)
 		}
 	}
 	return refusal
@@ -227,12 +215,11 @@ func peerCanRelease(
 	peer memoryClaim,
 	sample memoryClaimBracket,
 ) bool {
-	resident := peer.Cap - sample.HostGrowth
 	if host.Held == ^MemoryBytes(0) {
 		return false // A saturated total cannot safely be reduced.
 	}
 	host.Held -= sample.HostGrowth
-	host.Available = host.Available.saturatingAdd(resident)
+	host.Available = host.Available.saturatingAdd(sample.Release)
 	if !host.fits(requested) {
 		return false
 	}
@@ -243,7 +230,7 @@ func peerCanRelease(
 				return false
 			}
 			bound.Held -= sample.AncestorGrowth
-			bound.Current -= min(bound.Current, resident)
+			bound.Current -= min(bound.Current, sample.Release)
 		}
 		if !bound.fits(requested) {
 			return false
@@ -402,6 +389,7 @@ func sampleMemoryClaim(
 	return memoryClaimSample{
 		Current: current,
 		Anon:    stat.residentAnon(current, claim.Cap),
+		Release: min(stat.Anon, current),
 		Cache:   memoryCacheSample{File: stat.File, Slab: stat.Slab},
 	}, nil
 }

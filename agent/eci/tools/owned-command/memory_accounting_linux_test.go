@@ -25,14 +25,10 @@ func TestHostMemoryBound(t *testing.T) {
 		page MemoryBytes = 4096
 	)
 	bound := hostMemoryBound{Available: 200 * page, Floor: 20 * page, Held: 60 * page}
-	require.Nil(t, admitMemoryBound(bound, 120*page))
-	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, admitMemoryBound(bound, 121*page), &refusal)
-	require.Equal(t, 121*page, refusal.Requested)
-	require.Equal(t, bound, refusal.Bound)
-
+	require.True(t, bound.fits(120*page))
+	require.False(t, bound.fits(121*page))
 	bound.Floor = 201 * page
-	require.ErrorAs(t, admitMemoryBound(bound, page), &refusal)
+	require.False(t, bound.fits(page))
 }
 
 // TestAncestorMemoryBound checks reclaim pays down above-limit charges first.
@@ -41,13 +37,11 @@ func TestHostMemoryBound(t *testing.T) {
 func TestAncestorMemoryBound(t *testing.T) {
 	t.Parallel()
 	bound := cgroupMemoryBound{Path: "/user.slice", Limit: 100, Current: 130, Credit: 50, Held: 10}
-	require.Nil(t, admitMemoryBound(bound, 10))
-	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, admitMemoryBound(bound, 11), &refusal)
-	require.Equal(t, bound, refusal.Bound)
+	require.True(t, bound.fits(10))
+	require.False(t, bound.fits(11))
 
 	bound.Credit = 29
-	require.ErrorAs(t, admitMemoryBound(bound, 1), &refusal)
+	require.False(t, bound.fits(1))
 }
 
 // TestMemoryReclaimCredit checks discounting and the exclusions independently.
@@ -92,10 +86,10 @@ func TestMemoryZoneLow(t *testing.T) {
 // Example: unknown valid kernel counters do not contribute to file LRU credit.
 func TestMemoryAccountingStat(t *testing.T) {
 	t.Parallel()
-	input := "active_anon 10\ninactive_anon 20\nfile 600\nactive_file 7\ninactive_file 13\nslab_reclaimable 9\nfile_dirty 3\nfile_writeback 4\n"
+	input := "anon 24\nactive_anon 10\ninactive_anon 20\nfile 600\nactive_file 7\ninactive_file 13\nslab_reclaimable 9\nfile_dirty 3\nfile_writeback 4\n"
 	stat, err := parseMemoryAccountingStat(input)
 	require.NoError(t, err)
-	require.Equal(t, memoryAccountingStat{AnonLRU: 30, File: 20, Slab: 9, Dirty: 3, Writeback: 4}, stat)
+	require.Equal(t, memoryAccountingStat{Anon: 24, AnonLRU: 30, File: 20, Slab: 9, Dirty: 3, Writeback: 4}, stat)
 
 	for _, malformed := range []string{input + "active_anon 0\n", input + "slab_reclaimable bad\n", "active_anon 30\n"} {
 		_, err := parseMemoryAccountingStat(malformed)
@@ -139,25 +133,25 @@ func TestSampledMemoryBounds(t *testing.T) {
 	source := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	var refusal *memoryAdmissionRefusal
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 100*4096, false))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 101*4096, false), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 100*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 101*4096), &refusal)
 	require.IsType(t, hostMemoryBound{}, refusal.Bound)
 
 	writeMemorySample(t, tree, parent+"/memory.max", strconv.Itoa(120*4096))
 	writeMemorySample(t, tree, parent+"/memory.high", strconv.Itoa(110*4096))
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 50*4096, false))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 51*4096, false), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 50*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 51*4096), &refusal)
 	bound, ok := refusal.Bound.(cgroupMemoryBound)
 	require.True(t, ok)
 	require.Equal(t, parent, bound.Path)
 	require.Equal(t, MemoryBytes(40*4096), bound.Credit)
 
 	topology.Protected[cgroupMemoryBoundID(parent)] = []string{inside}
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096, false))
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096))
 
 	writeMemorySample(t, tree, root+"/memory.max", strconv.Itoa(120*4096))
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 20*4096, false))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 21*4096, false), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 20*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 21*4096), &refusal)
 	bound, ok = refusal.Bound.(cgroupMemoryBound)
 	require.True(t, ok)
 	require.Equal(t, root, bound.Path)
@@ -193,16 +187,16 @@ func TestDisjointMemoryClaim(t *testing.T) {
 	ctx, source := context.Background(), memoryHostView{Source: os.DirFS(tree)}
 	var refusal *memoryAdmissionRefusal
 	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 800 kB\n")
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096, false))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 71*4096, false), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 70*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 71*4096), &refusal)
 	bound, ok := refusal.Bound.(cgroupMemoryBound)
 	require.True(t, ok)
 	require.Equal(t, parent, bound.Path)
 	require.Equal(t, MemoryBytes(10*4096), bound.Held)
 
 	writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 640 kB\n")
-	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 55*4096, false))
-	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 56*4096, false), &refusal)
+	require.NoError(t, checkCommandMemory(ctx, source, topology, 0, 55*4096))
+	require.ErrorAs(t, checkCommandMemory(ctx, source, topology, 0, 56*4096), &refusal)
 	host, ok := refusal.Bound.(hostMemoryBound)
 	require.True(t, ok)
 	require.Equal(t, MemoryBytes(105*4096), host.Held)
@@ -244,10 +238,10 @@ func TestProtectedMemoryClaimTurnover(t *testing.T) {
 			Stat: [2]string{memoryFixtureStat(0, 80), tc.after},
 		}
 		view := memoryHostView{Source: &source}
-		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 10*4096, false), tc.name)
+		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 10*4096), tc.name)
 		source.Pass = 0
 		var refusal *memoryAdmissionRefusal
-		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 11*4096, false), &refusal, tc.name)
+		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 11*4096), &refusal, tc.name)
 		bound, ok := refusal.Bound.(cgroupMemoryBound)
 		require.True(t, ok, tc.name)
 		require.Equal(t, parent, bound.Path, tc.name)
@@ -300,15 +294,15 @@ func TestMemoryClaimBracket(t *testing.T) {
 				writeMemorySample(t, tree, parent+"/memory.current", strconv.Itoa((200-headroom)*4096))
 				source := memorySampleTestFS{FS: os.DirFS(tree), Claim: claim, Before: tc.first, After: tc.second, Gone: tc.gone}
 				view := memoryHostView{Source: &source}
-				require.NoError(t, checkCommandMemory(ctx, view, topology, 0, tc.want*4096, false))
+				require.NoError(t, checkCommandMemory(ctx, view, topology, 0, tc.want*4096))
 				source.Pass = 0
 				var refusal *memoryAdmissionRefusal
-				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, (tc.want+1)*4096, false), &refusal)
+				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, (tc.want+1)*4096), &refusal)
 				require.IsType(t, hostMemoryBound{}, refusal.Bound)
 				source.Pass = 0
 				// Only the ancestor binds after adding one page to the host's aggregate.
 				writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: "+strconv.Itoa((headroom+1)*4)+" kB\n")
-				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, (tc.want+1)*4096, false), &refusal)
+				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, (tc.want+1)*4096), &refusal)
 				bound, ok := refusal.Bound.(cgroupMemoryBound)
 				require.True(t, ok)
 				require.Equal(t, parent, bound.Path)
@@ -333,22 +327,23 @@ func TestMemoryAnonLRUAdmission(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		legacy string
+		anon   int
 		lru    int
 	}{
-		{"cumulative_lazyfree", "anon 409600\npglazyfree 1000\n", 80},
-		{"lazyfree_on_file_lru", "anon 409600\npglazyfree 0\n", 60},
-		{"shmem_on_anon_lru", "anon 163840\npglazyfree 0\nshmem 204800\n", 90},
+		{"cumulative_lazyfree", "pglazyfree 1000\n", 100, 80},
+		{"lazyfree_on_file_lru", "pglazyfree 0\n", 100, 60},
+		{"shmem_on_anon_lru", "pglazyfree 0\nshmem 204800\n", 40, 90},
 	} {
 		t.Run(tc.name,
 			// Measure the host fit against the current LRU rather than the legacy counters.
 			//
 			// Example: shmem grows the anon LRU without growing the anon counter.
 			func(t *testing.T) {
-				writeMemorySample(t, tree, claim+"/memory.stat", tc.legacy+memoryFixtureStat(tc.lru, 0))
+				writeMemorySample(t, tree, claim+"/memory.stat", tc.legacy+memoryFixtureStatWithAnon(tc.anon, tc.lru, 0))
 				fit := MemoryBytes(80+tc.lru) * 4096
-				require.NoError(t, checkCommandMemory(ctx, view, topology, 0, fit, false))
+				require.NoError(t, checkCommandMemory(ctx, view, topology, 0, fit))
 				var refusal *memoryAdmissionRefusal
-				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, fit+4096, false), &refusal)
+				require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, fit+4096), &refusal)
 				host, ok := refusal.Bound.(hostMemoryBound)
 				require.True(t, ok)
 				require.Equal(t, MemoryBytes(120-tc.lru)*4096, host.Held)
@@ -370,9 +365,9 @@ func TestMemoryCurrentRejectsUnlimited(t *testing.T) {
 	view := memoryHostView{Source: os.DirFS(tree)}
 	ctx := context.Background()
 	writeMemorySample(t, tree, claim+"/memory.current", "4096\n")
-	require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 4096, false))
+	require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 4096))
 	writeMemorySample(t, tree, claim+"/memory.current", "max\n")
-	require.ErrorContains(t, checkCommandMemory(ctx, view, topology, 0, 4096, false), "memory.current")
+	require.ErrorContains(t, checkCommandMemory(ctx, view, topology, 0, 4096), "memory.current")
 }
 
 // memoryReadFaultFS injects one kernel-file read error without changing other fixture files.
@@ -416,18 +411,18 @@ func TestMemoryGoneProtection(t *testing.T) {
 	for _, gone := range []error{fs.ErrNotExist, unix.ENODEV} {
 		view := memoryHostView{Source: memoryReadFaultFS{FS: source, Path: protected + "/memory.stat", Err: gone}}
 		writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 360 kB\n")
-		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 90*4096, false))
+		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 90*4096))
 		var hostRefusal *memoryAdmissionRefusal
-		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 91*4096, false), &hostRefusal)
+		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 91*4096), &hostRefusal)
 		require.IsType(t, hostMemoryBound{}, hostRefusal.Bound)
 		writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: 400 kB\n")
-		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 90*4096, false))
+		require.NoError(t, checkCommandMemory(ctx, view, topology, 0, 90*4096))
 		var refusal *memoryAdmissionRefusal
-		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 91*4096, false), &refusal)
+		require.ErrorAs(t, checkCommandMemory(ctx, view, topology, 0, 91*4096), &refusal)
 		require.IsType(t, cgroupMemoryBound{}, refusal.Bound)
 
 		view.Source = memoryReadFaultFS{FS: source, Path: group + "/memory.stat", Err: gone}
-		require.ErrorIs(t, checkCommandMemory(ctx, view, topology, 0, 4096, false), gone)
+		require.ErrorIs(t, checkCommandMemory(ctx, view, topology, 0, 4096), gone)
 	}
 }
 
@@ -479,7 +474,7 @@ func TestMemoryCoincidentAndNestedClaims(t *testing.T) {
 				scripted.Pass = 0
 				scripted.middleRead = false
 			}
-			return checkCommandMemory(ctx, memoryHostView{Source: source}, topology, 0, MemoryBytes(requested)*4096, false)
+			return checkCommandMemory(ctx, memoryHostView{Source: source}, topology, 0, MemoryBytes(requested)*4096)
 		}
 		writeMemorySample(t, tree, "/proc/meminfo", "MemAvailable: "+strconv.Itoa((hostHeld+40)*4)+" kB\n")
 		require.NoError(t, check(40))
@@ -556,7 +551,11 @@ func memoryFixtureStat(
 	anon int,
 	file int,
 ) string {
-	return "active_anon " + strconv.Itoa(anon*4096) + "\ninactive_anon 0\nactive_file " + strconv.Itoa(file*4096) + "\ninactive_file 0\nslab_reclaimable 0\nfile_dirty 0\nfile_writeback 0\n"
+	return memoryFixtureStatWithAnon(anon, anon, file)
+}
+
+func memoryFixtureStatWithAnon(anon, lru, file int) string {
+	return "anon " + strconv.Itoa(anon*4096) + "\nactive_anon " + strconv.Itoa(lru*4096) + "\ninactive_anon 0\nactive_file " + strconv.Itoa(file*4096) + "\ninactive_file 0\nslab_reclaimable 0\nfile_dirty 0\nfile_writeback 0\n"
 }
 
 // writeMemorySample publishes an input at its virtual filesystem path.

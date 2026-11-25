@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/xaionaro-go/observability"
 	"golang.org/x/sys/unix"
 )
 
@@ -54,7 +56,6 @@ func createClaimedCommandCgroup(
 	ctx context.Context,
 	path string,
 	limit MemoryBytes,
-	queue bool,
 ) (resultErr error) {
 	lock, err := lockHostMemoryAdmission(ctx, cgroupRoot)
 	if err != nil {
@@ -69,9 +70,7 @@ func createClaimedCommandCgroup(
 	// Example: a rejected request leaves no capacity claim.
 	func() {
 		if resultErr != nil {
-			if cleanupErr := errors.Join(os.Remove(path), lock.Close()); cleanupErr != nil {
-				resultErr = errors.Join(resultErr, cleanupErr)
-			}
+			resultErr = memoryClaimRollbackError(path, resultErr, errors.Join(os.Remove(path), lock.Close()))
 			return
 		}
 		if err := lock.Close(); err != nil {
@@ -90,7 +89,7 @@ func createClaimedCommandCgroup(
 	if err != nil {
 		return err
 	}
-	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor(), queue); err != nil {
+	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor()); err != nil {
 		return err
 	}
 	return ctx.Err()
@@ -160,69 +159,195 @@ func lockMemoryAdmission(
 	}
 }
 
-// waitForMemoryClaims waits until one peer leaf is removed, not merely emptied.
-// Charges and claims may outlive the peers' populations.
+// memoryClaimRollbackError keeps failed cleanup from being mistaken for a retryable refusal.
 //
-// Example: if a peer removes its leaf before watch installation, admission can retry immediately.
-func waitForMemoryClaims(
+// Example: an unremoved tentative leaf makes the result a guard error.
+func memoryClaimRollbackError(
+	path string,
+	admissionErr error,
+	cleanupErr error,
+) error {
+	if cleanupErr == nil {
+		return admissionErr
+	}
+	var refusal *memoryAdmissionRefusal
+	if errors.As(admissionErr, &refusal) {
+		return fmt.Errorf("roll back refused memory claim %s after %v: %w", path, admissionErr, cleanupErr)
+	}
+	return errors.Join(admissionErr, cleanupErr)
+}
+
+// memoryClaimWatch watches parent directories for command leaf removal.
+//
+// Example: sibling events cause a fresh level check, not a successful wake by themselves.
+type memoryClaimWatch struct {
+	fd     int
+	claims []memoryClaim
+}
+
+// armMemoryClaimWatch installs one set of watches and checks for earlier removals.
+//
+// Example: a leaf gone just before registration does not need a new event.
+func armMemoryClaimWatch(
 	ctx context.Context,
-	paths []string,
-) (resultErr error) {
+	claims []memoryClaim,
+) (watch memoryClaimWatch, gone bool, resultErr error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return watch, false, err
 	}
 	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
 	if err != nil {
-		return fmt.Errorf("open memory claim watch: %w", err)
+		return watch, false, fmt.Errorf("open memory claim watch: %w", err)
 	}
-	file := os.NewFile(uintptr(fd), "memory claim watch")
-	// kernfs reports child removal on the parent, not reliably on the leaf.
-	for _, path := range paths {
-		if err := ctx.Err(); err != nil {
-			return errors.Join(err, file.Close())
-		}
-		if _, err := unix.InotifyAddWatch(fd, filepath.Dir(path), unix.IN_ONLYDIR|unix.IN_DELETE); err != nil {
-			if isGoneMemoryCgroup(err) {
-				return errors.Join(ctx.Err(), file.Close())
+	watch = memoryClaimWatch{fd: fd, claims: claims}
+	defer func() {
+		if gone || resultErr != nil {
+			if err := watch.Close(); err != nil {
+				resultErr = fmt.Errorf("close after arming memory claim watch (gone %t, error %v): %w", gone, resultErr, err)
 			}
-			return errors.Join(fmt.Errorf("watch memory claim %s: %w", path, err), file.Close())
+		}
+	}()
+	// kernfs reports child removal on the parent, not reliably on the leaf.
+	for _, claim := range claims {
+		if err := ctx.Err(); err != nil {
+			return watch, false, err
+		}
+		_, err := unix.InotifyAddWatch(fd, filepath.Dir(claim.Path), unix.IN_ONLYDIR|unix.IN_DELETE)
+		switch {
+		case isGoneMemoryCgroup(err):
+			return watch, true, ctx.Err()
+		case err != nil:
+			return watch, false, fmt.Errorf("watch memory claim %s: %w", claim.Path, err)
 		}
 	}
-	closed := make(chan error, 1)
-	stop := context.AfterFunc(ctx,
-		// Close interrupts the pollable descriptor's pending read.
-		//
-		// Example: setup signals interrupt a queued memory request.
-		func() { closed <- file.Close() },
-	)
-	defer
-	// Only one party owns the close; join it before returning.
-	//
-	// Example: cancellation at the same moment as removal still closes the watch once.
-	func() {
-		if stop() {
-			resultErr = errors.Join(resultErr, file.Close())
+	gone, err = watch.claimGone()
+	if err != nil {
+		return watch, false, err
+	}
+	return watch, gone, ctx.Err()
+}
+
+// claimGone checks watched leaf levels after installation or any notification.
+//
+// Example: overflow or an ignored watch also triggers this check.
+func (w memoryClaimWatch) claimGone() (bool, error) {
+	for _, claim := range w.claims {
+		_, err := os.Lstat(claim.Path)
+		switch {
+		case isGoneMemoryCgroup(err):
+			return true, nil
+		case err != nil:
+			return false, fmt.Errorf("verify memory claim removal %s: %w", claim.Path, err)
+		}
+	}
+	return false, nil
+}
+
+// Close releases the inotify descriptor after Wait has stopped polling it.
+//
+// Example: a retry installs a fresh watch rather than reusing the old claim set.
+func (w memoryClaimWatch) Close() error {
+	if err := unix.Close(w.fd); err != nil {
+		return fmt.Errorf("close memory claim watch: %w", err)
+	}
+	return nil
+}
+
+// memoryClaimWatchStop translates context cancellation into a pollable event.
+//
+// Example: a signal wakes Poll even if every watched claim still exists.
+type memoryClaimWatchStop struct {
+	fd       int
+	finished chan struct{}
+	done     chan struct{}
+}
+
+// notify signals a private eventfd on cancellation and joins when the wait returns.
+//
+// Example: a stop concurrent with claim deletion cannot write to a reused descriptor.
+func (s memoryClaimWatchStop) notify(ctx context.Context) {
+	defer close(s.done)
+	select {
+	case <-s.finished:
+		return
+	case <-ctx.Done():
+	}
+	var value [8]byte
+	binary.NativeEndian.PutUint64(value[:], 1)
+	for {
+		// The only writer writes once to a live private eventfd.
+		_, err := unix.Write(s.fd, value[:])
+		if !errors.Is(err, unix.EINTR) {
 			return
 		}
-		resultErr = errors.Join(resultErr, <-closed)
+	}
+}
+
+// Wait blocks for one armed leaf to disappear, or for the queue to stop.
+//
+// Example: a removal queued between arming and waiting is consumed by Poll.
+func (w memoryClaimWatch) Wait(ctx context.Context) (resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fd, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
+	if err != nil {
+		return fmt.Errorf("create memory claim watch stop event: %w", err)
+	}
+	stop := memoryClaimWatchStop{fd: fd, finished: make(chan struct{}), done: make(chan struct{})}
+	observability.Go(ctx, stop.notify)
+	defer func() {
+		close(stop.finished)
+		<-stop.done
+		if err := unix.Close(fd); err != nil {
+			resultErr = fmt.Errorf("close memory claim watch stop event after %v: %w", resultErr, err)
+		}
 	}()
+	fds := [...]unix.PollFd{{Fd: int32(w.fd), Events: unix.POLLIN}, {Fd: int32(fd), Events: unix.POLLIN}}
 	var event [4096]byte
 	for {
-		// The level check after arming catches earlier removals and ignores sibling events.
-		for _, path := range paths {
-			_, err := os.Lstat(path)
-			switch {
-			case isGoneMemoryCgroup(err):
-				return ctx.Err()
-			case err != nil:
-				return fmt.Errorf("verify memory claim removal %s: %w", path, err)
-			}
+		_, err := unix.Poll(fds[:], -1)
+		switch {
+		case errors.Is(err, unix.EINTR):
+			continue
+		case err != nil:
+			return fmt.Errorf("poll memory claim watches: %w", err)
+		case ctx.Err() != nil:
+			return ctx.Err()
+		case fds[0].Revents != unix.POLLIN || fds[1].Revents != 0:
+			return fmt.Errorf("unexpected memory claim watch readiness: %#x, stop %#x", fds[0].Revents, fds[1].Revents)
 		}
-		if _, err := file.Read(event[:]); err != nil {
-			if errors.Is(err, os.ErrClosed) && ctx.Err() != nil {
-				return ctx.Err()
+		if _, err := unix.Read(w.fd, event[:]); err != nil {
+			if errors.Is(err, unix.EINTR) {
+				continue
 			}
 			return fmt.Errorf("read memory claim watches: %w", err)
 		}
+		gone, err := w.claimGone()
+		if err != nil {
+			return err
+		}
+		if gone {
+			return ctx.Err()
+		}
 	}
+}
+
+// waitForMemoryClaims waits until any sufficient claim disappears.
+//
+// Example: a claim removed before watch installation lets admission retry immediately.
+func waitForMemoryClaims(
+	ctx context.Context,
+	claims []memoryClaim,
+) (resultErr error) {
+	watch, gone, err := armMemoryClaimWatch(ctx, claims)
+	if err != nil || gone {
+		return err
+	}
+	defer func() {
+		if err := watch.Close(); err != nil {
+			resultErr = fmt.Errorf("close memory claim wait after %v: %w", resultErr, err)
+		}
+	}()
+	return watch.Wait(ctx)
 }
