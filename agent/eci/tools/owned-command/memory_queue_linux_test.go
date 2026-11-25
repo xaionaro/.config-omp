@@ -1,0 +1,70 @@
+package main
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strconv"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestMemoryQueueProjectsAllBounds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, slice, population string
+		request                 MemoryBytes
+		hostPages               int
+		ancestorFilePages       int
+		queue, eligible         bool
+	}{
+		{"sufficient across both bounds", "/target.slice", "1", 60, 100, 20, true, true},
+		{"fails the ancestor after anonymous release", "/target.slice", "1", 61, 100, 20, true, false},
+		{"fails the host after anonymous release", "/target.slice", "1", 60, 40, 20, true, false},
+		{"capacity is in another slice", "/other.slice", "1", 60, 100, 0, true, false},
+		{"claim is not populated", "/target.slice", "0", 60, 100, 20, true, false},
+		{"wait is not enabled", "/target.slice", "1", 60, 100, 20, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			const ancestor = "/target.slice"
+			peer := tc.slice + "/owned-command-1.scope/command"
+			for path, contents := range map[string]string{
+				"/proc/meminfo":              "MemAvailable: " + strconv.Itoa(tc.hostPages*4) + " kB\n",
+				"/proc/zoneinfo":             "Node 0, zone Normal\n        low 0\n",
+				ancestor + "/memory.max":     strconv.Itoa(100 * 4096),
+				ancestor + "/memory.high":    "max\n",
+				ancestor + "/memory.current": strconv.Itoa(60 * 4096),
+				ancestor + "/memory.stat":    memoryFixtureStat(20, tc.ancestorFilePages),
+				peer + "/memory.current":     strconv.Itoa(40 * 4096),
+				peer + "/memory.stat":        memoryFixtureStat(20, 20),
+				peer + "/cgroup.events":      "populated " + tc.population + "\n",
+			} {
+				writeMemorySample(t, root, path, contents)
+			}
+			view := memoryHostView{Source: os.DirFS(root)}
+			topology := memoryTopology{
+				Claims:    []memoryClaim{{Path: peer, Cap: 60 * 4096}},
+				Ancestors: []string{ancestor},
+			}
+			var refusal *memoryAdmissionRefusal
+			require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 10*4096, tc.request*4096, tc.queue), &refusal)
+			if tc.eligible {
+				require.Equal(t, peer, refusal.Peer)
+				return
+			}
+			require.Empty(t, refusal.Peer)
+		})
+	}
+}
+
+func TestMemoryQueueDoesNotWaitForRemovedClaim(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "command")
+	require.NoError(t, waitForMemoryClaim(t.Context(), path))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, waitForMemoryClaim(ctx, path), context.Canceled)
+}

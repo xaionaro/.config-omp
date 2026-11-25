@@ -165,16 +165,15 @@ type commandCgroup struct {
 	Relative  string
 }
 
-// acquireCommandCgroup moves this supervisor into a fresh manager-owned delegated scope.
+// prepareCommandScope moves this supervisor into a fresh manager-owned delegated scope.
 // In-process registration preserves signals, environment, cwd, descriptors and PID.
-// A nonzero memory limit first moves this supervisor into the sibling guard leaf,
-// enables the memory controller and installs the command's memory controls.
+// A nonzero memory limit enables the controller while the supervisor lives in a guard leaf.
 //
 // Example: a direct-built executable acquires the same ownership as the cache wrapper.
-func acquireCommandCgroup(
+func prepareCommandScope(
 	ctx context.Context,
 	memoryMax MemoryBytes,
-) (*commandCgroup, error) {
+) (string, error) {
 	address := userManagerBusAddress()
 	connection, err := systemddbus.NewConnection(
 		// Connect uses an explicit address so bus discovery cannot mutate environment or launch helpers.
@@ -183,7 +182,7 @@ func acquireCommandCgroup(
 		func() (*dbus.Conn, error) { return dbus.Connect(address, dbus.WithContext(ctx)) },
 	)
 	if err != nil {
-		return nil, fmt.Errorf("connect to systemd user manager for cgroup delegation: %w", err)
+		return "", fmt.Errorf("connect to systemd user manager for cgroup delegation: %w", err)
 	}
 	defer connection.Close()
 	unit := ownedCommandScopeName(os.Getpid(), time.Now().UnixNano())
@@ -194,48 +193,59 @@ func acquireCommandCgroup(
 		{Name: "CollectMode", Value: dbus.MakeVariant("inactive-or-failed")},
 	}
 	if _, err := connection.StartTransientUnitContext(ctx, unit, "fail", properties, completed); err != nil {
-		return nil, fmt.Errorf("create delegated scope %s: %w", unit, err)
+		return "", fmt.Errorf("create delegated scope %s: %w", unit, err)
 	}
 	select {
 	case result := <-completed:
 		if result != "done" {
-			return nil, fmt.Errorf("delegated scope %s start result: %s", unit, result)
+			return "", fmt.Errorf("delegated scope %s start result: %s", unit, result)
 		}
 	case <-ctx.Done():
-		return nil, fmt.Errorf("wait for delegated scope %s: %w", unit, ctx.Err())
+		return "", fmt.Errorf("wait for delegated scope %s: %w", unit, ctx.Err())
 	}
 	values, err := connection.GetAllPropertiesContext(ctx, unit)
 	if err != nil {
-		return nil, fmt.Errorf("inspect delegated scope %s: %w", unit, err)
+		return "", fmt.Errorf("inspect delegated scope %s: %w", unit, err)
 	}
 	delegated, ok := values["Delegate"].(bool)
 	if !ok || !delegated {
-		return nil, fmt.Errorf("scope %s did not acquire cgroup delegation", unit)
+		return "", fmt.Errorf("scope %s did not acquire cgroup delegation", unit)
 	}
 	parent, ok := values["ControlGroup"].(string)
 	if !ok || parent == "" || !strings.HasPrefix(parent, "/") || filepath.Clean(parent) != parent {
-		return nil, fmt.Errorf("scope %s returned invalid ControlGroup", unit)
+		return "", fmt.Errorf("scope %s returned invalid ControlGroup", unit)
 	}
 	matches, err := selfCgroupMatches(parent)
 	if err != nil {
-		return nil, fmt.Errorf("verify delegated scope %s membership: %w", unit, err)
+		return "", fmt.Errorf("verify delegated scope %s membership: %w", unit, err)
 	}
 	if !matches {
-		return nil, fmt.Errorf("supervisor did not enter delegated scope %s", unit)
+		return "", fmt.Errorf("supervisor did not enter delegated scope %s", unit)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("delegated scope %s setup canceled: %w", unit, err)
+		return "", fmt.Errorf("delegated scope %s setup canceled: %w", unit, err)
 	}
 	if memoryMax != 0 {
 		if err := prepareMemoryScope(ctx, parent); err != nil {
-			return nil, err
+			return "", err
 		}
 	}
-	relative := parent + "/" + commandLeaf
+	return parent + "/" + commandLeaf, nil
+}
+
+// acquireCommandCgroup creates and opens the command leaf within a prepared scope.
+//
+// Example: a refused cap leaves the guard's scope available for a retry.
+func acquireCommandCgroup(
+	ctx context.Context,
+	relative string,
+	memoryMax MemoryBytes,
+	queue bool,
+) (*commandCgroup, error) {
 	path := filepath.Join(cgroupRoot, relative)
 	switch {
 	case memoryMax != 0:
-		if err := createClaimedCommandCgroup(ctx, path, memoryMax); err != nil {
+		if err := createClaimedCommandCgroup(ctx, path, memoryMax, queue); err != nil {
 			return nil, err
 		}
 	default:
@@ -724,6 +734,14 @@ func (g *guard) drainCgroupCommand(rootPID int) commandDrain {
 	return commandDrainYield
 }
 
+// startCommandSetupBudget bounds one uninterrupted setup phase.
+// The caller cancels it before waiting and when setup finishes or fails.
+//
+// Example: each post-wait admission gets a fresh budget without extending command runtime.
+func startCommandSetupBudget(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, cgroupSetupTimeout)
+}
+
 // runCgroupCommand uses inherited kernel membership and native exit events for launch mode.
 // Setup failures happen before command creation and enter the ordinary 125 receipt path.
 //
@@ -731,14 +749,19 @@ func (g *guard) drainCgroupCommand(rootPID int) commandDrain {
 func (g *guard) runCgroupCommand(
 	args []string,
 	memoryMax MemoryBytes,
+	memoryWait time.Duration,
 ) {
 	commandEnvironment := os.Environ()
 	g.receipt.Backend = "cgroup-v2"
 	g.receipt.FamilyCoverage = "inherited command cgroup plus native child reaping"
 	setupNotices, stopSetupNotices := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	defer stopSetupNotices()
-	ctx, cancel := context.WithTimeout(setupNotices, cgroupSetupTimeout)
-	defer cancel()
+	ctx, cancel := startCommandSetupBudget(setupNotices)
+	defer
+	// A queued retry replaces the current setup budget.
+	//
+	// Example: extending setup for a retry never changes the runtime budget.
+	func() { cancel() }()
 	if !g.prepareKernel() {
 		return
 	}
@@ -747,7 +770,30 @@ func (g *guard) runCgroupCommand(
 		return
 	}
 	runtimeBudget := g.expires.Sub(g.started)
-	group, err := acquireCommandCgroup(ctx, memoryMax)
+	relative, err := prepareCommandScope(ctx, memoryMax)
+	var group *commandCgroup
+	if err == nil {
+		group, err = acquireCommandCgroup(ctx, relative, memoryMax, memoryWait > 0)
+	}
+	var queueCtx context.Context
+	for {
+		refusal, ok := err.(*memoryAdmissionRefusal)
+		if !ok || refusal.Peer == "" || ctx.Err() != nil {
+			break
+		}
+		if queueCtx == nil {
+			var stopQueue context.CancelFunc
+			queueCtx, stopQueue = context.WithTimeout(setupNotices, memoryWait)
+			defer stopQueue()
+		}
+		cancel()
+		if waitErr := waitForMemoryClaim(queueCtx, refusal.Peer); waitErr != nil {
+			err = errors.Join(refusal, fmt.Errorf("memory admission wait for %s: %w", refusal.Peer, waitErr))
+			break
+		}
+		ctx, cancel = startCommandSetupBudget(setupNotices)
+		group, err = acquireCommandCgroup(ctx, relative, memoryMax, true)
+	}
 	g.consumeNotices()
 	if setupNotices.Err() != nil {
 		g.interrupted = true

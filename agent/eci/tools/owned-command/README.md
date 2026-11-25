@@ -97,7 +97,25 @@ together.
 Each verified cap holds a claim until its `command` cgroup disappears, even
 if its guard dies. Capacity refusal starts no command and returns status 125
 with receipt `Cause` set to `memory admission refused`, `CommandPID` set to 0,
-and the binding budget in `Errors`. It does not wait for memory to free up.
+and the binding budget in `Errors`. By default it does not wait.
+
+On Linux, add `-memory-wait DURATION` to a capped launch to wait on a capacity
+refusal. A positive duration opts in; zero disables waiting. The guard waits
+only if one running capped peer's departure is estimated to make the new cap
+fit within the host and all finite ancestor budgets. It releases the admission
+lock and removes its tentative claim before waiting for that peer's command
+cgroup to disappear. It then runs ordinary admission again before starting
+the command. A shortage without a sufficient running peer, expiry of the wait,
+or interruption does not launch the command. Waiting does not reserve memory
+or establish FIFO ordering. On macOS capped launches remain unsupported.
+
+For example, allow up to 30 seconds of waiting before running a capped command:
+
+```sh
+owned-command -memory-max 67108864 -memory-wait 30s -deadline 5s \
+  -receipt "$receipt" -- ./command
+```
+
 Capped setup refuses a cgroup view that cannot see the host root.
 An unreadable cgroup also fails capped setup with `Cause: guard error`.
 Owned-command creates cgroups readable and traversable by other users so their
@@ -173,6 +191,8 @@ Native-call, inspection and finalization latency are additional; these are not
 hard wall-clock limits.
 An interruption or setup error prevents launch and returns 125 through the same
 receipt finalizer. An ambiguous manager reply never authorizes launch.
+For an opted-in launch, the wait budget starts with the first attributable
+refusal; each post-wait admission attempt gets a fresh setup budget.
 
 The running command waits for SIGCHLD, root pidfd readiness, cgroup population
 changes, interruption or deadline. Launched supervision performs no global host

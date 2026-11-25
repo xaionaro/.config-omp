@@ -111,6 +111,7 @@ func checkCommandMemory(
 	topology memoryTopology,
 	floor MemoryBytes,
 	requested MemoryBytes,
+	queue bool,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -166,19 +167,90 @@ func checkCommandMemory(
 	var excluded memoryCacheSample
 	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, topology.Protected[hostMemoryBoundID], claims, protected)
 	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
-	if err := host.admit(requested); err != nil {
-		return err
+	refusal := admitMemoryBound(host, requested)
+	if refusal != nil && !queue {
+		return refusal
 	}
-	for _, ancestor := range ancestors {
+	for i := range ancestors {
+		ancestor := &ancestors[i]
 		bound := ancestor.Bound
 		id := cgroupMemoryBoundID(bound.Path)
 		bound.Held, excluded = accountBoundClaims(id, topology.Protected[id], claims, protected)
 		bound.Credit = ancestor.Stat.reclaimCredit(excluded, low)
-		if err := bound.admit(requested); err != nil {
-			return err
+		ancestor.Bound = bound
+		if refusal == nil {
+			refusal = admitMemoryBound(bound, requested)
+			if refusal != nil && !queue {
+				return refusal
+			}
 		}
 	}
-	return nil
+	if refusal == nil {
+		return nil
+	}
+	for _, peer := range topology.Claims {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !peerCanRelease(requested, host, ancestors, peer, claims[peer.Path]) {
+			continue
+		}
+		data, err := view.readFile(filepath.Join(peer.Path, "cgroup.events"))
+		if isGoneMemoryCgroup(err) {
+			// The measured claim is already gone; retry admission without waiting.
+			refusal.Peer = peer.Path
+			break
+		}
+		if err != nil {
+			return err
+		}
+		populated, err := parseCgroupPopulation(data)
+		if err != nil {
+			return fmt.Errorf("read peer population %s: %w", peer.Path, err)
+		}
+		if populated {
+			refusal.Peer = peer.Path
+			break
+		}
+	}
+	return refusal
+}
+
+// peerCanRelease projects one peer's departure against every sampled bound.
+// Preserve all cache deductions and add only bracketed anonymous residency:
+// memory.current includes cache and other charges that can outlive a workload.
+//
+// Example: a peer in a different slice cannot repair a shortage in this slice.
+func peerCanRelease(
+	requested MemoryBytes,
+	host hostMemoryBound,
+	ancestors []memoryAncestorSample,
+	peer memoryClaim,
+	sample memoryClaimBracket,
+) bool {
+	resident := peer.Cap - sample.HostGrowth
+	if host.Held == ^MemoryBytes(0) {
+		return false // A saturated total cannot safely be reduced.
+	}
+	host.Held -= sample.HostGrowth
+	host.Available = host.Available.saturatingAdd(resident)
+	if !host.fits(requested) {
+		return false
+	}
+	for _, ancestor := range ancestors {
+		bound := ancestor.Bound
+		if isStrictMemoryDescendant(peer.Path, bound.Path) {
+			if bound.Held == ^MemoryBytes(0) {
+				return false
+			}
+			bound.Held -= sample.AncestorGrowth
+			bound.Current -= min(bound.Current, resident)
+		}
+		if !bound.fits(requested) {
+			return false
+		}
+	}
+	return true
 }
 
 // accountBoundClaims calculates held growth and excluded cache for one typed bound.

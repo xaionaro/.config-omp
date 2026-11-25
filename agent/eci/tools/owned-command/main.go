@@ -1561,9 +1561,10 @@ func validArguments(
 	grace time.Duration,
 	cancel ProcessIdentity,
 	memoryMax MemoryBytes,
+	memoryWait time.Duration,
 	args []string,
 ) bool {
-	if deadline <= 0 || grace <= 0 || cancel.PID < 0 {
+	if deadline <= 0 || grace <= 0 || cancel.PID < 0 || memoryWait < 0 || (memoryWait > 0 && memoryMax == 0) {
 		return false
 	}
 	if cancel.PID == 0 {
@@ -1580,16 +1581,17 @@ func supervise(
 	grace time.Duration,
 	cancel ProcessIdentity,
 	memoryMax MemoryBytes,
+	memoryWait time.Duration,
 	args []string,
 ) (Receipt, int) {
 	notices := make(chan os.Signal, 16)
 	g := newGuard(linuxKernel{}, realClock{}, notices, deadline, grace, cancel)
 	signal.Notify(notices, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	switch {
-	case !validArguments(deadline, grace, cancel, memoryMax, args):
+	case !validArguments(deadline, grace, cancel, memoryMax, memoryWait, args):
 		g.fail("invalid arguments", errors.New("invalid owned-command arguments"))
 	case g.launchMode:
-		g.runCgroupCommand(args, memoryMax)
+		g.runCgroupCommand(args, memoryMax, memoryWait)
 	case g.constructCancellation():
 		g.drive()
 	}
@@ -1608,15 +1610,16 @@ func main() {
 	cancelBirth := flag.Uint64("cancel-birth", 0, "required /proc stat field 22 identity")
 	var memoryMax MemoryBytes
 	flag.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes; omit to run uncapped")
+	memoryWait := flag.Duration("memory-wait", 0, "maximum wait for a sufficient running memory claim to finish; requires -memory-max")
 	flag.Parse()
 	cancel := ProcessIdentity{PID: *cancelPID, Birth: *cancelBirth}
-	if *receipt == "" || !validArguments(*deadline, *grace, cancel, memoryMax, flag.Args()) {
+	if *receipt == "" || !validArguments(*deadline, *grace, cancel, memoryMax, *memoryWait, flag.Args()) {
 		if _, err := fmt.Fprintln(os.Stderr, "invalid owned-command arguments"); err != nil {
 			os.Exit(guardFailure)
 		}
 		os.Exit(guardFailure)
 	}
-	r, code := supervise(*deadline, *grace, cancel, memoryMax, flag.Args())
+	r, code := supervise(*deadline, *grace, cancel, memoryMax, *memoryWait, flag.Args())
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err == nil {
 		err = os.WriteFile(*receipt, append(data, '\n'), 0600)

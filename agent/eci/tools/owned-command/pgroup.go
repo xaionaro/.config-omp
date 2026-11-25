@@ -637,13 +637,14 @@ func pgroupMain(args []string) int {
 	cancelBirth := flags.Uint64("cancel-birth", 0, "required birth identity (refused on darwin-pgroup)")
 	var memoryMax MemoryBytes
 	flags.Var(&memoryMax, "memory-max", "aggregate command memory limit in bytes (refused on darwin-pgroup); omit to run uncapped")
+	memoryWait := flags.Duration("memory-wait", 0, "memory admission wait (refused on darwin-pgroup); requires -memory-max")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 2
 	}
-	if *receipt == "" || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, memoryMax, flags.Args()) {
+	if *receipt == "" || *memoryWait < 0 || (*memoryWait > 0 && memoryMax == 0) || !pgroupValidArguments(*deadline, *grace, *cancelPID, *cancelBirth, memoryMax, flags.Args()) {
 		return pgroupDiagnose("invalid owned-command arguments")
 	}
 	if memoryMax != 0 {

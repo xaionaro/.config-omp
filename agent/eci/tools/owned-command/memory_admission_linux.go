@@ -54,6 +54,7 @@ func createClaimedCommandCgroup(
 	ctx context.Context,
 	path string,
 	limit MemoryBytes,
+	queue bool,
 ) (resultErr error) {
 	lock, err := lockHostMemoryAdmission(ctx, cgroupRoot)
 	if err != nil {
@@ -68,7 +69,9 @@ func createClaimedCommandCgroup(
 	// Example: a rejected request leaves no capacity claim.
 	func() {
 		if resultErr != nil {
-			resultErr = errors.Join(resultErr, os.Remove(path), lock.Close())
+			if cleanupErr := errors.Join(os.Remove(path), lock.Close()); cleanupErr != nil {
+				resultErr = errors.Join(resultErr, cleanupErr)
+			}
 			return
 		}
 		if err := lock.Close(); err != nil {
@@ -87,7 +90,7 @@ func createClaimedCommandCgroup(
 	if err != nil {
 		return err
 	}
-	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor()); err != nil {
+	if err := checkCommandMemory(ctx, view, topology, floor, limit.pageFloor(), queue); err != nil {
 		return err
 	}
 	return ctx.Err()
@@ -153,6 +156,67 @@ func lockMemoryAdmission(
 		case <-ctx.Done():
 			return nil, errors.Join(ctx.Err(), lock.Close())
 		case <-retry.C:
+		}
+	}
+}
+
+// waitForMemoryClaim waits for the peer leaf's removal, not merely process exit.
+// Charges and the claim may outlive the peer's population.
+//
+// Example: if a peer removes its leaf before watch installation, admission can retry immediately.
+func waitForMemoryClaim(
+	ctx context.Context,
+	path string,
+) (resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
+	if err != nil {
+		return fmt.Errorf("open memory claim watch: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "memory claim watch")
+	// kernfs does not reliably report DELETE_SELF on a cgroup v2 leaf.
+	if _, err := unix.InotifyAddWatch(fd, filepath.Dir(path), unix.IN_ONLYDIR|unix.IN_DELETE); err != nil {
+		if isGoneMemoryCgroup(err) {
+			return errors.Join(ctx.Err(), file.Close())
+		}
+		return errors.Join(fmt.Errorf("watch memory claim %s: %w", path, err), file.Close())
+	}
+	closed := make(chan error, 1)
+	stop := context.AfterFunc(ctx,
+		// Close interrupts the pollable descriptor's pending read.
+		//
+		// Example: setup signals interrupt a queued memory request.
+		func() { closed <- file.Close() },
+	)
+	defer
+	// Only one party owns the close; join it before returning.
+	//
+	// Example: cancellation at the same moment as removal still closes the watch once.
+	func() {
+		if stop() {
+			resultErr = errors.Join(resultErr, file.Close())
+			return
+		}
+		resultErr = errors.Join(resultErr, <-closed)
+	}()
+	var event [4096]byte
+	for {
+		// Checking the leaf after arming catches removal before installation.
+		// Rechecking after notification ignores deletion of sibling leaves.
+		_, err := os.Lstat(path)
+		switch {
+		case isGoneMemoryCgroup(err):
+			return ctx.Err()
+		case err != nil:
+			return fmt.Errorf("verify memory claim removal %s: %w", path, err)
+		}
+		if _, err := file.Read(event[:]); err != nil {
+			if errors.Is(err, os.ErrClosed) && ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("read memory claim watch %s: %w", path, err)
 		}
 	}
 }

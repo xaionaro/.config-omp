@@ -152,9 +152,9 @@ func TestMemoryTopologyProtection(t *testing.T) {
 	require.Equal(t, []string{p}, got.Protected[hostMemoryBoundID])
 	require.Equal(t, []string{p}, got.Protected[cgroupMemoryBoundID(r)])
 	require.Equal(t, []string{q}, got.Protected[cgroupMemoryBoundID(p)])
-	require.NoError(t, checkCommandMemory(ctx, view, got, 0, 3932160))
+	require.NoError(t, checkCommandMemory(ctx, view, got, 0, 3932160, false))
 	var refusal *memoryAdmissionRefusal
-	require.ErrorAs(t, checkCommandMemory(ctx, view, got, 0, 3932160+4096), &refusal)
+	require.ErrorAs(t, checkCommandMemory(ctx, view, got, 0, 3932160+4096, false), &refusal)
 	writeMemorySample(t, tree, q+"/memory.min", "invalid")
 	_, err = discoverMemoryTopology(context.Background(), view, root, candidate)
 	require.ErrorContains(t, err, "memory.min")

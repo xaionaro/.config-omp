@@ -53,10 +53,10 @@ func cgroupMemoryBoundID(path string) memoryBoundID {
 //
 // Example: both the host and each finite cgroup must independently admit the new cap.
 type memoryBound interface {
-	// admit rejects a request that cannot fit alongside the bound's held growth.
+	// fits checks whether the request can fit alongside the bound's held growth.
 	//
 	// Example: an existing claim leaves only part of the sampled headroom usable.
-	admit(requested MemoryBytes) error
+	fits(requested MemoryBytes) bool
 	// describe formats sampled terms for the refusal receipt.
 	//
 	// Example: host descriptions include MemAvailable and the earlyoom floor.
@@ -73,16 +73,13 @@ type hostMemoryBound struct {
 	Held      MemoryBytes
 }
 
-// admit checks host growth against MemAvailable after deductions.
+// fits checks host growth against MemAvailable after deductions.
 //
 // Example: earlyoom's floor cannot become negative usable capacity.
-func (b hostMemoryBound) admit(requested MemoryBytes) error {
+func (b hostMemoryBound) fits(requested MemoryBytes) bool {
 	usable := b.Available - min(b.Available, b.Floor)
 	usable -= min(usable, b.Protected)
-	if requested > usable-min(usable, b.Held) {
-		return &memoryAdmissionRefusal{Bound: b, Requested: requested}
-	}
-	return nil
+	return requested <= usable-min(usable, b.Held)
 }
 
 // describe formats the sampled host terms and request.
@@ -103,20 +100,17 @@ type cgroupMemoryBound struct {
 	Held    MemoryBytes
 }
 
-// admit checks cgroup growth after applying reclaim to any current overage.
+// fits checks cgroup growth after applying reclaim to any current overage.
 //
 // Example: reclaim first pays off charges over the limit; only the remainder funds growth.
-func (b cgroupMemoryBound) admit(requested MemoryBytes) error {
+func (b cgroupMemoryBound) fits(requested MemoryBytes) bool {
 	chargedWithinLimit := min(b.Limit, b.Current)
 	base := b.Limit - chargedWithinLimit
 	debt := b.Current - chargedWithinLimit
 	extra := b.Credit - min(b.Credit, debt)
 	needed, neededCarry := bits.Add64(uint64(requested), uint64(b.Held), 0)
 	usable, usableCarry := bits.Add64(uint64(base), uint64(extra), 0)
-	if neededCarry > usableCarry || (neededCarry == usableCarry && needed > usable) {
-		return &memoryAdmissionRefusal{Bound: b, Requested: requested}
-	}
-	return nil
+	return neededCarry < usableCarry || (neededCarry == usableCarry && needed <= usable)
 }
 
 // describe formats the sampled cgroup terms and request.
@@ -126,12 +120,26 @@ func (b cgroupMemoryBound) describe(requested MemoryBytes) string {
 	return fmt.Sprintf("at %s: %d requested bytes, %d limit, %d current, %d reclaim credit, %d bytes held for existing commands", b.Path, requested, b.Limit, b.Current, b.Credit, b.Held)
 }
 
+// admitMemoryBound reports a structured refusal only when a sampled bound fails.
+//
+// Example: the host and each finite ancestor must independently fit the request.
+func admitMemoryBound(
+	bound memoryBound,
+	requested MemoryBytes,
+) *memoryAdmissionRefusal {
+	if bound.fits(requested) {
+		return nil
+	}
+	return &memoryAdmissionRefusal{Bound: bound, Requested: requested}
+}
+
 // memoryAdmissionRefusal records the binding constraint and its measured terms.
 //
 // Example: errors.As distinguishes a capacity refusal from a failed kernel read.
 type memoryAdmissionRefusal struct {
 	Bound     memoryBound
 	Requested MemoryBytes
+	Peer      string
 }
 
 // Error formats the observed bound and demand for an admission receipt.
