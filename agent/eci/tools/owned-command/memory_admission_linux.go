@@ -160,13 +160,13 @@ func lockMemoryAdmission(
 	}
 }
 
-// waitForMemoryClaim waits for the peer leaf's removal, not merely process exit.
-// Charges and the claim may outlive the peer's population.
+// waitForMemoryClaims waits until one peer leaf is removed, not merely emptied.
+// Charges and claims may outlive the peers' populations.
 //
 // Example: if a peer removes its leaf before watch installation, admission can retry immediately.
-func waitForMemoryClaim(
+func waitForMemoryClaims(
 	ctx context.Context,
-	path string,
+	paths []string,
 ) (resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -176,12 +176,17 @@ func waitForMemoryClaim(
 		return fmt.Errorf("open memory claim watch: %w", err)
 	}
 	file := os.NewFile(uintptr(fd), "memory claim watch")
-	// kernfs does not reliably report DELETE_SELF on a cgroup v2 leaf.
-	if _, err := unix.InotifyAddWatch(fd, filepath.Dir(path), unix.IN_ONLYDIR|unix.IN_DELETE); err != nil {
-		if isGoneMemoryCgroup(err) {
-			return errors.Join(ctx.Err(), file.Close())
+	// kernfs reports child removal on the parent, not reliably on the leaf.
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(err, file.Close())
 		}
-		return errors.Join(fmt.Errorf("watch memory claim %s: %w", path, err), file.Close())
+		if _, err := unix.InotifyAddWatch(fd, filepath.Dir(path), unix.IN_ONLYDIR|unix.IN_DELETE); err != nil {
+			if isGoneMemoryCgroup(err) {
+				return errors.Join(ctx.Err(), file.Close())
+			}
+			return errors.Join(fmt.Errorf("watch memory claim %s: %w", path, err), file.Close())
+		}
 	}
 	closed := make(chan error, 1)
 	stop := context.AfterFunc(ctx,
@@ -203,20 +208,21 @@ func waitForMemoryClaim(
 	}()
 	var event [4096]byte
 	for {
-		// Checking the leaf after arming catches removal before installation.
-		// Rechecking after notification ignores deletion of sibling leaves.
-		_, err := os.Lstat(path)
-		switch {
-		case isGoneMemoryCgroup(err):
-			return ctx.Err()
-		case err != nil:
-			return fmt.Errorf("verify memory claim removal %s: %w", path, err)
+		// The level check after arming catches earlier removals and ignores sibling events.
+		for _, path := range paths {
+			_, err := os.Lstat(path)
+			switch {
+			case isGoneMemoryCgroup(err):
+				return ctx.Err()
+			case err != nil:
+				return fmt.Errorf("verify memory claim removal %s: %w", path, err)
+			}
 		}
 		if _, err := file.Read(event[:]); err != nil {
 			if errors.Is(err, os.ErrClosed) && ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return fmt.Errorf("read memory claim watch %s: %w", path, err)
+			return fmt.Errorf("read memory claim watches: %w", err)
 		}
 	}
 }

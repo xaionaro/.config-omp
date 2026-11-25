@@ -778,7 +778,7 @@ func (g *guard) runCgroupCommand(
 	var queueCtx context.Context
 	for {
 		refusal, ok := err.(*memoryAdmissionRefusal)
-		if !ok || refusal.Peer == "" || ctx.Err() != nil {
+		if !ok || len(refusal.Peers) == 0 || ctx.Err() != nil {
 			break
 		}
 		if queueCtx == nil {
@@ -787,8 +787,8 @@ func (g *guard) runCgroupCommand(
 			defer stopQueue()
 		}
 		cancel()
-		if waitErr := waitForMemoryClaim(queueCtx, refusal.Peer); waitErr != nil {
-			err = errors.Join(refusal, fmt.Errorf("memory admission wait for %s: %w", refusal.Peer, waitErr))
+		if waitErr := waitForMemoryClaims(queueCtx, refusal.Peers); waitErr != nil {
+			err = errors.Join(refusal, fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr))
 			break
 		}
 		ctx, cancel = startCommandSetupBudget(setupNotices)

@@ -101,13 +101,14 @@ and the binding budget in `Errors`. By default it does not wait.
 
 On Linux, add `-memory-wait DURATION` to a capped launch to wait on a capacity
 refusal. A positive duration opts in; zero disables waiting. The guard waits
-only if one running capped peer's departure is estimated to make the new cap
-fit within the host and all finite ancestor budgets. It releases the admission
-lock and removes its tentative claim before waiting for that peer's command
-cgroup to disappear. It then runs ordinary admission again before starting
-the command. A shortage without a sufficient running peer, expiry of the wait,
-or interruption does not launch the command. Waiting does not reserve memory
-or establish FIFO ordering. On macOS capped launches remain unsupported.
+only if at least one running capped peer's departure is estimated to make the
+new cap fit within the host and all finite ancestor budgets. It releases the
+admission lock and removes its tentative claim before watching all sufficient
+peers' command cgroups. As soon as one disappears, it runs ordinary admission
+again before starting the command. A shortage without a sufficient running
+peer, expiry of the wait, or interruption does not launch the command.
+Waiting does not reserve memory or establish FIFO ordering. On macOS capped
+launches remain unsupported.
 
 For example, allow up to 30 seconds of waiting before running a capped command:
 

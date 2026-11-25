@@ -139,7 +139,7 @@ func admitMemoryBound(
 type memoryAdmissionRefusal struct {
 	Bound     memoryBound
 	Requested MemoryBytes
-	Peer      string
+	Peers     []string
 }
 
 // Error formats the observed bound and demand for an admission receipt.

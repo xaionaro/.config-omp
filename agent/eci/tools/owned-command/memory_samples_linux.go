@@ -188,14 +188,9 @@ func checkCommandMemory(
 	if refusal == nil {
 		return nil
 	}
-	// Prefer the smallest sufficient claim; discovery order breaks ties.
-	var selectedCap MemoryBytes
 	for _, peer := range topology.Claims {
 		if err := ctx.Err(); err != nil {
 			return err
-		}
-		if selectedCap != 0 && peer.Cap >= selectedCap {
-			continue
 		}
 		if !peerCanRelease(requested, host, ancestors, peer, claims[peer.Path]) {
 			continue
@@ -203,8 +198,8 @@ func checkCommandMemory(
 		data, err := view.readFile(filepath.Join(peer.Path, "cgroup.events"))
 		if isGoneMemoryCgroup(err) {
 			// The measured claim is already gone; retry admission without waiting.
-			refusal.Peer = peer.Path
-			break
+			refusal.Peers = []string{peer.Path}
+			return refusal
 		}
 		if err != nil {
 			return err
@@ -214,8 +209,7 @@ func checkCommandMemory(
 			return fmt.Errorf("read peer population %s: %w", peer.Path, err)
 		}
 		if populated {
-			refusal.Peer = peer.Path
-			selectedCap = peer.Cap
+			refusal.Peers = append(refusal.Peers, peer.Path)
 		}
 	}
 	return refusal

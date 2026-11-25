@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -52,15 +53,15 @@ func TestMemoryQueueProjectsAllBounds(t *testing.T) {
 			var refusal *memoryAdmissionRefusal
 			require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 10*4096, tc.request*4096, tc.queue), &refusal)
 			if tc.eligible {
-				require.Equal(t, peer, refusal.Peer)
+				require.Equal(t, []string{peer}, refusal.Peers)
 				return
 			}
-			require.Empty(t, refusal.Peer)
+			require.Empty(t, refusal.Peers)
 		})
 	}
 }
 
-func TestMemoryQueueChoosesSmallestSufficientClaim(t *testing.T) {
+func TestMemoryQueueArmsEveryIndividuallySufficientClaim(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	large := "/large.scope/command"
@@ -79,16 +80,31 @@ func TestMemoryQueueChoosesSmallestSufficientClaim(t *testing.T) {
 	}}
 	var refusal *memoryAdmissionRefusal
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*4096, true), &refusal)
-	require.Equal(t, small, refusal.Peer)
+	require.ElementsMatch(t, []string{large, small}, refusal.Peers)
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 31*4096, true), &refusal)
-	require.Equal(t, large, refusal.Peer)
+	require.Equal(t, []string{large}, refusal.Peers)
 }
 
 func TestMemoryQueueDoesNotWaitForRemovedClaim(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "command")
-	require.NoError(t, waitForMemoryClaim(t.Context(), path))
+	require.NoError(t, waitForMemoryClaims(t.Context(), []string{path}))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	require.ErrorIs(t, waitForMemoryClaim(ctx, path), context.Canceled)
+	require.ErrorIs(t, waitForMemoryClaims(ctx, []string{path}), context.Canceled)
+}
+
+func TestMemoryQueueWakesOnLaterClaimRemoval(t *testing.T) {
+	t.Parallel()
+	first := filepath.Join(t.TempDir(), "command")
+	later := filepath.Join(t.TempDir(), "command")
+	require.NoError(t, os.Mkdir(first, 0o700))
+	require.NoError(t, os.Mkdir(later, 0o700))
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- waitForMemoryClaims(ctx, []string{first, later}) }()
+	require.NoError(t, os.Remove(later))
+	require.NoError(t, <-done)
+	require.DirExists(t, first)
 }
