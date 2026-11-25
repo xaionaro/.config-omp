@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+const (
+	// memoryWaitHelp describes the claim lifetime observed by waiting.
+	//
+	// Example: a command may have exited while retaining a memory claim.
+	memoryWaitHelp = "maximum wait for a sufficient existing memory claim to disappear, even after its command exits; requires -memory-max"
+)
+
 // MemoryBytes identifies a workload memory quantity in bytes.
 //
 // Example: a limit of 67108864 bounds the workload to 64 MiB.
@@ -51,11 +58,6 @@ func (b *MemoryBytes) Set(value string) error {
 	*b = MemoryBytes(parsed)
 	return nil
 }
-
-// memoryWaitHelp describes the claim lifetime observed by waiting.
-//
-// Example: a command may have exited while retaining a memory claim.
-const memoryWaitHelp = "maximum wait for a sufficient existing memory claim to disappear, even after its command exits; requires -memory-max"
 
 // validMemoryWait checks the common capped-launch wait argument contract.
 //

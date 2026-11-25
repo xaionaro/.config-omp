@@ -564,20 +564,32 @@ func (w *cgroupWatch) Run(ctx context.Context) {
 //
 // Example: group descriptor closure cannot race a watcher polling a reused fd number.
 func (w *cgroupWatch) Stop() error {
-	var value [8]byte
-	binary.NativeEndian.PutUint64(value[:], 1)
-	count, err := unix.Write(w.StopFD, value[:])
-	for errors.Is(err, unix.EINTR) {
-		count, err = unix.Write(w.StopFD, value[:])
-	}
-	if err != nil {
+	if err := signalStopEvent(w.StopFD); err != nil {
 		return fmt.Errorf("stop command cgroup watcher: %w", err)
-	}
-	if count != len(value) {
-		return fmt.Errorf("short command cgroup watcher stop write: %d", count)
 	}
 	<-w.Done
 	return errors.Join(w.Error, unix.Close(w.StopFD))
+}
+
+// signalStopEvent wakes a watcher through its private eventfd.
+//
+// Example: EINTR retries the eventfd write before reporting a shutdown failure.
+func signalStopEvent(fd int) error {
+	var value [8]byte
+	binary.NativeEndian.PutUint64(value[:], 1)
+	for {
+		count, err := unix.Write(fd, value[:])
+		switch {
+		case errors.Is(err, unix.EINTR):
+			continue
+		case err != nil:
+			return err
+		case count != len(value):
+			return fmt.Errorf("short stop event write: %d", count)
+		default:
+			return nil
+		}
+	}
 }
 
 // parseCgroupPopulation requires one explicit kernel population observation.
@@ -741,17 +753,53 @@ func startCommandSetupBudget(ctx context.Context) (context.Context, context.Canc
 	return context.WithTimeout(ctx, cgroupSetupTimeout)
 }
 
-// memoryClaimWaitError preserves refusal only for queue budget expiry.
+// memoryClaimWaitError keeps refusal only for an uninterrupted queue expiry.
 //
-// Example: an exhausted inotify watch limit is a guard error, not capacity refusal.
+// Example: an exhausted inotify watch limit is a guard error, not a capacity refusal.
 func memoryClaimWaitError(
 	refusal *memoryAdmissionRefusal,
 	waitErr error,
+	interrupted bool,
 ) error {
-	if errors.Is(waitErr, context.DeadlineExceeded) {
-		return errors.Join(refusal, fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr))
+	switch {
+	case interrupted:
+		return waitErr
+	case errors.Is(waitErr, context.DeadlineExceeded):
+		return errors.Join(refusal, fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.SufficientClaims), waitErr))
+	default:
+		return fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.SufficientClaims), waitErr)
 	}
-	return fmt.Errorf("memory admission wait on %d claims: %w", len(refusal.Peers), waitErr)
+}
+
+// acquireQueuedCommandCgroup releases the queue timer before handing setup back to launch.
+//
+// Example: a wake grants a fresh setup budget, not a new queue deadline.
+func acquireQueuedCommandCgroup(
+	setupNotices context.Context,
+	ctx context.Context,
+	cancel context.CancelFunc,
+	relative string,
+	memoryMax MemoryBytes,
+	memoryWait time.Duration,
+) (*commandCgroup, context.Context, context.CancelFunc, error) {
+	var queueCtx context.Context
+	for {
+		group, err := acquireCommandCgroup(ctx, relative, memoryMax)
+		var refusal *memoryAdmissionRefusal
+		if memoryWait == 0 || !errors.As(err, &refusal) || len(refusal.SufficientClaims) == 0 || ctx.Err() != nil {
+			return group, ctx, cancel, err
+		}
+		if queueCtx == nil {
+			var stopQueue context.CancelFunc
+			queueCtx, stopQueue = context.WithTimeout(setupNotices, memoryWait)
+			defer stopQueue()
+		}
+		cancel()
+		if waitErr := waitForMemoryClaims(queueCtx, refusal.SufficientClaims); waitErr != nil {
+			return nil, ctx, cancel, memoryClaimWaitError(refusal, waitErr, setupNotices.Err() != nil)
+		}
+		ctx, cancel = startCommandSetupBudget(setupNotices)
+	}
 }
 
 // runCgroupCommand uses inherited kernel membership and native exit events for launch mode.
@@ -785,30 +833,7 @@ func (g *guard) runCgroupCommand(
 	relative, err := prepareCommandScope(ctx, memoryMax)
 	var group *commandCgroup
 	if err == nil {
-		group, err = acquireCommandCgroup(ctx, relative, memoryMax)
-	}
-	var queueCtx context.Context
-	for {
-		var refusal *memoryAdmissionRefusal
-		if memoryWait == 0 || !errors.As(err, &refusal) || len(refusal.Peers) == 0 || ctx.Err() != nil {
-			break
-		}
-		if queueCtx == nil {
-			var stopQueue context.CancelFunc
-			queueCtx, stopQueue = context.WithTimeout(setupNotices, memoryWait)
-			defer stopQueue()
-		}
-		cancel()
-		if waitErr := waitForMemoryClaims(queueCtx, refusal.Peers); waitErr != nil {
-			if setupNotices.Err() != nil {
-				err = waitErr
-			} else {
-				err = memoryClaimWaitError(refusal, waitErr)
-			}
-			break
-		}
-		ctx, cancel = startCommandSetupBudget(setupNotices)
-		group, err = acquireCommandCgroup(ctx, relative, memoryMax)
+		group, ctx, cancel, err = acquireQueuedCommandCgroup(setupNotices, ctx, cancel, relative, memoryMax, memoryWait)
 	}
 	g.consumeNotices()
 	if setupNotices.Err() != nil {

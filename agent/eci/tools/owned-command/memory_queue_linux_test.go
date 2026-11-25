@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/xaionaro-go/observability"
+	"golang.org/x/sys/unix"
 )
 
 func TestMemoryQueueProjectsAllBounds(t *testing.T) {
@@ -49,10 +51,10 @@ func TestMemoryQueueProjectsAllBounds(t *testing.T) {
 			var refusal *memoryAdmissionRefusal
 			require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 10*4096, tc.request*4096), &refusal)
 			if tc.eligible {
-				require.Equal(t, topology.Claims, refusal.Peers)
+				require.Equal(t, topology.Claims, refusal.SufficientClaims)
 				return
 			}
-			require.Empty(t, refusal.Peers)
+			require.Empty(t, refusal.SufficientClaims)
 		})
 	}
 }
@@ -75,9 +77,9 @@ func TestMemoryQueueArmsEveryIndividuallySufficientClaim(t *testing.T) {
 	}}
 	var refusal *memoryAdmissionRefusal
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*4096), &refusal)
-	require.ElementsMatch(t, topology.Claims, refusal.Peers)
+	require.ElementsMatch(t, topology.Claims, refusal.SufficientClaims)
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 31*4096), &refusal)
-	require.Equal(t, topology.Claims[:1], refusal.Peers)
+	require.Equal(t, topology.Claims[:1], refusal.SufficientClaims)
 }
 
 func TestMemoryQueueDoesNotWaitForRemovedClaim(t *testing.T) {
@@ -99,10 +101,10 @@ func TestMemoryQueueWakesOnLaterClaimRemoval(t *testing.T) {
 	require.NoError(t, os.Mkdir(later, 0o700))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	watch, gone, err := armMemoryClaimWatch(ctx, []memoryClaim{{Path: first}, {Path: later}})
+	watch, err := armMemoryClaimWatch(ctx, []memoryClaim{{Path: first}, {Path: later}})
 	require.NoError(t, err)
+	require.NotNil(t, watch)
 	defer watch.Close()
-	require.False(t, gone)
 	require.DirExists(t, later)
 	require.NoError(t, os.Remove(later))
 	require.NoError(t, watch.Wait(ctx))
@@ -130,9 +132,9 @@ func TestMemoryQueueAnonymousRelease(t *testing.T) {
 		var refusal *memoryAdmissionRefusal
 		require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 50*page), &refusal)
 		if tc.eligible {
-			require.Equal(t, topology.Claims, refusal.Peers)
+			require.Equal(t, topology.Claims, refusal.SufficientClaims)
 		} else {
-			require.Empty(t, refusal.Peers)
+			require.Empty(t, refusal.SufficientClaims)
 		}
 	}
 }
@@ -153,9 +155,9 @@ func TestMemoryQueueNestedRelease(t *testing.T) {
 	topology := memoryTopology{Claims: []memoryClaim{{Path: outer, Cap: 40 * page}, {Path: inner, Cap: 20 * page}}}
 	var refusal *memoryAdmissionRefusal
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 25*page), &refusal)
-	require.ElementsMatch(t, topology.Claims, refusal.Peers)
+	require.ElementsMatch(t, topology.Claims, refusal.SufficientClaims)
 	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 30*page), &refusal)
-	require.Equal(t, topology.Claims[:1], refusal.Peers)
+	require.Equal(t, topology.Claims[:1], refusal.SufficientClaims)
 }
 
 func TestMemoryQueueErrorClassification(t *testing.T) {
@@ -165,12 +167,86 @@ func TestMemoryQueueErrorClassification(t *testing.T) {
 	broken := memoryClaimRollbackError("command", refusal, os.ErrPermission)
 	require.ErrorIs(t, broken, os.ErrPermission)
 	require.NotErrorIs(t, broken, errMemoryCapacity)
-	expired := memoryClaimWaitError(refusal, context.DeadlineExceeded)
+	expired := memoryClaimWaitError(refusal, context.DeadlineExceeded, false)
 	require.ErrorIs(t, expired, refusal)
 	require.ErrorIs(t, expired, context.DeadlineExceeded)
+	interrupted := memoryClaimWaitError(refusal, context.DeadlineExceeded, true)
+	require.ErrorIs(t, interrupted, context.DeadlineExceeded)
+	require.NotErrorIs(t, interrupted, errMemoryCapacity)
 	for _, err := range []error{context.Canceled, os.ErrPermission} {
-		failed := memoryClaimWaitError(refusal, err)
+		failed := memoryClaimWaitError(refusal, err, false)
 		require.ErrorIs(t, failed, err)
 		require.NotErrorIs(t, failed, errMemoryCapacity)
 	}
+}
+
+func TestMemoryQueueProtectedDeparture(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	const protected = "/protected.slice"
+	const peer = protected + "/peer.scope/command"
+	const page = 4096
+	writeMemorySample(t, root, "/proc/meminfo", "MemAvailable: 400 kB\n")
+	writeMemorySample(t, root, "/proc/zoneinfo", "Node 0, zone Normal\n        low 0\n")
+	writeMemorySample(t, root, protected+"/memory.stat", memoryFixtureStat(10, 30))
+	writeMemorySample(t, root, peer+"/memory.current", strconv.Itoa(30*page))
+	writeMemorySample(t, root, peer+"/memory.stat", memoryFixtureStat(10, 20))
+	view := memoryHostView{Source: os.DirFS(root)}
+	topology := memoryTopology{
+		Claims:    []memoryClaim{{Path: peer, Cap: 40 * page}},
+		Protected: map[memoryBoundID][]string{hostMemoryBoundID: {protected}},
+	}
+	var refusal *memoryAdmissionRefusal
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 80*page), &refusal)
+	require.Equal(t, topology.Claims, refusal.SufficientClaims)
+	require.ErrorAs(t, checkCommandMemory(t.Context(), view, topology, 0, 85*page), &refusal)
+	require.Empty(t, refusal.SufficientClaims)
+}
+
+func TestMemoryQueueIgnoresSiblingAndCancelsArmedWait(t *testing.T) {
+	t.Parallel()
+	parent := t.TempDir()
+	leaf := filepath.Join(parent, "command")
+	sibling := filepath.Join(parent, "sibling")
+	require.NoError(t, os.Mkdir(leaf, 0o700))
+	require.NoError(t, os.Mkdir(sibling, 0o700))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	watch, err := armMemoryClaimWatch(ctx, []memoryClaim{{Path: leaf}})
+	require.NoError(t, err)
+	require.NotNil(t, watch)
+	defer watch.Close()
+	require.NoError(t, os.Remove(sibling))
+	pending, err := unix.IoctlGetInt(watch.fd, unix.TIOCINQ)
+	require.NoError(t, err)
+	require.Positive(t, pending)
+	done := make(chan error, 1)
+	observability.Go(ctx, func(ctx context.Context) { done <- watch.Wait(ctx) })
+	defer func() {
+		if done == nil {
+			return
+		}
+		// Release a broken wait in RED before closing its descriptor.
+		_ = os.Remove(leaf)
+		<-done
+	}()
+	require.Eventually(t, func() bool {
+		left, err := unix.IoctlGetInt(watch.fd, unix.TIOCINQ)
+		return err == nil && left == 0
+	}, time.Second, time.Millisecond)
+	select {
+	case err := <-done:
+		done = nil
+		t.Fatalf("sibling deletion completed the wait: %v", err)
+	default:
+	}
+	cancel()
+	select {
+	case err := <-done:
+		done = nil
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("cancellation did not release the armed wait")
+	}
+	require.DirExists(t, leaf)
 }

@@ -54,17 +54,17 @@ func (s memoryCacheSample) subtract(other memoryCacheSample) memoryCacheSample {
 	}
 }
 
-// memoryClaimSample holds one peer's measured occupancy and reclaimable cache.
+// memoryClaimSample separates LRU occupancy, used for held growth, from releasable anon.
 //
 // Example: a vanished peer has a zero sample but retains its published cap.
 type memoryClaimSample struct {
-	Current MemoryBytes
-	Anon    MemoryBytes
-	Release MemoryBytes
-	Cache   memoryCacheSample
+	Current     MemoryBytes
+	ResidentLRU MemoryBytes
+	Release     MemoryBytes
+	Cache       memoryCacheSample
 }
 
-// memoryClaimBracket holds a claim's remaining growth and its cache range.
+// memoryClaimBracket holds remaining growth, cache bounds, and anonymous release.
 //
 // Example: a vanished peer holds its full cap and its cache range starts at zero.
 type memoryClaimBracket struct {
@@ -84,7 +84,7 @@ func (s memoryClaimSample) bracket(
 ) memoryClaimBracket {
 	return memoryClaimBracket{
 		Release:        min(s.Release, other.Release),
-		HostGrowth:     limit - min(s.Anon, other.Anon),
+		HostGrowth:     limit - min(s.ResidentLRU, other.ResidentLRU),
 		AncestorGrowth: limit - min(limit, s.Current, other.Current),
 		CacheMin: memoryCacheSample{
 			File: min(s.Cache.File, other.Cache.File),
@@ -191,46 +191,52 @@ func checkCommandMemory(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		sample := claims[peer.Path]
-		if strictMemoryAncestor(claims, peer.Path, "/") != "" {
-			// The remaining claim's hierarchical accounting absorbs the resident release.
-			sample.Release = 0
-		}
-		if peerCanRelease(requested, host, ancestors, peer, sample) {
-			refusal.Peers = append(refusal.Peers, peer)
+		if claimDepartureFits(requested, host, ancestors, topology.Protected, claims, protected, low, peer) {
+			refusal.SufficientClaims = append(refusal.SufficientClaims, peer)
 		}
 	}
 	return refusal
 }
 
-// peerCanRelease projects one peer's departure against every sampled bound.
-// Preserve all cache deductions and add only bracketed anonymous residency:
-// memory.current includes cache and other charges that can outlive a workload.
+// claimDepartureFits projects one departure against every sampled bound.
+// Re-account cache overlap without the claim; never add newly reclaimable cache.
 //
 // Example: a peer in a different slice cannot repair a shortage in this slice.
-func peerCanRelease(
+func claimDepartureFits(
 	requested MemoryBytes,
 	host hostMemoryBound,
 	ancestors []memoryAncestorSample,
+	protectedRoots map[memoryBoundID][]string,
+	claims map[string]memoryClaimBracket,
+	protected map[string]memoryCacheSample,
+	low MemoryBytes,
 	peer memoryClaim,
-	sample memoryClaimBracket,
 ) bool {
-	if host.Held == ^MemoryBytes(0) {
-		return false // A saturated total cannot safely be reduced.
+	sample := claims[peer.Path]
+	release := sample.Release
+	if strictMemoryAncestor(claims, peer.Path, "/") != "" {
+		// The remaining claim's hierarchical accounting absorbs resident release.
+		release = 0
 	}
-	host.Held -= sample.HostGrowth
-	host.Available = host.Available.saturatingAdd(sample.Release)
+	delete(claims, peer.Path)
+	// Restore the original sample before testing the next independent departure.
+	//
+	// Example: projecting one peer never affects the next peer's eligibility.
+	defer func() { claims[peer.Path] = sample }()
+	var excluded memoryCacheSample
+	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, protectedRoots[hostMemoryBoundID], claims, protected)
+	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
+	host.Available = host.Available.saturatingAdd(release)
 	if !host.fits(requested) {
 		return false
 	}
 	for _, ancestor := range ancestors {
 		bound := ancestor.Bound
 		if isStrictMemoryDescendant(peer.Path, bound.Path) {
-			if bound.Held == ^MemoryBytes(0) {
-				return false
-			}
-			bound.Held -= sample.AncestorGrowth
-			bound.Current -= min(bound.Current, sample.Release)
+			id := cgroupMemoryBoundID(bound.Path)
+			bound.Held, excluded = accountBoundClaims(id, protectedRoots[id], claims, protected)
+			bound.Credit = min(bound.Credit, ancestor.Stat.reclaimCredit(excluded, low))
+			bound.Current -= min(bound.Current, release)
 		}
 		if !bound.fits(requested) {
 			return false
@@ -387,10 +393,10 @@ func sampleMemoryClaim(
 		return memoryClaimSample{}, err
 	}
 	return memoryClaimSample{
-		Current: current,
-		Anon:    stat.residentAnon(current, claim.Cap),
-		Release: min(stat.Anon, current),
-		Cache:   memoryCacheSample{File: stat.File, Slab: stat.Slab},
+		Current:     current,
+		ResidentLRU: stat.residentAnon(current, claim.Cap),
+		Release:     min(stat.Anon, current),
+		Cache:       memoryCacheSample{File: stat.File, Slab: stat.Slab},
 	}, nil
 }
 

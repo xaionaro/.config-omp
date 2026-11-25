@@ -124,9 +124,9 @@ func (b cgroupMemoryBound) describe(requested MemoryBytes) string {
 //
 // Example: errors.As distinguishes a capacity refusal from a failed kernel read.
 type memoryAdmissionRefusal struct {
-	Bound     memoryBound
-	Requested MemoryBytes
-	Peers     []memoryClaim
+	Bound            memoryBound
+	Requested        MemoryBytes
+	SufficientClaims []memoryClaim
 }
 
 // Error formats the observed bound and demand for an admission receipt.
