@@ -269,37 +269,27 @@ func (w memoryClaimWatch) claimGone() (bool, error) {
 //
 // Example: a retry installs a fresh watch rather than reusing the old claim set.
 func (w memoryClaimWatch) Close() error {
-	if err := unix.Close(w.fd); err != nil {
-		return fmt.Errorf("close memory claim watch: %w", err)
-	}
-	return nil
+	return closeMemoryWatchFD(w.fd, nil)
 }
 
-// memoryClaimWatchStop translates context cancellation into a pollable event.
+// memoryClaimWatchStop closes the sole writer of a private cancellation pipe.
 //
-// Example: a signal wakes Poll even if every watched claim still exists.
+// Example: Poll observes EOF even when all watched claims still exist.
 type memoryClaimWatchStop struct {
-	fd            int
-	fallbackWrite int
-	finished      chan struct{}
-	done          chan struct{}
-	err           error
+	writeFD  int
+	finished chan struct{}
+	done     chan error
 }
 
-// notify signals a private eventfd on cancellation and joins when the wait returns.
+// notify owns the pipe writer up to close, whether canceled or normally finished.
 //
-// Example: closing the fallback pipe wakes Poll even when the eventfd write fails.
-func (s *memoryClaimWatchStop) notify(ctx context.Context) {
-	defer close(s.done)
+// Example: Linux releases the writer even if close reports an error.
+func (s memoryClaimWatchStop) notify(ctx context.Context) {
 	select {
 	case <-s.finished:
-		return
 	case <-ctx.Done():
 	}
-	if err := signalStopEvent(s.fd); err != nil {
-		s.err = errors.Join(err, unix.Close(s.fallbackWrite))
-		s.fallbackWrite = -1
-	}
+	s.done <- unix.Close(s.writeFD)
 }
 
 // Wait blocks for one armed leaf to disappear, or for the queue to stop.
@@ -309,31 +299,23 @@ func (w memoryClaimWatch) Wait(ctx context.Context) (resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	fd, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
-	if err != nil {
-		return fmt.Errorf("create memory claim watch stop event: %w", err)
+	var pipe [2]int
+	if err := unix.Pipe2(pipe[:], unix.O_CLOEXEC); err != nil {
+		return fmt.Errorf("create memory claim watch stop pipe: %w", err)
 	}
-	var fallback [2]int
-	if err := unix.Pipe2(fallback[:], unix.O_CLOEXEC); err != nil {
-		return closeMemoryWatchFD(fd, fmt.Errorf("create memory claim watch stop fallback: %w", err))
-	}
-	stop := memoryClaimWatchStop{fd: fd, fallbackWrite: fallback[1], finished: make(chan struct{}), done: make(chan struct{})}
+	stop := memoryClaimWatchStop{writeFD: pipe[1], finished: make(chan struct{}), done: make(chan error)}
 	observability.Go(ctx, stop.notify)
-	// Join before closing any descriptor the notifier can still use.
+	// Join the writer before closing the pipe's read end.
 	//
-	// Example: a concurrent claim deletion cannot race a write to a reused fd number.
+	// Example: normal removal also releases the notifier and both pipe ends.
 	defer func() {
 		close(stop.finished)
-		<-stop.done
-		if stop.err != nil {
-			resultErr = fmt.Errorf("stop memory claim watch after %v: %w", resultErr, stop.err)
+		if err := <-stop.done; err != nil {
+			resultErr = fmt.Errorf("stop memory claim watch after %v: %w", resultErr, err)
 		}
-		if stop.fallbackWrite >= 0 {
-			resultErr = closeMemoryWatchFD(stop.fallbackWrite, resultErr)
-		}
-		resultErr = closeMemoryWatchFD(fallback[0], closeMemoryWatchFD(fd, resultErr))
+		resultErr = closeMemoryWatchFD(pipe[0], resultErr)
 	}()
-	return w.poll(ctx, fd, fallback[0])
+	return w.poll(ctx, pipe[0])
 }
 
 // poll waits for a claim event or a stop, checking current levels after each notification.
@@ -342,9 +324,8 @@ func (w memoryClaimWatch) Wait(ctx context.Context) (resultErr error) {
 func (w memoryClaimWatch) poll(
 	ctx context.Context,
 	stopFD int,
-	fallbackFD int,
 ) error {
-	fds := [...]unix.PollFd{{Fd: int32(w.fd), Events: unix.POLLIN}, {Fd: int32(stopFD), Events: unix.POLLIN}, {Fd: int32(fallbackFD), Events: unix.POLLIN}}
+	fds := [...]unix.PollFd{{Fd: int32(w.fd), Events: unix.POLLIN}, {Fd: int32(stopFD)}}
 	var event [memoryClaimEventBufferSize]byte
 	for {
 		_, err := unix.Poll(fds[:], -1)
@@ -355,8 +336,8 @@ func (w memoryClaimWatch) poll(
 			return fmt.Errorf("poll memory claim watches: %w", err)
 		case ctx.Err() != nil:
 			return ctx.Err()
-		case fds[0].Revents != unix.POLLIN || fds[1].Revents != 0 || fds[2].Revents != 0:
-			return fmt.Errorf("unexpected memory claim watch readiness: %#x, stop %#x, fallback %#x", fds[0].Revents, fds[1].Revents, fds[2].Revents)
+		case fds[0].Revents != unix.POLLIN || fds[1].Revents != 0:
+			return fmt.Errorf("unexpected memory claim watch readiness: %#x, stop %#x", fds[0].Revents, fds[1].Revents)
 		}
 		switch _, err := unix.Read(w.fd, event[:]); {
 		case errors.Is(err, unix.EINTR):
@@ -388,6 +369,10 @@ func waitForMemoryClaims(
 	// Close the inotify descriptor after the wait joins its notifier.
 	//
 	// Example: an interrupted wait cannot leak its armed watches.
-	defer func() { resultErr = closeMemoryWatchFD(watch.fd, resultErr) }()
+	defer func() {
+		if err := watch.Close(); err != nil {
+			resultErr = fmt.Errorf("close memory claim wait after %v: %w", resultErr, err)
+		}
+	}()
 	return watch.Wait(ctx)
 }

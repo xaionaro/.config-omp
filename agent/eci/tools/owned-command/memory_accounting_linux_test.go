@@ -61,9 +61,9 @@ func TestMemoryReclaimCredit(t *testing.T) {
 func TestMemoryResidentSample(t *testing.T) {
 	t.Parallel()
 	stat := memoryAccountingStat{AnonLRU: 120}
-	require.Equal(t, MemoryBytes(50), stat.residentAnon(90, 50))
-	require.Equal(t, MemoryBytes(70), stat.residentAnon(70, 100))
-	require.Zero(t, stat.residentAnon(0, 100))
+	require.Equal(t, MemoryBytes(50), stat.residentLRU(90, 50))
+	require.Equal(t, MemoryBytes(70), stat.residentLRU(70, 100))
+	require.Zero(t, stat.residentLRU(0, 100))
 }
 
 // TestMemoryZoneLow checks summing every zone's low watermark in bytes.

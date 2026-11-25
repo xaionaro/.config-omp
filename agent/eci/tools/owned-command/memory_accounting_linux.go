@@ -156,10 +156,10 @@ type memoryAccountingStat struct {
 	Writeback MemoryBytes
 }
 
-// residentAnon credits swap-backed LRU pages, including shmem, already charged to the claim.
+// residentLRU credits swap-backed LRU pages, including shmem, already charged to the claim.
 //
 // Example: MADV_FREE pages on the file LRU are excluded without consulting cumulative events.
-func (s memoryAccountingStat) residentAnon(
+func (s memoryAccountingStat) residentLRU(
 	current MemoryBytes,
 	limit MemoryBytes,
 ) MemoryBytes {

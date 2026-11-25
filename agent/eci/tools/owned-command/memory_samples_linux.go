@@ -166,110 +166,130 @@ func checkCommandMemory(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var excluded memoryCacheSample
-	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, topology.Protected[hostMemoryBoundID], claims, protected)
-	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
-	var refusal *memoryAdmissionRefusal
-	if !host.fits(requested) {
-		refusal = &memoryAdmissionRefusal{Bound: host, Requested: requested}
+	sampled := sampledMemoryBounds{
+		host: host, ancestors: ancestors, low: low,
+		claims: claims, protectedRoots: topology.Protected, protected: protected,
 	}
+	// Cache the original ancestor terms once; a projection cannot earn extra reclaim.
 	for i := range ancestors {
-		ancestor := &ancestors[i]
-		bound := ancestor.Bound
-		id := cgroupMemoryBoundID(bound.Path)
-		bound.Held, excluded = accountBoundClaims(id, topology.Protected[id], claims, protected)
-		bound.Credit = ancestor.Stat.reclaimCredit(excluded, low)
-		ancestor.Bound = bound
-		if refusal == nil && !bound.fits(requested) {
-			refusal = &memoryAdmissionRefusal{Bound: bound, Requested: requested}
-		}
+		ancestors[i].Bound = sampled.ancestorBound(&ancestors[i], "", 0)
 	}
-	if refusal == nil {
+	fits, bound := sampled.check(requested, "")
+	if fits {
 		return nil
 	}
+	refusal := &memoryAdmissionRefusal{Bound: bound, Requested: requested}
 	for _, peer := range topology.Claims {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if claimDepartureFits(requested, host, ancestors, topology.Protected, claims, protected, low, peer) {
+		if fits, _ := sampled.check(requested, peer.Path); fits {
 			refusal.SufficientClaims = append(refusal.SufficientClaims, peer)
 		}
 	}
 	return refusal
 }
 
-// claimDepartureFits projects one departure against every sampled bound.
-// Re-account cache overlap without the claim; never add newly reclaimable cache.
+// sampledMemoryBounds owns the bracketed inputs for both admission and departure checks.
 //
-// Example: a peer in a different slice cannot repair a shortage in this slice.
-func claimDepartureFits(
+// Example: projected ancestor reclaim is bounded by the original sampled reclaim.
+type sampledMemoryBounds struct {
+	host           hostMemoryBound
+	ancestors      []memoryAncestorSample
+	low            MemoryBytes
+	claims         map[string]memoryClaimBracket
+	protectedRoots map[memoryBoundID][]string
+	protected      map[string]memoryCacheSample
+}
+
+// check tests the sampled bounds, optionally projecting one claim departure.
+// Return diagnostic terms only for actual admission, not for eligibility checks.
+//
+// Example: a peer outside a binding slice cannot make the request fit there.
+func (s *sampledMemoryBounds) check(
 	requested MemoryBytes,
-	host hostMemoryBound,
-	ancestors []memoryAncestorSample,
-	protectedRoots map[memoryBoundID][]string,
-	claims map[string]memoryClaimBracket,
-	protected map[string]memoryCacheSample,
-	low MemoryBytes,
-	peer memoryClaim,
-) bool {
-	sample := claims[peer.Path]
-	release := sample.Release
-	if strictMemoryAncestor(claims, peer.Path, "/") != "" {
-		// The remaining claim's hierarchical accounting absorbs resident release.
-		release = 0
+	departure string,
+) (bool, memoryBound) {
+	var release MemoryBytes
+	if departure != "" && strictMemoryAncestor(s.claims, departure, "/", "") == "" {
+		release = s.claims[departure].Release
 	}
-	delete(claims, peer.Path)
-	// Restore the original sample before testing the next independent departure.
-	//
-	// Example: projecting one peer never affects the next peer's eligibility.
-	defer func() { claims[peer.Path] = sample }()
-	var excluded memoryCacheSample
-	host.Held, excluded = accountBoundClaims(hostMemoryBoundID, protectedRoots[hostMemoryBoundID], claims, protected)
+	host := s.host
+	held, excluded := s.accountBoundClaims(hostMemoryBoundID, departure)
+	host.Held = held
 	host.Protected = excluded.File.saturatingAdd(excluded.Slab)
 	host.Available = host.Available.saturatingAdd(release)
-	if !host.fits(requested) {
-		return false
+	switch {
+	case host.fits(requested):
+	case departure != "":
+		return false, nil
+	default:
+		return false, host
 	}
-	for _, ancestor := range ancestors {
+	for i := range s.ancestors {
+		ancestor := &s.ancestors[i]
 		bound := ancestor.Bound
-		if isStrictMemoryDescendant(peer.Path, bound.Path) {
-			id := cgroupMemoryBoundID(bound.Path)
-			bound.Held, excluded = accountBoundClaims(id, protectedRoots[id], claims, protected)
-			bound.Credit = min(bound.Credit, ancestor.Stat.reclaimCredit(excluded, low))
-			bound.Current -= min(bound.Current, release)
+		if departure != "" && isStrictMemoryDescendant(departure, bound.Path) {
+			bound = s.ancestorBound(ancestor, departure, release)
 		}
-		if !bound.fits(requested) {
-			return false
+		switch {
+		case bound.fits(requested):
+			continue
+		case departure != "":
+			return false, nil
+		default:
+			return false, bound
 		}
 	}
-	return true
+	return true, nil
+}
+
+// ancestorBound derives held growth and cache credit from the same sampled inputs.
+//
+// Example: a departed claim's anon reduces charges but cannot add reclaim credit.
+func (s *sampledMemoryBounds) ancestorBound(
+	ancestor *memoryAncestorSample,
+	departure string,
+	release MemoryBytes,
+) cgroupMemoryBound {
+	bound := ancestor.Bound
+	held, excluded := s.accountBoundClaims(cgroupMemoryBoundID(bound.Path), departure)
+	bound.Held = held
+	credit := ancestor.Stat.reclaimCredit(excluded, s.low)
+	if departure != "" {
+		credit = min(bound.Credit, credit)
+	}
+	bound.Credit = credit
+	bound.Current -= min(bound.Current, release)
+	return bound
 }
 
 // accountBoundClaims calculates held growth and excluded cache for one typed bound.
 //
 // Example: count nested cap growth independently, but exclude cache only through an outer claim.
-func accountBoundClaims(
+func (s *sampledMemoryBounds) accountBoundClaims(
 	bound memoryBoundID,
-	protectedRoots []string,
-	claims map[string]memoryClaimBracket,
-	protected map[string]memoryCacheSample,
+	departure string,
 ) (MemoryBytes, memoryCacheSample) {
 	atHost := bound.kind == hostMemoryKind
 	stop := bound.path
 	if atHost {
 		stop = "/"
 	}
+	protectedRoots := s.protectedRoots[bound]
 	remainders := make(map[string]memoryCacheSample, len(protectedRoots))
 	for _, root := range protectedRoots {
-		if strictMemoryAncestor(claims, root, stop) == "" {
-			remainders[root] = protected[root]
+		if strictMemoryAncestor(s.claims, root, stop, departure) == "" {
+			remainders[root] = s.protected[root]
 		}
 	}
 
 	var held MemoryBytes
 	var excluded memoryCacheSample
-	for path, claim := range claims {
+	for path, claim := range s.claims {
 		switch {
+		case path == departure:
+			continue
 		case atHost:
 			held = held.saturatingAdd(claim.HostGrowth)
 		case isStrictMemoryDescendant(path, bound.path):
@@ -280,10 +300,10 @@ func accountBoundClaims(
 		if atHost && len(remainders) == 0 {
 			continue
 		}
-		if strictMemoryAncestor(claims, path, stop) != "" {
+		if strictMemoryAncestor(s.claims, path, stop, departure) != "" {
 			continue
 		}
-		if owner := strictMemoryAncestor(remainders, path, stop); owner != "" {
+		if owner := strictMemoryAncestor(remainders, path, stop, ""); owner != "" {
 			remainders[owner] = remainders[owner].subtract(claim.CacheMin)
 		}
 		if atHost {
@@ -309,12 +329,13 @@ func strictMemoryAncestor[T any](
 	index map[string]T,
 	path string,
 	stop string,
+	omitted string,
 ) string {
 	if len(index) == 0 {
 		return ""
 	}
 	for dir := filepath.Dir(path); dir != stop && dir != "/"; dir = filepath.Dir(dir) {
-		if _, found := index[dir]; found {
+		if _, found := index[dir]; found && dir != omitted {
 			return dir
 		}
 	}
@@ -394,7 +415,7 @@ func sampleMemoryClaim(
 	}
 	return memoryClaimSample{
 		Current:     current,
-		ResidentLRU: stat.residentAnon(current, claim.Cap),
+		ResidentLRU: stat.residentLRU(current, claim.Cap),
 		Release:     min(stat.Anon, current),
 		Cache:       memoryCacheSample{File: stat.File, Slab: stat.Slab},
 	}, nil
