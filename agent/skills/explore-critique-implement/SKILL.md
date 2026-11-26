@@ -197,7 +197,16 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 
 ### Violation re-read escalation
 
-An ECI role that finds another agent violating an applicable ECI duty starts this escalation. Identify the occurrence by the violator, the breached duty, and the original act or missed checkpoint, not its discovery. The enforcer is the violator's spawning Worker for a Helper, the owner of the violator's Job for a Worker, the owner of the parent Job for a child Job owner, and the Supervisor for a root Job owner. Use [violation escalation routing](references/task-orchestrator.md#publication-transfer-and-report-drain) for Supervisor violations and retired Jobs.
+An ECI role that finds another agent violating an applicable ECI duty starts this escalation. Identify the occurrence by the violator, the breached duty, and the original act or missed checkpoint, not its discovery. The enforcer depends on the violator's role:
+
+| Violator | Enforcer |
+|---|---|
+| Helper | its spawning Worker |
+| Worker | the owner of its Job |
+| Child Job owner | the owner of the parent Job |
+| Root Job owner | the Supervisor |
+
+Use [violation escalation routing](references/task-orchestrator.md#publication-transfer-and-report-drain) for Supervisor violations and retired Jobs.
 
 Send the finding and evidence toward the enforcer one hop at a time on existing ownership routes. If the next hop is the violator, write directly to the next unimplicated role via `agent://<id>`. For a Supervisor violation, a root Job owner that is not the enforcer writes directly to the enforcer. Use ordinary report routing and recovery on failed delivery or an owner change, subject to the [ladder custody exception](references/task-orchestrator.md#publication-transfer-and-report-drain). The route exception carries only this escalation and grants no other authority.
 
