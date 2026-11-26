@@ -15,7 +15,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func fakeServer(t *testing.T, h http.HandlerFunc) (*mautrixAPI, *atomic.Int32) {
+func fakeServer(t *testing.T, h http.HandlerFunc) (*MautrixAPI, *atomic.Int32) {
 	t.Helper()
 	var n atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +27,7 @@ func fakeServer(t *testing.T, h http.HandlerFunc) (*mautrixAPI, *atomic.Int32) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &mautrixAPI{cli: cli}, &n
+	return &MautrixAPI{Client: cli}, &n
 }
 
 func matrixError(w http.ResponseWriter, status int, code string) {
@@ -35,10 +35,13 @@ func matrixError(w http.ResponseWriter, status int, code string) {
 	_, _ = io.WriteString(w, `{"errcode":"`+code+`","error":"x"}`)
 }
 
-func TestSendEncryptedWithoutCryptoSendsNothing(t *testing.T) {
+func TestSendWithoutCryptoSendsNothing(t *testing.T) {
 	api, n := fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { t.Error("request made") })
-	if _, err := api.SendEncrypted(context.Background(), "!r:hs", "secret text"); err == nil {
-		t.Fatal("plaintext path allowed")
+	if _, err := api.SendEncrypted(context.Background(), "!r:hs", "secret text"); categoryOf(err) != CategoryCrypto {
+		t.Fatalf("plaintext path allowed: %v", err)
+	}
+	if _, err := api.ShareRoomKey(context.Background(), "!r:hs", voidM); categoryOf(err) != CategoryCrypto {
+		t.Fatalf("share without crypto: %v", err)
 	}
 	if n.Load() != 0 {
 		t.Fatalf("%d requests", n.Load())
@@ -51,8 +54,8 @@ func TestDirectRoomsAbsenceVersusFailure(t *testing.T) {
 		t.Fatalf("%v %v", d, err)
 	}
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { matrixError(w, 403, "M_FORBIDDEN") })
-	if _, err := api.DirectRooms(context.Background()); err == nil {
-		t.Fatal("forbidden treated as absence")
+	if _, err := api.DirectRooms(context.Background()); categoryOf(err) != CategoryAuth {
+		t.Fatalf("forbidden treated as absence: %v", err)
 	}
 }
 
@@ -62,23 +65,29 @@ func TestRoomStateClassification(t *testing.T) {
 		t.Fatalf("403: %v", err)
 	}
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { matrixError(w, 500, "M_UNKNOWN") })
-	if _, err := api.RoomState(context.Background(), "!r:hs"); err == nil || errors.Is(err, errRoomInaccessible) {
+	if _, err := api.RoomState(context.Background(), "!r:hs"); categoryOf(err) != CategoryRoom || errors.Is(err, errRoomInaccessible) {
 		t.Fatalf("500: %v", err)
 	}
-	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `[
-{"type":"m.room.member","state_key":"@hermes:hs","sender":"@hermes:hs","content":{"membership":"join"}},
-{"type":"m.room.member","state_key":"@xaionaro:matrix.dx.center","sender":"@hermes:hs","content":{"membership":"invite"}},
-{"type":"m.room.encryption","state_key":"","sender":"@hermes:hs","content":{"algorithm":"m.megolm.v1.aes-sha2"}},
-{"type":"m.room.history_visibility","state_key":"","sender":"@hermes:hs","content":{"history_visibility":"shared"}}]`)
-	})
+	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, dmStateJSON(voidM, "invite")) })
 	st, err := api.RoomState(context.Background(), "!r:hs")
 	if err != nil || st.Algorithm != id.AlgorithmMegolmV1 || st.Members[voidM] != "invite" || st.Members[self] != "join" || st.HistoryVisibility != "shared" {
 		t.Fatalf("%+v %v", st, err)
 	}
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `[]`) })
-	if _, err := api.RoomState(context.Background(), "!r:hs"); err == nil {
-		t.Fatal("memberless state accepted")
+	if _, err := api.RoomState(context.Background(), "!r:hs"); categoryOf(err) != CategoryRoom {
+		t.Fatalf("memberless state accepted: %v", err)
+	}
+}
+
+func TestTransportFailureIsNetwork(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	cli, err := mautrix.NewClient(srv.URL, self, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&MautrixAPI{Client: cli}).DirectRooms(context.Background()); categoryOf(err) != CategoryNetwork {
+		t.Fatalf("%v", err)
 	}
 }
 
@@ -104,4 +113,13 @@ func TestCreateDMRequestIsPrivateEncryptedSingleInvite(t *testing.T) {
 	if strings.Contains(string(b), "trusted_private_chat") {
 		t.Error("trusted preset used")
 	}
+}
+
+// dmStateJSON is the /state response of an encrypted DM between self and target.
+func dmStateJSON(target id.UserID, membership string) string {
+	return `[
+{"type":"m.room.member","state_key":"` + self.String() + `","sender":"` + self.String() + `","content":{"membership":"join"}},
+{"type":"m.room.member","state_key":"` + target.String() + `","sender":"` + self.String() + `","content":{"membership":"` + membership + `"}},
+{"type":"m.room.encryption","state_key":"","sender":"` + self.String() + `","content":{"algorithm":"m.megolm.v1.aes-sha2"}},
+{"type":"m.room.history_visibility","state_key":"","sender":"` + self.String() + `","content":{"history_visibility":"shared"}}]`
 }

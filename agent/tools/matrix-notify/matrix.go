@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"path/filepath"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
@@ -12,41 +10,53 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-type mautrixAPI struct {
-	cli    *mautrix.Client
-	crypto *cryptohelper.CryptoHelper
+// MautrixAPI implements MatrixAPI with a logged-in mautrix client and its crypto helper.
+//
+// Example: api, err := connect(ctx, dir, creds, nil); deliver(ctx, api, ...).
+type MautrixAPI struct {
+	Client *mautrix.Client
+	Crypto *cryptohelper.CryptoHelper
 }
 
-func (m *mautrixAPI) DirectRooms(ctx context.Context) (map[id.UserID][]id.RoomID, error) {
+// DirectRooms returns m.direct; M_NOT_FOUND is the documented "never set" answer and yields an empty map.
+//
+// Example: direct, err := api.DirectRooms(ctx).
+func (m *MautrixAPI) DirectRooms(ctx context.Context) (map[id.UserID][]id.RoomID, error) {
 	direct := map[id.UserID][]id.RoomID{}
-	err := m.cli.GetAccountData(ctx, event.AccountDataDirectChats.Type, &direct)
+	err := m.Client.GetAccountData(ctx, event.AccountDataDirectChats.Type, &direct)
 	if errors.Is(err, mautrix.MNotFound) {
 		return map[id.UserID][]id.RoomID{}, nil
 	}
 	if err != nil {
-		return nil, classifyHTTP(err, "read m.direct")
+		return nil, classifyHTTP(err, CategoryRoom)
 	}
 	return direct, nil
 }
 
-func (m *mautrixAPI) RoomState(ctx context.Context, room id.RoomID) (roomState, error) {
-	state, err := m.cli.State(ctx, room)
+// RoomState fetches /state, which also refreshes the client state store the crypto machine reads members from.
+//
+// Example: st, err := api.RoomState(ctx, room).
+func (m *MautrixAPI) RoomState(
+	ctx context.Context,
+	room id.RoomID,
+) (RoomState, error) {
+	state, err := m.Client.State(ctx, room)
 	if errors.Is(err, mautrix.MForbidden) || errors.Is(err, mautrix.MNotFound) {
-		return roomState{}, errRoomInaccessible
+		return RoomState{}, errRoomInaccessible
 	}
 	if err != nil {
-		return roomState{}, classifyHTTP(err, "read room state")
+		return RoomState{}, classifyHTTP(err, CategoryRoom)
 	}
-	st := roomState{Members: map[id.UserID]event.Membership{}}
+	st := RoomState{Members: map[id.UserID]event.Membership{}}
 	for key, evt := range state[event.StateMember] {
 		member := evt.Content.AsMember()
 		if member.Membership == "" {
-			return roomState{}, fmt.Errorf("%w: malformed member event", errRoom)
+			return RoomState{}, categorize(CategoryRoom, errors.New("malformed member event"))
 		}
 		st.Members[id.UserID(key)] = member.Membership
 	}
 	if len(st.Members) == 0 {
-		return roomState{}, fmt.Errorf("%w: room state has no members", errRoom)
+		return RoomState{}, categorize(CategoryRoom, errors.New("room state has no members"))
 	}
 	if evt := state[event.StateEncryption][""]; evt != nil {
 		st.Algorithm = evt.Content.AsEncryption().Algorithm
@@ -57,9 +67,15 @@ func (m *mautrixAPI) RoomState(ctx context.Context, room id.RoomID) (roomState, 
 	return st, nil
 }
 
-func (m *mautrixAPI) CreateDM(ctx context.Context, target id.UserID) (id.RoomID, error) {
+// CreateDM creates a private_chat (not trusted_private_chat) encrypted direct room inviting only target.
+//
+// Example: room, err := api.CreateDM(ctx, target).
+func (m *MautrixAPI) CreateDM(
+	ctx context.Context,
+	target id.UserID,
+) (id.RoomID, error) {
 	empty := ""
-	resp, err := m.cli.CreateRoom(ctx, &mautrix.ReqCreateRoom{
+	resp, err := m.Client.CreateRoom(ctx, &mautrix.ReqCreateRoom{
 		Visibility: "private",
 		Preset:     "private_chat",
 		IsDirect:   true,
@@ -71,115 +87,93 @@ func (m *mautrixAPI) CreateDM(ctx context.Context, target id.UserID) (id.RoomID,
 		}},
 	})
 	if err != nil {
-		return "", classifyHTTP(err, "create room")
+		return "", classifyHTTP(err, CategoryRoom)
 	}
 	return resp.RoomID, nil
 }
 
-func (m *mautrixAPI) TargetDevices(ctx context.Context, target id.UserID) (int, error) {
-	if m.crypto == nil {
-		return 0, fmt.Errorf("%w: crypto not initialized", errCrypto)
+// ShareRoomKey refreshes target's devices, shares the room's outbound Megolm session with the room's joined and
+// invited members, and counts target devices that hold an Olm session: the SDK encrypts the room key to exactly
+// those and withholds it from devices it could not open one with. A session already shared in an earlier run is not
+// re-shared to a device whose Olm session appeared later; the SDK rotates the session when target's device list
+// changes.
+//
+// Example: n, err := api.ShareRoomKey(ctx, room, target); n == 0 means key_pending.
+func (m *MautrixAPI) ShareRoomKey(
+	ctx context.Context,
+	room id.RoomID,
+	target id.UserID,
+) (int, error) {
+	if m.Crypto == nil {
+		return 0, categorize(CategoryCrypto, errors.New("crypto not initialized"))
 	}
-	devices, err := m.crypto.Machine().FetchKeys(ctx, []id.UserID{target}, true)
+	mach := m.Crypto.Machine()
+	if _, err := mach.FetchKeys(ctx, []id.UserID{target}, true); err != nil {
+		return 0, classifyHTTP(err, CategoryCrypto)
+	}
+	members, err := m.Client.StateStore.GetRoomJoinedOrInvitedMembers(ctx, room)
 	if err != nil {
-		return 0, err
+		return 0, categorize(CategoryCrypto, err)
 	}
-	return len(devices[target]), nil
+	if err := mach.ShareGroupSession(ctx, room, members); err != nil {
+		return 0, classifyHTTP(err, CategoryCrypto)
+	}
+	devices, err := mach.CryptoStore.GetDevices(ctx, target)
+	if err != nil {
+		return 0, categorize(CategoryCrypto, err)
+	}
+	keyed := 0
+	for _, device := range devices {
+		session, err := mach.CryptoStore.GetLatestSession(ctx, device.IdentityKey)
+		if err != nil {
+			return 0, categorize(CategoryCrypto, err)
+		}
+		if session != nil {
+			keyed++
+		}
+	}
+	return keyed, nil
 }
 
 // SendEncrypted encrypts explicitly and sends only the m.room.encrypted event, so no code path emits plaintext.
-func (m *mautrixAPI) SendEncrypted(ctx context.Context, room id.RoomID, text string) (id.EventID, error) {
-	if m.crypto == nil {
-		return "", fmt.Errorf("%w: crypto not initialized", errCrypto)
+//
+// Example: ev, err := api.SendEncrypted(ctx, room, "hello").
+func (m *MautrixAPI) SendEncrypted(
+	ctx context.Context,
+	room id.RoomID,
+	text string,
+) (id.EventID, error) {
+	if m.Crypto == nil {
+		return "", categorize(CategoryCrypto, errors.New("crypto not initialized"))
 	}
-	enc, err := m.crypto.Encrypt(ctx, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: text})
+	enc, err := m.Crypto.Encrypt(ctx, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: text})
 	if err != nil {
-		return "", fmt.Errorf("%w: encrypt: %w", errCrypto, err)
+		return "", classifyHTTP(err, CategoryCrypto)
 	}
-	resp, err := m.cli.SendMessageEvent(ctx, room, event.EventEncrypted, enc)
+	resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errSend, classifyHTTP(err, "send"))
+		return "", classifyHTTP(err, CategorySend)
 	}
 	return resp.EventID, nil
 }
 
-// classifyHTTP maps a homeserver failure onto auth or network categories.
-func classifyHTTP(err error, what string) error {
-	if errors.Is(err, mautrix.MUnknownToken) || errors.Is(err, mautrix.MForbidden) {
-		return fmt.Errorf("%w: %s: %w", errAuth, what, err)
+// classifyHTTP categorizes a homeserver call failure: rejected credentials are auth, failures without a Matrix
+// response are network, and anything else is the caller's fallback.
+//
+// Example: classifyHTTP(err, CategorySend) for a failed /send.
+func classifyHTTP(
+	err error,
+	fallback Category,
+) error {
+	var httpErr mautrix.HTTPError
+	switch {
+	case errors.Is(err, mautrix.MUnknownToken), errors.Is(err, mautrix.MForbidden):
+		return categorize(CategoryAuth, err)
+	case errors.As(err, &httpErr) && httpErr.RespError != nil:
+		return categorize(fallback, err)
+	case errors.As(err, &httpErr):
+		return categorize(CategoryNetwork, err)
+	default:
+		return categorize(fallback, err)
 	}
-	return fmt.Errorf("%w: %s: %w", errNetwork, what, err)
-}
-
-// connect reuses this tool's own saved device, or logs in with Hermes's password as a new server-assigned device.
-func connect(ctx context.Context, stateDir string, creds HermesCredentials) (*mautrixAPI, error) {
-	sess, err := loadSession(stateDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := checkSession(sess, creds); err != nil {
-		return nil, err
-	}
-	if err := checkOrphanStore(stateDir, sess); err != nil {
-		return nil, err
-	}
-	cli, err := mautrix.NewClient(creds.Homeserver, "", "")
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errCredentials, err)
-	}
-	needLogin := sess == nil
-	if sess != nil {
-		cli.UserID, cli.DeviceID, cli.AccessToken = id.UserID(sess.UserID), id.DeviceID(sess.DeviceID), sess.AccessToken
-		who, err := cli.Whoami(ctx)
-		switch {
-		case err == nil:
-			if who.UserID != cli.UserID || who.DeviceID != cli.DeviceID {
-				return nil, fmt.Errorf("%w: token belongs to another account or device", errIdentity)
-			}
-		case errors.Is(err, mautrix.MUnknownToken):
-			// Our token was revoked: renew it for our own device only.
-			needLogin, cli.AccessToken = true, ""
-		default:
-			return nil, classifyHTTP(err, "whoami")
-		}
-	}
-	key, err := pickleKey(stateDir)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errState, err)
-	}
-	ch, err := cryptohelper.NewCryptoHelper(cli, key, filepath.Join(stateDir, cryptoDBFile))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errState, err)
-	}
-	if needLogin {
-		ch.LoginAs = &mautrix.ReqLogin{
-			Type:                     mautrix.AuthTypePassword,
-			Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: creds.UserID},
-			Password:                 creds.Password,
-			InitialDeviceDisplayName: "OMP Matrix notify",
-		}
-		if sess != nil {
-			ch.LoginAs.DeviceID = id.DeviceID(sess.DeviceID)
-		}
-	}
-	if err := ch.Init(ctx); err != nil {
-		_ = ch.Close()
-		if errors.Is(err, mautrix.MForbidden) || errors.Is(err, mautrix.MUnknownToken) {
-			return nil, fmt.Errorf("%w: login: %w", errAuth, err)
-		}
-		return nil, fmt.Errorf("%w: crypto init: %w", errCrypto, err)
-	}
-	cli.Crypto = ch
-	got := Session{Homeserver: creds.Homeserver, UserID: cli.UserID.String(), DeviceID: cli.DeviceID.String(), AccessToken: cli.AccessToken}
-	if err := checkSession(&got, creds); err != nil || (sess != nil && got.DeviceID != sess.DeviceID) {
-		_ = ch.Close()
-		return nil, fmt.Errorf("%w: login returned an unexpected account or device", errIdentity)
-	}
-	if needLogin {
-		if err := saveSession(stateDir, got); err != nil {
-			_ = ch.Close()
-			return nil, fmt.Errorf("%w: %w", errState, err)
-		}
-	}
-	return &mautrixAPI{cli: cli, crypto: ch}, nil
 }
