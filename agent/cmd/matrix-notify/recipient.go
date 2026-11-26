@@ -22,15 +22,20 @@ const (
 	RecipientVickey
 )
 
+// RecipientEntry is one row of the alias→Matrix ID table.
+//
+// Example: RecipientEntry{Alias: "void", MXID: "@xaionaro:matrix.dx.center"}.
+type RecipientEntry struct {
+	Alias string
+	MXID  id.UserID
+}
+
 // recipientTable is the single alias→MXID table; the omp tool schema lists only the aliases.
 //
-// Example: recipientTable[RecipientVoid].mxid.
-var recipientTable = map[Recipient]struct {
-	alias string
-	mxid  id.UserID
-}{
-	RecipientVoid:   {alias: "void", mxid: "@xaionaro:matrix.dx.center"},
-	RecipientVickey: {alias: "vickey", mxid: "@danusya:matrix.dx.center"},
+// Example: recipientTable[RecipientVoid].MXID.
+var recipientTable = map[Recipient]RecipientEntry{
+	RecipientVoid:   {Alias: "void", MXID: "@xaionaro:matrix.dx.center"},
+	RecipientVickey: {Alias: "vickey", MXID: "@danusya:matrix.dx.center"},
 }
 
 // parseRecipient maps an exact alias to its Recipient, or fails with CategoryInput.
@@ -38,7 +43,7 @@ var recipientTable = map[Recipient]struct {
 // Example: parseRecipient("vickey") returns RecipientVickey.
 func parseRecipient(alias string) (Recipient, error) {
 	for r, e := range recipientTable {
-		if e.alias == alias {
+		if e.Alias == alias {
 			return r, nil
 		}
 	}
@@ -51,7 +56,7 @@ func parseRecipient(alias string) (Recipient, error) {
 func recipientAliases() []string {
 	aliases := make([]string, 0, len(recipientTable))
 	for _, e := range recipientTable {
-		aliases = append(aliases, e.alias)
+		aliases = append(aliases, e.Alias)
 	}
 	slices.Sort(aliases)
 	return aliases
@@ -60,12 +65,12 @@ func recipientAliases() []string {
 // MXID returns the recipient's Matrix user ID, or "" when unset.
 //
 // Example: RecipientVoid.MXID() == "@xaionaro:matrix.dx.center".
-func (r Recipient) MXID() id.UserID { return recipientTable[r].mxid }
+func (r Recipient) MXID() id.UserID { return recipientTable[r].MXID }
 
 // String returns the recipient's alias, or "" when unset.
 //
 // Example: RecipientVickey.String() == "vickey".
-func (r Recipient) String() string { return recipientTable[r].alias }
+func (r Recipient) String() string { return recipientTable[r].Alias }
 
 // MarshalText encodes the recipient as its alias.
 //

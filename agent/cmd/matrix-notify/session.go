@@ -16,7 +16,7 @@ import (
 type Session struct {
 	Account
 	DeviceID    id.DeviceID `json:"device_id"`
-	AccessToken string      `json:"access_token"`
+	AccessToken Secret      `json:"access_token"`
 }
 
 // loadSession returns the saved session, or nil without error when none was saved.
@@ -71,9 +71,8 @@ func checkSession(
 }
 
 // checkOrphanStore refuses a crypto store whose device is not recorded in a session. connect saves the session
-// before it creates the store, so an orphan means outside interference. To recover, delete session.json, pickle.key,
-// crypto.db* and rooms.json from the state directory, keeping bin/, and remove the stale "OMP Matrix notify" device
-// in a Matrix client.
+// before it creates the store, so an orphan means outside interference; recovery is in the runbook (main.go, category
+// identity).
 //
 // Example: checkOrphanStore(dir, nil) fails when crypto.db exists.
 func checkOrphanStore(

@@ -23,7 +23,7 @@ func fakeServer(t *testing.T, h http.HandlerFunc) (*MautrixAPI, *atomic.Int32) {
 		h(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	cli, err := mautrix.NewClient(srv.URL, self, "tok")
+	cli, err := mautrix.NewClient(srv.URL, sender, "tok")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +37,10 @@ func matrixError(w http.ResponseWriter, status int, code string) {
 
 func TestSendWithoutCryptoSendsNothing(t *testing.T) {
 	api, n := fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { t.Error("request made") })
-	if _, err := api.SendEncrypted(context.Background(), "!r:hs", "secret text"); categoryOf(err) != CategoryCrypto {
-		t.Fatalf("plaintext path allowed: %v", err)
+	_, err := api.SendEncrypted(context.Background(), "!r:hs", "secret text")
+	var notStored *NotStoredError
+	if categoryOf(err) != CategoryCrypto || !errors.As(err, &notStored) {
+		t.Fatalf("plaintext path allowed, or failure not marked as not stored: %v", err)
 	}
 	if _, err := api.ShareRoomKey(context.Background(), "!r:hs", voidM); categoryOf(err) != CategoryCrypto {
 		t.Fatalf("share without crypto: %v", err)
@@ -70,7 +72,7 @@ func TestRoomStateClassification(t *testing.T) {
 	}
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, dmStateJSON(voidM, "invite")) })
 	st, err := api.RoomState(context.Background(), "!r:hs")
-	if err != nil || st.Algorithm != id.AlgorithmMegolmV1 || st.Members[voidM] != "invite" || st.Members[self] != "join" || st.HistoryVisibility != "shared" {
+	if err != nil || st.Algorithm != id.AlgorithmMegolmV1 || st.Members[voidM] != "invite" || st.Members[sender] != "join" || st.HistoryVisibility != "shared" {
 		t.Fatalf("%+v %v", st, err)
 	}
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `[]`) })
@@ -82,7 +84,7 @@ func TestRoomStateClassification(t *testing.T) {
 func TestTransportFailureIsNetwork(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	srv.Close()
-	cli, err := mautrix.NewClient(srv.URL, self, "tok")
+	cli, err := mautrix.NewClient(srv.URL, sender, "tok")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,11 +117,11 @@ func TestCreateDMRequestIsPrivateEncryptedSingleInvite(t *testing.T) {
 	}
 }
 
-// dmStateJSON is the /state response of an encrypted DM between self and target.
-func dmStateJSON(target id.UserID, membership string) string {
+// dmStateJSON is the /state response of an encrypted DM between the sender and recipient.
+func dmStateJSON(recipient id.UserID, membership string) string {
 	return `[
-{"type":"m.room.member","state_key":"` + self.String() + `","sender":"` + self.String() + `","content":{"membership":"join"}},
-{"type":"m.room.member","state_key":"` + target.String() + `","sender":"` + self.String() + `","content":{"membership":"` + membership + `"}},
-{"type":"m.room.encryption","state_key":"","sender":"` + self.String() + `","content":{"algorithm":"m.megolm.v1.aes-sha2"}},
-{"type":"m.room.history_visibility","state_key":"","sender":"` + self.String() + `","content":{"history_visibility":"shared"}}]`
+{"type":"m.room.member","state_key":"` + sender.String() + `","sender":"` + sender.String() + `","content":{"membership":"join"}},
+{"type":"m.room.member","state_key":"` + recipient.String() + `","sender":"` + sender.String() + `","content":{"membership":"` + membership + `"}},
+{"type":"m.room.encryption","state_key":"","sender":"` + sender.String() + `","content":{"algorithm":"m.megolm.v1.aes-sha2"}},
+{"type":"m.room.history_visibility","state_key":"","sender":"` + sender.String() + `","content":{"history_visibility":"shared"}}]`
 }

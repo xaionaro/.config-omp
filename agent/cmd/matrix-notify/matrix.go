@@ -10,6 +10,12 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// privateChatPreset is the createRoom preset for a DM: invitees do not get the creator's power, unlike
+// trusted_private_chat. mautrix v0.33 defines no constant for it.
+//
+// Example: ReqCreateRoom{Preset: privateChatPreset}.
+const privateChatPreset = "private_chat"
+
 // MautrixAPI implements MatrixAPI with a logged-in mautrix client and its crypto helper.
 //
 // Example: api, err := connect(ctx, dir, creds, nil); deliver(ctx, api, ...).
@@ -67,19 +73,19 @@ func (m *MautrixAPI) RoomState(
 	return st, nil
 }
 
-// CreateDM creates a private_chat (not trusted_private_chat) encrypted direct room inviting only target.
+// CreateDM creates a private, private_chat encrypted direct room inviting only recipient.
 //
-// Example: room, err := api.CreateDM(ctx, target).
+// Example: room, err := api.CreateDM(ctx, recipient).
 func (m *MautrixAPI) CreateDM(
 	ctx context.Context,
-	target id.UserID,
+	recipient id.UserID,
 ) (id.RoomID, error) {
 	empty := ""
 	resp, err := m.Client.CreateRoom(ctx, &mautrix.ReqCreateRoom{
-		Visibility: "private",
-		Preset:     "private_chat",
+		Visibility: string(mautrix.RoomDirectoryVisibilityPrivate),
+		Preset:     privateChatPreset,
 		IsDirect:   true,
-		Invite:     []id.UserID{target},
+		Invite:     []id.UserID{recipient},
 		InitialState: []*event.Event{{
 			Type:     event.StateEncryption,
 			StateKey: &empty,
@@ -92,55 +98,54 @@ func (m *MautrixAPI) CreateDM(
 	return resp.RoomID, nil
 }
 
-// ShareRoomKey refreshes target's devices, shares the room's outbound Megolm session with the room's joined and
-// invited members, and returns how many target devices hold an Olm session, which are the devices the SDK encrypts
-// the room key to; it withholds the key from the rest. The SDK never re-shares a session it marked shared, even to a
-// device that later becomes reachable, so when no target device was reachable the session is removed: a stored
-// session has therefore always reached at least one target device, and the next run claims keys and shares afresh.
+// ShareRoomKey refreshes recipient's devices, shares the room's outbound Megolm session with the room's joined and
+// invited members, and reports whether the key was encrypted to at least one of recipient's devices: under the
+// default SendKeysMinTrust those are exactly the devices with an Olm session. The SDK never re-shares a session it
+// marked shared, even to a device that later becomes reachable, so when no recipient device got the key the session
+// is removed and the next run claims keys and shares afresh.
 //
-// Example: n, err := api.ShareRoomKey(ctx, room, target); n == 0 means key_pending.
+// Example: keyed, err := api.ShareRoomKey(ctx, room, recipient); !keyed means key_pending.
 func (m *MautrixAPI) ShareRoomKey(
 	ctx context.Context,
 	room id.RoomID,
-	target id.UserID,
-) (int, error) {
+	recipient id.UserID,
+) (bool, error) {
 	if m.Crypto == nil {
-		return 0, categorize(CategoryCrypto, errors.New("crypto not initialized"))
+		return false, categorize(CategoryCrypto, errors.New("crypto not initialized"))
 	}
 	mach := m.Crypto.Machine()
-	if _, err := mach.FetchKeys(ctx, []id.UserID{target}, true); err != nil {
-		return 0, classifyHTTP(err, CategoryCrypto)
+	if _, err := mach.FetchKeys(ctx, []id.UserID{recipient}, true); err != nil {
+		return false, classifyHTTP(err, CategoryCrypto)
 	}
 	members, err := m.Client.StateStore.GetRoomJoinedOrInvitedMembers(ctx, room)
 	if err != nil {
-		return 0, categorize(CategoryCrypto, err)
+		return false, categorize(CategoryCrypto, err)
 	}
 	if err := mach.ShareGroupSession(ctx, room, members); err != nil {
-		return 0, classifyHTTP(err, CategoryCrypto)
+		return false, classifyHTTP(err, CategoryCrypto)
 	}
-	devices, err := mach.CryptoStore.GetDevices(ctx, target)
+	devices, err := mach.CryptoStore.GetDevices(ctx, recipient)
 	if err != nil {
-		return 0, categorize(CategoryCrypto, err)
+		return false, categorize(CategoryCrypto, err)
 	}
-	keyed := 0
 	for _, device := range devices {
 		session, err := mach.CryptoStore.GetLatestSession(ctx, device.IdentityKey)
 		if err != nil {
-			return 0, categorize(CategoryCrypto, err)
+			return false, categorize(CategoryCrypto, err)
 		}
 		if session != nil {
-			keyed++
+			return true, nil
 		}
 	}
-	if keyed == 0 {
-		if err := mach.CryptoStore.RemoveOutboundGroupSession(ctx, room); err != nil {
-			return 0, categorize(CategoryCrypto, err)
-		}
+	if err := mach.CryptoStore.RemoveOutboundGroupSession(ctx, room); err != nil {
+		return false, categorize(CategoryCrypto, err)
 	}
-	return keyed, nil
+	return false, nil
 }
 
 // SendEncrypted encrypts explicitly and sends only the m.room.encrypted event, so no code path emits plaintext.
+// Failures before the request and Matrix error answers are marked not stored; a transport failure or deadline
+// during the request is left unmarked, because the homeserver may have stored the event.
 //
 // Example: ev, err := api.SendEncrypted(ctx, room, "hello").
 func (m *MautrixAPI) SendEncrypted(
@@ -149,35 +154,28 @@ func (m *MautrixAPI) SendEncrypted(
 	text string,
 ) (id.EventID, error) {
 	if m.Crypto == nil {
-		return "", categorize(CategoryCrypto, errors.New("crypto not initialized"))
+		return "", markNotStored(categorize(CategoryCrypto, errors.New("crypto not initialized")))
 	}
 	enc, err := m.Crypto.Encrypt(ctx, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: text})
 	if err != nil {
-		return "", classifyHTTP(err, CategoryCrypto)
+		return "", markNotStored(classifyHTTP(err, CategoryCrypto))
 	}
 	resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc)
-	if err != nil {
-		return "", classifySendFailure(err)
-	}
-	return resp.EventID, nil
-}
-
-// classifySendFailure categorizes a failed /send: a Matrix error answer means the event was rejected (auth or send),
-// while a transport failure or expired deadline leaves it unknown whether the server stored the event.
-//
-// Example: a connection reset after the request was written yields CategorySendUnknown.
-func classifySendFailure(err error) error {
 	var httpErr mautrix.HTTPError
-	if errors.As(err, &httpErr) && httpErr.RespError != nil {
-		return classifyHTTP(err, CategorySend)
+	switch {
+	case err == nil:
+		return resp.EventID, nil
+	case errors.As(err, &httpErr) && httpErr.RespError != nil:
+		return "", markNotStored(classifyHTTP(err, CategorySend))
+	default:
+		return "", categorize(CategoryNetwork, err)
 	}
-	return categorize(CategorySendUnknown, err)
 }
 
 // classifyHTTP categorizes a homeserver call failure: rejected credentials are auth, failures without a Matrix
 // response are network, and anything else is the caller's fallback.
 //
-// Example: classifyHTTP(err, CategorySend) for a failed /send.
+// Example: classifyHTTP(err, CategoryRoom) for a failed /state.
 func classifyHTTP(
 	err error,
 	fallback Category,

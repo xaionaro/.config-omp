@@ -46,7 +46,7 @@ func connect(
 	}
 	needLogin := sess == nil
 	if sess != nil {
-		cli.UserID, cli.DeviceID, cli.AccessToken = sess.UserID, sess.DeviceID, sess.AccessToken
+		cli.UserID, cli.DeviceID, cli.AccessToken = sess.UserID, sess.DeviceID, string(sess.AccessToken)
 		who, err := cli.Whoami(ctx)
 		switch {
 		case err == nil && (who.UserID != sess.UserID || who.DeviceID != sess.DeviceID):
@@ -92,7 +92,7 @@ func login(
 	req := &mautrix.ReqLogin{
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: creds.UserID.String()},
-		Password:                 creds.Password,
+		Password:                 string(creds.Password),
 		InitialDeviceDisplayName: deviceDisplayName,
 		StoreCredentials:         true,
 	}
@@ -102,7 +102,7 @@ func login(
 	if _, err := cli.Login(ctx, req); err != nil {
 		return classifyHTTP(err, CategoryAuth)
 	}
-	got := Session{Account: Account{Homeserver: creds.Homeserver, UserID: cli.UserID}, DeviceID: cli.DeviceID, AccessToken: cli.AccessToken}
+	got := Session{Account: Account{Homeserver: creds.Homeserver, UserID: cli.UserID}, DeviceID: cli.DeviceID, AccessToken: Secret(cli.AccessToken)}
 	if err := checkSession(&got, creds); err != nil {
 		return err
 	}

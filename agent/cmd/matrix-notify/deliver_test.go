@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	self  id.UserID = "@hermes:hs"
-	voidM id.UserID = "@xaionaro:matrix.dx.center"
-	vicM  id.UserID = "@danusya:matrix.dx.center"
+	sender id.UserID = "@hermes:hs"
+	voidM  id.UserID = "@xaionaro:matrix.dx.center"
+	vicM   id.UserID = "@danusya:matrix.dx.center"
 )
 
 // fakeAPI is a synthetic Matrix boundary that records every primitive called.
@@ -23,7 +23,7 @@ type fakeAPI struct {
 	directErr  error
 	rooms      map[id.RoomID]RoomState
 	stateErr   map[id.RoomID]error
-	keyed      int
+	keyed      bool
 	shareErr   error
 	created    id.RoomID
 	sendResult id.EventID
@@ -48,14 +48,14 @@ func (f *fakeAPI) RoomState(_ context.Context, room id.RoomID) (RoomState, error
 	return st, nil
 }
 
-func (f *fakeAPI) CreateDM(_ context.Context, target id.UserID) (id.RoomID, error) {
-	f.calls = append(f.calls, "create "+target.String())
+func (f *fakeAPI) CreateDM(_ context.Context, recipient id.UserID) (id.RoomID, error) {
+	f.calls = append(f.calls, "create "+recipient.String())
 	f.rooms[f.created] = dm(event.MembershipInvite, id.AlgorithmMegolmV1)
 	return f.created, nil
 }
 
-func (f *fakeAPI) ShareRoomKey(_ context.Context, room id.RoomID, target id.UserID) (int, error) {
-	f.calls = append(f.calls, "share "+room.String()+" "+target.String())
+func (f *fakeAPI) ShareRoomKey(_ context.Context, room id.RoomID, recipient id.UserID) (bool, error) {
+	f.calls = append(f.calls, "share "+room.String()+" "+recipient.String())
 	return f.keyed, f.shareErr
 }
 
@@ -70,16 +70,16 @@ func (f *fakeAPI) called(prefix string) bool {
 
 type memRooms map[id.UserID][]id.RoomID
 
-func (m memRooms) Rooms(target id.UserID) ([]id.RoomID, error) { return m[target], nil }
-func (m memRooms) Add(target id.UserID, room id.RoomID) error {
-	m[target] = append(m[target], room)
+func (m memRooms) Rooms(recipient id.UserID) ([]id.RoomID, error) { return m[recipient], nil }
+func (m memRooms) Add(recipient id.UserID, room id.RoomID) error {
+	m[recipient] = append(m[recipient], room)
 	return nil
 }
 
-// dm builds a two-person room state for self and void in the given membership.
-func dm(target event.Membership, alg id.Algorithm) RoomState {
+// dm builds a two-person room state for the sender and void in the given membership.
+func dm(recipient event.Membership, alg id.Algorithm) RoomState {
 	return RoomState{
-		Members:           map[id.UserID]event.Membership{self: event.MembershipJoin, voidM: target},
+		Members:           map[id.UserID]event.Membership{sender: event.MembershipJoin, voidM: recipient},
 		Algorithm:         alg,
 		HistoryVisibility: event.HistoryVisibilityShared,
 	}
@@ -88,8 +88,16 @@ func dm(target event.Membership, alg id.Algorithm) RoomState {
 func newFake() *fakeAPI {
 	return &fakeAPI{
 		direct: map[id.UserID][]id.RoomID{}, rooms: map[id.RoomID]RoomState{}, stateErr: map[id.RoomID]error{},
-		keyed: 1, created: "!new:hs", sendResult: "$ev",
+		keyed: true, created: "!new:hs", sendResult: "$ev",
 	}
+}
+
+// fakeWithDM is a fake whose m.direct points at one valid joined DM with void.
+func fakeWithDM() *fakeAPI {
+	f := newFake()
+	f.rooms["!r:hs"] = dm(event.MembershipJoin, id.AlgorithmMegolmV1)
+	f.direct[voidM] = []id.RoomID{"!r:hs"}
+	return f
 }
 
 func TestRecipientAliases(t *testing.T) {
@@ -123,23 +131,23 @@ func TestDeliverSkipsInvalidCandidatesAndSendsLiterally(t *testing.T) {
 	group.Members["@other:hs"] = event.MembershipJoin
 	multiInvite := dm(event.MembershipJoin, id.AlgorithmMegolmV1)
 	multiInvite.Members["@other:hs"] = event.MembershipInvite
-	selfLeft := dm(event.MembershipJoin, id.AlgorithmMegolmV1)
-	selfLeft.Members[self] = event.MembershipLeave
+	senderLeft := dm(event.MembershipJoin, id.AlgorithmMegolmV1)
+	senderLeft.Members[sender] = event.MembershipLeave
 	f.rooms = map[id.RoomID]RoomState{
 		"!a-group:hs": group, "!b-multi:hs": multiInvite, "!c-stale:hs": dm(event.MembershipLeave, id.AlgorithmMegolmV1),
 		"!d-plain:hs": dm(event.MembershipJoin, ""), "!e-olm:hs": dm(event.MembershipJoin, id.AlgorithmOlmV1),
-		"!f-selfleft:hs": selfLeft, "!g-invited:hs": dm(event.MembershipInvite, id.AlgorithmMegolmV1),
+		"!f-senderleft:hs": senderLeft, "!g-invited:hs": dm(event.MembershipInvite, id.AlgorithmMegolmV1),
 		"!h-good:hs": dm(event.MembershipJoin, id.AlgorithmMegolmV1),
 	}
 	for r := range f.rooms {
 		f.direct[voidM] = append(f.direct[voidM], r)
 	}
 	f.direct[voidM] = append(f.direct[voidM], "!z-gone:hs")
-	out, err := deliver(context.Background(), f, memRooms{}, self, voidM, "hi $(x)")
+	out, err := deliver(context.Background(), f, memRooms{}, sender, voidM, "hi $(x)")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Status != StatusSent || out.Room != "!h-good:hs" || out.EventID != "$ev" || out.TargetMembership != event.MembershipJoin {
+	if out.Status != StatusSent || out.RoomID != "!h-good:hs" || out.EventID != "$ev" || out.RecipientMembership != event.MembershipJoin {
 		t.Fatalf("outcome %+v", out)
 	}
 	if !slices.Contains(f.calls, "send !h-good:hs hi $(x)") || f.called("create ") {
@@ -153,16 +161,16 @@ func TestResolvePrefersJoinedOverInvitedDeterministically(t *testing.T) {
 	f.rooms["!c:hs"] = dm(event.MembershipJoin, id.AlgorithmMegolmV1)
 	f.rooms["!b:hs"] = dm(event.MembershipJoin, id.AlgorithmMegolmV1)
 	f.direct[voidM] = []id.RoomID{"!c:hs", "!a:hs", "!b:hs"}
-	out, err := resolve(context.Background(), f, memRooms{}, self, voidM)
-	if err != nil || out.Room != "!b:hs" || out.Status != StatusResolved {
+	out, err := resolve(context.Background(), f, memRooms{}, sender, voidM)
+	if err != nil || out.RoomID != "!b:hs" || out.Status != StatusResolved {
 		t.Fatalf("%+v %v", out, err)
 	}
 }
 
 func TestResolveNeverCreatesSharesOrSends(t *testing.T) {
 	f := newFake()
-	out, err := resolve(context.Background(), f, memRooms{}, self, vicM)
-	if err != nil || out.Status != StatusAbsent || out.Room != "" {
+	out, err := resolve(context.Background(), f, memRooms{}, sender, vicM)
+	if err != nil || out.Status != StatusAbsent || out.RoomID != "" {
 		t.Fatalf("%+v %v", out, err)
 	}
 	if f.called("create ") || f.called("send ") || f.called("share ") {
@@ -173,16 +181,16 @@ func TestResolveNeverCreatesSharesOrSends(t *testing.T) {
 func TestCreatesPrivateDMOncePersistsAndReusesPendingInvite(t *testing.T) {
 	f := newFake()
 	store := memRooms{}
-	out, err := deliver(context.Background(), f, store, self, voidM, "first")
-	if err != nil || out.Status != StatusSent || out.Room != "!new:hs" || out.TargetMembership != event.MembershipInvite {
+	out, err := deliver(context.Background(), f, store, sender, voidM, "first")
+	if err != nil || out.Status != StatusSent || out.RoomID != "!new:hs" || out.RecipientMembership != event.MembershipInvite {
 		t.Fatalf("%+v %v", out, err)
 	}
 	if !slices.Equal(store[voidM], []id.RoomID{"!new:hs"}) {
 		t.Fatalf("not persisted: %v", store)
 	}
 	f.calls = nil
-	out, err = deliver(context.Background(), f, store, self, voidM, "second")
-	if err != nil || out.Room != "!new:hs" || f.called("create ") {
+	out, err = deliver(context.Background(), f, store, sender, voidM, "second")
+	if err != nil || out.RoomID != "!new:hs" || f.called("create ") {
 		t.Fatalf("second: %+v %v %v", out, err, f.calls)
 	}
 }
@@ -193,18 +201,16 @@ func TestInvitePendingWhenHistoryHiddenUntilJoin(t *testing.T) {
 	st.HistoryVisibility = event.HistoryVisibilityJoined
 	f.rooms["!r:hs"] = st
 	f.direct[voidM] = []id.RoomID{"!r:hs"}
-	out, err := deliver(context.Background(), f, memRooms{}, self, voidM, "x")
+	out, err := deliver(context.Background(), f, memRooms{}, sender, voidM, "x")
 	if err != nil || out.Status != StatusInvitePending || f.called("send ") {
 		t.Fatalf("%+v %v %v", out, err, f.calls)
 	}
 }
 
-func TestKeyPendingWhenNoTargetDeviceReceivedTheKey(t *testing.T) {
-	f := newFake()
-	f.keyed = 0
-	f.rooms["!r:hs"] = dm(event.MembershipJoin, id.AlgorithmMegolmV1)
-	f.direct[voidM] = []id.RoomID{"!r:hs"}
-	out, err := deliver(context.Background(), f, memRooms{}, self, voidM, "x")
+func TestKeyPendingWhenNoRecipientDeviceReceivedTheKey(t *testing.T) {
+	f := fakeWithDM()
+	f.keyed = false
+	out, err := deliver(context.Background(), f, memRooms{}, sender, voidM, "x")
 	if err != nil || out.Status != StatusKeyPending || out.EventID != "" || f.called("send ") {
 		t.Fatalf("%+v %v %v", out, err, f.calls)
 	}
@@ -222,7 +228,7 @@ func TestFailuresNeverCreateRooms(t *testing.T) {
 	for name, setup := range cases {
 		f := newFake()
 		setup(f)
-		if _, err := deliver(context.Background(), f, memRooms{}, self, voidM, "x"); categoryOf(err) != CategoryNetwork {
+		if _, err := deliver(context.Background(), f, memRooms{}, sender, voidM, "x"); categoryOf(err) != CategoryNetwork {
 			t.Errorf("%s: err %v", name, err)
 		}
 		if f.called("create ") || f.called("send ") {
@@ -231,18 +237,29 @@ func TestFailuresNeverCreateRooms(t *testing.T) {
 	}
 }
 
-func TestSendFailureOrMissingEventIsNotSuccess(t *testing.T) {
-	for name, setup := range map[string]func(*fakeAPI){
-		"rejected": func(f *fakeAPI) { f.sendErr = categorize(CategorySend, errors.New("rejected")) },
-		"no event": func(f *fakeAPI) { f.sendResult = "" },
-	} {
-		f := newFake()
-		setup(f)
-		f.rooms["!r:hs"] = dm(event.MembershipJoin, id.AlgorithmMegolmV1)
-		f.direct[voidM] = []id.RoomID{"!r:hs"}
-		out, err := deliver(context.Background(), f, memRooms{}, self, voidM, "x")
-		if categoryOf(err) != CategorySend || out.Status == StatusSent || out.EventID != "" {
-			t.Errorf("%s: %+v %v", name, out, err)
+// T2 (fake boundary): only an error the API marks as not stored is a failure; anything else may have been stored.
+func TestSendOutcomeIsUnknownUnlessProvenNotStored(t *testing.T) {
+	cases := map[string]struct {
+		setup  func(*fakeAPI)
+		status Status
+		cat    Category
+	}{
+		"marked rejection": {func(f *fakeAPI) { f.sendErr = markNotStored(categorize(CategorySend, errors.New("rejected"))) }, StatusUnset, CategorySend},
+		"unmarked error":   {func(f *fakeAPI) { f.sendErr = errors.New("connection reset") }, StatusUnknown, CategoryInternal},
+		"no event id":      {func(f *fakeAPI) { f.sendResult = "" }, StatusUnknown, CategoryInternal},
+	}
+	for name, c := range cases {
+		f := fakeWithDM()
+		c.setup(f)
+		out, err := deliver(context.Background(), f, memRooms{}, sender, voidM, "x")
+		if out.Status != c.status || out.EventID != "" {
+			t.Errorf("%s: outcome %+v", name, out)
+		}
+		if c.status == StatusUnknown && (err != nil || out.RoomID != "!r:hs") {
+			t.Errorf("%s: unknown must carry the room and no error: %+v %v", name, out, err)
+		}
+		if c.status == StatusUnset && categoryOf(err) != c.cat {
+			t.Errorf("%s: err %v", name, err)
 		}
 	}
 }

@@ -51,7 +51,7 @@ func newHomeserver(t *testing.T) *fakeHomeserver {
 }
 
 func (hs *fakeHomeserver) creds() HermesCredentials {
-	return HermesCredentials{Account: Account{Homeserver: hs.srv.URL, UserID: self}, Password: "pw", HermesDeviceID: "HERMESDEV"}
+	return HermesCredentials{Account: Account{Homeserver: hs.srv.URL, UserID: sender}, Password: "pw", HermesDeviceID: "HERMESDEV"}
 }
 
 func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
@@ -71,13 +71,13 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(body, &req)
 		hs.logins = append(hs.logins, req)
 		hs.unknownToken = false
-		reply(map[string]any{"user_id": self, "device_id": "OWNDEV", "access_token": "tok-" + string(rune('a'+len(hs.logins)))})
+		reply(map[string]any{"user_id": sender, "device_id": "OWNDEV", "access_token": "tok-" + string(rune('a'+len(hs.logins)))})
 	case strings.HasSuffix(p, "/account/whoami"):
 		if hs.unknownToken {
 			matrixError(w, 401, "M_UNKNOWN_TOKEN")
 			return
 		}
-		reply(map[string]any{"user_id": self, "device_id": hs.whoamiDevice})
+		reply(map[string]any{"user_id": sender, "device_id": hs.whoamiDevice})
 	case strings.HasSuffix(p, "/keys/upload"):
 		var req struct {
 			DeviceKeys json.RawMessage `json:"device_keys"`
@@ -95,7 +95,7 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 		out := map[id.UserID]map[id.DeviceID]any{}
 		for user := range req.DeviceKeys {
 			out[user] = map[id.DeviceID]any{}
-			if user == self && hs.ownKeys != nil {
+			if user == sender && hs.ownKeys != nil {
 				out[user]["OWNDEV"] = hs.ownKeys
 			}
 			if user == voidM {
@@ -136,8 +136,8 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addTargetDevice publishes validly signed device keys for void that have no claimable one-time key.
-func (hs *fakeHomeserver) addTargetDevice(t *testing.T, device id.DeviceID) {
+// addRecipientDevice publishes validly signed device keys for void that have no claimable one-time key.
+func (hs *fakeHomeserver) addRecipientDevice(t *testing.T, device id.DeviceID) {
 	acct := crypto.NewOlmAccount()
 	signing, identity := acct.Keys()
 	keys := &mautrix.DeviceKeys{
@@ -291,25 +291,25 @@ func TestFailedFirstLoginLeavesNoOrphanStore(t *testing.T) {
 
 func TestRealPathKeyPendingRecoversToCiphertextSend(t *testing.T) {
 	hs := newHomeserver(t)
-	hs.addTargetDevice(t, "TDEV")
+	hs.addRecipientDevice(t, "TDEV")
 	api, err := hs.connect(t, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	out, err := deliver(ctx, api, memRooms{}, self, voidM, "hello plaintext")
+	out, err := deliver(ctx, api, memRooms{}, sender, voidM, "hello plaintext")
 	if err != nil || out.Status != StatusKeyPending || len(hs.sentTypes) != 0 {
 		t.Fatalf("device without Olm session: %+v %v %v", out, err, hs.sentTypes)
 	}
 	if devices, err := api.Crypto.Machine().CryptoStore.GetDevices(ctx, voidM); err != nil || devices["TDEV"] == nil {
-		t.Fatalf("target device not known, so key_pending proves nothing: %v %v", devices, err)
+		t.Fatalf("recipient device not known, so key_pending proves nothing: %v %v", devices, err)
 	}
 	if s, err := api.Crypto.Machine().CryptoStore.GetOutboundGroupSession(ctx, testRoom); err != nil || s != nil {
 		t.Fatalf("unshared outbound session kept: %v %v", s, err)
 	}
 	claims := hs.claims
 	hs.offerOTK = true
-	out, err = deliver(ctx, api, memRooms{}, self, voidM, "hello plaintext")
+	out, err = deliver(ctx, api, memRooms{}, sender, voidM, "hello plaintext")
 	if err != nil || out.Status != StatusSent || out.EventID != "$ev" {
 		t.Fatalf("after the device became reachable: %+v %v", out, err)
 	}
@@ -324,19 +324,27 @@ func TestRealPathKeyPendingRecoversToCiphertextSend(t *testing.T) {
 	}
 }
 
-func TestSendOutcomeUnknownOnlyAfterRequestLeft(t *testing.T) {
-	for fault, want := range map[sendFault]Category{sendDropped: CategorySendUnknown, sendRejected: CategorySend} {
+// T2 (real SDK): a dropped /send leaves the outcome unknown; a Matrix error answer proves the event was not stored.
+func TestSendOutcomeUnknownOnlyWithoutMatrixAnswer(t *testing.T) {
+	for fault, want := range map[sendFault]Status{sendDropped: StatusUnknown, sendRejected: StatusUnset} {
 		hs := newHomeserver(t)
-		hs.addTargetDevice(t, "TDEV")
+		hs.addRecipientDevice(t, "TDEV")
 		hs.offerOTK = true
 		api, err := hs.connect(t, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
 		hs.sendFault = fault
-		out, err := deliver(context.Background(), api, memRooms{}, self, voidM, "x")
-		if categoryOf(err) != want || out.Status == StatusSent {
-			t.Errorf("fault %d: %+v %v", fault, out, err)
+		out, err := deliver(context.Background(), api, memRooms{}, sender, voidM, "x")
+		switch want {
+		case StatusUnknown:
+			if err != nil || out.Status != StatusUnknown || out.RoomID != testRoom || out.EventID != "" {
+				t.Errorf("dropped: %+v %v", out, err)
+			}
+		default:
+			if categoryOf(err) != CategorySend || out.Status != StatusUnset {
+				t.Errorf("rejected: %+v %v", out, err)
+			}
 		}
 	}
 }

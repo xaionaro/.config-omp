@@ -45,5 +45,7 @@ agent/auth*.json
 *.token
 *.secret
 agent/eci/tools/owned-command/owned-command
-# matrix-notify: own Matrix device token, pickle key, crypto store and built binary (secrets; never commit)
+# matrix-notify: own Matrix device token, pickle key, crypto store and saved rooms (secrets; never commit)
 agent/matrix-notify/
+# matrix-notify: built sender binary
+agent/cmd/matrix-notify/matrix-notify

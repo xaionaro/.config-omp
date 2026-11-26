@@ -1,0 +1,15 @@
+{
+  "categories": ["internal", "input", "credentials", "state", "identity", "auth", "network", "room", "crypto", "send"],
+  "aliases": ["vickey", "void"],
+  "cases": {
+    "sent_join": "{\"status\":\"sent\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"join\",\"event_id\":\"$e\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "sent_invite": "{\"status\":\"sent\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"invite\",\"event_id\":\"$e\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "sent_cleanup_error": "{\"status\":\"sent\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"join\",\"event_id\":\"$e\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\",\"cleanup_error\":\"state\"}",
+    "invite_pending": "{\"status\":\"invite_pending\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"invite\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "key_pending": "{\"status\":\"key_pending\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"join\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "unknown": "{\"status\":\"unknown\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"join\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "error": "{\"status\":\"error\",\"to\":\"void\",\"recipient_mxid\":\"@xaionaro:matrix.dx.center\",\"error\":\"auth\"}",
+    "resolved": "{\"status\":\"resolved\",\"room_id\":\"!r:hs\",\"recipient_membership\":\"join\",\"to\":\"vickey\",\"recipient_mxid\":\"@danusya:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}",
+    "absent": "{\"status\":\"absent\",\"to\":\"vickey\",\"recipient_mxid\":\"@danusya:matrix.dx.center\",\"sender_mxid\":\"@hermes:hs\",\"device_id\":\"OWNDEV\"}"
+  }
+}

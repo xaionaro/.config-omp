@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,7 +113,8 @@ func TestRoomFileIsBoundToAccountAndPersists(t *testing.T) {
 	}
 }
 
-func TestLockHonorsDeadlineAndReleases(t *testing.T) {
+// T4: the lock waits on the kernel's release event, is bounded by ctx, and an abandoned wait never keeps the lock.
+func TestLockWaitsForReleaseWithinDeadline(t *testing.T) {
 	dir := t.TempDir()
 	held, err := lockStateDir(context.Background(), dir)
 	if err != nil {
@@ -119,14 +123,68 @@ func TestLockHonorsDeadlineAndReleases(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	if _, err := lockStateDir(ctx, dir); !errors.Is(err, context.DeadlineExceeded) || categoryOf(err) != CategoryState {
-		t.Fatalf("second lock: %v", err)
+		t.Fatalf("(a) second lock: %v", err)
 	}
 	if err := held.Close(); err != nil {
 		t.Fatal(err)
 	}
-	again, err := lockStateDir(context.Background(), dir)
+	// (b) The abandoned waiter may take the lock late; it must release it at once, so this bounded acquire succeeds.
+	bounded, cancelB := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelB()
+	again, err := lockStateDir(bounded, dir)
 	if err != nil {
+		t.Fatalf("(b) after abandoned wait: %v", err)
+	}
+	// (c) A blocked waiter acquires once the holder releases. The release is scheduled on a real timer because the
+	// waiter's blocking flock is exactly what is under test; the 5 s bound turns a regression into a failure.
+	time.AfterFunc(50*time.Millisecond, func() { _ = again.Close() })
+	waiter, cancelC := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelC()
+	last, err := lockStateDir(waiter, dir)
+	if err != nil {
+		t.Fatalf("(c) waiter: %v", err)
+	}
+	_ = last.Close()
+}
+
+// T8: rooms saved under the 603921c key format ("homeserver|user") still load.
+func TestRoomsFromPreviousFormatStillLoad(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"https://hs|@b:hs":{"@xaionaro:matrix.dx.center":["!old:hs"]}}`
+	if err := os.WriteFile(filepath.Join(dir, roomsFile), []byte(old), fileMode); err != nil {
 		t.Fatal(err)
 	}
-	_ = again.Close()
+	got, err := (RoomFile{Dir: dir, Account: testAccount}).Rooms(voidM)
+	if err != nil || !slices.Equal(got, []id.RoomID{"!old:hs"}) {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got, _ := (RoomFile{Dir: dir, Account: testAccount}).Rooms(vicM); len(got) != 0 {
+		t.Fatalf("other recipient sees %v", got)
+	}
+}
+
+// T5: secrets never appear in fmt output, while session.json keeps the raw token in the 603921c format.
+func TestSecretsRedactInFormattingButPersistRaw(t *testing.T) {
+	creds := HermesCredentials{Account: testAccount, Password: "hunter2-pw", HermesDeviceID: "HD"}
+	sess := Session{Account: testAccount, DeviceID: "OWN", AccessToken: "syt_token_value"}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%d"} {
+		out := fmt.Sprintf(verb+" "+verb, creds, sess)
+		if strings.Contains(out, "hunter2") || strings.Contains(out, "syt_token") ||
+			strings.Contains(out, fmt.Sprintf("%x", "hunter2-pw")) || strings.Contains(out, fmt.Sprintf("%x", "syt_token_value")) {
+			t.Errorf("%s leaked: %s", verb, out)
+		}
+	}
+	b, err := json.Marshal(sess)
+	if err != nil || !strings.Contains(string(b), `"access_token":"syt_token_value"`) {
+		t.Fatalf("json %s %v", b, err)
+	}
+	dir := t.TempDir()
+	old := `{"homeserver":"https://hs","user_id":"@b:hs","device_id":"OWN","access_token":"syt_token_value"}`
+	if err := os.WriteFile(filepath.Join(dir, sessionFile), []byte(old), fileMode); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadSession(dir)
+	if err != nil || got == nil || got.AccessToken != "syt_token_value" || got.Account != testAccount {
+		t.Fatalf("old session: %v", err)
+	}
 }

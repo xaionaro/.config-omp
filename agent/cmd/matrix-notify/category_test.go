@@ -21,8 +21,9 @@ func TestCategorizeKeepsTheInnermostCategory(t *testing.T) {
 
 func TestEnumsMarshalToFixedWireNames(t *testing.T) {
 	for v, want := range map[fmt.Stringer]string{
-		CategoryAuth: "auth", CategoryNetwork: "network", CategoryInternal: "internal", CategorySendUnknown: "send_unknown",
+		CategoryAuth: "auth", CategoryNetwork: "network", CategoryInternal: "internal", CategorySend: "send",
 		StatusSent: "sent", StatusKeyPending: "key_pending", StatusInvitePending: "invite_pending", StatusAbsent: "absent",
+		StatusUnknown: "unknown",
 		RecipientVoid: "void", RecipientVickey: "vickey",
 	} {
 		if v.String() != want {

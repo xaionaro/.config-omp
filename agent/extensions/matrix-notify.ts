@@ -1,73 +1,123 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
-// Runs the prebuilt Go sender from agent/tools/matrix-notify. It reads Hermes's Matrix credentials in place and sends
-// as its own device; no secret passes through omp. The Go sender owns the alias→Matrix ID table and input validation.
-const SENDER_BINARY = join(homedir(), ".omp/agent/matrix-notify/bin/matrix-notify");
-const BUILD_HINT =
-  "build it as documented in ~/.omp/agent/tools/matrix-notify/main.go, and rebuild after any change there";
+// Runs the prebuilt Go sender from agent/cmd/matrix-notify. It reads Hermes's Matrix credentials in place and sends
+// as its own device; no secret passes through omp. The Go sender owns the alias→Matrix ID table, input validation,
+// and the runbook (its main.go package doc).
+const SENDER_DIR = join(homedir(), ".omp/agent/cmd/matrix-notify");
+const SENDER_BINARY = join(SENDER_DIR, "matrix-notify");
+export const RUNBOOK = "~/.omp/agent/cmd/matrix-notify/main.go";
+const BUILD_HINT = "build it with: cd ~/.omp/agent/cmd/matrix-notify && go build -tags goolm -o matrix-notify .";
+const RUNBOOK_POINTER = `See ${RUNBOOK} for causes and recovery.`;
 // The Go sender owns the run budget via -deadline; the kill comes later so it can still report its JSON result.
 const SENDER_DEADLINE_S = 120;
 const KILL_MARGIN_MS = 30_000;
 
-const ALIASES = ["void", "vickey"] as const;
+export const ALIASES = ["void", "vickey"] as const;
 export type Alias = (typeof ALIASES)[number];
 
+// The Go sender's failure categories, in its wire order (agent/cmd/matrix-notify/category.go; bound by testdata/wire.json).
+export const CATEGORIES = [
+  "internal",
+  "input",
+  "credentials",
+  "state",
+  "identity",
+  "auth",
+  "network",
+  "room",
+  "crypto",
+  "send",
+] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+export type UnknownReason =
+  | "no answer to send"
+  | "unexpected sender output"
+  | "cancelled"
+  | "sender stdin failed";
+
 export type MatrixSendResult =
-  | { status: "sent"; room_id: string; event_id: string; target_membership: "join" | "invite" }
-  | { status: "invite_pending" | "key_pending"; room_id: string }
-  | { status: "error"; error: string }
-  // The message may or may not have reached Matrix: the run ended without a trustworthy answer after it may have sent.
-  | { status: "unknown"; reason: string };
+  | {
+      status: "sent";
+      room_id: string;
+      event_id: string;
+      recipient_membership: "join" | "invite";
+      cleanup_error?: Category;
+    }
+  | { status: "invite_pending" | "key_pending"; room_id: string; cleanup_error?: Category }
+  | { status: "error"; error: Category }
+  // The message may or may not have reached Matrix: the run ended without proof either way.
+  | { status: "unknown"; reason: UnknownReason; cleanup_error?: Category }
+  | { status: "not_built" };
 
 export type MatrixSender = (to: Alias, message: string, signal?: AbortSignal) => Promise<MatrixSendResult>;
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== "";
+const isCategory = (v: unknown): v is Category => (CATEGORIES as readonly unknown[]).includes(v);
+const UNEXPECTED: MatrixSendResult = { status: "unknown", reason: "unexpected sender output" };
 
-// parseSenderOutput accepts exactly the result shapes the sender prints. Anything else means the sender ended
-// abnormally, possibly after /send, so it is an unknown outcome rather than "not sent".
+// parseSenderOutput accepts exactly the result shapes the sender prints for a send. Anything else means the sender
+// ended abnormally, possibly after the send request, so it is an unknown outcome rather than "not sent".
 // pi.zod exists only inside omp, so this closed check keeps the module testable under plain node.
 export function parseSenderOutput(stdout: string): MatrixSendResult {
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(stdout.trim().split("\n").pop() ?? "");
   } catch {
-    return { status: "unknown", reason: "unreadable sender output" };
+    return UNEXPECTED;
   }
-  switch (raw?.status) {
+  if (raw === null || typeof raw !== "object") return UNEXPECTED;
+  if (raw.cleanup_error !== undefined && !isCategory(raw.cleanup_error)) return UNEXPECTED;
+  const cleanup = raw.cleanup_error === undefined ? {} : { cleanup_error: raw.cleanup_error };
+  switch (raw.status) {
     case "sent":
       if (
         isNonEmptyString(raw.room_id) &&
         isNonEmptyString(raw.event_id) &&
-        (raw.target_membership === "join" || raw.target_membership === "invite")
+        (raw.recipient_membership === "join" || raw.recipient_membership === "invite")
       ) {
-        return { status: "sent", room_id: raw.room_id, event_id: raw.event_id, target_membership: raw.target_membership };
+        return {
+          status: "sent",
+          room_id: raw.room_id,
+          event_id: raw.event_id,
+          recipient_membership: raw.recipient_membership,
+          ...cleanup,
+        };
       }
       break;
     case "invite_pending":
     case "key_pending":
-      if (isNonEmptyString(raw.room_id)) return { status: raw.status, room_id: raw.room_id };
+      if (isNonEmptyString(raw.room_id)) return { status: raw.status, room_id: raw.room_id, ...cleanup };
       break;
+    case "unknown":
+      return { status: "unknown", reason: "no answer to send", ...cleanup };
     case "error":
-      if (raw.error === "send_unknown") return { status: "unknown", reason: "send_unknown" };
-      if (isNonEmptyString(raw.error)) return { status: "error", error: raw.error };
+      if (isCategory(raw.error)) return { status: "error", error: raw.error };
       break;
   }
-  return { status: "unknown", reason: "unexpected sender output" };
+  return UNEXPECTED;
+}
+
+// isExecutable reports whether binary exists and may be executed by this process.
+function isExecutable(binary: string): boolean {
+  try {
+    accessSync(binary, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // matrixSenderBinary runs the binary directly (no shell), passes the message on stdin and trusts only its JSON stdout.
 export function matrixSenderBinary(binary: string): MatrixSender {
   return (to, message, signal) => {
-    // TODO: existsSync cannot tell a stale binary from a current one, and the binary lives in the secret state dir,
-    // so clearing that dir to recover also deletes it; embed a source digest at build time (-ldflags -X), refuse a
-    // mismatch with BUILD_HINT, and move the artifact beside the repo's other generated binaries.
-    if (!existsSync(binary)) {
-      return Promise.resolve({ status: "error", error: `sender not built; ${BUILD_HINT}` });
-    }
+    // TODO: an executable check cannot tell a stale binary from a current one; embed a source digest at build time
+    // (-ldflags -X) and refuse a mismatch with BUILD_HINT.
+    if (!isExecutable(binary)) return Promise.resolve({ status: "not_built" });
     const { promise, resolve } = Promise.withResolvers<MatrixSendResult>();
     const args = ["-to", to, "-deadline", `${SENDER_DEADLINE_S}s`];
     const child = execFile(binary, args, { timeout: SENDER_DEADLINE_S * 1000 + KILL_MARGIN_MS, signal }, (error, stdout) => {
@@ -90,24 +140,36 @@ export function matrixSenderBinary(binary: string): MatrixSender {
   };
 }
 
+function cleanupWarning(r: { cleanup_error?: Category }): string {
+  return r.cleanup_error === undefined ? "" : ` Local state cleanup failed (category: ${r.cleanup_error}). ${RUNBOOK_POINTER}`;
+}
+
 function describe(to: Alias, r: MatrixSendResult): { text: string; isError: boolean } {
   switch (r.status) {
     case "sent": {
-      const invite = r.target_membership === "invite" ? " The recipient has not joined the room yet." : "";
+      const invite = r.recipient_membership === "invite" ? " The recipient has not joined the room yet." : "";
       return {
-        text: `Matrix accepted the encrypted message to ${to}: event ${r.event_id} in ${r.room_id}. This is not a delivery or read receipt.${invite}`,
+        text: `Matrix accepted the encrypted message to ${to}: event ${r.event_id} in ${r.room_id}. This is not a delivery or read receipt.${invite}${cleanupWarning(r)}`,
         isError: false,
       };
     }
     case "invite_pending":
-      return { text: `NOT sent to ${to}: the recipient must join the DM before they can decrypt it.`, isError: true };
+      return {
+        text: `NOT sent to ${to}: the recipient must join the DM before they can decrypt it.${cleanupWarning(r)}`,
+        isError: true,
+      };
     case "key_pending":
-      return { text: `NOT sent to ${to}: no device of the recipient could receive the encryption key yet.`, isError: true };
+      return {
+        text: `NOT sent to ${to}: no device of the recipient could receive the encryption key yet.${cleanupWarning(r)}`,
+        isError: true,
+      };
     case "error":
-      return { text: `NOT sent to ${to}: error category: ${r.error}.`, isError: true };
+      return { text: `NOT sent to ${to}: error category: ${r.error}. ${RUNBOOK_POINTER}`, isError: true };
+    case "not_built":
+      return { text: `NOT sent to ${to}: the sender is not built; ${BUILD_HINT}. ${RUNBOOK_POINTER}`, isError: true };
     case "unknown":
       return {
-        text: `The message to ${to} may or may not have been sent (${r.reason}); check the DM before retrying.`,
+        text: `The message to ${to} may or may not have been sent (${r.reason}); check the DM before retrying.${cleanupWarning(r)}`,
         isError: true,
       };
   }

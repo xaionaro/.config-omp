@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// Keys read from Hermes's .env.
+// Keys read from Hermes's .env, and the fixed values used to interpret and bind them.
 //
 // Example: env[envPassword] is Hermes's Matrix password.
 const (
@@ -19,6 +19,14 @@ const (
 	envUserID     = "MATRIX_USER_ID"
 	envPassword   = "MATRIX_PASSWORD"
 	envDeviceID   = "MATRIX_DEVICE_ID"
+	// httpsScheme is the only homeserver URL scheme accepted.
+	httpsScheme = "https"
+	// homeserverTrailingSlash is trimmed so "https://hs/" and "https://hs" bind the same Account.
+	homeserverTrailingSlash = "/"
+	// dotenvValueCutset is what Python's str.rstrip() removes from an unquoted value, restricted to ASCII.
+	dotenvValueCutset = " \t\n\r\v\f"
+	// accountKeySeparator joins homeserver and user ID in Account.RoomsKey; changing it orphans saved rooms.
+	accountKeySeparator = "|"
 )
 
 // Account identifies one Matrix account on one homeserver origin; stored sessions and rooms are bound to it.
@@ -29,17 +37,17 @@ type Account struct {
 	UserID     id.UserID `json:"user_id"`
 }
 
-// String returns the account's stable key used in the rooms file.
+// RoomsKey returns the account's persisted key in the rooms file; its format must never change.
 //
 // Example: "https://matrix.example|@bot:matrix.example".
-func (a Account) String() string { return a.Homeserver + "|" + a.UserID.String() }
+func (a Account) RoomsKey() string { return a.Homeserver + accountKeySeparator + a.UserID.String() }
 
 // HermesCredentials are Hermes's Matrix account settings, read in place from its .env on every run.
 //
 // Example: creds, err := loadHermesCredentials(filepath.Join(home, ".hermes/.env")).
 type HermesCredentials struct {
 	Account
-	Password string
+	Password Secret
 	// HermesDeviceID is Hermes's own E2EE device; it is read only to make sure this tool never uses it.
 	HermesDeviceID id.DeviceID
 }
@@ -49,6 +57,10 @@ type HermesCredentials struct {
 // rather than taken from a Go dotenv library because those expand ${VAR} and decode escapes differently.
 //
 // Example: r.read(dotenvUnquotedKey) consumes "KEY" from "KEY=v".
+//
+// TODO: Go's \s is [\t\n\f\r ], but Python's str-pattern \s and str.rstrip() also match \v, \x1c-\x1f, \x85 and
+// Unicode spaces, so a .env that uses those characters as separators parses differently from Hermes; mirror Python's
+// whitespace class in these patterns and in the value trim.
 var (
 	dotenvMultilineWhitespace = regexp.MustCompile(`^\s*`)
 	dotenvExport              = regexp.MustCompile(`^(?:export[^\S\r\n]+)?`)
@@ -214,11 +226,11 @@ func parseDotenvValue(r *dotenvReader) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return strings.TrimRight(dotenvInlineComment.ReplaceAllString(m[1], ""), " \t\n\r\v\f"), nil
+		return strings.TrimRight(dotenvInlineComment.ReplaceAllString(m[1], ""), dotenvValueCutset), nil
 	}
 }
 
-// loadHermesCredentials reads Hermes's Matrix settings from path and requires an https homeserver origin.
+// loadHermesCredentials reads Hermes's Matrix settings from path and requires an https homeserver URL with a host.
 //
 // Example: creds, err := loadHermesCredentials(filepath.Join(home, ".hermes/.env")).
 func loadHermesCredentials(path string) (HermesCredentials, error) {
@@ -228,18 +240,18 @@ func loadHermesCredentials(path string) (HermesCredentials, error) {
 	}
 	env := parseDotenv(string(b))
 	creds := HermesCredentials{
-		Account:        Account{Homeserver: strings.TrimRight(env[envHomeserver], "/"), UserID: id.UserID(env[envUserID])},
-		Password:       env[envPassword],
+		Account:        Account{Homeserver: strings.TrimRight(env[envHomeserver], homeserverTrailingSlash), UserID: id.UserID(env[envUserID])},
+		Password:       Secret(env[envPassword]),
 		HermesDeviceID: id.DeviceID(env[envDeviceID]),
 	}
 	var errs []error
-	for _, kv := range [][2]string{{envHomeserver, creds.Homeserver}, {envUserID, creds.UserID.String()}, {envPassword, creds.Password}} {
+	for _, kv := range [][2]string{{envHomeserver, creds.Homeserver}, {envUserID, creds.UserID.String()}, {envPassword, string(creds.Password)}} {
 		if kv[1] == "" {
 			errs = append(errs, fmt.Errorf("%s missing in %s", kv[0], path))
 		}
 	}
-	if u, err := url.Parse(creds.Homeserver); creds.Homeserver != "" && (err != nil || u.Scheme != "https" || u.Host == "") {
-		errs = append(errs, errors.New(envHomeserver+" must be an https origin"))
+	if u, err := url.Parse(creds.Homeserver); creds.Homeserver != "" && (err != nil || u.Scheme != httpsScheme || u.Host == "") {
+		errs = append(errs, errors.New(envHomeserver+" must be an https URL with a host"))
 	}
 	if err := errors.Join(errs...); err != nil {
 		return HermesCredentials{}, categorize(CategoryCredentials, err)

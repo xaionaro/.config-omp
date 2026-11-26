@@ -22,6 +22,7 @@ const (
 	StatusAbsent // resolve-only: no valid DM exists; a send would create one
 	StatusInvitePending
 	StatusKeyPending
+	StatusUnknown // the send request may have been stored: no event ID and no proof it was rejected
 	StatusError
 )
 
@@ -35,6 +36,7 @@ var statusNames = [...]string{
 	StatusAbsent:        "absent",
 	StatusInvitePending: "invite_pending",
 	StatusKeyPending:    "key_pending",
+	StatusUnknown:       "unknown",
 	StatusError:         "error",
 }
 
@@ -58,12 +60,12 @@ func (s Status) MarshalText() ([]byte, error) {
 	return []byte(statusNames[s]), nil
 }
 
-// Outcome is what resolve or deliver established about one recipient's DM.
+// Outcome is what resolve or deliver established about one recipient's DM; once returned it is final.
 //
-// Example: Outcome{Status: StatusSent, Room: room, EventID: ev}.
+// Example: Outcome{Status: StatusSent, RoomID: room, EventID: ev}.
 type Outcome struct {
-	Status           Status
-	Room             id.RoomID
-	TargetMembership event.Membership
-	EventID          id.EventID
+	Status              Status           `json:"status"`
+	RoomID              id.RoomID        `json:"room_id,omitempty"`
+	RecipientMembership event.Membership `json:"recipient_membership,omitempty"`
+	EventID             id.EventID       `json:"event_id,omitempty"`
 }
