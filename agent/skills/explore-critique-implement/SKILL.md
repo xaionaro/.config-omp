@@ -197,13 +197,15 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 
 ### Violation re-read escalation
 
-Any role that finds another agent violating ECI applies this escalation. It governs how the finder's existing violation notice names the violation: the notice withholds it until step 3 or until the violator lists it. Every other correction, restriction, or breach rule (such as the Open-Job owner reuse breach restriction) applies unchanged and at once. Here "ECI" means, for the violator's role, this file plus that role's required modules and any conditional modules whose predicates apply (table above), and for a `worker` its assignment packet too. Send it through the violator's owner when your role may not message the violator directly; that owner relays it unchanged.
+Any ECI role that finds another agent violating an applicable ECI duty must initiate this escalation. Require the steps directly only if you own enforcement; otherwise use existing ownership and report routes so the authorized role requires them and relays the lists back to you. If the violator is the Supervisor, invoke the steps through its existing report route; the Supervisor must comply. Keep the finding and evidence from the violator until it lists the violation or step 3, including on relay routes.
 
-1. Tell the violator to fully re-read its ECI and report back a list of its ECI violations; do not name the violation you found. The violator does this before its next action on the affected work.
-2. If that list lacks the found violation, tell the violator to fully re-read its ECI once more and report an exhaustive list of its ECI violations.
-3. If that list still lacks it, state the violation explicitly: the violated rule quoted with its location, and the evidence.
+For each re-read, fully read this router, the violator's required and applicable conditional [modules](#module-routing), and the ECI instructions that govern its role and assignment, including applicable instructions in its assignment packet, [RULES.md](../../RULES.md), and the [binding contract](../../eci-binding-contract.md). Do not load modules excluded by role or predicate.
 
-A report that contains the found violation ends the escalation; the finder then requires correction under the existing rules. The escalation never pauses unaffected work.
+1. Require the violator to fully re-read ECI and report back its list of ECI violations.
+2. If the list omits the found violation, require a second full re-read and an exhaustive list of its ECI violations.
+3. If the second list still omits it, state the violation explicitly: quote the violated rule with its location and give the evidence.
+
+Complete each required re-read and report before proceeding with work that depends on resolving the violation. If either list includes the found violation, skip the remaining escalation steps. Correct violations and verify correction under the existing role rules. Continue unaffected work. A technical mistake alone uses the existing mistake notice. Do not delay a separately required immediate notice or containment action; disclose only what that action requires, and still run the escalation for the ECI-duty violation.
 
 ## Step handoffs
 
