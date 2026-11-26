@@ -195,6 +195,16 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 | `fast-owner` (Fast Owner Producer) | [ECI fast path](references/fast-path.md) | Early E2E only under [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing) |
 | Critic A/B/C, E2E | [review](references/review.md) | [coding-style admission](../references/workflow-runtime/coding-style-admission.md) only for reviewed governed scope; [review policy](../references/workflow-runtime/review-policy.md) only for finding classification and each CONDITIONAL's scope; E2E follows [E2E cadence, scope, and timing](#e2e-cadence-scope-and-timing). |
 
+### Violation re-read escalation
+
+Any role that finds another agent violating ECI applies this escalation. It governs how the finder's existing violation notice names the violation: the notice withholds it until step 3 or until the violator lists it. Every other correction, restriction, or breach rule (such as the Open-Job owner reuse breach restriction) applies unchanged and at once. Here "ECI" means, for the violator's role, this file plus that role's required modules and any conditional modules whose predicates apply (table above), and for a `worker` its assignment packet too. Send it through the violator's owner when your role may not message the violator directly; that owner relays it unchanged.
+
+1. Tell the violator to fully re-read its ECI and report back a list of its ECI violations; do not name the violation you found. The violator does this before its next action on the affected work.
+2. If that list lacks the found violation, tell the violator to fully re-read its ECI once more and report an exhaustive list of its ECI violations.
+3. If that list still lacks it, state the violation explicitly: the violated rule quoted with its location, and the evidence.
+
+A report that contains the found violation ends the escalation; the finder then requires correction under the existing rules. The escalation never pauses unaffected work.
+
 ## Step handoffs
 
 Before step 1, complete the first-spawn rule in [Spawn skill routing](#spawn-skill-routing).
