@@ -12,6 +12,9 @@ This file maps omp tool names to the tools ECI hooks expect, and states where na
 ## Skills
 `~/.omp/agent/skills` is a real directory. Load a matching skill with its `SKILL.md` before acting.
 
+## Notifying people
+Use `matrix_send` to send a Matrix DM to `void` or `vickey`.
+
 ## Hooks
 Native hook adapters are tracked in git under `~/.omp/agent/hooks-disabled/` (`pre/`, `post/`, and `lib/eci-hook-runner.ts`). They run the native scripts in `~/.omp/agent/eci/hooks/`. omp does not discover that directory. Only the Bash gate is enabled, through `~/.omp/agent/extensions/eci-bash-gate.ts`; the other ECI hooks are disabled.
 
