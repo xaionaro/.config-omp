@@ -24,6 +24,8 @@ const (
 	CategoryRoom
 	CategoryCrypto
 	CategorySend
+	// CategorySendUnknown: /send left the process but no Matrix answer came back, so the event may exist.
+	CategorySendUnknown
 )
 
 // categoryNames holds each Category's fixed wire name.
@@ -40,6 +42,7 @@ var categoryNames = [...]string{
 	CategoryRoom:        "room",
 	CategoryCrypto:      "crypto",
 	CategorySend:        "send",
+	CategorySendUnknown: "send_unknown",
 }
 
 // String returns the category's wire name.

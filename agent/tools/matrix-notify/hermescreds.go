@@ -11,6 +11,16 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// Keys read from Hermes's .env.
+//
+// Example: env[envPassword] is Hermes's Matrix password.
+const (
+	envHomeserver = "MATRIX_HOMESERVER"
+	envUserID     = "MATRIX_USER_ID"
+	envPassword   = "MATRIX_PASSWORD"
+	envDeviceID   = "MATRIX_DEVICE_ID"
+)
+
 // Account identifies one Matrix account on one homeserver origin; stored sessions and rooms are bound to it.
 //
 // Example: Account{Homeserver: "https://matrix.example", UserID: "@bot:matrix.example"}.
@@ -35,7 +45,10 @@ type HermesCredentials struct {
 }
 
 // python-dotenv's parser grammar (dotenv/parser.py), which Hermes uses via DotEnv(interpolate=False).parse()
-// in hermes_cli/env_loader.py. Go's leftmost-first regexp semantics match Python's for these patterns.
+// in hermes_cli/env_loader.py. Go's leftmost-first regexp semantics match Python's for these patterns. It is ported
+// rather than taken from a Go dotenv library because those expand ${VAR} and decode escapes differently.
+//
+// Example: r.read(dotenvUnquotedKey) consumes "KEY" from "KEY=v".
 var (
 	dotenvMultilineWhitespace = regexp.MustCompile(`^\s*`)
 	dotenvExport              = regexp.MustCompile(`^(?:export[^\S\r\n]+)?`)
@@ -172,24 +185,28 @@ func parseDotenvBinding(r *dotenvReader) (string, string, bool, error) {
 	return key, value, hasValue, nil
 }
 
+// decodeDotenvEscape decodes one escape sequence matched by a python-dotenv escape pattern.
+//
+// Example: decodeDotenvEscape(`\"`) == `"`.
+func decodeDotenvEscape(s string) string { return dotenvEscapes[s] }
+
 // parseDotenvValue parses a quoted or unquoted value at the cursor.
 //
 // Example: `'a\'b'` yields `a'b`; `plain # c` yields `plain`.
 func parseDotenvValue(r *dotenvReader) (string, error) {
-	decode := func(s string) string { return dotenvEscapes[s] }
 	switch r.peek() {
 	case '\'':
 		m, err := r.read(dotenvSingleQuotedValue)
 		if err != nil {
 			return "", err
 		}
-		return dotenvSingleQuoteEscapes.ReplaceAllStringFunc(m[1], decode), nil
+		return dotenvSingleQuoteEscapes.ReplaceAllStringFunc(m[1], decodeDotenvEscape), nil
 	case '"':
 		m, err := r.read(dotenvDoubleQuotedValue)
 		if err != nil {
 			return "", err
 		}
-		return dotenvDoubleQuoteEscapes.ReplaceAllStringFunc(m[1], decode), nil
+		return dotenvDoubleQuoteEscapes.ReplaceAllStringFunc(m[1], decodeDotenvEscape), nil
 	case 0, '\n', '\r':
 		return "", nil
 	default:
@@ -211,18 +228,18 @@ func loadHermesCredentials(path string) (HermesCredentials, error) {
 	}
 	env := parseDotenv(string(b))
 	creds := HermesCredentials{
-		Account:        Account{Homeserver: strings.TrimRight(env["MATRIX_HOMESERVER"], "/"), UserID: id.UserID(env["MATRIX_USER_ID"])},
-		Password:       env["MATRIX_PASSWORD"],
-		HermesDeviceID: id.DeviceID(env["MATRIX_DEVICE_ID"]),
+		Account:        Account{Homeserver: strings.TrimRight(env[envHomeserver], "/"), UserID: id.UserID(env[envUserID])},
+		Password:       env[envPassword],
+		HermesDeviceID: id.DeviceID(env[envDeviceID]),
 	}
 	var errs []error
-	for _, kv := range [][2]string{{"MATRIX_HOMESERVER", creds.Homeserver}, {"MATRIX_USER_ID", creds.UserID.String()}, {"MATRIX_PASSWORD", creds.Password}} {
+	for _, kv := range [][2]string{{envHomeserver, creds.Homeserver}, {envUserID, creds.UserID.String()}, {envPassword, creds.Password}} {
 		if kv[1] == "" {
 			errs = append(errs, fmt.Errorf("%s missing in %s", kv[0], path))
 		}
 	}
 	if u, err := url.Parse(creds.Homeserver); creds.Homeserver != "" && (err != nil || u.Scheme != "https" || u.Host == "") {
-		errs = append(errs, errors.New("MATRIX_HOMESERVER must be an https origin"))
+		errs = append(errs, errors.New(envHomeserver+" must be an https origin"))
 	}
 	if err := errors.Join(errs...); err != nil {
 		return HermesCredentials{}, categorize(CategoryCredentials, err)

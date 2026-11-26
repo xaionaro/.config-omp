@@ -1,8 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"maunium.net/go/mautrix/id"
 )
@@ -41,7 +42,19 @@ func parseRecipient(alias string) (Recipient, error) {
 			return r, nil
 		}
 	}
-	return RecipientUnset, categorize(CategoryInput, errors.New("unknown recipient; allowed: void, vickey"))
+	return RecipientUnset, categorize(CategoryInput, fmt.Errorf("unknown recipient; allowed: %s", strings.Join(recipientAliases(), ", ")))
+}
+
+// recipientAliases lists every alias in recipientTable, sorted.
+//
+// Example: recipientAliases() == []string{"vickey", "void"}.
+func recipientAliases() []string {
+	aliases := make([]string, 0, len(recipientTable))
+	for _, e := range recipientTable {
+		aliases = append(aliases, e.alias)
+	}
+	slices.Sort(aliases)
+	return aliases
 }
 
 // MXID returns the recipient's Matrix user ID, or "" when unset.

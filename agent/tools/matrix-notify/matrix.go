@@ -93,10 +93,10 @@ func (m *MautrixAPI) CreateDM(
 }
 
 // ShareRoomKey refreshes target's devices, shares the room's outbound Megolm session with the room's joined and
-// invited members, and counts target devices that hold an Olm session: the SDK encrypts the room key to exactly
-// those and withholds it from devices it could not open one with. A session already shared in an earlier run is not
-// re-shared to a device whose Olm session appeared later; the SDK rotates the session when target's device list
-// changes.
+// invited members, and returns how many target devices hold an Olm session, which are the devices the SDK encrypts
+// the room key to; it withholds the key from the rest. The SDK never re-shares a session it marked shared, even to a
+// device that later becomes reachable, so when no target device was reachable the session is removed: a stored
+// session has therefore always reached at least one target device, and the next run claims keys and shares afresh.
 //
 // Example: n, err := api.ShareRoomKey(ctx, room, target); n == 0 means key_pending.
 func (m *MautrixAPI) ShareRoomKey(
@@ -132,6 +132,11 @@ func (m *MautrixAPI) ShareRoomKey(
 			keyed++
 		}
 	}
+	if keyed == 0 {
+		if err := mach.CryptoStore.RemoveOutboundGroupSession(ctx, room); err != nil {
+			return 0, categorize(CategoryCrypto, err)
+		}
+	}
 	return keyed, nil
 }
 
@@ -152,9 +157,21 @@ func (m *MautrixAPI) SendEncrypted(
 	}
 	resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc)
 	if err != nil {
-		return "", classifyHTTP(err, CategorySend)
+		return "", classifySendFailure(err)
 	}
 	return resp.EventID, nil
+}
+
+// classifySendFailure categorizes a failed /send: a Matrix error answer means the event was rejected (auth or send),
+// while a transport failure or expired deadline leaves it unknown whether the server stored the event.
+//
+// Example: a connection reset after the request was written yields CategorySendUnknown.
+func classifySendFailure(err error) error {
+	var httpErr mautrix.HTTPError
+	if errors.As(err, &httpErr) && httpErr.RespError != nil {
+		return classifyHTTP(err, CategorySend)
+	}
+	return categorize(CategorySendUnknown, err)
 }
 
 // classifyHTTP categorizes a homeserver call failure: rejected credentials are auth, failures without a Matrix

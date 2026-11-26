@@ -71,8 +71,9 @@ func checkSession(
 }
 
 // checkOrphanStore refuses a crypto store whose device is not recorded in a session. connect saves the session
-// before it creates the store, so an orphan means outside interference; recover by deleting the state directory
-// (and the stale "OMP Matrix notify" device in a Matrix client).
+// before it creates the store, so an orphan means outside interference. To recover, delete session.json, pickle.key,
+// crypto.db* and rooms.json from the state directory, keeping bin/, and remove the stale "OMP Matrix notify" device
+// in a Matrix client.
 //
 // Example: checkOrphanStore(dir, nil) fails when crypto.db exists.
 func checkOrphanStore(

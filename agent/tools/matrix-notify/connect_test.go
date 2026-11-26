@@ -34,10 +34,17 @@ type fakeHomeserver struct {
 	sentTypes    []string
 	sentBodies   []string
 	paths        []string
+	targetAccts  map[id.DeviceID]*crypto.OlmAccount
+	offerOTK     bool
+	claims       int
+	sendFault    sendFault
 }
 
 func newHomeserver(t *testing.T) *fakeHomeserver {
-	hs := &fakeHomeserver{t: t, whoamiDevice: "OWNDEV", targetKeys: map[id.DeviceID]*mautrix.DeviceKeys{}}
+	hs := &fakeHomeserver{
+		t: t, whoamiDevice: "OWNDEV",
+		targetKeys: map[id.DeviceID]*mautrix.DeviceKeys{}, targetAccts: map[id.DeviceID]*crypto.OlmAccount{},
+	}
 	hs.srv = httptest.NewTLSServer(http.HandlerFunc(hs.serve))
 	t.Cleanup(hs.srv.Close)
 	return hs
@@ -99,7 +106,8 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(map[string]any{"device_keys": out})
 	case strings.HasSuffix(p, "/keys/claim"):
-		reply(map[string]any{"one_time_keys": map[string]any{}})
+		hs.claims++
+		reply(map[string]any{"one_time_keys": hs.claimableKeys()})
 	case strings.Contains(p, "/sendToDevice/"):
 		reply(map[string]any{})
 	case strings.HasSuffix(p, "/account_data/m.direct"):
@@ -107,6 +115,17 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(p, "/rooms/"+testRoom.String()+"/state"):
 		_, _ = io.WriteString(w, dmStateJSON(voidM, "join"))
 	case strings.Contains(p, "/rooms/"+testRoom.String()+"/send/"):
+		switch hs.sendFault {
+		case sendDropped:
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+			return
+		case sendRejected:
+			matrixError(w, 400, "M_UNKNOWN")
+			return
+		}
 		parts := strings.Split(p, "/")
 		hs.sentTypes = append(hs.sentTypes, parts[len(parts)-2])
 		hs.sentBodies = append(hs.sentBodies, string(body))
@@ -135,7 +154,54 @@ func (hs *fakeHomeserver) addTargetDevice(t *testing.T, device id.DeviceID) {
 	keys.Signatures = signatures.NewSingleSignature(voidM, id.KeyAlgorithmEd25519, device.String(), sig)
 	hs.mu.Lock()
 	hs.targetKeys[device] = keys
+	hs.targetAccts[device] = acct
 	hs.mu.Unlock()
+}
+
+// sendFault selects how the fake homeserver answers /send.
+//
+// Example: hs.sendFault = sendDropped simulates a response lost after the request was sent.
+type sendFault int
+
+// The /send behaviors.
+//
+// Example: sendRejected answers with a Matrix error.
+const (
+	sendAccepted sendFault = iota
+	sendDropped
+	sendRejected
+)
+
+// claimableKeys returns one signed one-time key per target device when offerOTK is set, else none.
+//
+// Example: {"@xaionaro:…": {"TDEV": {"signed_curve25519:AAAA": {...}}}}.
+func (hs *fakeHomeserver) claimableKeys() map[id.UserID]map[id.DeviceID]map[id.KeyID]mautrix.OneTimeKey {
+	out := map[id.UserID]map[id.DeviceID]map[id.KeyID]mautrix.OneTimeKey{}
+	if !hs.offerOTK {
+		return out
+	}
+	out[voidM] = map[id.DeviceID]map[id.KeyID]mautrix.OneTimeKey{}
+	for device, acct := range hs.targetAccts {
+		acct.Internal.GenOneTimeKeys(1)
+		keys, err := acct.Internal.OneTimeKeys()
+		if err != nil {
+			hs.t.Error(err)
+			return out
+		}
+		for keyID, key := range keys {
+			otk := mautrix.OneTimeKey{Key: key, IsSigned: true}
+			sig, err := acct.SignJSON(&otk)
+			if err != nil {
+				hs.t.Error(err)
+				return out
+			}
+			otk.Signatures = signatures.NewSingleSignature(voidM, id.KeyAlgorithmEd25519, device.String(), sig)
+			out[voidM][device] = map[id.KeyID]mautrix.OneTimeKey{id.NewKeyID(id.KeyAlgorithmSignedCurve25519, keyID): otk}
+			break
+		}
+		acct.Internal.MarkKeysAsPublished()
+	}
+	return out
 }
 
 func (hs *fakeHomeserver) connect(t *testing.T, dir string) (*MautrixAPI, error) {
@@ -223,31 +289,54 @@ func TestFailedFirstLoginLeavesNoOrphanStore(t *testing.T) {
 	}
 }
 
-func TestRealPathKeyPendingThenCiphertextOnly(t *testing.T) {
+func TestRealPathKeyPendingRecoversToCiphertextSend(t *testing.T) {
 	hs := newHomeserver(t)
 	hs.addTargetDevice(t, "TDEV")
 	api, err := hs.connect(t, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := deliver(context.Background(), api, memRooms{}, self, voidM, "hello plaintext")
-	if err != nil || out.Status != StatusKeyPending {
-		t.Fatalf("device without Olm session: %+v %v", out, err)
+	ctx := context.Background()
+	out, err := deliver(ctx, api, memRooms{}, self, voidM, "hello plaintext")
+	if err != nil || out.Status != StatusKeyPending || len(hs.sentTypes) != 0 {
+		t.Fatalf("device without Olm session: %+v %v %v", out, err, hs.sentTypes)
 	}
-	if devices, err := api.Crypto.Machine().CryptoStore.GetDevices(context.Background(), voidM); err != nil || devices["TDEV"] == nil {
+	if devices, err := api.Crypto.Machine().CryptoStore.GetDevices(ctx, voidM); err != nil || devices["TDEV"] == nil {
 		t.Fatalf("target device not known, so key_pending proves nothing: %v %v", devices, err)
 	}
-	if len(hs.sentTypes) != 0 {
-		t.Fatalf("sent %v", hs.sentTypes)
+	if s, err := api.Crypto.Machine().CryptoStore.GetOutboundGroupSession(ctx, testRoom); err != nil || s != nil {
+		t.Fatalf("unshared outbound session kept: %v %v", s, err)
 	}
-	ev, err := api.SendEncrypted(context.Background(), testRoom, "hello plaintext")
-	if err != nil || ev != "$ev" {
-		t.Fatalf("send: %v %v", ev, err)
+	claims := hs.claims
+	hs.offerOTK = true
+	out, err = deliver(ctx, api, memRooms{}, self, voidM, "hello plaintext")
+	if err != nil || out.Status != StatusSent || out.EventID != "$ev" {
+		t.Fatalf("after the device became reachable: %+v %v", out, err)
+	}
+	if hs.claims == claims {
+		t.Fatal("no new key claim after key_pending")
 	}
 	if len(hs.sentTypes) != 1 || hs.sentTypes[0] != "m.room.encrypted" {
 		t.Fatalf("event types %v", hs.sentTypes)
 	}
 	if strings.Contains(hs.sentBodies[0], "hello plaintext") || !strings.Contains(hs.sentBodies[0], `"ciphertext"`) {
 		t.Fatalf("body is not ciphertext: %s", hs.sentBodies[0])
+	}
+}
+
+func TestSendOutcomeUnknownOnlyAfterRequestLeft(t *testing.T) {
+	for fault, want := range map[sendFault]Category{sendDropped: CategorySendUnknown, sendRejected: CategorySend} {
+		hs := newHomeserver(t)
+		hs.addTargetDevice(t, "TDEV")
+		hs.offerOTK = true
+		api, err := hs.connect(t, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		hs.sendFault = fault
+		out, err := deliver(context.Background(), api, memRooms{}, self, voidM, "x")
+		if categoryOf(err) != want || out.Status == StatusSent {
+			t.Errorf("fault %d: %+v %v", fault, out, err)
+		}
 	}
 }

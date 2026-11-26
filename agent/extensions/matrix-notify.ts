@@ -17,46 +17,54 @@ const ALIASES = ["void", "vickey"] as const;
 export type Alias = (typeof ALIASES)[number];
 
 export type MatrixSendResult =
-  | { status: "sent"; room_id: string; event_id: string; target_membership: string }
+  | { status: "sent"; room_id: string; event_id: string; target_membership: "join" | "invite" }
   | { status: "invite_pending" | "key_pending"; room_id: string }
-  | { status: "error"; error: string };
+  | { status: "error"; error: string }
+  // The message may or may not have reached Matrix: the run ended without a trustworthy answer after it may have sent.
+  | { status: "unknown"; reason: string };
 
 export type MatrixSender = (to: Alias, message: string, signal?: AbortSignal) => Promise<MatrixSendResult>;
 
-const isString = (v: unknown): v is string => typeof v === "string" && v !== "";
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== "";
 
-// parseSenderOutput accepts exactly the result shapes a send can produce; anything else is an error result.
+// parseSenderOutput accepts exactly the result shapes the sender prints. Anything else means the sender ended
+// abnormally, possibly after /send, so it is an unknown outcome rather than "not sent".
 // pi.zod exists only inside omp, so this closed check keeps the module testable under plain node.
 export function parseSenderOutput(stdout: string): MatrixSendResult {
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(stdout.trim().split("\n").pop() ?? "");
   } catch {
-    return { status: "error", error: "unreadable sender output" };
+    return { status: "unknown", reason: "unreadable sender output" };
   }
   switch (raw?.status) {
     case "sent":
-      if (isString(raw.room_id) && isString(raw.event_id) && isString(raw.target_membership)) {
+      if (
+        isNonEmptyString(raw.room_id) &&
+        isNonEmptyString(raw.event_id) &&
+        (raw.target_membership === "join" || raw.target_membership === "invite")
+      ) {
         return { status: "sent", room_id: raw.room_id, event_id: raw.event_id, target_membership: raw.target_membership };
       }
       break;
     case "invite_pending":
     case "key_pending":
-      if (isString(raw.room_id)) return { status: raw.status, room_id: raw.room_id };
+      if (isNonEmptyString(raw.room_id)) return { status: raw.status, room_id: raw.room_id };
       break;
     case "error":
-      if (isString(raw.error)) return { status: "error", error: raw.error };
+      if (raw.error === "send_unknown") return { status: "unknown", reason: "send_unknown" };
+      if (isNonEmptyString(raw.error)) return { status: "error", error: raw.error };
       break;
   }
-  return { status: "error", error: "unexpected sender output" };
+  return { status: "unknown", reason: "unexpected sender output" };
 }
 
 // matrixSenderBinary runs the binary directly (no shell), passes the message on stdin and trusts only its JSON stdout.
 export function matrixSenderBinary(binary: string): MatrixSender {
   return (to, message, signal) => {
-    // TODO(C5): existsSync cannot tell a stale binary from a current one, and the binary lives in the secret state
-    // dir; embed a source digest at build time (-ldflags -X), refuse a mismatch with BUILD_HINT, and move the
-    // artifact beside the repo's other generated binaries.
+    // TODO: existsSync cannot tell a stale binary from a current one, and the binary lives in the secret state dir,
+    // so clearing that dir to recover also deletes it; embed a source digest at build time (-ldflags -X), refuse a
+    // mismatch with BUILD_HINT, and move the artifact beside the repo's other generated binaries.
     if (!existsSync(binary)) {
       return Promise.resolve({ status: "error", error: `sender not built; ${BUILD_HINT}` });
     }
@@ -64,15 +72,18 @@ export function matrixSenderBinary(binary: string): MatrixSender {
     const args = ["-to", to, "-deadline", `${SENDER_DEADLINE_S}s`];
     const child = execFile(binary, args, { timeout: SENDER_DEADLINE_S * 1000 + KILL_MARGIN_MS, signal }, (error, stdout) => {
       const result = parseSenderOutput(stdout);
-      if (result.status === "error" && error?.name === "AbortError") {
-        resolve({ status: "error", error: "cancelled" });
+      if (result.status === "unknown" && error?.name === "AbortError") {
+        resolve({ status: "unknown", reason: "cancelled" });
         return;
       }
       resolve(result);
     });
-    // A sender that exits before reading stdin closes the pipe; its JSON result (or crash) is reported above.
+    // A sender that exits before reading stdin closes the pipe (EPIPE); its JSON result is reported above. Any other
+    // stdin failure may have delivered a partial message, so stop the sender and report an unknown outcome.
     child.stdin?.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code !== "EPIPE") throw err;
+      if (err.code === "EPIPE") return;
+      child.kill();
+      resolve({ status: "unknown", reason: "sender stdin failed" });
     });
     child.stdin?.end(message);
     return promise;
@@ -94,6 +105,11 @@ function describe(to: Alias, r: MatrixSendResult): { text: string; isError: bool
       return { text: `NOT sent to ${to}: no device of the recipient could receive the encryption key yet.`, isError: true };
     case "error":
       return { text: `NOT sent to ${to}: error category: ${r.error}.`, isError: true };
+    case "unknown":
+      return {
+        text: `The message to ${to} may or may not have been sent (${r.reason}); check the DM before retrying.`,
+        isError: true,
+      };
   }
 }
 

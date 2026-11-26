@@ -43,7 +43,7 @@ test("reports Matrix acceptance with event and room, not delivery", async () => 
   assert.match(res.content[0].text, /not a delivery or read receipt/);
 });
 
-test("pending and failed results are errors, never success", async () => {
+test("failures before the send say NOT sent", async () => {
   for (const result of [
     { status: "key_pending", room_id: "!r:x" },
     { status: "invite_pending", room_id: "!r:x" },
@@ -55,23 +55,50 @@ test("pending and failed results are errors, never success", async () => {
   }
 });
 
-test("accepts only complete sender results", () => {
+test("an unknown outcome warns against blind retries and never claims NOT sent", async () => {
+  const res = await register(async () => ({ status: "unknown", reason: "send_unknown" })).execute("id", {
+    to: "void",
+    message: "x",
+  });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /may or may not have been sent/);
+  assert.doesNotMatch(res.content[0].text, /NOT sent/);
+});
+
+test("accepts only complete sender results; anything else is an unknown outcome", () => {
   assert.deepEqual(parseSenderOutput('{"status":"sent","room_id":"!r","event_id":"$e","target_membership":"join"}\n'), {
     status: "sent",
     room_id: "!r",
     event_id: "$e",
     target_membership: "join",
   });
+  assert.deepEqual(parseSenderOutput('{"status":"error","error":"send_unknown"}'), {
+    status: "unknown",
+    reason: "send_unknown",
+  });
+  assert.deepEqual(parseSenderOutput('{"status":"error","error":"network"}'), { status: "error", error: "network" });
   for (const bad of [
     '{"status":"sent","room_id":"!r","target_membership":"join"}',
     '{"status":"sent","room_id":"!r","event_id":"","target_membership":"join"}',
+    '{"status":"sent","room_id":"!r","event_id":"$e","target_membership":"leave"}',
     '{"status":"resolved","room_id":"!r"}',
     '{"status":"key_pending"}',
     "panic: boom",
     "",
   ]) {
-    assert.equal(parseSenderOutput(bad).status, "error", bad);
+    assert.equal(parseSenderOutput(bad).status, "unknown", bad);
   }
+});
+
+test("a cancelled sender run is an unknown outcome", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mxn-"));
+  const fake = join(dir, "slow");
+  writeFileSync(fake, "#!/bin/sh\ncat >/dev/null\nsleep 5\n");
+  chmodSync(fake, 0o700);
+  const ctl = new AbortController();
+  const pending = matrixSenderBinary(fake)("void", "x", ctl.signal);
+  ctl.abort();
+  assert.deepEqual(await pending, { status: "unknown", reason: "cancelled" });
 });
 
 test("runs the prebuilt sender directly with the body on stdin, and never builds it", async () => {
@@ -95,6 +122,6 @@ test("runs the prebuilt sender directly with the body on stdin, and never builds
 
   writeFileSync(fake, `#!/bin/sh\necho 'panic: secret-ish internal detail' >&2\nexit 3\n`);
   const crash = await matrixSenderBinary(fake)("void", "x");
-  assert.equal(crash.status, "error");
+  assert.equal(crash.status, "unknown");
   assert.doesNotMatch(JSON.stringify(crash), /secret-ish/);
 });

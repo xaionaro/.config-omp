@@ -20,13 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -45,15 +45,15 @@ const (
 //
 // Example: {"status":"sent","to":"void","room_id":"!r:hs","event_id":"$e"}.
 type Result struct {
-	Status           Status      `json:"status"`
-	To               Recipient   `json:"to"`
-	Recipient        id.UserID   `json:"recipient_mxid,omitempty"`
-	Sender           id.UserID   `json:"sender_mxid,omitempty"`
-	DeviceID         id.DeviceID `json:"device_id,omitempty"`
-	RoomID           id.RoomID   `json:"room_id,omitempty"`
-	TargetMembership string      `json:"target_membership,omitempty"`
-	EventID          id.EventID  `json:"event_id,omitempty"`
-	Error            *Category   `json:"error,omitempty"`
+	Status           Status           `json:"status"`
+	To               Recipient        `json:"to"`
+	RecipientMXID    id.UserID        `json:"recipient_mxid,omitempty"`
+	SenderMXID       id.UserID        `json:"sender_mxid,omitempty"`
+	DeviceID         id.DeviceID      `json:"device_id,omitempty"`
+	RoomID           id.RoomID        `json:"room_id,omitempty"`
+	TargetMembership event.Membership `json:"target_membership,omitempty"`
+	EventID          id.EventID       `json:"event_id,omitempty"`
+	Error            *Category        `json:"error,omitempty"`
 }
 
 // runConfig is one invocation's parsed command line.
@@ -64,7 +64,6 @@ type runConfig struct {
 	ResolveOnly bool
 	StateDir    string
 	EnvPath     string
-	HTTPClient  *http.Client
 }
 
 // main parses flags, runs once and exits with report's code.
@@ -89,13 +88,13 @@ func main() {
 	deadline := flag.Duration("deadline", defaultDeadline, "give up after this long")
 	flag.Parse()
 
-	// TODO(C7): SIGTERM/SIGINT end the process without cancelling ctx, so a run killed after the server accepted the
-	// event reports nothing and a retry can send twice; convert them with signal.NotifyContext and report "cancelled".
+	// TODO: SIGTERM/SIGINT end the process without cancelling ctx, so a run killed mid-request reports nothing (the
+	// omp tool then says the outcome is unknown); convert them with signal.NotifyContext and report send_unknown.
 	ctx, cancel := context.WithTimeout(context.Background(), *deadline)
 	res, err := run(ctx, cfg, os.Stdin)
 	cancel()
-	// TODO(A12): only the category leaves the process, so causes are lost; write a private, secret-free local debug
-	// log in the state dir (go-belt via ctx) or document the diagnostic route.
+	// TODO: only the category leaves the process, so causes are lost; write a private, secret-free local debug log
+	// in the state dir (go-belt via ctx) or document the diagnostic route.
 	os.Exit(report(os.Stdout, res, err))
 }
 
@@ -137,7 +136,7 @@ func run(
 	if err != nil {
 		return res, err
 	}
-	res.To, res.Recipient = to, to.MXID()
+	res.To, res.RecipientMXID = to, to.MXID()
 	var message string
 	if !cfg.ResolveOnly {
 		b, err := io.ReadAll(stdin)
@@ -159,14 +158,16 @@ func run(
 	if err != nil {
 		return res, err
 	}
+	// Release the state lock last; a failed release is reported with any earlier error.
 	defer func() { err = errors.Join(err, categorizeIfErr(CategoryState, lock.Close())) }()
 
-	api, err := connect(ctx, cfg.StateDir, creds, cfg.HTTPClient)
+	api, err := connect(ctx, cfg.StateDir, creds, nil)
 	if err != nil {
 		return res, err
 	}
+	// Close the crypto store before the lock; a failed close is reported with any earlier error.
 	defer func() { err = errors.Join(err, categorizeIfErr(CategoryState, api.Crypto.Close())) }()
-	res.Sender, res.DeviceID = api.Client.UserID, api.Client.DeviceID
+	res.SenderMXID, res.DeviceID = api.Client.UserID, api.Client.DeviceID
 
 	store := RoomFile{Dir: cfg.StateDir, Account: creds.Account}
 	var out Outcome
@@ -178,6 +179,6 @@ func run(
 	if err != nil {
 		return res, err
 	}
-	res.Status, res.RoomID, res.TargetMembership, res.EventID = out.Status, out.Room, string(out.TargetMembership), out.EventID
+	res.Status, res.RoomID, res.TargetMembership, res.EventID = out.Status, out.Room, out.TargetMembership, out.EventID
 	return res, nil
 }
