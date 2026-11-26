@@ -1,9 +1,8 @@
 /**
  * Deny the `ask` tool while a goal is engaged.
  *
- * While a goal is active or budget-limited, the session runs unattended and no
- * user is watching to answer `ask`. The gate denies `ask` with a model-facing
- * reason so the model decides from context and continues.
+ * When goal state reports engagement, the gate denies `ask` with a model-facing
+ * reason so the model can choose the applicable workflow route.
  *
  * Engagement comes from a cache keyed by session id, set by `goal_updated`, with
  * a live `ctx.sessionModes` overlay for goals restored before the cache is
