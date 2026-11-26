@@ -197,22 +197,21 @@ Supervisor routes begin with [coordinator runtime](../references/workflow-runtim
 
 ### Violation re-read escalation
 
-An ECI role that finds another agent violating an applicable ECI duty starts this escalation. Identify the occurrence by the violator, the breached duty, and the original act or missed checkpoint, not its discovery. The enforcer depends on the violator's role:
+An ECI role that finds another agent violating an applicable ECI duty starts this escalation. Identify the occurrence by the violator, the breached duty, and the original act or missed checkpoint, not its discovery. Choose the default enforcer by the duty breached at that act or checkpoint. An interim publisher acts in its own role, not as the Job's Orchestrator.
 
-| Violator | Enforcer |
+| Role whose duty was breached | Default enforcer |
 |---|---|
 | Helper | its spawning Worker |
 | Worker other than a Helper | the owner of its Job |
-| Child Job owner | the owner of the parent Job |
-| Root Job owner | the Supervisor |
+| Current or former Job owner, or unpublished Orchestrator candidate | the Job's current publisher |
 
-Use [violation escalation routing](references/task-orchestrator.md#publication-transfer-and-report-drain) for Supervisor violations and retired Jobs.
+Use [violation escalation routing](references/task-orchestrator.md#publication-transfer-and-report-drain) for Supervisor violations, retired Jobs, and enforcer succession.
 
 Send the finding and evidence toward the enforcer one hop at a time on existing ownership routes. If the next hop is the violator, write directly to the next unimplicated role via `agent://<id>`. For a Supervisor violation, a root Job owner that is not the enforcer writes directly to the enforcer. Use ordinary report routing and recovery on failed delivery or an owner change, subject to the [ladder custody exception](references/task-orchestrator.md#publication-transfer-and-report-drain). The route exception carries only this escalation and grants no other authority.
 
 The enforcer runs one ladder per occurrence and sends each list to every finder along the reverse route. A late finder receives the lists already returned; continue only the next required step, if any. A distinct later breach starts a new ladder. The violator must comply with the enforcer's requests. Until a list identifies the found violation or step 3 is due, do not identify it or give identifying rule details or evidence in ladder messages to the violator.
 
-Finish one re-read sequence before requesting a read for a different occurrence in the same enforcer–violator pair. Include a non-identifying request reference in each demand and its returned list. Advance only the matching pending step. Preserve or restore the pending list's reply source under the Parking rule.
+Finish one re-read sequence before requesting a read for a different occurrence in the same enforcer–violator pair. Give each demand its own non-identifying reference, distinct even from another demand for the same occurrence. The violator echoes it in the list. Keep the reference unchanged through relay or handover. Only a list for the pending demand advances the step. Preserve or restore the pending list's reply source under the Parking rule.
 
 For each re-read, the violator fully reads this router, its required and applicable conditional [modules](#module-routing), and the ECI instructions that govern its role and assignment, including applicable instructions in its assignment packet, [RULES.md](../../RULES.md), and the [binding contract](../../eci-binding-contract.md). Do not load modules excluded by role or predicate.
 
