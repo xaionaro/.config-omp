@@ -26,4 +26,9 @@ func (Secret) GoString() string { return redactedSecret }
 // Format redacts the secret under every verb, including %x and %d, which bypass String.
 //
 // Example: fmt.Sprintf("%x", Secret("pw")) == "<redacted>".
-func (Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(redactedSecret)) }
+func (Secret) Format(
+	f fmt.State,
+	_ rune,
+) {
+	_, _ = f.Write([]byte(redactedSecret))
+}

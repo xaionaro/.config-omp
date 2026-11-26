@@ -15,32 +15,59 @@ import (
 //
 // Example: env[envPassword] is Hermes's Matrix password.
 const (
+	// envHomeserver names the homeserver URL in Hermes's .env.
+	//
+	// Example: MATRIX_HOMESERVER=https://matrix.example.
 	envHomeserver = "MATRIX_HOMESERVER"
-	envUserID     = "MATRIX_USER_ID"
-	envPassword   = "MATRIX_PASSWORD"
-	envDeviceID   = "MATRIX_DEVICE_ID"
+	// envUserID names Hermes's Matrix user ID in its .env.
+	//
+	// Example: MATRIX_USER_ID=@bot:matrix.example.
+	envUserID = "MATRIX_USER_ID"
+	// envPassword names Hermes's Matrix password in its .env.
+	//
+	// Example: env[envPassword] is the password this tool logs in with.
+	envPassword = "MATRIX_PASSWORD"
+	// envDeviceID names Hermes's own device ID in its .env; it is read only to refuse that device.
+	//
+	// Example: checkSession rejects a session whose DeviceID equals env[envDeviceID].
+	envDeviceID = "MATRIX_DEVICE_ID"
 	// httpsScheme is the only homeserver URL scheme accepted.
+	//
+	// Example: "http://hs" fails with CategoryCredentials.
 	httpsScheme = "https"
 	// homeserverTrailingSlash is trimmed so "https://hs/" and "https://hs" bind the same Account.
+	//
+	// Example: strings.TrimRight("https://hs/", homeserverTrailingSlash) == "https://hs".
 	homeserverTrailingSlash = "/"
 	// dotenvValueCutset is what Python's str.rstrip() removes from an unquoted value, restricted to ASCII.
-	dotenvValueCutset = " \t\n\r\v\f"
+	//
+	// Example: "v\x1c " trims to "v".
+	dotenvValueCutset = " \t\n\r\v\f\x1c\x1d\x1e\x1f"
 	// accountKeySeparator joins homeserver and user ID in Account.RoomsKey; changing it orphans saved rooms.
+	//
+	// Example: "https://hs" + accountKeySeparator + "@bot:hs".
 	accountKeySeparator = "|"
 )
+
+// Homeserver is a Matrix homeserver base URL: https, with a host, without a trailing slash.
+//
+// Example: Homeserver("https://matrix.example").
+type Homeserver string
 
 // Account identifies one Matrix account on one homeserver origin; stored sessions and rooms are bound to it.
 //
 // Example: Account{Homeserver: "https://matrix.example", UserID: "@bot:matrix.example"}.
 type Account struct {
-	Homeserver string    `json:"homeserver"`
-	UserID     id.UserID `json:"user_id"`
+	Homeserver Homeserver `json:"homeserver"`
+	UserID     id.UserID  `json:"user_id"`
 }
 
 // RoomsKey returns the account's persisted key in the rooms file; its format must never change.
 //
 // Example: "https://matrix.example|@bot:matrix.example".
-func (a Account) RoomsKey() string { return a.Homeserver + accountKeySeparator + a.UserID.String() }
+func (a Account) RoomsKey() string {
+	return string(a.Homeserver) + accountKeySeparator + a.UserID.String()
+}
 
 // HermesCredentials are Hermes's Matrix account settings, read in place from its .env on every run.
 //
@@ -58,25 +85,70 @@ type HermesCredentials struct {
 //
 // Example: r.read(dotenvUnquotedKey) consumes "KEY" from "KEY=v".
 //
-// TODO: Go's \s is [\t\n\f\r ], but Python's str-pattern \s and str.rstrip() also match \v, \x1c-\x1f, \x85 and
-// Unicode spaces, so a .env that uses those characters as separators parses differently from Hermes; mirror Python's
-// whitespace class in these patterns and in the value trim.
+// TODO: Go's \s is [\t\n\f\r ], but Python's str-pattern \s also matches \v, \x1c-\x1f, \x85 and Unicode spaces, and
+// str.rstrip() also strips \x85 and Unicode spaces, so a .env that uses those characters as separators or trailing
+// whitespace parses differently from Hermes; mirror Python's whitespace class in these patterns and in the value trim.
 var (
+	// dotenvMultilineWhitespace skips blank lines and leading whitespace before a binding.
+	//
+	// Example: consumes "\n  " before "KEY=v".
 	dotenvMultilineWhitespace = regexp.MustCompile(`^\s*`)
-	dotenvExport              = regexp.MustCompile(`^(?:export[^\S\r\n]+)?`)
-	dotenvSingleQuotedKey     = regexp.MustCompile(`^'([^']+)'`)
-	dotenvUnquotedKey         = regexp.MustCompile(`^([^=#\s]+)`)
-	dotenvWhitespace          = regexp.MustCompile(`^[^\S\r\n]*`)
-	dotenvEqualSign           = regexp.MustCompile(`^(=[^\S\r\n]*)`)
-	dotenvSingleQuotedValue   = regexp.MustCompile(`^'((?:\\'|[^'])*)'`)
-	dotenvDoubleQuotedValue   = regexp.MustCompile(`^"((?:\\"|[^"])*)"`)
-	dotenvUnquotedValue       = regexp.MustCompile(`^([^\r\n]*)`)
-	dotenvComment             = regexp.MustCompile(`^(?:[^\S\r\n]*#[^\r\n]*)?`)
-	dotenvEndOfLine           = regexp.MustCompile(`^[^\S\r\n]*(?:\r\n|\n|\r|$)`)
-	dotenvRestOfLine          = regexp.MustCompile(`^[^\r\n]*(?:\r|\n|\r\n)?`)
-	dotenvInlineComment       = regexp.MustCompile(`\s+#.*`)
-	dotenvDoubleQuoteEscapes  = regexp.MustCompile(`\\[\\'"abfnrtv]`)
-	dotenvSingleQuoteEscapes  = regexp.MustCompile(`\\[\\']`)
+	// dotenvExport consumes an optional "export " prefix.
+	//
+	// Example: "export KEY=v" continues at "KEY".
+	dotenvExport = regexp.MustCompile(`^(?:export[^\S\r\n]+)?`)
+	// dotenvSingleQuotedKey reads a key written in single quotes.
+	//
+	// Example: "'KEY'=v" yields KEY.
+	dotenvSingleQuotedKey = regexp.MustCompile(`^'([^']+)'`)
+	// dotenvUnquotedKey reads a bare key up to "=", "#" or whitespace.
+	//
+	// Example: "KEY=v" yields KEY.
+	dotenvUnquotedKey = regexp.MustCompile(`^([^=#\s]+)`)
+	// dotenvWhitespace skips spaces and tabs within a line.
+	//
+	// Example: "KEY = v" continues at "=".
+	dotenvWhitespace = regexp.MustCompile(`^[^\S\r\n]*`)
+	// dotenvEqualSign consumes "=" and the whitespace after it.
+	//
+	// Example: "= v" continues at "v".
+	dotenvEqualSign = regexp.MustCompile(`^(=[^\S\r\n]*)`)
+	// dotenvSingleQuotedValue reads a single-quoted value, allowing \'.
+	//
+	// Example: `'it\'s'` yields `it\'s` before escape decoding.
+	dotenvSingleQuotedValue = regexp.MustCompile(`^'((?:\\'|[^'])*)'`)
+	// dotenvDoubleQuotedValue reads a double-quoted value, allowing \" and newlines.
+	//
+	// Example: `"a\"b"` yields `a\"b` before escape decoding.
+	dotenvDoubleQuotedValue = regexp.MustCompile(`^"((?:\\"|[^"])*)"`)
+	// dotenvUnquotedValue reads the rest of the line as a bare value.
+	//
+	// Example: "plain # c" yields "plain # c" before comment removal.
+	dotenvUnquotedValue = regexp.MustCompile(`^([^\r\n]*)`)
+	// dotenvComment consumes an optional trailing comment.
+	//
+	// Example: ` # note` after a quoted value.
+	dotenvComment = regexp.MustCompile(`^(?:[^\S\r\n]*#[^\r\n]*)?`)
+	// dotenvEndOfLine requires the binding to end here.
+	//
+	// Example: `"a" junk` fails, so the line is skipped.
+	dotenvEndOfLine = regexp.MustCompile(`^[^\S\r\n]*(?:\r\n|\n|\r|$)`)
+	// dotenvRestOfLine skips an invalid binding's line; it matches the empty string, so it never fails.
+	//
+	// Example: skips `KEY "x` and its newline.
+	dotenvRestOfLine = regexp.MustCompile(`^[^\r\n]*(?:\r|\n|\r\n)?`)
+	// dotenvInlineComment removes a whitespace-preceded comment from an unquoted value.
+	//
+	// Example: "plain # c" becomes "plain".
+	dotenvInlineComment = regexp.MustCompile(`\s+#.*`)
+	// dotenvDoubleQuoteEscapes finds the escapes decoded inside double quotes.
+	//
+	// Example: matches `\n` in `"a\nb"`.
+	dotenvDoubleQuoteEscapes = regexp.MustCompile(`\\[\\'"abfnrtv]`)
+	// dotenvSingleQuoteEscapes finds the escapes decoded inside single quotes.
+	//
+	// Example: matches `\'` in `'it\'s'`.
+	dotenvSingleQuoteEscapes = regexp.MustCompile(`\\[\\']`)
 )
 
 // dotenvEscapes decodes the escapes python-dotenv decodes with Python's unicode-escape codec.
@@ -134,7 +206,11 @@ func parseDotenv(text string) map[string]string {
 		key, value, hasValue, err := parseDotenvBinding(r)
 		if err != nil {
 			r.pos = start
-			_, _ = r.read(dotenvRestOfLine) // always matches
+			// dotenvRestOfLine matches the empty string, so this read cannot fail; a failure would leave the cursor
+			// in place and loop forever.
+			if _, err := r.read(dotenvRestOfLine); err != nil {
+				panic(fmt.Sprintf("dotenvRestOfLine did not match: %v", err))
+			}
 			continue
 		}
 		if key != "" && hasValue {
@@ -239,18 +315,19 @@ func loadHermesCredentials(path string) (HermesCredentials, error) {
 		return HermesCredentials{}, categorize(CategoryCredentials, fmt.Errorf("read Hermes env: %w", err))
 	}
 	env := parseDotenv(string(b))
+	homeserver := strings.TrimRight(env[envHomeserver], homeserverTrailingSlash)
 	creds := HermesCredentials{
-		Account:        Account{Homeserver: strings.TrimRight(env[envHomeserver], homeserverTrailingSlash), UserID: id.UserID(env[envUserID])},
+		Account:        Account{Homeserver: Homeserver(homeserver), UserID: id.UserID(env[envUserID])},
 		Password:       Secret(env[envPassword]),
 		HermesDeviceID: id.DeviceID(env[envDeviceID]),
 	}
 	var errs []error
-	for _, kv := range [][2]string{{envHomeserver, creds.Homeserver}, {envUserID, creds.UserID.String()}, {envPassword, string(creds.Password)}} {
+	for _, kv := range [][2]string{{envHomeserver, homeserver}, {envUserID, creds.UserID.String()}, {envPassword, string(creds.Password)}} {
 		if kv[1] == "" {
 			errs = append(errs, fmt.Errorf("%s missing in %s", kv[0], path))
 		}
 	}
-	if u, err := url.Parse(creds.Homeserver); creds.Homeserver != "" && (err != nil || u.Scheme != httpsScheme || u.Host == "") {
+	if u, err := url.Parse(homeserver); homeserver != "" && (err != nil || u.Scheme != httpsScheme || u.Host == "") {
 		errs = append(errs, errors.New(envHomeserver+" must be an https URL with a host"))
 	}
 	if err := errors.Join(errs...); err != nil {

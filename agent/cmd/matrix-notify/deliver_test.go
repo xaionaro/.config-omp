@@ -59,8 +59,8 @@ func (f *fakeAPI) ShareRoomKey(_ context.Context, room id.RoomID, recipient id.U
 	return f.keyed, f.shareErr
 }
 
-func (f *fakeAPI) SendEncrypted(_ context.Context, room id.RoomID, text string) (id.EventID, error) {
-	f.calls = append(f.calls, "send "+room.String()+" "+text)
+func (f *fakeAPI) SendEncrypted(_ context.Context, room id.RoomID, message Message) (id.EventID, error) {
+	f.calls = append(f.calls, "send "+room.String()+" "+string(message))
 	return f.sendResult, f.sendErr
 }
 
@@ -115,13 +115,13 @@ func TestRecipientAliases(t *testing.T) {
 }
 
 func TestValidMessage(t *testing.T) {
-	for _, bad := range []string{"", " ", "\n\t "} {
+	for _, bad := range []Message{"", " ", "\n\t "} {
 		if validMessage(bad) {
 			t.Errorf("%q accepted", bad)
 		}
 	}
 	if !validMessage("  hi $(rm -rf) ") {
-		t.Error("text rejected")
+		t.Error("message rejected")
 	}
 }
 

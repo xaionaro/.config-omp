@@ -7,10 +7,12 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 // Runs the prebuilt Go sender from agent/cmd/matrix-notify. It reads Hermes's Matrix credentials in place and sends
 // as its own device; no secret passes through omp. The Go sender owns the alias→Matrix ID table, input validation,
 // and the runbook (its main.go package doc).
-const SENDER_DIR = join(homedir(), ".omp/agent/cmd/matrix-notify");
-const SENDER_BINARY = join(SENDER_DIR, "matrix-notify");
-export const RUNBOOK = "~/.omp/agent/cmd/matrix-notify/main.go";
-const BUILD_HINT = "build it with: cd ~/.omp/agent/cmd/matrix-notify && go build -tags goolm -o matrix-notify .";
+// The sender's module directory under the home directory; the binary, the runbook and the build command derive from it.
+const SENDER_DIR_IN_HOME = ".omp/agent/cmd/matrix-notify";
+const SENDER_BINARY_NAME = "matrix-notify";
+const SENDER_BINARY = join(homedir(), SENDER_DIR_IN_HOME, SENDER_BINARY_NAME);
+export const RUNBOOK = `~/${SENDER_DIR_IN_HOME}/main.go`;
+const BUILD_HINT = `build it with \`cd ~/${SENDER_DIR_IN_HOME} && go build -tags goolm -o ${SENDER_BINARY_NAME} .\``;
 const RUNBOOK_POINTER = `See ${RUNBOOK} for causes and recovery.`;
 // The Go sender owns the run budget via -deadline; the kill comes later so it can still report its JSON result.
 const SENDER_DEADLINE_S = 120;
@@ -115,8 +117,9 @@ function isExecutable(binary: string): boolean {
 // matrixSenderBinary runs the binary directly (no shell), passes the message on stdin and trusts only its JSON stdout.
 export function matrixSenderBinary(binary: string): MatrixSender {
   return (to, message, signal) => {
-    // TODO: an executable check cannot tell a stale binary from a current one; embed a source digest at build time
-    // (-ldflags -X) and refuse a mismatch with BUILD_HINT.
+    // TODO: an executable check cannot tell a stale binary from a current one; have the sender report its embedded
+    // build info (debug.ReadBuildInfo: vcs.revision, vcs.modified) and refuse with BUILD_HINT when
+    // agent/cmd/matrix-notify differs from that revision.
     if (!isExecutable(binary)) return Promise.resolve({ status: "not_built" });
     const { promise, resolve } = Promise.withResolvers<MatrixSendResult>();
     const args = ["-to", to, "-deadline", `${SENDER_DEADLINE_S}s`];

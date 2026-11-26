@@ -34,14 +34,19 @@
 //	credentials  MATRIX_HOMESERVER (https URL with a host), MATRIX_USER_ID or MATRIX_PASSWORD missing in Hermes's .env.
 //	state        the state directory or a file in it is unreadable or unwritable: check permissions and disk space.
 //	identity     the saved session or crypto store does not match Hermes's account, or is Hermes's own device: delete
-//	             session.json, pickle.key, crypto.db* and rooms.json from the state directory, then remove the stale
-//	             "OMP Matrix notify" device in a Matrix client. The next run logs in as a new device.
+//	             session.json, pickle.key and crypto.db* from the state directory, then remove the stale
+//	             "OMP Matrix notify" device in a Matrix client. The next run logs in as a new device. Keep rooms.json:
+//	             its rooms belong to the account, not the device, so the new device reuses them.
 //	auth         the homeserver rejected the password or token: check MATRIX_PASSWORD; a revoked token renews itself.
 //	network      the homeserver could not be reached: retry later.
 //	room         room state, m.direct or room creation failed: check the account's rooms in a Matrix client.
 //	crypto       key query, sharing or encryption failed: retry; if it persists, reset as for identity.
 //	send         the homeserver rejected the event: retry later.
 //	internal     an unexpected failure: rerun -resolve-only to narrow it down.
+//
+// TODO: credentials also covers a missing or unreadable .env (check HERMES_HOME), and state also covers a lock another
+// run held until the deadline, a malformed session.json or rooms.json, and a pickle.key of the wrong size; add these
+// causes and their actions to the lines above.
 package main
 
 import (
@@ -59,20 +64,61 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// Process exit codes, limits and default locations. The omp extension passes -deadline and kills only after it.
+// exitCode is the sender's process exit status; the runbook's status table maps each value.
 //
-// Example: os.Exit(exitPending) after a key_pending result.
+// Example: os.Exit(int(exitPending)) after a key_pending result.
+type exitCode int
+
+// Exit codes, in the runbook's order.
+//
+// Example: report returns exitUnknown for StatusUnknown.
 const (
-	exitOK          = 0
-	exitError       = 1
-	exitPending     = 2
-	exitUnknown     = 3
+	// exitOK: sent, resolved or absent.
+	//
+	// Example: a send Matrix accepted exits exitOK.
+	exitOK exitCode = 0
+	// exitError: not sent; the JSON "error" field names the category.
+	//
+	// Example: a bad alias exits exitError.
+	exitError exitCode = 1
+	// exitPending: not sent, because the recipient must join or has no device that can get the key.
+	//
+	// Example: key_pending exits exitPending.
+	exitPending exitCode = 2
+	// exitUnknown: the send request may have been stored.
+	//
+	// Example: a dropped /send connection exits exitUnknown.
+	exitUnknown exitCode = 3
+)
+
+// Process limits and default locations. The omp extension passes -deadline and kills only after it.
+//
+// Example: filepath.Join(home, stateDirInHome).
+const (
+	// defaultDeadline bounds a direct CLI run; the omp tool passes its own -deadline.
+	//
+	// Example: matrix-notify -to void gives up after defaultDeadline.
 	defaultDeadline = 2 * time.Minute
-	privateUmask    = 0o077
-	hermesHomeEnv   = "HERMES_HOME"
-	hermesHomeDir   = ".hermes"
-	hermesEnvFile   = ".env"
-	stateDirInHome  = ".omp/agent/matrix-notify"
+	// privateUmask makes every file this process creates readable only by the user.
+	//
+	// Example: unix.Umask(privateUmask).
+	privateUmask = 0o077
+	// hermesHomeEnv overrides Hermes's home directory, as Hermes itself honors it.
+	//
+	// Example: HERMES_HOME=/srv/hermes reads /srv/hermes/.env.
+	hermesHomeEnv = "HERMES_HOME"
+	// hermesHomeDir is Hermes's home directory under the user's home when hermesHomeEnv is unset.
+	//
+	// Example: ~/.hermes.
+	hermesHomeDir = ".hermes"
+	// hermesEnvFile is the dotenv file in Hermes's home that holds the Matrix credentials.
+	//
+	// Example: ~/.hermes/.env.
+	hermesEnvFile = ".env"
+	// stateDirInHome is this tool's private state directory under the user's home.
+	//
+	// Example: ~/.omp/agent/matrix-notify.
+	stateDirInHome = ".omp/agent/matrix-notify"
 )
 
 // Result is the single JSON object printed per run; testdata/wire.json pins its exact form.
@@ -106,7 +152,7 @@ func main() {
 	unix.Umask(privateUmask)
 	home, err := os.UserHomeDir()
 	if err != nil {
-		os.Exit(report(os.Stdout, Result{}, categorize(CategoryState, err)))
+		os.Exit(int(report(os.Stdout, Result{}, categorize(CategoryState, err))))
 	}
 	hermesHome := os.Getenv(hermesHomeEnv)
 	if hermesHome == "" {
@@ -116,6 +162,9 @@ func main() {
 	flag.StringVar(&cfg.To, "to", "", "recipient alias: void or vickey")
 	flag.BoolVar(&cfg.ResolveOnly, "resolve-only", false, "report the DM room; never create, invite, share keys or send")
 	deadline := flag.Duration("deadline", defaultDeadline, "give up after this long")
+	// TODO: a flag error or a Go runtime panic exits 2 without a JSON line, which the exit table reads as pending (not
+	// sent), though a panic after /send may have sent; parse flags with flag.ContinueOnError to report input as JSON,
+	// and state in the runbook that a run without a JSON line has an unknown outcome.
 	flag.Parse()
 
 	// TODO: SIGTERM/SIGINT end the process without cancelling ctx, so a run killed mid-request prints nothing (the
@@ -126,18 +175,18 @@ func main() {
 	cancel()
 	// TODO: only the category leaves the process, so causes are lost; write a private, secret-free local debug log
 	// in the state dir (go-belt via ctx).
-	os.Exit(report(os.Stdout, res, err))
+	os.Exit(int(report(os.Stdout, res, err)))
 }
 
 // report writes res as JSON with err reduced to its category, and returns the exit code; an unwritable result is an
 // error.
 //
-// Example: os.Exit(report(os.Stdout, res, err)).
+// Example: os.Exit(int(report(os.Stdout, res, err))).
 func report(
 	w io.Writer,
 	res Result,
 	err error,
-) int {
+) exitCode {
 	code := exitOK
 	switch {
 	case err != nil:
@@ -187,13 +236,13 @@ func run(
 		return res, err
 	}
 	res.To, res.RecipientMXID = to, to.MXID()
-	var message string
+	var message Message
 	if !cfg.ResolveOnly {
 		b, err := io.ReadAll(stdin)
 		if err != nil {
 			return res, categorize(CategoryInput, fmt.Errorf("read message: %w", err))
 		}
-		if message = string(b); !validMessage(message) {
+		if message = Message(b); !validMessage(message) {
 			return res, categorize(CategoryInput, errors.New("empty message"))
 		}
 	}

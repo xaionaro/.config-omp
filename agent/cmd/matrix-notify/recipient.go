@@ -17,8 +17,17 @@ type Recipient int
 //
 // Example: RecipientVickey.MXID().
 const (
+	// RecipientUnset is the zero value, never a valid target.
+	//
+	// Example: Result{}.To == RecipientUnset before parsing.
 	RecipientUnset Recipient = iota
+	// RecipientVoid is the user, @xaionaro:matrix.dx.center.
+	//
+	// Example: parseRecipient("void").
 	RecipientVoid
+	// RecipientVickey is @danusya:matrix.dx.center.
+	//
+	// Example: parseRecipient("vickey").
 	RecipientVickey
 )
 

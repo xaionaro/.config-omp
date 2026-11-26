@@ -22,22 +22,23 @@ const testRoom id.RoomID = "!r:hs"
 
 // fakeHomeserver implements the Matrix endpoints connect, deliver and the crypto machine use, and records requests.
 type fakeHomeserver struct {
-	t            *testing.T
-	srv          *httptest.Server
-	mu           sync.Mutex
-	loginDown    bool
-	unknownToken bool
-	whoamiDevice id.DeviceID
-	logins       []map[string]any
-	ownKeys      json.RawMessage
-	targetKeys   map[id.DeviceID]*mautrix.DeviceKeys
-	sentTypes    []string
-	sentBodies   []string
-	paths        []string
-	targetAccts  map[id.DeviceID]*crypto.OlmAccount
-	offerOTK     bool
-	claims       int
-	sendFault    sendFault
+	t              *testing.T
+	srv            *httptest.Server
+	mu             sync.Mutex
+	loginDown      bool
+	unknownToken   bool
+	whoamiDevice   id.DeviceID
+	logins         []map[string]any
+	ownKeys        json.RawMessage
+	targetKeys     map[id.DeviceID]*mautrix.DeviceKeys
+	sentTypes      []string
+	sentBodies     []string
+	paths          []string
+	targetAccts    map[id.DeviceID]*crypto.OlmAccount
+	offerOTK       bool
+	claims         int
+	sendFault      sendFault
+	loginForbidden bool
 }
 
 func newHomeserver(t *testing.T) *fakeHomeserver {
@@ -51,7 +52,7 @@ func newHomeserver(t *testing.T) *fakeHomeserver {
 }
 
 func (hs *fakeHomeserver) creds() HermesCredentials {
-	return HermesCredentials{Account: Account{Homeserver: hs.srv.URL, UserID: sender}, Password: "pw", HermesDeviceID: "HERMESDEV"}
+	return HermesCredentials{Account: Account{Homeserver: Homeserver(hs.srv.URL), UserID: sender}, Password: "pw", HermesDeviceID: "HERMESDEV"}
 }
 
 func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +64,10 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 	reply := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 	switch {
 	case strings.HasSuffix(p, "/v3/login"):
+		if hs.loginForbidden {
+			matrixError(w, 403, "M_FORBIDDEN")
+			return
+		}
 		if hs.loginDown {
 			w.WriteHeader(http.StatusBadGateway)
 			return
@@ -125,6 +130,12 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 		case sendRejected:
 			matrixError(w, 400, "M_UNKNOWN")
 			return
+		case sendServerError:
+			matrixError(w, 502, "M_UNKNOWN")
+			return
+		case sendForbidden:
+			matrixError(w, 403, "M_FORBIDDEN")
+			return
 		}
 		parts := strings.Split(p, "/")
 		hs.sentTypes = append(hs.sentTypes, parts[len(parts)-2])
@@ -165,11 +176,13 @@ type sendFault int
 
 // The /send behaviors.
 //
-// Example: sendRejected answers with a Matrix error.
+// Example: sendRejected answers with a 4xx Matrix error.
 const (
 	sendAccepted sendFault = iota
 	sendDropped
 	sendRejected
+	sendServerError
+	sendForbidden
 )
 
 // claimableKeys returns one signed one-time key per target device when offerOTK is set, else none.
@@ -324,9 +337,12 @@ func TestRealPathKeyPendingRecoversToCiphertextSend(t *testing.T) {
 	}
 }
 
-// T2 (real SDK): a dropped /send leaves the outcome unknown; a Matrix error answer proves the event was not stored.
-func TestSendOutcomeUnknownOnlyWithoutMatrixAnswer(t *testing.T) {
-	for fault, want := range map[sendFault]Status{sendDropped: StatusUnknown, sendRejected: StatusUnset} {
+// RT1 (real SDK): only a 4xx Matrix answer to /send proves the event was not stored; a dropped connection or a 5xx
+// Matrix answer leaves the outcome unknown, and a 403 is a send refusal, not an auth failure.
+func TestSendOutcomeUnknownUnlessHomeserverRefused(t *testing.T) {
+	for fault, want := range map[sendFault]Status{
+		sendDropped: StatusUnknown, sendServerError: StatusUnknown, sendRejected: StatusUnset, sendForbidden: StatusUnset,
+	} {
 		hs := newHomeserver(t)
 		hs.addRecipientDevice(t, "TDEV")
 		hs.offerOTK = true
@@ -339,12 +355,21 @@ func TestSendOutcomeUnknownOnlyWithoutMatrixAnswer(t *testing.T) {
 		switch want {
 		case StatusUnknown:
 			if err != nil || out.Status != StatusUnknown || out.RoomID != testRoom || out.EventID != "" {
-				t.Errorf("dropped: %+v %v", out, err)
+				t.Errorf("fault %d: %+v %v", fault, out, err)
 			}
 		default:
 			if categoryOf(err) != CategorySend || out.Status != StatusUnset {
-				t.Errorf("rejected: %+v %v", out, err)
+				t.Errorf("fault %d: %+v %v", fault, out, err)
 			}
 		}
+	}
+}
+
+// RT2 (login side): a 403 M_FORBIDDEN on /login is a credential rejection, reported as auth.
+func TestLoginForbiddenIsAuth(t *testing.T) {
+	hs := newHomeserver(t)
+	hs.loginForbidden = true
+	if _, err := hs.connect(t, t.TempDir()); categoryOf(err) != CategoryAuth {
+		t.Fatalf("login 403: %v", err)
 	}
 }

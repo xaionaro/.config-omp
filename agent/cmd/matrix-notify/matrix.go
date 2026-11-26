@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
@@ -144,49 +145,70 @@ func (m *MautrixAPI) ShareRoomKey(
 }
 
 // SendEncrypted encrypts explicitly and sends only the m.room.encrypted event, so no code path emits plaintext.
-// Failures before the request and Matrix error answers are marked not stored; a transport failure or deadline
-// during the request is left unmarked, because the homeserver may have stored the event.
+// Failures before the request and 4xx Matrix error answers are marked not stored; a 5xx answer, a transport failure
+// or a deadline is left unmarked, because the homeserver may have stored the event.
 //
 // Example: ev, err := api.SendEncrypted(ctx, room, "hello").
 func (m *MautrixAPI) SendEncrypted(
 	ctx context.Context,
 	room id.RoomID,
-	text string,
+	message Message,
 ) (id.EventID, error) {
 	if m.Crypto == nil {
 		return "", markNotStored(categorize(CategoryCrypto, errors.New("crypto not initialized")))
 	}
-	enc, err := m.Crypto.Encrypt(ctx, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: text})
+	enc, err := m.Crypto.Encrypt(ctx, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: string(message)})
 	if err != nil {
 		return "", markNotStored(classifyHTTP(err, CategoryCrypto))
 	}
-	resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc)
-	var httpErr mautrix.HTTPError
-	switch {
+	switch resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc); {
 	case err == nil:
 		return resp.EventID, nil
-	case errors.As(err, &httpErr) && httpErr.RespError != nil:
+	case homeserverRefused(err):
 		return "", markNotStored(classifyHTTP(err, CategorySend))
 	default:
-		return "", categorize(CategoryNetwork, err)
+		return "", classifyHTTP(err, CategorySend)
 	}
 }
 
-// classifyHTTP categorizes a homeserver call failure: rejected credentials are auth, failures without a Matrix
-// response are network, and anything else is the caller's fallback.
+// asHTTPError extracts mautrix's HTTPError from err.
+//
+// Example: if httpErr, ok := asHTTPError(err); ok && httpErr.RespError != nil { ... }.
+func asHTTPError(err error) (mautrix.HTTPError, bool) {
+	var httpErr mautrix.HTTPError
+	ok := errors.As(err, &httpErr)
+	return httpErr, ok
+}
+
+// homeserverRefused reports whether err is a Matrix error answer with a 4xx status: the homeserver refused the
+// request and stored nothing. A 5xx Matrix error does not count, because a server can fail after storing the event
+// (a worker deployment answers 502 M_UNKNOWN when the connection to its event persister drops).
+//
+// Example: homeserverRefused(err) is true for /send answered 429 M_LIMIT_EXCEEDED and false for 502 M_UNKNOWN.
+func homeserverRefused(err error) bool {
+	httpErr, ok := asHTTPError(err)
+	return ok && httpErr.RespError != nil &&
+		httpErr.RespError.StatusCode >= http.StatusBadRequest && httpErr.RespError.StatusCode < http.StatusInternalServerError
+}
+
+// classifyHTTP categorizes a homeserver call failure: a rejected access token is auth, failures without a Matrix
+// response are network, and any other Matrix error is the caller's fallback (login and whoami pass auth).
 //
 // Example: classifyHTTP(err, CategoryRoom) for a failed /state.
+//
+// TODO: a Matrix error answer to login or whoami that is not a credential rejection (for example M_LIMIT_EXCEEDED or
+// a 5xx) reports auth, and an M_TOO_LARGE event reports send, whose runbook actions (check MATRIX_PASSWORD; retry
+// later) do not fit; give these answers a category or runbook action of their own.
 func classifyHTTP(
 	err error,
 	fallback Category,
 ) error {
-	var httpErr mautrix.HTTPError
-	switch {
-	case errors.Is(err, mautrix.MUnknownToken), errors.Is(err, mautrix.MForbidden):
+	switch httpErr, isHTTP := asHTTPError(err); {
+	case errors.Is(err, mautrix.MUnknownToken):
 		return categorize(CategoryAuth, err)
-	case errors.As(err, &httpErr) && httpErr.RespError != nil:
+	case isHTTP && httpErr.RespError != nil:
 		return categorize(fallback, err)
-	case errors.As(err, &httpErr):
+	case isHTTP:
 		return categorize(CategoryNetwork, err)
 	default:
 		return categorize(fallback, err)

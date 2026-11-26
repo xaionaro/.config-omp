@@ -53,6 +53,17 @@ L=wins
 	}
 }
 
+// RT4: like python-dotenv's str.rstrip(), the unquoted-value trim strips trailing \x1c-\x1f, but keeps inner ones.
+func TestParseDotenvTrimsPythonASCIIWhitespace(t *testing.T) {
+	env := parseDotenv("A=val\x1c\x1d\x1e\x1f \nB=in\x1cside\n")
+	if env["A"] != "val" {
+		t.Errorf("A: %q", env["A"])
+	}
+	if env["B"] != "in\x1cside" {
+		t.Errorf("B: %q", env["B"])
+	}
+}
+
 func TestParseDotenvRoundTripsHermesQuoting(t *testing.T) {
 	for _, pw := range []string{`p"w`, `back\slash`, `has # hash`, `it's`, `sp ace`, `plain\x`, `#lead`} {
 		env := parseDotenv("MATRIX_PASSWORD=" + quoteLikeHermes(pw) + "\n")

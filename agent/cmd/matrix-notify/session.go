@@ -82,8 +82,7 @@ func checkOrphanStore(
 	if s != nil {
 		return nil
 	}
-	_, err := os.Stat(filepath.Join(dir, cryptoDBFile))
-	switch {
+	switch _, err := os.Stat(filepath.Join(dir, cryptoDBFile)); {
 	case err == nil:
 		return categorize(CategoryIdentity, errors.New("crypto store exists without a session"))
 	case errors.Is(err, os.ErrNotExist):

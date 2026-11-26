@@ -16,13 +16,37 @@ type Status int
 //
 // Example: a resolve-only run returns StatusResolved or StatusAbsent.
 const (
+	// StatusUnset is the zero value: no outcome yet.
+	//
+	// Example: settleCleanup treats StatusUnset as "no outcome to keep".
 	StatusUnset Status = iota
+	// StatusSent means Matrix accepted the encrypted event and returned its ID.
+	//
+	// Example: Outcome{Status: StatusSent, EventID: ev}.
 	StatusSent
+	// StatusResolved is a resolve-only run that found a valid DM.
+	//
+	// Example: -resolve-only with an existing DM.
 	StatusResolved
-	StatusAbsent // resolve-only: no valid DM exists; a send would create one
+	// StatusAbsent is a resolve-only run that found no valid DM; a send would create one.
+	//
+	// Example: -resolve-only for a recipient never messaged.
+	StatusAbsent
+	// StatusInvitePending means not sent: the recipient is invited and history is hidden until they join.
+	//
+	// Example: an invite-only DM with history_visibility joined.
 	StatusInvitePending
+	// StatusKeyPending means not sent: no recipient device could receive the room key.
+	//
+	// Example: every recipient device lacks a claimable one-time key.
 	StatusKeyPending
-	StatusUnknown // the send request may have been stored: no event ID and no proof it was rejected
+	// StatusUnknown means the send request may have been stored: no event ID and no proof it was refused.
+	//
+	// Example: /send answered 502 M_UNKNOWN.
+	StatusUnknown
+	// StatusError means not sent; the result's error field names the category.
+	//
+	// Example: report sets StatusError for any run error.
 	StatusError
 )
 

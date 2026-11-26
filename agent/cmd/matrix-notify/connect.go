@@ -37,7 +37,7 @@ func connect(
 	if err := checkOrphanStore(stateDir, sess); err != nil {
 		return nil, err
 	}
-	cli, err := mautrix.NewClient(creds.Homeserver, "", "")
+	cli, err := mautrix.NewClient(string(creds.Homeserver), "", "")
 	if err != nil {
 		return nil, categorize(CategoryCredentials, err)
 	}
@@ -47,8 +47,7 @@ func connect(
 	needLogin := sess == nil
 	if sess != nil {
 		cli.UserID, cli.DeviceID, cli.AccessToken = sess.UserID, sess.DeviceID, string(sess.AccessToken)
-		who, err := cli.Whoami(ctx)
-		switch {
+		switch who, err := cli.Whoami(ctx); {
 		case err == nil && (who.UserID != sess.UserID || who.DeviceID != sess.DeviceID):
 			return nil, categorize(CategoryIdentity, errors.New("token belongs to another account or device"))
 		case err == nil:

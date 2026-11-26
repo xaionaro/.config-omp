@@ -18,14 +18,41 @@ import (
 //
 // Example: filepath.Join(stateDir, sessionFile).
 const (
-	sessionFile   = "session.json"
-	roomsFile     = "rooms.json"
+	// sessionFile holds this tool's own device ID and access token.
+	//
+	// Example: filepath.Join(stateDir, sessionFile).
+	sessionFile = "session.json"
+	// roomsFile lists the DM rooms this tool created, per account and recipient.
+	//
+	// Example: RoomFile reads filepath.Join(dir, roomsFile).
+	roomsFile = "rooms.json"
+	// pickleKeyFile holds the key encrypting the Olm store.
+	//
+	// Example: loadOrCreatePickleKey(dir) reads it.
 	pickleKeyFile = "pickle.key"
-	cryptoDBFile  = "crypto.db"
-	lockFile      = "lock"
-	tempSuffix    = ".tmp"
-	dirMode       = 0o700
-	fileMode      = 0o600
+	// cryptoDBFile is the SQLite Olm and state store.
+	//
+	// Example: cryptohelper.NewCryptoHelper(cli, key, filepath.Join(dir, cryptoDBFile)).
+	cryptoDBFile = "crypto.db"
+	// lockFile is flocked to serialize runs sharing the device and store.
+	//
+	// Example: lockStateDir(ctx, dir).
+	lockFile = "lock"
+	// tempSuffix names the file writePrivate writes before renaming it into place.
+	//
+	// Example: session.json.tmp.
+	tempSuffix = ".tmp"
+	// dirMode makes the state directory private to the user.
+	//
+	// Example: os.MkdirAll(dir, dirMode).
+	dirMode = 0o700
+	// fileMode makes state files private to the user.
+	//
+	// Example: os.OpenFile(path, flags, fileMode).
+	fileMode = 0o600
+	// pickleKeySize is the pickle key's length in bytes.
+	//
+	// Example: a pickle.key of another length fails with CategoryState.
 	pickleKeySize = 32
 )
 

@@ -55,9 +55,13 @@ func TestDirectRoomsAbsenceVersusFailure(t *testing.T) {
 	if d, err := api.DirectRooms(context.Background()); err != nil || len(d) != 0 {
 		t.Fatalf("%v %v", d, err)
 	}
+	// RT2: a 403 on a room call is a room failure, neither absence nor a credential rejection.
 	api, _ = fakeServer(t, func(w http.ResponseWriter, _ *http.Request) { matrixError(w, 403, "M_FORBIDDEN") })
-	if _, err := api.DirectRooms(context.Background()); categoryOf(err) != CategoryAuth {
-		t.Fatalf("forbidden treated as absence: %v", err)
+	if _, err := api.DirectRooms(context.Background()); categoryOf(err) != CategoryRoom {
+		t.Fatalf("m.direct 403: %v", err)
+	}
+	if _, err := api.CreateDM(context.Background(), vicM); categoryOf(err) != CategoryRoom {
+		t.Fatalf("createRoom 403: %v", err)
 	}
 }
 

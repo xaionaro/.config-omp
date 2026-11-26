@@ -14,15 +14,45 @@ type Category int
 //
 // Example: categorize(CategoryAuth, err) marks a rejected login.
 const (
+	// CategoryInternal is an uncategorized, unexpected failure.
+	//
+	// Example: categoryOf(errors.New("x")) == CategoryInternal.
 	CategoryInternal Category = iota
+	// CategoryInput is a bad alias or an empty message.
+	//
+	// Example: parseRecipient("bob") fails with CategoryInput.
 	CategoryInput
+	// CategoryCredentials is a missing or invalid Matrix setting in Hermes's .env.
+	//
+	// Example: an http:// homeserver fails with CategoryCredentials.
 	CategoryCredentials
+	// CategoryState is an unreadable or unwritable state directory or file.
+	//
+	// Example: a short pickle.key fails with CategoryState.
 	CategoryState
+	// CategoryIdentity is a saved session or store that is not this tool's own device on Hermes's account.
+	//
+	// Example: a crypto store without a session fails with CategoryIdentity.
 	CategoryIdentity
+	// CategoryAuth is a rejected password or access token.
+	//
+	// Example: /login answered 403 M_FORBIDDEN fails with CategoryAuth.
 	CategoryAuth
+	// CategoryNetwork is a homeserver call that got no Matrix answer.
+	//
+	// Example: a refused connection fails with CategoryNetwork.
 	CategoryNetwork
+	// CategoryRoom is a failed room state, m.direct or room creation call.
+	//
+	// Example: createRoom answered 403 fails with CategoryRoom.
 	CategoryRoom
+	// CategoryCrypto is a failed key query, key share or encryption.
+	//
+	// Example: a send without an initialized crypto helper fails with CategoryCrypto.
 	CategoryCrypto
+	// CategorySend is an event the homeserver refused with a 4xx answer.
+	//
+	// Example: /send answered 400 M_UNKNOWN fails with CategorySend.
 	CategorySend
 )
 

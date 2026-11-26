@@ -156,7 +156,15 @@ test("a missing or non-executable sender is reported as not built", async () => 
     const res = await textFor(result);
     assert.equal(res.isError, true);
     assert.match(res.content[0].text, /NOT sent to void: the sender is not built/);
-    assert.match(res.content[0].text, /go build -tags goolm/);
+    // RT3: one delimited build command, the runbook from the same directory constant, and no doubled period.
+    assert.ok(
+      res.content[0].text.includes(
+        "build it with `cd ~/.omp/agent/cmd/matrix-notify && go build -tags goolm -o matrix-notify .`.",
+      ),
+      res.content[0].text,
+    );
+    assert.ok(!res.content[0].text.includes(".."), res.content[0].text);
+    assert.equal(RUNBOOK, "~/.omp/agent/cmd/matrix-notify/main.go");
     assert.ok(res.content[0].text.includes(RUNBOOK));
     assert.doesNotMatch(res.content[0].text, /may or may not/);
   }

@@ -91,7 +91,10 @@ func TestReportMatchesWireFixture(t *testing.T) {
 }
 
 func TestReportExitCodes(t *testing.T) {
-	cases := map[int][]Result{
+	if exitOK != 0 || exitError != 1 || exitPending != 2 || exitUnknown != 3 {
+		t.Fatal("exit code values changed")
+	}
+	cases := map[exitCode][]Result{
 		exitOK:      {connected(Outcome{Status: StatusSent, EventID: "$e"}), connected(Outcome{Status: StatusResolved}), connected(Outcome{Status: StatusAbsent})},
 		exitPending: {connected(Outcome{Status: StatusKeyPending}), connected(Outcome{Status: StatusInvitePending})},
 		exitUnknown: {connected(Outcome{Status: StatusUnknown})},

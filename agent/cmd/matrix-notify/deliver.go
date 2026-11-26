@@ -48,7 +48,7 @@ type RoomState struct {
 
 // MatrixAPI is the Matrix boundary resolve and deliver need; MautrixAPI implements it against the homeserver.
 //
-// Example: deliver(ctx, api, store, sender, recipient, text) with api := connect(...).
+// Example: deliver(ctx, api, store, sender, recipient, message) with api := connect(...).
 type MatrixAPI interface {
 	// DirectRooms returns m.direct; an absent event is an empty map.
 	//
@@ -77,14 +77,14 @@ type MatrixAPI interface {
 		room id.RoomID,
 		recipient id.UserID,
 	) (bool, error)
-	// SendEncrypted sends text as a Megolm ciphertext event, never as plaintext. An error means "not stored" only
+	// SendEncrypted sends message as a Megolm ciphertext event, never as plaintext. An error means "not stored" only
 	// when wrapped by markNotStored; any other error leaves it unknown whether the homeserver stored the event.
 	//
 	// Example: ev, err := api.SendEncrypted(ctx, room, "hello").
 	SendEncrypted(
 		ctx context.Context,
 		room id.RoomID,
-		text string,
+		message Message,
 	) (id.EventID, error)
 }
 
@@ -106,10 +106,15 @@ type RoomStore interface {
 	) error
 }
 
-// validMessage reports whether s has non-whitespace content.
+// Message is the literal text body of one DM, sent as-is.
+//
+// Example: Message("build finished").
+type Message string
+
+// validMessage reports whether message has non-whitespace content.
 //
 // Example: validMessage(" \n") is false.
-func validMessage(s string) bool { return strings.TrimSpace(s) != "" }
+func validMessage(message Message) bool { return strings.TrimSpace(string(message)) != "" }
 
 // validDM reports whether st is an encrypted room holding exactly sender (joined) and recipient (joined or invited).
 //
@@ -205,17 +210,17 @@ func deliver(
 	store RoomStore,
 	sender id.UserID,
 	recipient id.UserID,
-	message string,
+	message Message,
 ) (Outcome, error) {
 	room, st, err := findDM(ctx, api, store, sender, recipient)
 	if err != nil {
 		return Outcome{}, err
 	}
 	if room == "" {
-		// TODO: a saved room that the recipient left, or whose invite they rejected, fails validDM, so every later
-		// send creates and invites a new room (as does a createRoom whose response was lost, or a failed store.Add),
-		// and rooms.json only grows; decide whether a left or declined notifier room ends in a terminal "declined"
-		// result or a fresh invite, and prune saved rooms that no longer validate.
+		// TODO: a saved room that the recipient left, or whose invite they rejected, fails validDM, so the next send
+		// creates and invites a new room, once per leave or decline (as does a createRoom whose response was lost, or a
+		// failed store.Add), and rooms.json only grows; decide whether a left or declined notifier room ends in a
+		// terminal "declined" result or a fresh invite, and prune saved rooms that no longer validate.
 		if room, err = api.CreateDM(ctx, recipient); err != nil {
 			return Outcome{}, categorize(CategoryRoom, err)
 		}
