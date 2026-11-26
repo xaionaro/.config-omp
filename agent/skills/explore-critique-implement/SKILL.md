@@ -202,7 +202,7 @@ An ECI role that finds another agent violating an applicable ECI duty starts thi
 | Violator | Enforcer |
 |---|---|
 | Helper | its spawning Worker |
-| Worker | the owner of its Job |
+| Worker other than a Helper | the owner of its Job |
 | Child Job owner | the owner of the parent Job |
 | Root Job owner | the Supervisor |
 
