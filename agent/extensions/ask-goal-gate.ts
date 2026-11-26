@@ -20,7 +20,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 export const GOAL_DENY_REASON =
-  "`ask` is disabled while a goal runs unattended; no user can answer it. Work autonomously. If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If an item is stuck (it needs user input to progress), do not call `ask`. Leave the goal active; do not pause it or mark it complete. Continue all other work. In your final message, list each stuck item and its needed input, then end your turn.";
+  "`ask` is disabled while this goal is engaged. Work autonomously. If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it. If no skill matches, follow the task's rules. Choose the most defensible option from context. State each assumption in your next message. If you are the ECI Supervisor and Native goal lifecycle requires a stuck-work pause, follow that route before calling `ask`. Otherwise do not change the goal to ask. Continue other work and list any input still needed in your final message.";
 
 export const GOAL_UNREADABLE_REASON = "`ask` is unavailable: goal state could not be read";
 

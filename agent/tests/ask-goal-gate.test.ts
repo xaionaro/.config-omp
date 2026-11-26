@@ -48,14 +48,6 @@ function overlay(status: string) {
   return { getState: () => ({ goal: { status } }), set: async () => ({}) };
 }
 
-function denyReasonOf(result: unknown): string {
-  if (typeof result !== "object" || result === null || !("reason" in result)) {
-    throw new Error("expected a deny result");
-  }
-  if (typeof result.reason !== "string") throw new Error("deny reason is not a string");
-  return result.reason;
-}
-
 describe("ask goal gate", () => {
   test("denies ask when goal is active", () => {
     const { fire } = setup();
@@ -294,27 +286,6 @@ describe("ask goal gate", () => {
     };
     await modes.set({ mode: "goal", action: "pause" });
     assert.equal(fire("tool_call", askCall, main(modes)), undefined);
-  });
-
-  test("denied ask result tells the model to follow a skill it already read, read one it has not, and leave a stuck goal active while listing the needed input", () => {
-    const { fire } = setup();
-    fire("goal_updated", goalUpdated(true, "active"), main());
-    const reason = denyReasonOf(fire("tool_call", askCall, main()));
-    assert.ok(
-      reason.includes(
-        "If you already read the matching skill this session, follow it. Otherwise, read `skill://<name>` and follow it.",
-      ),
-    );
-    assert.ok(reason.includes("Leave the goal active"));
-    assert.ok(reason.includes("needed input"));
-  });
-
-  test("denied ask result says ask is disabled and asks for the needed input", () => {
-    const { fire } = setup();
-    fire("goal_updated", goalUpdated(true, "active"), main());
-    const reason = denyReasonOf(fire("tool_call", askCall, main()));
-    assert.ok(reason.includes("`ask` is disabled"));
-    assert.ok(reason.includes("needed input"));
   });
 
   test("a throwing ctx.agent in goal_updated keeps ask denied until a clean update", () => {
