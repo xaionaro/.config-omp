@@ -184,7 +184,7 @@ export function matrixNotify(pi: ExtensionAPI, send: MatrixSender): void {
     name: "matrix_send",
     label: "Matrix send",
     description:
-      "Send an end-to-end encrypted Matrix DM from Hermes's Matrix account to 'void' (the user) or 'vickey'. " +
+      "Send an end-to-end encrypted Matrix DM from Hermes's Matrix account to 'void' or 'vickey'. " +
       "Use it to notify them outside this session, e.g. a result, decision or blocker. " +
       "The message is sent as literal text. Success means Matrix accepted the event, not that it was read.",
     parameters: z.object({
