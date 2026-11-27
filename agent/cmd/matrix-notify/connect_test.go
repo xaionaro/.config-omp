@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
@@ -39,6 +40,7 @@ type fakeHomeserver struct {
 	claims         int
 	sendFault      sendFault
 	loginForbidden bool
+	sendAttempts   int
 }
 
 func newHomeserver(t *testing.T) *fakeHomeserver {
@@ -136,6 +138,14 @@ func (hs *fakeHomeserver) serve(w http.ResponseWriter, r *http.Request) {
 		case sendForbidden:
 			matrixError(w, 403, "M_FORBIDDEN")
 			return
+		case sendServerErrorThenForbidden:
+			hs.sendAttempts++
+			if hs.sendAttempts == 1 {
+				matrixError(w, 502, "M_UNKNOWN")
+			} else {
+				matrixError(w, 403, "M_FORBIDDEN")
+			}
+			return
 		}
 		parts := strings.Split(p, "/")
 		hs.sentTypes = append(hs.sentTypes, parts[len(parts)-2])
@@ -183,6 +193,7 @@ const (
 	sendRejected
 	sendServerError
 	sendForbidden
+	sendServerErrorThenForbidden
 )
 
 // claimableKeys returns one signed one-time key per target device when offerOTK is set, else none.
@@ -371,5 +382,24 @@ func TestLoginForbiddenIsAuth(t *testing.T) {
 	hs.loginForbidden = true
 	if _, err := hs.connect(t, t.TempDir()); categoryOf(err) != CategoryAuth {
 		t.Fatalf("login 403: %v", err)
+	}
+}
+
+// C5-1: /send is attempted once even when the client is configured to retry, so a 502 followed by a 403 on a retry
+// stays unknown (the first attempt may have stored the event) instead of becoming a "not stored" refusal.
+func TestSendIsAttemptedOnceDespiteClientRetries(t *testing.T) {
+	hs := newHomeserver(t)
+	hs.addRecipientDevice(t, "TDEV")
+	hs.offerOTK = true
+	api, err := hs.connect(t, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.Client.DefaultHTTPRetries = 2
+	api.Client.DefaultHTTPBackoff = time.Millisecond
+	hs.sendFault = sendServerErrorThenForbidden
+	out, err := deliver(context.Background(), api, memRooms{}, sender, voidM, "x")
+	if err != nil || out.Status != StatusUnknown || hs.sendAttempts != 1 {
+		t.Fatalf("attempts %d: %+v %v", hs.sendAttempts, out, err)
 	}
 }

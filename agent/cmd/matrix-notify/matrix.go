@@ -30,11 +30,10 @@ type MautrixAPI struct {
 // Example: direct, err := api.DirectRooms(ctx).
 func (m *MautrixAPI) DirectRooms(ctx context.Context) (map[id.UserID][]id.RoomID, error) {
 	direct := map[id.UserID][]id.RoomID{}
-	err := m.Client.GetAccountData(ctx, event.AccountDataDirectChats.Type, &direct)
-	if errors.Is(err, mautrix.MNotFound) {
+	switch err := m.Client.GetAccountData(ctx, event.AccountDataDirectChats.Type, &direct); {
+	case errors.Is(err, mautrix.MNotFound):
 		return map[id.UserID][]id.RoomID{}, nil
-	}
-	if err != nil {
+	case err != nil:
 		return nil, classifyHTTP(err, CategoryRoom)
 	}
 	return direct, nil
@@ -146,7 +145,9 @@ func (m *MautrixAPI) ShareRoomKey(
 
 // SendEncrypted encrypts explicitly and sends only the m.room.encrypted event, so no code path emits plaintext.
 // Failures before the request and 4xx Matrix error answers are marked not stored; a 5xx answer, a transport failure
-// or a deadline is left unmarked, because the homeserver may have stored the event.
+// or a deadline is left unmarked, because the homeserver may have stored the event. The /send request is attempted
+// exactly once (mautrix.WithMaxRetries(ctx, 0)): the answer judged is then the answer to the only request made, so a
+// 4xx after an earlier attempt that may have been stored can never pass as "not stored".
 //
 // Example: ev, err := api.SendEncrypted(ctx, room, "hello").
 func (m *MautrixAPI) SendEncrypted(
@@ -161,7 +162,7 @@ func (m *MautrixAPI) SendEncrypted(
 	if err != nil {
 		return "", markNotStored(classifyHTTP(err, CategoryCrypto))
 	}
-	switch resp, err := m.Client.SendMessageEvent(ctx, room, event.EventEncrypted, enc); {
+	switch resp, err := m.Client.SendMessageEvent(mautrix.WithMaxRetries(ctx, 0), room, event.EventEncrypted, enc); {
 	case err == nil:
 		return resp.EventID, nil
 	case homeserverRefused(err):
@@ -171,39 +172,32 @@ func (m *MautrixAPI) SendEncrypted(
 	}
 }
 
-// asHTTPError extracts mautrix's HTTPError from err.
-//
-// Example: if httpErr, ok := asHTTPError(err); ok && httpErr.RespError != nil { ... }.
-func asHTTPError(err error) (mautrix.HTTPError, bool) {
-	var httpErr mautrix.HTTPError
-	ok := errors.As(err, &httpErr)
-	return httpErr, ok
-}
-
 // homeserverRefused reports whether err is a Matrix error answer with a 4xx status: the homeserver refused the
 // request and stored nothing. A 5xx Matrix error does not count, because a server can fail after storing the event
 // (a worker deployment answers 502 M_UNKNOWN when the connection to its event persister drops).
 //
 // Example: homeserverRefused(err) is true for /send answered 429 M_LIMIT_EXCEEDED and false for 502 M_UNKNOWN.
 func homeserverRefused(err error) bool {
-	httpErr, ok := asHTTPError(err)
+	httpErr, ok := errors.AsType[mautrix.HTTPError](err)
 	return ok && httpErr.RespError != nil &&
 		httpErr.RespError.StatusCode >= http.StatusBadRequest && httpErr.RespError.StatusCode < http.StatusInternalServerError
 }
 
-// classifyHTTP categorizes a homeserver call failure: a rejected access token is auth, failures without a Matrix
-// response are network, and any other Matrix error is the caller's fallback (login and whoami pass auth).
+// classifyHTTP categorizes a failure of a homeserver call: a rejected access token is auth, an HTTP failure without
+// a Matrix answer is network, and any other error, whether a Matrix error answer or a local failure such as a crypto
+// store error, is the caller's fallback (login and whoami pass auth).
 //
 // Example: classifyHTTP(err, CategoryRoom) for a failed /state.
 //
 // TODO: a Matrix error answer to login or whoami that is not a credential rejection (for example M_LIMIT_EXCEEDED or
-// a 5xx) reports auth, and an M_TOO_LARGE event reports send, whose runbook actions (check MATRIX_PASSWORD; retry
-// later) do not fit; give these answers a category or runbook action of their own.
+// a 5xx) reports auth, and an M_TOO_LARGE event or a /send refused with M_FORBIDDEN (a permission refusal) reports
+// send, whose runbook actions (check MATRIX_PASSWORD; retry later) do not fit; give these answers a category or
+// runbook action of their own.
 func classifyHTTP(
 	err error,
 	fallback Category,
 ) error {
-	switch httpErr, isHTTP := asHTTPError(err); {
+	switch httpErr, isHTTP := errors.AsType[mautrix.HTTPError](err); {
 	case errors.Is(err, mautrix.MUnknownToken):
 		return categorize(CategoryAuth, err)
 	case isHTTP && httpErr.RespError != nil:

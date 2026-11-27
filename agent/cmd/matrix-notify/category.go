@@ -50,7 +50,8 @@ const (
 	//
 	// Example: a send without an initialized crypto helper fails with CategoryCrypto.
 	CategoryCrypto
-	// CategorySend is an event the homeserver refused with a 4xx answer.
+	// CategorySend is a /send the homeserver answered with a Matrix error. Only a 4xx answer reaches the result,
+	// because deliver reports any other /send failure as unknown.
 	//
 	// Example: /send answered 400 M_UNKNOWN fails with CategorySend.
 	CategorySend
@@ -118,8 +119,7 @@ func categorize(
 	c Category,
 	err error,
 ) error {
-	var ce *CategorizedError
-	if errors.As(err, &ce) {
+	if _, ok := errors.AsType[*CategorizedError](err); ok {
 		return err
 	}
 	return &CategorizedError{Category: c, Err: err}
@@ -142,8 +142,7 @@ func categorizeIfErr(
 //
 // Example: categoryOf(errors.New("x")) == CategoryInternal.
 func categoryOf(err error) Category {
-	var ce *CategorizedError
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*CategorizedError](err); ok {
 		return ce.Category
 	}
 	return CategoryInternal

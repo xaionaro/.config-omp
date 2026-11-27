@@ -71,8 +71,7 @@ func ensureStateDir(dir string) error {
 // Example: err := flockExclusive(fd) inside SyscallConn().Control.
 func flockExclusive(fd uintptr) error {
 	for {
-		err := unix.Flock(int(fd), unix.LOCK_EX)
-		if !errors.Is(err, unix.EINTR) {
+		if err := unix.Flock(int(fd), unix.LOCK_EX); !errors.Is(err, unix.EINTR) {
 			return err
 		}
 	}
@@ -129,8 +128,7 @@ func lockStateDir(
 // Example: key, err := loadOrCreatePickleKey(dir).
 func loadOrCreatePickleKey(dir string) ([]byte, error) {
 	path := filepath.Join(dir, pickleKeyFile)
-	b, err := os.ReadFile(path)
-	switch {
+	switch b, err := os.ReadFile(path); {
 	case err == nil && len(b) == pickleKeySize:
 		return b, nil
 	case err == nil:
@@ -138,11 +136,11 @@ func loadOrCreatePickleKey(dir string) ([]byte, error) {
 	case !errors.Is(err, os.ErrNotExist):
 		return nil, categorize(CategoryState, err)
 	}
-	b = make([]byte, pickleKeySize)
-	if _, err := rand.Read(b); err != nil {
+	key := make([]byte, pickleKeySize)
+	if _, err := rand.Read(key); err != nil {
 		return nil, categorize(CategoryState, err)
 	}
-	return b, writePrivate(path, b)
+	return key, writePrivate(path, key)
 }
 
 // writePrivate durably and atomically replaces path with b, readable only by the user: it fsyncs the temp file

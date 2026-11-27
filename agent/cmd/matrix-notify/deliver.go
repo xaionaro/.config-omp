@@ -248,15 +248,14 @@ func deliver(
 		out.Status = StatusKeyPending
 		return out, nil
 	}
-	ev, err := api.SendEncrypted(ctx, room, message)
-	var notStored *NotStoredError
-	switch {
-	case errors.As(err, &notStored):
+	switch ev, err := api.SendEncrypted(ctx, room, message); {
+	case errors.As(err, new(*NotStoredError)):
 		return Outcome{}, categorize(CategorySend, err)
 	case err != nil, ev == "":
 		out.Status = StatusUnknown
 		return out, nil
+	default:
+		out.Status, out.EventID = StatusSent, ev
+		return out, nil
 	}
-	out.Status, out.EventID = StatusSent, ev
-	return out, nil
 }
